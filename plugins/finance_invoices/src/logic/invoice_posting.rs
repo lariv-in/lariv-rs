@@ -10,6 +10,10 @@ use sea_orm::{
     TransactionTrait,
 };
 
+use lariv_plugin_finance_accounts::logic::custom_source_doc::{
+    SubmittedJournalLines, doc_line_indexes, index_of_item, journal_specs_editor_json,
+    stored_journal_line_specs,
+};
 use lariv_plugin_finance_accounts::logic::journal::{
     JournalLineSpec, create_source_doc, insert_journal_entry, update_source_doc_id,
 };
@@ -243,7 +247,9 @@ fn push_tax_lines(
     }
 }
 
-/// Recompute a posted invoice's journal lines from its stored accounts, lines, and taxes.
+/// Journal lines confirmed when the invoice was posted.
+///
+/// Regeneration copies these stored items. Template edits apply to the next post.
 pub async fn posted_invoice_journal_lines(
     db: &DatabaseConnection,
     posted_id: i64,
@@ -253,6 +259,10 @@ pub async fn posted_invoice_journal_lines(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("posted invoice {posted_id} not found"))?;
+
+    let stored = stored_journal_line_specs(db, posted.journal_entry_id).await?;
+    let item_ids: Vec<i64> = stored.iter().map(|(id, _)| *id).collect();
+    let specs = stored.into_iter().map(|(_, spec)| spec).collect();
 
     let lines = PostedInvoiceGoodsLineEntity::find()
         .filter(posted_invoice_goods_line::Column::PostedInvoiceId.eq(posted_id))
@@ -269,77 +279,13 @@ pub async fn posted_invoice_journal_lines(
     if lines.is_empty() && service_lines.is_empty() {
         return Err(format!("posted invoice {posted_id} has no lines"));
     }
-
-    let mut specs = Vec::new();
     let mut indexes = Vec::with_capacity(lines.len() + service_lines.len());
-    let mut journal_id = None;
-    let mut tax_lines = Vec::with_capacity(lines.len() + service_lines.len());
-    for line in lines {
-        let tax_ids = load_posted_line_tax_ids(db, line.id)
-            .await
-            .map_err(|e| e.to_string())?;
-        let taxes = load_taxes_by_ids(db, &tax_ids)
-            .await
-            .map_err(|e| e.to_string())?;
-        tax_lines.push((line.pre_tax_amount, taxes));
-        let expanded = expand_product_journal(
-            db,
-            line.product_id,
-            &line.variable_values,
-            line.quantity,
-            line.rate,
-            line.pre_tax_amount,
-        )
-        .await?;
-        if let Some(existing) = journal_id {
-            if existing != expanded.journal_id {
-                return Err(
-                    "every product and service on an invoice must use the same journal".to_string(),
-                );
-            }
-        } else {
-            journal_id = Some(expanded.journal_id);
-        }
-        indexes.push(specs.len());
-        specs.extend(expanded.specs);
+    for line in &lines {
+        indexes.push(index_of_item(&item_ids, line.journal_entry_item_id)?);
     }
-    for line in service_lines {
-        let tax_ids = load_posted_service_line_tax_ids(db, line.id)
-            .await
-            .map_err(|e| e.to_string())?;
-        let taxes = load_taxes_by_ids(db, &tax_ids)
-            .await
-            .map_err(|e| e.to_string())?;
-        tax_lines.push((line.pre_tax_amount, taxes));
-        let expanded = expand_service_journal(
-            db,
-            line.service_id,
-            &line.variable_values,
-            line.quantity,
-            line.rate,
-            line.pre_tax_amount,
-        )
-        .await?;
-        if let Some(existing) = journal_id {
-            if existing != expanded.journal_id {
-                return Err(
-                    "every product and service on an invoice must use the same journal".to_string(),
-                );
-            }
-        } else {
-            journal_id = Some(expanded.journal_id);
-        }
-        indexes.push(specs.len());
-        specs.extend(expanded.specs);
+    for line in &service_lines {
+        indexes.push(index_of_item(&item_ids, line.journal_entry_item_id)?);
     }
-    let journal_id = journal_id.ok_or("posted invoice has no lines")?;
-    let header_tax_ids = load_posted_invoice_tax_ids(db, posted_id)
-        .await
-        .map_err(|e| e.to_string())?;
-    let header_taxes = load_taxes_by_ids(db, &header_tax_ids)
-        .await
-        .map_err(|e| e.to_string())?;
-    append_invoice_tax_lines(db, &mut specs, &tax_lines, &header_taxes, journal_id).await?;
     Ok((posted.datetime, specs, indexes))
 }
 
@@ -423,12 +369,53 @@ pub async fn adopt_posted_invoice_journal_entry<C: ConnectionTrait>(
     Ok(())
 }
 
-pub async fn draft_new_posted(
+/// Prefill for the post modal: template lines, with an anchor on each document line.
+pub struct DraftJournalPreview {
+    pub label: String,
+    pub lines_json: String,
+}
+
+pub async fn preview_draft_journal(
     db: &DatabaseConnection,
     draft_id: i64,
-    posted_at: DateTime<Utc>,
-    tz: &str,
-) -> Result<posted_invoice::Model, String> {
+    slot_prefix: &str,
+) -> Result<DraftJournalPreview, String> {
+    let prepared = prepare_draft_journal(db, draft_id).await?;
+    let lines_json = journal_specs_editor_json(
+        db,
+        &prepared.specs,
+        &prepared.line_item_indexes,
+        slot_prefix,
+    )
+    .await?;
+    Ok(DraftJournalPreview {
+        label: draft_journal_label(prepared.draft.id, &prepared.draft.number),
+        lines_json,
+    })
+}
+
+fn draft_journal_label(id: i64, number: &Option<String>) -> String {
+    match number.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(number) => format!("Draft {number}"),
+        None => format!("Draft #{id}"),
+    }
+}
+
+struct PreparedDraftJournal {
+    draft: draft_invoice::Model,
+    journal_id: i64,
+    specs: Vec<JournalLineSpec>,
+    line_item_indexes: Vec<usize>,
+    lines_with_taxes: Vec<LineWithTaxes>,
+    service_lines_with_taxes: Vec<ServiceLineWithTaxes>,
+    header_taxes: Vec<TaxModel>,
+    total_due: Decimal,
+}
+
+async fn prepare_draft_journal(
+    db: &DatabaseConnection,
+    draft_id: i64,
+) -> Result<PreparedDraftJournal, String> {
     let draft = DraftInvoiceEntity::find_by_id(draft_id)
         .one(db)
         .await
@@ -559,6 +546,48 @@ pub async fn draft_new_posted(
         totals.lines_withholding = decimal::dec_sum(totals.lines_withholding, withholding);
     }
     let total_due = invoice_receivable_grand_total(&totals, &header_taxes, &all_line_tax_ids);
+    Ok(PreparedDraftJournal {
+        draft,
+        journal_id,
+        specs,
+        line_item_indexes,
+        lines_with_taxes,
+        service_lines_with_taxes,
+        header_taxes,
+        total_due,
+    })
+}
+
+pub async fn draft_new_posted(
+    db: &DatabaseConnection,
+    draft_id: i64,
+    posted_at: DateTime<Utc>,
+    tz: &str,
+) -> Result<posted_invoice::Model, String> {
+    draft_new_posted_with_lines(db, draft_id, posted_at, tz, None).await
+}
+
+pub async fn draft_new_posted_with_lines(
+    db: &DatabaseConnection,
+    draft_id: i64,
+    posted_at: DateTime<Utc>,
+    tz: &str,
+    submitted: Option<SubmittedJournalLines>,
+) -> Result<posted_invoice::Model, String> {
+    let PreparedDraftJournal {
+        draft,
+        journal_id,
+        mut specs,
+        mut line_item_indexes,
+        lines_with_taxes,
+        service_lines_with_taxes,
+        header_taxes,
+        total_due,
+    } = prepare_draft_journal(db, draft_id).await?;
+    if let Some(submitted) = submitted {
+        line_item_indexes = doc_line_indexes(line_item_indexes.len(), &submitted.anchors);
+        specs = submitted.lines;
+    }
 
     let number = posted_invoice_number(db, &draft).await?;
     let dup_posted = PostedInvoiceEntity::find()

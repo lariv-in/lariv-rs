@@ -2239,7 +2239,7 @@ impl RenderTemplate for PaymentCreateModalPage {
             self.form_name.as_str()
         };
         modal_keyed::<PaymentCreateModalKey>(
-            "",
+            "!max-w-6xl w-full",
             form(
                 &CsrfToken::current(),
                 FormOpts {
@@ -2260,6 +2260,7 @@ impl RenderTemplate for PaymentCreateModalPage {
                             )
                             .value(PaymentFormField::Amount, &self.form.amount)
                             .value(PaymentFormField::Datetime, &self.form.datetime)
+                            .value(PaymentFormField::JournalLines, &self.form.journal_lines)
                             .display(
                                 PaymentFormField::PostedInvoiceId,
                                 &self.posted_invoice_display,
@@ -2389,6 +2390,10 @@ impl RenderTemplate for PaymentBatchCreateModalPage {
                             .value(
                                 PaymentBatchFormField::AllocationsJson,
                                 &self.form.allocations_json,
+                            )
+                            .value(
+                                PaymentBatchFormField::JournalLines,
+                                &self.form.journal_lines,
                             )
                             .display(
                                 PaymentBatchFormField::AllocationsJson,

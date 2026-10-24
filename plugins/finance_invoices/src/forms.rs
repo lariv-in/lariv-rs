@@ -1,8 +1,10 @@
+use lariv_core::components::attrs::escape_attr;
 use lariv_core::html_form::{
     FieldRender, FormCtx, FormWidget, html_form,
     widgets::{Date, Datetime, Text, Textarea},
 };
-use maud::Markup;
+use lariv_plugin_finance_accounts::journal_lines_editor::input_journal_lines;
+use maud::{Markup, PreEscaped, html};
 
 use lariv_plugin_crm::routes::CustomerFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
@@ -229,6 +231,30 @@ pub struct PaymentForm {
         placeholder = "Optional withholding at collection…"
     )]
     pub taxes: Vec<i64>,
+
+    #[form(label = "Journal lines", required, widget = PaymentJournalLines)]
+    pub journal_lines: String,
+}
+
+/// Debit and credit lines for one payment. Prefills from the payment template.
+pub struct PaymentJournalLines;
+
+impl FormWidget for PaymentJournalLines {
+    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        let url = crate::routes::PaymentJournalLinesRouteTag.path();
+        html! {
+            div id="payment-journal-lines" {
+                (input_journal_lines(field.name, field.label, field.value))
+            }
+            (PreEscaped(format!(
+                r##"<button type="button" class="btn btn-outline btn-sm" hx-post="{}" hx-target="#payment-journal-lines" hx-swap="innerHTML" hx-include="closest form">Fill from template</button>"##,
+                escape_attr(&url),
+            )))
+            p class="text-sm text-base-content/70 mt-2" {
+                "Saved lines are whatever is in this editor. Fill from template replaces them from the payment preferences for the settlement amount and withholding taxes above."
+            }
+        }
+    }
 }
 
 /// Header fields for batch payment (allocations use a custom JSON editor widget).
@@ -239,6 +265,30 @@ pub struct PaymentBatchForm {
 
     #[form(label = "Allocations", required, widget = PaymentBatchAllocations, display = "batch_allocations_preview")]
     pub allocations_json: String,
+
+    #[form(label = "Journal lines", required, widget = PaymentBatchJournalLines)]
+    pub journal_lines: String,
+}
+
+/// Combined debit and credit lines for a payment batch.
+pub struct PaymentBatchJournalLines;
+
+impl FormWidget for PaymentBatchJournalLines {
+    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        let url = crate::routes::PaymentBatchJournalLinesRouteTag.path();
+        html! {
+            div id="payment-batch-journal-lines" {
+                (input_journal_lines(field.name, field.label, field.value))
+            }
+            (PreEscaped(format!(
+                r##"<button type="button" class="btn btn-outline btn-sm" hx-post="{}" hx-target="#payment-batch-journal-lines" hx-swap="innerHTML" hx-include="closest form">Fill from template</button>"##,
+                escape_attr(&url),
+            )))
+            p class="text-sm text-base-content/70 mt-2" {
+                "Saved lines are whatever is in this editor. Fill from template replaces them from the payment preferences for the allocations above."
+            }
+        }
+    }
 }
 
 /// Custom widget for batch payment allocations (Alpine editor + hidden JSON).

@@ -33,11 +33,25 @@ pub fn empty_lines_json() -> String {
         .to_string()
 }
 
+/// Journal lines submitted from the line editor, with optional document-line anchors.
+///
+/// `anchors` is parallel to `lines`. `Some(i)` means that row is the anchor for
+/// document line `i` (goods lines first, then service lines).
+pub struct SubmittedJournalLines {
+    pub lines: Vec<JournalLineSpec>,
+    pub anchors: Vec<Option<usize>>,
+}
+
 /// Parse the line editor JSON into balanced signed journal lines.
 ///
 /// A blank row (no account and no amounts) is skipped. Debit is a positive
 /// amount and credit is a negative amount. The kept lines must net to zero.
 pub fn parse_journal_lines(raw: &str) -> Result<Vec<JournalLineSpec>, String> {
+    Ok(parse_submitted_journal_lines(raw)?.lines)
+}
+
+/// Parse editor JSON and keep each row's `doc_line` anchor.
+pub fn parse_submitted_journal_lines(raw: &str) -> Result<SubmittedJournalLines, String> {
     let raw = raw.trim();
     if raw.is_empty() {
         return Err("At least one journal line is required".into());
@@ -45,6 +59,7 @@ pub fn parse_journal_lines(raw: &str) -> Result<Vec<JournalLineSpec>, String> {
     let rows: Vec<RawLine> =
         serde_json::from_str(raw).map_err(|_err| "Journal lines could not be read".to_string())?;
     let mut lines = Vec::new();
+    let mut anchors = Vec::new();
     let mut balance = Decimal::ZERO;
     for (idx, row) in rows.iter().enumerate() {
         let n = idx + 1;
@@ -75,6 +90,7 @@ pub fn parse_journal_lines(raw: &str) -> Result<Vec<JournalLineSpec>, String> {
             account_id: row.account_id,
             amount,
         });
+        anchors.push(row.doc_line.and_then(|n| usize::try_from(n).ok()));
     }
     if lines.is_empty() {
         return Err("At least one journal line is required".into());
@@ -82,7 +98,105 @@ pub fn parse_journal_lines(raw: &str) -> Result<Vec<JournalLineSpec>, String> {
     if !decimal::dec_is_zero(balance) {
         return Err("Debits must equal credits".into());
     }
-    Ok(lines)
+    Ok(SubmittedJournalLines { lines, anchors })
+}
+
+/// Map each document line to a submitted journal row.
+///
+/// A document line whose anchor was removed points at the first submitted row.
+pub fn doc_line_indexes(doc_count: usize, anchors: &[Option<usize>]) -> Vec<usize> {
+    let last = anchors.len().saturating_sub(1);
+    (0..doc_count)
+        .map(|doc| {
+            anchors
+                .iter()
+                .position(|anchor| *anchor == Some(doc))
+                .unwrap_or(0)
+                .min(last)
+        })
+        .collect()
+}
+
+/// Position of `item_id` in an id-ordered journal entry.
+pub fn index_of_item(item_ids: &[i64], item_id: i64) -> Result<usize, String> {
+    item_ids
+        .iter()
+        .position(|id| *id == item_id)
+        .ok_or_else(|| format!("journal line {item_id} is not on this journal entry"))
+}
+
+/// Stored journal items in insertion order, as signed lines.
+pub async fn stored_journal_line_specs(
+    db: &DatabaseConnection,
+    journal_entry_id: i64,
+) -> Result<Vec<(i64, JournalLineSpec)>, String> {
+    let items = JournalEntryItemEntity::find()
+        .filter(journal_entry_item::Column::JournalEntryId.eq(journal_entry_id))
+        .order_by_asc(journal_entry_item::Column::Id)
+        .all(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    if items.is_empty() {
+        return Err(format!("journal entry {journal_entry_id} has no lines"));
+    }
+    Ok(items
+        .into_iter()
+        .map(|item| {
+            (
+                item.id,
+                JournalLineSpec {
+                    account_id: item.account_id,
+                    amount: item.amount,
+                },
+            )
+        })
+        .collect())
+}
+
+/// Editor JSON for evaluated journal lines.
+///
+/// `anchor_indexes[doc_line]` is the spec index that anchors that document line.
+/// `slot_prefix` keeps account-picker ids unique when several editors share a page.
+pub async fn journal_specs_editor_json(
+    db: &DatabaseConnection,
+    lines: &[JournalLineSpec],
+    anchor_indexes: &[usize],
+    slot_prefix: &str,
+) -> Result<String, String> {
+    if lines.is_empty() {
+        return Ok(empty_lines_json());
+    }
+    let mut rows = Vec::with_capacity(lines.len());
+    for (idx, line) in lines.iter().enumerate() {
+        let acct = AccountEntity::find_by_id(line.account_id)
+            .one(db)
+            .await
+            .map_err(|e| e.to_string())?;
+        let account_label = acct
+            .as_ref()
+            .map(account_label)
+            .unwrap_or_else(|| format!("Account #{}", line.account_id));
+        let (debit, credit) = if line.amount.is_sign_negative() {
+            (String::new(), decimal_display(line.amount.abs()))
+        } else if line.amount.is_zero() {
+            (String::new(), String::new())
+        } else {
+            (decimal_display(line.amount), String::new())
+        };
+        let doc_line = anchor_indexes
+            .iter()
+            .position(|anchor| *anchor == idx)
+            .and_then(|n| i64::try_from(n).ok());
+        rows.push(LineJson {
+            account_id: line.account_id,
+            debit,
+            credit,
+            account_label,
+            fk_slot: format!("{slot_prefix}-{idx}"),
+            doc_line,
+        });
+    }
+    serde_json::to_string(&rows).map_err(|e| e.to_string())
 }
 
 /// Each line account must exist and must not be a group account.
@@ -165,6 +279,7 @@ pub async fn lines_form_value(
             credit,
             account_label,
             fk_slot: format!("journal-line-{}", item.id),
+            doc_line: None,
         });
     }
     serde_json::to_string(&rows).map_err(|e| e.to_string())
@@ -341,6 +456,8 @@ struct RawLine {
     debit: String,
     #[serde(default, deserialize_with = "flex_string")]
     credit: String,
+    #[serde(default)]
+    doc_line: Option<i64>,
 }
 
 #[derive(serde::Serialize)]
@@ -350,6 +467,8 @@ struct LineJson {
     credit: String,
     account_label: String,
     fk_slot: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    doc_line: Option<i64>,
 }
 
 fn flex_i64<'de, D>(deserializer: D) -> Result<i64, D::Error>
@@ -414,6 +533,17 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err, "Debits must equal credits");
+    }
+
+    #[test]
+    fn keeps_doc_line_anchors_and_falls_back_when_removed() {
+        let parsed = parse_submitted_journal_lines(
+            r#"[{"account_id":1,"debit":"5","credit":"","doc_line":0},{"account_id":0,"debit":"","credit":""},{"account_id":2,"debit":"","credit":"5","doc_line":1}]"#,
+        )
+        .unwrap();
+        assert_eq!(parsed.anchors, vec![Some(0), Some(1)]);
+        assert_eq!(doc_line_indexes(2, &parsed.anchors), vec![0, 1]);
+        assert_eq!(doc_line_indexes(3, &parsed.anchors), vec![0, 1, 0]);
     }
 
     #[test]

@@ -137,7 +137,7 @@ mod tests {
             .into_string();
         assert!(html.contains("Journal entry template"));
         assert!(html.contains("quantity — purchase line quantity"));
-        assert!(html.contains("rate — unit rate on the purchase line"));
+        assert!(html.contains("unit_rate — unit rate on the purchase line"));
         assert!(html.contains("base_cost — base price of one product"));
         assert!(html.contains("sales_price — sales price of one product"));
         assert!(html.contains("hintOpen"));

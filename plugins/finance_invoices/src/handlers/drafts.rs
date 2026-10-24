@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::{
     Json,
     extract::{Path, Query},
@@ -6,7 +8,7 @@ use axum::{
 };
 use chrono::Utc;
 use maud::Markup;
-use sea_orm::{EntityTrait, PaginatorTrait, QueryOrder};
+use sea_orm::{DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder};
 
 use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::{CsrfToken, HtmlFormBody, UrlencodedFields};
@@ -18,6 +20,10 @@ use lariv_core::web::{
 };
 use lariv_plugin_users::middleware::RequireAuth;
 
+use lariv_plugin_finance_accounts::journal_lines_editor::{PostJournalSection, post_journal_modal};
+use lariv_plugin_finance_accounts::logic::custom_source_doc::{
+    ensure_posting_accounts, parse_submitted_journal_lines,
+};
 use lariv_plugin_finance_common::decimal;
 use lariv_plugin_finance_products::{entities::product::Entity as ProductEntity, pricing};
 use lariv_plugin_finance_taxes::scope::{load_taxes_by_ids, tax_label};
@@ -58,10 +64,9 @@ use crate::{
     scope::{find_active_draft, hub_tab_url},
     state::InvoicesState,
     templates::{
-        ConfirmBulkDeletePage, ConfirmDeletePage, ConfirmInvoiceTransition,
-        DraftInvoiceBulkEditModalPage, DraftInvoiceCreateModalPage, DraftInvoiceDetailPage,
-        DraftInvoiceEditModalPage, DraftInvoiceSelectPage, DraftInvoiceSelectRow,
-        confirm_invoice_transition,
+        ConfirmBulkDeletePage, ConfirmDeletePage, DraftInvoiceBulkEditModalPage,
+        DraftInvoiceCreateModalPage, DraftInvoiceDetailPage, DraftInvoiceEditModalPage,
+        DraftInvoiceSelectPage, DraftInvoiceSelectRow,
     },
 };
 
@@ -755,34 +760,168 @@ pub async fn delete_post(
     }
 }
 
-pub async fn post_confirm_get(RequireAuth(_ctx): RequireAuth, Path(id): Path<i64>) -> Markup {
-    let post_url = DraftInvoicePostRouteTag::new(id).path();
-    confirm_invoice_transition(ConfirmInvoiceTransition {
-        modal_uid: DraftInvoicePostModalKey::ID,
-        title: "Post invoice",
-        message: "Post this draft invoice? This will create a posted invoice.",
-        submit_label: "Post invoice",
-        post_url: &post_url,
-        can_submit: true,
-    })
+const POST_INTRO: &str = "These lines are filled from the product, service, and tax templates. Change them before posting. Saved lines are whatever you submit, and debits must equal credits.";
+
+fn journal_field_name(id: i64, single: bool) -> String {
+    if single {
+        "JournalLines".to_string()
+    } else {
+        format!("JournalLines_{id}")
+    }
+}
+
+async fn render_invoice_post_modal(
+    db: &DatabaseConnection,
+    ids: &[i64],
+    single: bool,
+    post_url: &str,
+    modal_uid: &str,
+    title: &str,
+    submit_label: &str,
+    overrides: &HashMap<i64, String>,
+    form_error: &str,
+) -> Markup {
+    let mut sections = Vec::new();
+    if ids.is_empty() {
+        sections.push(PostJournalSection {
+            title: "No drafts selected".into(),
+            field_name: "JournalLines".into(),
+            lines_json: String::new(),
+            error: "Select at least one draft invoice to post.".into(),
+        });
+    }
+    for id in ids {
+        let field_name = journal_field_name(*id, single);
+        match crate::logic::invoice_posting::preview_draft_journal(db, *id, &format!("draft-{id}"))
+            .await
+        {
+            Ok(preview) => sections.push(PostJournalSection {
+                title: preview.label,
+                field_name,
+                lines_json: overrides
+                    .get(id)
+                    .cloned()
+                    .filter(|raw| !raw.trim().is_empty())
+                    .unwrap_or(preview.lines_json),
+                error: String::new(),
+            }),
+            Err(error) if error == "draft already posted" => {}
+            Err(error) => sections.push(PostJournalSection {
+                title: format!("Draft #{id}"),
+                field_name,
+                lines_json: String::new(),
+                error,
+            }),
+        }
+    }
+    if sections.is_empty() {
+        sections.push(PostJournalSection {
+            title: "Nothing to post".into(),
+            field_name: "JournalLines".into(),
+            lines_json: String::new(),
+            error: "These drafts are already posted.".into(),
+        });
+    }
+    post_journal_modal(
+        modal_uid,
+        title,
+        POST_INTRO,
+        post_url,
+        &sections,
+        submit_label,
+        form_error,
+    )
+}
+
+pub async fn post_confirm_get(
+    Cap(state): Cap<InvoicesState>,
+    RequireAuth(_ctx): RequireAuth,
+    Path(id): Path<i64>,
+) -> Markup {
+    render_invoice_post_modal(
+        &state.db,
+        &[id],
+        true,
+        &DraftInvoicePostRouteTag::new(id).path(),
+        DraftInvoicePostModalKey::ID,
+        "Post invoice",
+        "Post invoice",
+        &HashMap::new(),
+        "",
+    )
+    .await
 }
 
 pub async fn post_invoice(
     Cap(state): Cap<InvoicesState>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Path(id): Path<i64>,
+    HtmlFormBody(fields): HtmlFormBody<HashMap<String, String>>,
 ) -> Response {
     if find_active_draft(&state.db, id).await.is_none() {
         return Redirect::to(&hub_tab_url("drafts")).into_response();
     }
-    match crate::logic::draft_new_posted(&state.db, id, Utc::now(), &ctx.timezone).await {
-        Ok(p) => Redirect::to(&PostedInvoiceDetailRouteTag::new(p.id).url()).into_response(),
-        Err(e) => Redirect::to(
-            &DraftInvoiceDetailRouteTag::new(id)
-                .with_query()
-                .query("error", &e)
-                .build(),
+    let raw = fields.get("JournalLines").cloned().unwrap_or_default();
+    let mut overrides = HashMap::new();
+    if !raw.trim().is_empty() {
+        overrides.insert(id, raw.clone());
+    }
+    let submitted = match parse_submitted_journal_lines(&raw) {
+        Ok(lines) => lines,
+        Err(error) => {
+            return render_invoice_post_modal(
+                &state.db,
+                &[id],
+                true,
+                &DraftInvoicePostRouteTag::new(id).path(),
+                DraftInvoicePostModalKey::ID,
+                "Post invoice",
+                "Post invoice",
+                &overrides,
+                &error,
+            )
+            .await
+            .into_response();
+        }
+    };
+    if let Err(error) = ensure_posting_accounts(&state.db, &submitted.lines).await {
+        return render_invoice_post_modal(
+            &state.db,
+            &[id],
+            true,
+            &DraftInvoicePostRouteTag::new(id).path(),
+            DraftInvoicePostModalKey::ID,
+            "Post invoice",
+            "Post invoice",
+            &overrides,
+            &error,
         )
+        .await
+        .into_response();
+    }
+    match crate::logic::invoice_posting::draft_new_posted_with_lines(
+        &state.db,
+        id,
+        Utc::now(),
+        &ctx.timezone,
+        Some(submitted),
+    )
+    .await
+    {
+        Ok(posted) => htmx.redirect(&PostedInvoiceDetailRouteTag::new(posted.id).url()),
+        Err(error) => render_invoice_post_modal(
+            &state.db,
+            &[id],
+            true,
+            &DraftInvoicePostRouteTag::new(id).path(),
+            DraftInvoicePostModalKey::ID,
+            "Post invoice",
+            "Post invoice",
+            &overrides,
+            &error,
+        )
+        .await
         .into_response(),
     }
 }
@@ -1008,31 +1147,28 @@ pub async fn bulk_edit_post(
 }
 
 pub async fn bulk_post_confirm_get(
+    Cap(state): Cap<InvoicesState>,
     RequireAuth(_ctx): RequireAuth,
     Query(q): Query<BulkIdsQuery>,
 ) -> Markup {
     let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
-    let (message, post_url, can_submit) = if ids.is_empty() {
-        (
-            "Select at least one draft invoice to post.".to_string(),
-            DraftInvoiceBulkPostRouteTag.path(),
-            false,
-        )
+    let post_url = if ids.is_empty() {
+        DraftInvoiceBulkPostRouteTag.path()
     } else {
-        (
-            "Post selected draft invoices? This will create posted invoices.".to_string(),
-            bulk_transition_post_url(&DraftInvoiceBulkPostRouteTag.path(), &ids),
-            true,
-        )
+        bulk_transition_post_url(&DraftInvoiceBulkPostRouteTag.path(), &ids)
     };
-    confirm_invoice_transition(ConfirmInvoiceTransition {
-        modal_uid: DraftInvoiceBulkPostModalKey::ID,
-        title: "Post selected invoices",
-        message: &message,
-        submit_label: "Post selected",
-        post_url: &post_url,
-        can_submit,
-    })
+    render_invoice_post_modal(
+        &state.db,
+        &ids,
+        false,
+        &post_url,
+        DraftInvoiceBulkPostModalKey::ID,
+        "Post selected invoices",
+        "Post selected",
+        &HashMap::new(),
+        "",
+    )
+    .await
 }
 
 pub(crate) fn bulk_transition_post_url(path: &str, ids: &[i64]) -> String {
@@ -1047,28 +1183,102 @@ pub(crate) fn bulk_transition_post_url(path: &str, ids: &[i64]) -> String {
 pub async fn bulk_post(
     Cap(state): Cap<InvoicesState>,
     RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
     Query(q): Query<BulkIdsQuery>,
+    HtmlFormBody(fields): HtmlFormBody<HashMap<String, String>>,
 ) -> Response {
     let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
+    let post_url = bulk_transition_post_url(&DraftInvoiceBulkPostRouteTag.path(), &ids);
     if ids.is_empty() {
-        return Redirect::to(&hub_tab_url("drafts")).into_response();
+        return render_invoice_post_modal(
+            &state.db,
+            &ids,
+            false,
+            &post_url,
+            DraftInvoiceBulkPostModalKey::ID,
+            "Post selected invoices",
+            "Post selected",
+            &HashMap::new(),
+            "Select at least one draft invoice to post.",
+        )
+        .await
+        .into_response();
     }
-    let now = Utc::now();
-    for id in ids {
-        if find_active_draft(&state.db, id).await.is_none() {
+    let mut overrides = HashMap::new();
+    let mut parsed = Vec::new();
+    for id in &ids {
+        let raw = fields
+            .get(&journal_field_name(*id, false))
+            .cloned()
+            .unwrap_or_default();
+        if !raw.trim().is_empty() {
+            overrides.insert(*id, raw.clone());
+        }
+        if find_active_draft(&state.db, *id).await.is_none() {
             continue;
         }
-        if let Err(e) = crate::logic::draft_new_posted(&state.db, id, now, &ctx.timezone).await {
-            return Redirect::to(
-                &DraftInvoiceDetailRouteTag::new(id)
-                    .with_query()
-                    .query("error", &e)
-                    .build(),
+        let submitted = match parse_submitted_journal_lines(&raw) {
+            Ok(lines) => lines,
+            Err(error) => {
+                return render_invoice_post_modal(
+                    &state.db,
+                    &ids,
+                    false,
+                    &post_url,
+                    DraftInvoiceBulkPostModalKey::ID,
+                    "Post selected invoices",
+                    "Post selected",
+                    &overrides,
+                    &format!("Draft #{id}: {error}"),
+                )
+                .await
+                .into_response();
+            }
+        };
+        if let Err(error) = ensure_posting_accounts(&state.db, &submitted.lines).await {
+            return render_invoice_post_modal(
+                &state.db,
+                &ids,
+                false,
+                &post_url,
+                DraftInvoiceBulkPostModalKey::ID,
+                "Post selected invoices",
+                "Post selected",
+                &overrides,
+                &format!("Draft #{id}: {error}"),
             )
+            .await
+            .into_response();
+        }
+        parsed.push((*id, submitted));
+    }
+    let now = Utc::now();
+    for (id, submitted) in parsed {
+        if let Err(error) = crate::logic::invoice_posting::draft_new_posted_with_lines(
+            &state.db,
+            id,
+            now,
+            &ctx.timezone,
+            Some(submitted),
+        )
+        .await
+        {
+            return render_invoice_post_modal(
+                &state.db,
+                &ids,
+                false,
+                &post_url,
+                DraftInvoiceBulkPostModalKey::ID,
+                "Post selected invoices",
+                "Post selected",
+                &overrides,
+                &format!("Draft #{id}: {error}"),
+            )
+            .await
             .into_response();
         }
     }
-    Redirect::to(&hub_tab_url("posted")).into_response()
+    htmx.redirect(&hub_tab_url("posted"))
 }
 
 pub async fn multi_select(

@@ -3,6 +3,7 @@ use sea_orm_migration::prelude::*;
 mod m00001_create_services;
 mod m00002_create_service_journal_entry_item_templates;
 mod m00003_default_service_journal_entry_item_templates;
+mod m00004_journal_formula_unit_rate;
 
 use super::FinanceServicesTag;
 
@@ -16,6 +17,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00001_create_services::Migration),
             Box::new(m00002_create_service_journal_entry_item_templates::Migration),
             Box::new(m00003_default_service_journal_entry_item_templates::Migration),
+            Box::new(m00004_journal_formula_unit_rate::Migration),
         ]
     }
 }

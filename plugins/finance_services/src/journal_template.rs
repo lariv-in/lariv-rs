@@ -1,9 +1,9 @@
 //! Journal template lines for one service.
 //!
 //! Item formulas are Rune expressions. They see the service's variables plus
-//! `quantity`, `rate`, `pre_tax`, `base_cost`, and `sales_price` from the
+//! `quantity`, `unit_rate`, `pre_tax`, `base_cost`, and `sales_price` from the
 //! invoice line and service. The result is a signed journal amount: debit
-//! positive, credit negative, so a credit is written `-pre_tax`. Numeric
+//! positive, credit negative, so a credit is written `-unit_rate`. Numeric
 //! constants need no `decimal(...)` wrapper and unary minus on a variable is
 //! expanded by the formula evaluator.
 
@@ -32,13 +32,19 @@ pub struct LoadedServiceTemplate {
     pub items: Vec<service_journal_entry_item_template::Model>,
 }
 
-pub const LINE_BINDINGS: &[&str] = &["quantity", "rate", "pre_tax", "base_cost", "sales_price"];
+pub const LINE_BINDINGS: &[&str] = &[
+    "quantity",
+    "unit_rate",
+    "pre_tax",
+    "base_cost",
+    "sales_price",
+];
 
 /// Variables a service journal line formula can read.
 pub const FORMULA_VARIABLES_HINT: &str = "\
 quantity — invoice line quantity
-rate — unit rate on the invoice line
-pre_tax — quantity * rate
+unit_rate — unit rate on the invoice line
+pre_tax — quantity * unit_rate
 base_cost — base price of one service
 sales_price — sales price of one service
 Also every variable defined above.
@@ -138,7 +144,7 @@ pub fn evaluate_item_formula(
         parse_values(&service, &raw).map_err(|e| e.to_string())?
     };
     values.insert("quantity".into(), decimal_measure(quantity));
-    values.insert("rate".into(), decimal_measure(rate));
+    values.insert("unit_rate".into(), decimal_measure(rate));
     values.insert("pre_tax".into(), decimal_measure(pre_tax));
     values.insert("base_cost".into(), decimal_measure(base_cost));
     values.insert("sales_price".into(), decimal_measure(sales_price));

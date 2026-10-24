@@ -644,7 +644,7 @@ create_purchase_product(#{
             "base_price_formula": "decimal(\"10\")",
             "sales_price_formula": "decimal(\"25.50\")",
             "journal_id": 3,
-            "journal_lines": [{ "account_id": 9, "formula": "pre_tax" }, { "account_id": 10, "formula": "-pre_tax" }],
+            "journal_lines": [{ "account_id": 9, "formula": "unit_rate" }, { "account_id": 10, "formula": "-unit_rate" }],
             "hsn_code": 9983,
             "tax_ids": [1, 2]
         }))
@@ -657,7 +657,7 @@ create_purchase_product(#{
         assert_eq!(input.base_price_formula, "decimal(\"10\")");
         assert_eq!(input.sales_price_formula, "decimal(\"25.50\")");
         assert_eq!(input.journal_id, "3");
-        assert!(input.journal_lines.contains("-pre_tax"));
+        assert!(input.journal_lines.contains("-unit_rate"));
         assert_eq!(input.hsn_code, 9983);
         assert_eq!(input.tax_ids, vec![1, 2]);
     }

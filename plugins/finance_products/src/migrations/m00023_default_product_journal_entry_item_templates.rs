@@ -1,6 +1,6 @@
 //! Seed default product journal templates from the old GL preferences.
 //!
-//! Each product posts its own sale: receivable debits `pre_tax` and revenue
+//! Each product posts its own sale: receivable debits `unit_rate` and revenue
 //! credits it back. Cost of sales and inventory are not copied onto products.
 //! Invoice posting expands every product template, so those lines would be
 //! booked once per product. The same two sales lines are stored on product
@@ -8,7 +8,7 @@
 //! are copied, the preference columns are retired.
 //!
 //! Formulas are stored plainly: numeric constants are wrapped in `decimal(...)`
-//! when a formula is evaluated, so a credit line is just `-pre_tax`.
+//! when a formula is evaluated, so a credit line is just `-unit_rate`.
 
 use sea_orm_migration::prelude::*;
 
@@ -98,8 +98,8 @@ BEGIN
     SELECT NOW(), NOW(), p.id, v_journal_id, line.account_id, line.formula
       FROM products AS p
      CROSS JOIN (VALUES
-         (1, v_receivable_id, 'pre_tax'),
-         (2, v_revenue_id, '-pre_tax')
+         (1, v_receivable_id, 'unit_rate'),
+         (2, v_revenue_id, '-unit_rate')
      ) AS line(ord, account_id, formula)
      WHERE NOT EXISTS (
          SELECT 1
@@ -128,8 +128,8 @@ BEGIN
         INSERT INTO product_preference_journal_items
             (created_at, updated_at, product_preferences_id, journal_id, account_id, formula)
         VALUES
-            (NOW(), NOW(), 1, v_journal_id, v_receivable_id, 'pre_tax'),
-            (NOW(), NOW(), 1, v_journal_id, v_revenue_id, '-pre_tax');
+            (NOW(), NOW(), 1, v_journal_id, v_receivable_id, 'unit_rate'),
+            (NOW(), NOW(), 1, v_journal_id, v_revenue_id, '-unit_rate');
     END IF;
 END $$;
 

@@ -790,6 +790,7 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
             amount: Decimal::from(159),
             datetime: Utc::now(),
             withholding_tax_ids: Vec::new(),
+            journal_lines: None,
         },
     )
     .await;

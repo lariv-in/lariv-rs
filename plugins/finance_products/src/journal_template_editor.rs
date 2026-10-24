@@ -180,7 +180,7 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                     }
                                 }
                                 td class="align-top min-w-[16rem]" {
-                                    input type="text" class="input input-bordered input-md w-full" placeholder="pre_tax" x-model="line.formula";
+                                    input type="text" class="input input-bordered input-md w-full" placeholder="unit_rate" x-model="line.formula";
                                 }
                                 td class="align-top" {
                                     (PreEscaped(r#"<button type="button" class="btn btn-ghost btn-sm" @click="removeLine(i)">Remove</button>"#))

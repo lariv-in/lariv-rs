@@ -9,6 +9,9 @@ use sea_orm::{
     EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Statement, TransactionTrait,
 };
 
+use lariv_plugin_finance_accounts::logic::custom_source_doc::{
+    journal_specs_editor_json, stored_journal_line_specs,
+};
 use lariv_plugin_finance_accounts::logic::journal::{
     JournalLineSpec, create_source_doc, insert_journal_entry, update_source_doc_id,
 };
@@ -36,6 +39,8 @@ pub struct CreatePaymentInput {
     pub amount: Decimal,
     pub datetime: DateTime<Utc>,
     pub withholding_tax_ids: Vec<i64>,
+    /// `None` evaluates the payment template. `Some` writes these lines.
+    pub journal_lines: Option<Vec<JournalLineSpec>>,
 }
 
 async fn sum_posted_invoice_payments<C: ConnectionTrait>(
@@ -258,32 +263,7 @@ pub async fn build_payment_lines_for_allocation(
     Ok(lines)
 }
 
-/// Template and withholding lines for a stored payment, from the payment and its invoice.
-pub(crate) async fn allocation_lines_for_payment(
-    db: &DatabaseConnection,
-    pay: &payment::Model,
-) -> Result<Vec<JournalLineSpec>, String> {
-    let posted = posted_invoice::Entity::find_by_id(pay.posted_invoice_id)
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("posted invoice {} not found", pay.posted_invoice_id))?;
-    let amounts = posted_invoice_amounts(db, posted.id).await?;
-    let tax_ids = crate::logic::tax_assoc::load_payment_tax_ids(db, pay.id)
-        .await
-        .map_err(|e| e.to_string())?;
-    let taxes = load_taxes_by_ids(db, &tax_ids)
-        .await
-        .map_err(|e| e.to_string())?;
-    let withholding_base = payment_withholding_base(
-        pay.amount,
-        amounts.receivable_total,
-        amounts.untaxed_subtotal,
-    );
-    build_payment_lines_for_allocation(db, &posted, pay.amount, withholding_base, &taxes).await
-}
-
-/// Recompute a payment's journal lines from the payment template, amount, and withholding taxes.
+/// Journal lines confirmed when the payment was recorded.
 pub async fn payment_journal_lines(
     db: &DatabaseConnection,
     payment_id: i64,
@@ -293,8 +273,33 @@ pub async fn payment_journal_lines(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("payment {payment_id} not found"))?;
-    let lines = allocation_lines_for_payment(db, &pay).await?;
+    let stored = stored_journal_line_specs(db, pay.journal_entry_id).await?;
+    let lines = stored.into_iter().map(|(_, spec)| spec).collect();
     Ok((pay.datetime, lines))
+}
+
+/// Editor JSON for the payment template and withholding lines at this amount.
+pub async fn suggest_payment_lines_json(
+    db: &DatabaseConnection,
+    posted_invoice_id: i64,
+    amount: Decimal,
+    withholding_tax_ids: &[i64],
+) -> Result<String, String> {
+    let posted = posted_invoice::Entity::find_by_id(posted_invoice_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("posted invoice {posted_invoice_id} not found"))?;
+    let amounts = posted_invoice_amounts(db, posted.id).await?;
+    let taxes = load_taxes_by_ids(db, withholding_tax_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+    validate_payment_taxes(&taxes)?;
+    let withholding_base =
+        payment_withholding_base(amount, amounts.receivable_total, amounts.untaxed_subtotal);
+    let lines =
+        build_payment_lines_for_allocation(db, &posted, amount, withholding_base, &taxes).await?;
+    journal_specs_editor_json(db, &lines, &[], "payment-line").await
 }
 
 /// Point a payment at the journal entry created for its source document.
@@ -398,9 +403,12 @@ pub async fn create_payment(
 
     let settlement = decimal::normalize(input.amount);
     let withholding_base = payment_withholding_base(settlement, inv_total, untaxed_subtotal);
-    let lines =
+    let lines = if let Some(lines) = input.journal_lines {
+        lines
+    } else {
         build_payment_lines_for_allocation(db, &posted, settlement, withholding_base, &taxes)
-            .await?;
+            .await?
+    };
 
     let (je_id, _) = insert_journal_entry(&txn, dt, posted.journal_id, doc_id, &lines)
         .await

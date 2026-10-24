@@ -5,6 +5,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
+use maud::{Markup, html};
 use rust_decimal::Decimal;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 
@@ -16,6 +17,10 @@ use lariv_core::web::{
 };
 use lariv_plugin_users::middleware::RequireAuth;
 
+use lariv_plugin_finance_accounts::journal_lines_editor::input_journal_lines;
+use lariv_plugin_finance_accounts::logic::custom_source_doc::{
+    ensure_posting_accounts, parse_submitted_journal_lines,
+};
 use lariv_plugin_finance_accounts::scope::{
     load_journal_currency_format, load_journal_entry_currency_format,
 };
@@ -32,7 +37,8 @@ use crate::{
     keys::PaymentBatchCreateModalKey,
     logic::{
         CreatePaymentBatchInput, create_payment_batch, load_invoice_date_formats,
-        parse_batch_allocations_json, parse_invoice_datetime, posted_invoice_open_balance,
+        parse_batch_allocations_json, parse_invoice_datetime,
+        payment_batch::suggest_batch_lines_json, posted_invoice_open_balance,
     },
     routes::{PaymentBatchDetailRouteTag, PaymentDetailRouteTag, PostedInvoiceDetailRouteTag},
     scope::sql_posted_not_cancelled,
@@ -263,10 +269,24 @@ pub async fn create_get(
         .map(parse_posted_invoice_ids)
         .unwrap_or_default();
 
-    let (allocations_json, error) = match build_allocations_json(&state.db, &posted_ids).await {
+    let (allocations_json, mut error) = match build_allocations_json(&state.db, &posted_ids).await {
         Ok(json) => (json, String::new()),
         Err(e) if !posted_ids.is_empty() => ("[]".into(), e),
         Err(_) => ("[]".into(), String::new()),
+    };
+    let journal_lines = if error.is_empty() {
+        match parse_batch_allocations_json(&allocations_json) {
+            Ok(allocations) => match suggest_batch_lines_json(&state.db, &allocations).await {
+                Ok(lines) => lines,
+                Err(suggest_error) => {
+                    error = suggest_error;
+                    String::new()
+                }
+            },
+            Err(_) => String::new(),
+        }
+    } else {
+        String::new()
     };
 
     let page = payment_batch_create_modal_page(
@@ -275,6 +295,7 @@ pub async fn create_get(
         PaymentBatchForm {
             datetime: ctx.datetime_local_input(Utc::now()).into_string(),
             allocations_json,
+            journal_lines,
             csrf: CsrfToken::current(),
         },
         error,
@@ -300,9 +321,23 @@ pub async fn create_post(
         }
     };
 
+    let submitted = match parse_submitted_journal_lines(&form.journal_lines) {
+        Ok(lines) => lines,
+        Err(error) => {
+            let page = payment_batch_create_modal_page(&state, &q.modal, form, error).await;
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
+    };
+    if let Err(error) = ensure_posting_accounts(&state.db, &submitted.lines).await {
+        let page = payment_batch_create_modal_page(&state, &q.modal, form, error).await;
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
+    }
     let input = CreatePaymentBatchInput {
         datetime: parse_invoice_datetime(&form.datetime, &ctx.timezone),
         allocations,
+        journal_lines: Some(submitted.lines),
     };
 
     match create_payment_batch(&state.db, input).await {
@@ -315,6 +350,24 @@ pub async fn create_post(
             let page = payment_batch_create_modal_page(&state, &q.modal, form, e).await;
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
+    }
+}
+
+pub async fn fill_journal_lines(
+    Cap(state): Cap<InvoicesState>,
+    RequireAuth(_ctx): RequireAuth,
+    HtmlFormBody(form): HtmlFormBody<PaymentBatchForm>,
+) -> Markup {
+    let suggested = match parse_batch_allocations_json(&form.allocations_json) {
+        Ok(allocations) => suggest_batch_lines_json(&state.db, &allocations).await,
+        Err(error) => Err(error),
+    };
+    match suggested {
+        Ok(lines) => input_journal_lines("JournalLines", "Journal lines", &lines),
+        Err(error) => html! {
+            p class="text-error mb-2" { (error) }
+            (input_journal_lines("JournalLines", "Journal lines", &form.journal_lines))
+        },
     }
 }
 

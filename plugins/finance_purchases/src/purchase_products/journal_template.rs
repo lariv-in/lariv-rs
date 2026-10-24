@@ -1,9 +1,9 @@
 //! Journal template lines for one product.
 //!
 //! Item formulas are Rune expressions. They see the product's variables plus
-//! `quantity`, `rate`, `pre_tax`, `base_cost`, and `sales_price` from the goods
+//! `quantity`, `unit_rate`, `pre_tax`, `base_cost`, and `sales_price` from the goods
 //! line and product. The result is a signed journal amount: debit positive,
-//! credit negative, so a credit is written `-pre_tax`. Numeric constants need no
+//! credit negative, so a credit is written `-unit_rate`. Numeric constants need no
 //! `decimal(...)` wrapper and unary minus on a variable is expanded by the
 //! formula evaluator.
 
@@ -36,13 +36,19 @@ pub struct LoadedProductTemplate {
     pub items: Vec<product_journal_entry_item_template::Model>,
 }
 
-pub const LINE_BINDINGS: &[&str] = &["quantity", "rate", "pre_tax", "base_cost", "sales_price"];
+pub const LINE_BINDINGS: &[&str] = &[
+    "quantity",
+    "unit_rate",
+    "pre_tax",
+    "base_cost",
+    "sales_price",
+];
 
 /// Variables a purchase-product journal line formula can read.
 pub const FORMULA_VARIABLES_HINT: &str = "\
 quantity — purchase line quantity
-rate — unit rate on the purchase line
-pre_tax — quantity * rate
+unit_rate — unit rate on the purchase line
+pre_tax — quantity * unit_rate
 base_cost — base price of one product
 sales_price — sales price of one product
 Also every variable defined above.
@@ -135,7 +141,7 @@ pub fn evaluate_item_formula(
         parse_values(&product, &raw).map_err(|e| e.to_string())?
     };
     values.insert("quantity".into(), decimal_measure(quantity));
-    values.insert("rate".into(), decimal_measure(rate));
+    values.insert("unit_rate".into(), decimal_measure(rate));
     values.insert("pre_tax".into(), decimal_measure(pre_tax));
     values.insert("base_cost".into(), decimal_measure(base_cost));
     values.insert("sales_price".into(), decimal_measure(sales_price));

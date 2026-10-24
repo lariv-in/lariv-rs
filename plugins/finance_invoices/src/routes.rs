@@ -64,10 +64,12 @@ lariv_core::define_plugin_routes! {
         get PaymentListRouteTag, "/finance-invoices/payments", handlers::payments::list, fragment(PaymentTableKey), authorize(FinanceInvoicesView, []);
         get PaymentCreateGetRouteTag, "/finance-invoices/payments/create", handlers::payments::create_get, modal, authorize(FinanceInvoicesMutate, []);
         post PaymentCreatePostRouteTag, "/finance-invoices/payments/create", handlers::payments::create_post, authorize(FinanceInvoicesMutate, []);
+        post PaymentJournalLinesRouteTag, "/finance-invoices/payment-journal-lines", bare handlers::payments::fill_journal_lines, raw, authorize(FinanceInvoicesMutate, []);
         get PaymentDetailRouteTag, "/finance-invoices/payments/{id}", handlers::payments::detail, authorize(FinanceInvoicesView, []);
 
         get PaymentBatchCreateGetRouteTag, "/finance-invoices/payments/batch/create", handlers::payment_batches::create_get, modal, authorize(FinanceInvoicesMutate, []);
         post PaymentBatchCreatePostRouteTag, "/finance-invoices/payments/batch/create", handlers::payment_batches::create_post, authorize(FinanceInvoicesMutate, []);
+        post PaymentBatchJournalLinesRouteTag, "/finance-invoices/payment-batch-journal-lines", bare handlers::payment_batches::fill_journal_lines, raw, authorize(FinanceInvoicesMutate, []);
         get PaymentBatchDetailRouteTag, "/finance-invoices/payment-batches/{id}", handlers::payment_batches::detail, authorize(FinanceInvoicesView, []);
 
         get InvoicePreferencesRouteTag, "/finance-invoices/preferences", handlers::preferences::invoice_preferences_get, authorize(FinanceInvoicesView, []);

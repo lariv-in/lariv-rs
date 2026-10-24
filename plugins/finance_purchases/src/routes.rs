@@ -24,11 +24,13 @@ lariv_core::define_plugin_routes! {
         post DraftPurchaseEditPostRouteTag, "/finance-purchases/i/{id}/edit", handlers::drafts::edit_post, authorize(FinancePurchasesMutate, []);
         get DraftPurchaseDeleteGetRouteTag, "/finance-purchases/i/{id}/delete", handlers::drafts::delete_get, modal, authorize(FinancePurchasesMutate, []);
         post DraftPurchaseDeletePostRouteTag, "/finance-purchases/i/{id}/delete", bare handlers::drafts::delete_post, fragment(DraftPurchaseDeleteModalKey), authorize(FinancePurchasesMutate, []);
+        get DraftPurchasePostGetRouteTag, "/finance-purchases/i/{id}/post", handlers::drafts::post_confirm_get, modal, authorize(FinancePurchasesMutate, []);
         post DraftPurchasePostRouteTag, "/finance-purchases/i/{id}/post", bare handlers::drafts::post_purchase, redirect, authorize(FinancePurchasesMutate, []);
         get DraftPurchaseBulkDeleteGetRouteTag, "/finance-purchases/bulk-delete", handlers::drafts::bulk_delete_get, modal, authorize(FinancePurchasesMutate, []);
         post DraftPurchaseBulkDeletePostRouteTag, "/finance-purchases/bulk-delete", bare handlers::drafts::bulk_delete_post, fragment(DraftPurchaseBulkDeleteModalKey), authorize(FinancePurchasesMutate, []);
         get DraftPurchaseBulkEditGetRouteTag, "/finance-purchases/bulk-edit", handlers::drafts::bulk_edit_get, modal, authorize(FinancePurchasesMutate, []);
         post DraftPurchaseBulkEditPostRouteTag, "/finance-purchases/bulk-edit", handlers::drafts::bulk_edit_post, authorize(FinancePurchasesMutate, []);
+        get DraftPurchaseBulkPostGetRouteTag, "/finance-purchases/bulk-post", handlers::drafts::bulk_post_confirm_get, modal, authorize(FinancePurchasesMutate, []);
         post DraftPurchaseBulkPostRouteTag, "/finance-purchases/bulk-post", bare handlers::drafts::bulk_post, redirect, authorize(FinancePurchasesMutate, []);
         get DraftPurchasePdfModalRouteTag, "/finance-purchases/i/{id}/pdf", bare handlers::pdf::draft_pdf_modal, modal, authorize(FinancePurchasesView, []);
         get DraftPurchasePdfRouteTag, "/finance-purchases/i/{id}/pdf/file", bare handlers::pdf::draft_pdf, file, authorize(FinancePurchasesView, []);

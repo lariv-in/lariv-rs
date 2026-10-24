@@ -56,13 +56,14 @@ use super::routes::{
     CancelledPurchaseNewDraftRouteTag, CancelledPurchasePdfModalRouteTag,
     DraftPurchaseBulkDeleteGetRouteTag, DraftPurchaseBulkDeletePostRouteTag,
     DraftPurchaseBulkEditGetRouteTag, DraftPurchaseBulkEditPostRouteTag,
-    DraftPurchaseBulkPostRouteTag, DraftPurchaseCreateGetRouteTag, DraftPurchaseCreatePostRouteTag,
-    DraftPurchaseDeleteGetRouteTag, DraftPurchaseDeletePostRouteTag, DraftPurchaseDetailRouteTag,
-    DraftPurchaseEditGetRouteTag, DraftPurchaseEditPostRouteTag, DraftPurchasePdfModalRouteTag,
-    DraftPurchasePostRouteTag, PostedPurchaseBulkCancelGetRouteTag,
-    PostedPurchaseBulkCancelPostRouteTag, PostedPurchaseCancelGetRouteTag,
-    PostedPurchaseCancelRouteTag, PostedPurchaseDetailRouteTag, PostedPurchasePdfModalRouteTag,
-    PurchaseBulkPdfsRouteTag, PurchaseDefaultRouteTag, PurchasePreferencesRouteTag,
+    DraftPurchaseBulkPostGetRouteTag, DraftPurchaseCreateGetRouteTag,
+    DraftPurchaseCreatePostRouteTag, DraftPurchaseDeleteGetRouteTag,
+    DraftPurchaseDeletePostRouteTag, DraftPurchaseDetailRouteTag, DraftPurchaseEditGetRouteTag,
+    DraftPurchaseEditPostRouteTag, DraftPurchasePdfModalRouteTag, DraftPurchasePostGetRouteTag,
+    PostedPurchaseBulkCancelGetRouteTag, PostedPurchaseBulkCancelPostRouteTag,
+    PostedPurchaseCancelGetRouteTag, PostedPurchaseCancelRouteTag, PostedPurchaseDetailRouteTag,
+    PostedPurchasePdfModalRouteTag, PurchaseBulkPdfsRouteTag, PurchaseDefaultRouteTag,
+    PurchasePreferencesRouteTag,
 };
 use lariv_core::list_filters::{FilterField, FilterRowError};
 
@@ -433,7 +434,7 @@ impl PurchaseHubPage {
         let bulk_delete =
             lariv_core::http::trailing_slash(&DraftPurchaseBulkDeleteGetRouteTag.path());
         let bulk_edit = lariv_core::http::trailing_slash(&DraftPurchaseBulkEditGetRouteTag.path());
-        let bulk_post = lariv_core::http::trailing_slash(&DraftPurchaseBulkPostRouteTag.path());
+        let bulk_post = lariv_core::http::trailing_slash(&DraftPurchaseBulkPostGetRouteTag.path());
         let bulk_cancel =
             lariv_core::http::trailing_slash(&PostedPurchaseBulkCancelGetRouteTag.path());
         let bulk_new_draft =
@@ -508,14 +509,7 @@ impl PurchaseHubPage {
             requestBulkPost(el) {{
                 const href = this.bulkPostHref();
                 if (href === '#' || typeof htmx === 'undefined') return;
-                if (!confirm('Post selected draft purchases? This will create posted purchases.')) return;
-                htmx.ajax('POST', href, {{
-                    target: '#app-layout',
-                    select: '#app-layout',
-                    swap: 'outerHTML',
-                    push: true,
-                    source: el,
-                }});
+                htmx.ajax('GET', href, {{ target: 'body', swap: 'beforeend', source: el }});
             }},
             requestBulkCancel(el) {{
                 const href = this.bulkCancelHref();
@@ -1234,13 +1228,10 @@ impl DraftPurchaseDetailPage {
                     classes: "btn-outline",
                     ..Default::default()
                 }))
-                (button_delete_post_route(
-                    DraftPurchasePostRouteTag::new(self.id),
-                    ButtonDeletePost {
-                        label: "Post purchase",
-                        confirm: "Post this draft purchase? This will create a posted purchase.",
-                        classes: "btn-primary",
-                    },
+                (button_modal_route(
+                    DraftPurchasePostGetRouteTag::new(self.id),
+                    "Post purchase",
+                    "btn-primary",
                 ))
             }
         };

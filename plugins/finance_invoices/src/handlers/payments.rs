@@ -6,6 +6,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
+use maud::{Markup, html};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx};
@@ -19,6 +20,10 @@ use lariv_core::web::{
 };
 use lariv_plugin_users::middleware::RequireAuth;
 
+use lariv_plugin_finance_accounts::journal_lines_editor::input_journal_lines;
+use lariv_plugin_finance_accounts::logic::custom_source_doc::{
+    ensure_posting_accounts, parse_submitted_journal_lines,
+};
 use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_journal_entry_currency_format, load_journal_entry_currency_formats,
 };
@@ -39,8 +44,8 @@ use crate::{
     logic::{
         CreatePaymentInput, InvoiceDateFormats, create_payment,
         invoice_goods_line_editor::invoice_header_tax_labels, load_invoice_date_formats,
-        parse_invoice_datetime, parse_payment_amount, posted_invoice_open_balance,
-        tax_assoc::load_payment_tax_ids,
+        parse_invoice_datetime, parse_payment_amount, payment::suggest_payment_lines_json,
+        posted_invoice_open_balance, tax_assoc::load_payment_tax_ids,
     },
     routes::{
         PaidInvoiceDetailRouteTag, PartiallyPaidInvoiceDetailRouteTag, PaymentBatchDetailRouteTag,
@@ -377,6 +382,15 @@ pub async fn create_get(
     } else {
         String::new()
     };
+    let (journal_lines, error) = match parse_payment_amount(&amount) {
+        Ok(parsed) if posted_invoice_id > 0 => {
+            match suggest_payment_lines_json(&state.db, posted_invoice_id, parsed, &[]).await {
+                Ok(lines) => (lines, String::new()),
+                Err(error) => (String::new(), error),
+            }
+        }
+        _ => (String::new(), String::new()),
+    };
     let page = payment_create_modal_page(
         &state.db,
         &q,
@@ -385,9 +399,10 @@ pub async fn create_get(
             amount,
             datetime: ctx.datetime_local_input(Utc::now()).into_string(),
             taxes: vec![],
+            journal_lines,
             csrf: CsrfToken::current(),
         },
-        String::new(),
+        error,
     )
     .await;
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -410,11 +425,25 @@ pub async fn create_post(
                 .into_response();
         }
     };
+    let submitted = match parse_submitted_journal_lines(&form.journal_lines) {
+        Ok(lines) => lines,
+        Err(error) => {
+            let page = payment_create_modal_page(&state.db, &q, form, error).await;
+            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response();
+        }
+    };
+    if let Err(error) = ensure_posting_accounts(&state.db, &submitted.lines).await {
+        let page = payment_create_modal_page(&state.db, &q, form, error).await;
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
+    }
     let input = CreatePaymentInput {
         posted_invoice_id,
         amount,
         datetime: parse_invoice_datetime(&form.datetime, &ctx.timezone),
         withholding_tax_ids: form.taxes.clone(),
+        journal_lines: Some(submitted.lines),
     };
     match create_payment(&state.db, input).await {
         Ok(result) => {
@@ -433,6 +462,27 @@ pub async fn create_post(
             let page = payment_create_modal_page(&state.db, &q, form, e.to_string()).await;
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
+    }
+}
+
+pub async fn fill_journal_lines(
+    Cap(state): Cap<InvoicesState>,
+    RequireAuth(_ctx): RequireAuth,
+    HtmlFormBody(form): HtmlFormBody<PaymentForm>,
+) -> Markup {
+    let suggested = match parse_payment_amount(&form.amount) {
+        Ok(amount) if form.posted_invoice_id > 0 => {
+            suggest_payment_lines_json(&state.db, form.posted_invoice_id, amount, &form.taxes).await
+        }
+        Ok(_) => Err("Select a posted invoice and enter a settlement amount.".into()),
+        Err(error) => Err(error),
+    };
+    match suggested {
+        Ok(lines) => input_journal_lines("JournalLines", "Journal lines", &lines),
+        Err(error) => html! {
+            p class="text-error mb-2" { (error) }
+            (input_journal_lines("JournalLines", "Journal lines", &form.journal_lines))
+        },
     }
 }
 

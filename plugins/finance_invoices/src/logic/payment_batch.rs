@@ -6,12 +6,13 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    EntityTrait, QueryFilter, QueryOrder, TransactionTrait,
+    EntityTrait, QueryFilter, TransactionTrait,
 };
 
 use lariv_plugin_finance_accounts::{
-    logic::journal::{
-        JournalLineSpec, create_source_doc, insert_journal_entry, update_source_doc_id,
+    logic::{
+        custom_source_doc::{journal_specs_editor_json, stored_journal_line_specs},
+        journal::{JournalLineSpec, create_source_doc, insert_journal_entry, update_source_doc_id},
     },
     scope::load_journal_display_label,
 };
@@ -21,8 +22,7 @@ use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 use crate::entities::payment_batch::PAYMENT_BATCH_SOURCE_DOC_TYPE;
 use crate::entities::{payment, payment_batch, posted_invoice};
 use crate::logic::payment::{
-    allocation_lines_for_payment, build_payment_lines_for_allocation, record_payment_settlement,
-    validate_payment_allocation,
+    build_payment_lines_for_allocation, record_payment_settlement, validate_payment_allocation,
 };
 use crate::logic::preferences::{
     load_payment_preferences, validate_payment_preferences_for_create,
@@ -40,6 +40,8 @@ pub struct BatchAllocation {
 pub struct CreatePaymentBatchInput {
     pub datetime: DateTime<Utc>,
     pub allocations: Vec<BatchAllocation>,
+    /// `None` concatenates each allocation's template lines. `Some` writes these lines.
+    pub journal_lines: Option<Vec<JournalLineSpec>>,
 }
 
 pub struct CreatePaymentBatchResult {
@@ -208,8 +210,12 @@ pub async fn create_payment_batch(
         .map_err(|e| e.to_string())?;
 
     let mut lines = Vec::new();
-    for prep in &prepared {
-        lines.extend(prep.journal_lines.clone());
+    if let Some(submitted) = input.journal_lines {
+        lines = submitted;
+    } else {
+        for prep in &prepared {
+            lines.extend(prep.journal_lines.clone());
+        }
     }
 
     let (je_id, _) = insert_journal_entry(&txn, dt, journal_id, doc_id, &lines)
@@ -263,7 +269,7 @@ pub async fn create_payment_batch(
     Ok(CreatePaymentBatchResult { batch, payment_ids })
 }
 
-/// Recompute a payment batch's journal lines from each payment's template and withholding lines.
+/// Journal lines confirmed when the batch was recorded.
 pub async fn payment_batch_journal_lines(
     db: &DatabaseConnection,
     batch_id: i64,
@@ -273,21 +279,34 @@ pub async fn payment_batch_journal_lines(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("payment batch {batch_id} not found"))?;
-    let payments = payment::Entity::find()
-        .filter(payment::Column::PaymentBatchId.eq(batch_id))
-        .order_by_asc(payment::Column::Id)
-        .all(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    if payments.is_empty() {
-        return Err(format!("payment batch {batch_id} has no payments"));
-    }
-
-    let mut lines = Vec::new();
-    for pay in &payments {
-        lines.extend(allocation_lines_for_payment(db, pay).await?);
-    }
+    let stored = stored_journal_line_specs(db, batch.journal_entry_id).await?;
+    let lines = stored.into_iter().map(|(_, spec)| spec).collect();
     Ok((batch.datetime, lines))
+}
+
+/// Editor JSON for the combined template lines of these allocations.
+pub async fn suggest_batch_lines_json(
+    db: &DatabaseConnection,
+    allocations: &[BatchAllocation],
+) -> Result<String, String> {
+    if allocations.is_empty() {
+        return Err("at least one allocation is required".into());
+    }
+    let mut lines = Vec::new();
+    for alloc in allocations {
+        let (posted, inv_total, untaxed_subtotal, _) =
+            validate_payment_allocation(db, alloc.posted_invoice_id, alloc.amount).await?;
+        let taxes = load_taxes_by_ids(db, &alloc.withholding_tax_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+        validate_payment_taxes(&taxes)?;
+        let withholding_base = payment_withholding_base(alloc.amount, inv_total, untaxed_subtotal);
+        lines.extend(
+            build_payment_lines_for_allocation(db, &posted, alloc.amount, withholding_base, &taxes)
+                .await?,
+        );
+    }
+    journal_specs_editor_json(db, &lines, &[], "batch-line").await
 }
 
 /// Point a payment batch and its payments at the journal entry created for the batch.

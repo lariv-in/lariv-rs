@@ -3,7 +3,7 @@
 //! Invoice posting debited receivable for a levied tax and credited the tax
 //! payable account. A withholding tax debited that tax's own ledger account,
 //! and receivable was lower by the same amount. Product templates now debit
-//! receivable for `pre_tax` only, so each tax template carries its own share:
+//! receivable for `unit_rate` only, so each tax template carries its own share:
 //!
 //! * levied: debit receivable `base * percentage / 100`, credit the tax's
 //!   account when one was stored and otherwise the invoice tax-payable account

@@ -3,6 +3,11 @@ lariv_core::swap_key!(DraftPurchaseTableKey, "draft-purchase-table");
 lariv_core::swap_key!(DraftPurchaseCreateModalKey, "draft-purchase-create-modal");
 lariv_core::swap_key!(DraftPurchaseEditModalKey, "draft-purchase-edit-modal");
 lariv_core::swap_key!(DraftPurchaseDeleteModalKey, "draft-purchase-delete-modal");
+lariv_core::swap_key!(DraftPurchasePostModalKey, "draft-purchase-post-modal");
+lariv_core::swap_key!(
+    DraftPurchaseBulkPostModalKey,
+    "draft-purchase-bulk-post-modal"
+);
 lariv_core::swap_key!(
     DraftPurchaseBulkDeleteModalKey,
     "draft-purchase-bulk-delete-modal"

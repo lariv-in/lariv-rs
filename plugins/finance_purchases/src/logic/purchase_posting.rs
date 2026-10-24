@@ -10,6 +10,10 @@ use sea_orm::{
     TransactionTrait,
 };
 
+use lariv_plugin_finance_accounts::logic::custom_source_doc::{
+    SubmittedJournalLines, doc_line_indexes, index_of_item, journal_specs_editor_json,
+    stored_journal_line_specs,
+};
 use lariv_plugin_finance_accounts::logic::journal::{
     JournalLineSpec, create_reversing_journal_entry_in_txn, create_source_doc,
     insert_journal_entry, update_source_doc_id,
@@ -260,7 +264,9 @@ fn push_tax_lines(
     }
 }
 
-/// Recompute a posted purchase's journal lines from its stored accounts, lines, and taxes.
+/// Journal lines confirmed when the purchase was posted.
+///
+/// Regeneration copies these stored items. Template edits apply to the next post.
 pub async fn posted_purchase_journal_lines(
     db: &DatabaseConnection,
     posted_id: i64,
@@ -270,6 +276,10 @@ pub async fn posted_purchase_journal_lines(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("posted purchase {posted_id} not found"))?;
+
+    let stored = stored_journal_line_specs(db, posted.journal_entry_id).await?;
+    let item_ids: Vec<i64> = stored.iter().map(|(id, _)| *id).collect();
+    let specs = stored.into_iter().map(|(_, spec)| spec).collect();
 
     let lines = PostedPurchaseGoodsLineEntity::find()
         .filter(posted_purchase_goods_line::Column::PostedPurchaseId.eq(posted_id))
@@ -286,61 +296,13 @@ pub async fn posted_purchase_journal_lines(
     if lines.is_empty() && service_lines.is_empty() {
         return Err(format!("posted purchase {posted_id} has no lines"));
     }
-
-    let mut specs = Vec::new();
     let mut indexes = Vec::with_capacity(lines.len() + service_lines.len());
-    let mut journal_id = None;
-    let mut tax_lines = Vec::with_capacity(lines.len() + service_lines.len());
-    for line in lines {
-        let tax_ids = load_posted_line_tax_ids(db, line.id)
-            .await
-            .map_err(|e| e.to_string())?;
-        let taxes = load_taxes_by_ids(db, &tax_ids)
-            .await
-            .map_err(|e| e.to_string())?;
-        tax_lines.push((line.pre_tax_amount, taxes));
-        let expanded = expand_product_journal(
-            db,
-            line.product_id,
-            &line.variable_values,
-            line.quantity,
-            line.rate,
-            line.pre_tax_amount,
-        )
-        .await?;
-        note_journal(&mut journal_id, expanded.journal_id)?;
-        indexes.push(specs.len());
-        specs.extend(expanded.specs);
+    for line in &lines {
+        indexes.push(index_of_item(&item_ids, line.journal_entry_item_id)?);
     }
-    for line in service_lines {
-        let tax_ids = load_posted_service_line_tax_ids(db, line.id)
-            .await
-            .map_err(|e| e.to_string())?;
-        let taxes = load_taxes_by_ids(db, &tax_ids)
-            .await
-            .map_err(|e| e.to_string())?;
-        tax_lines.push((line.pre_tax_amount, taxes));
-        let expanded = expand_service_journal(
-            db,
-            line.service_id,
-            &line.variable_values,
-            line.quantity,
-            line.rate,
-            line.pre_tax_amount,
-        )
-        .await?;
-        note_journal(&mut journal_id, expanded.journal_id)?;
-        indexes.push(specs.len());
-        specs.extend(expanded.specs);
+    for line in &service_lines {
+        indexes.push(index_of_item(&item_ids, line.journal_entry_item_id)?);
     }
-    let journal_id = journal_id.ok_or("posted purchase has no lines")?;
-    let header_tax_ids = load_posted_purchase_tax_ids(db, posted_id)
-        .await
-        .map_err(|e| e.to_string())?;
-    let header_taxes = load_taxes_by_ids(db, &header_tax_ids)
-        .await
-        .map_err(|e| e.to_string())?;
-    append_purchase_tax_lines(db, &mut specs, &tax_lines, &header_taxes, journal_id).await?;
     Ok((posted.datetime, specs, indexes))
 }
 
@@ -416,12 +378,53 @@ pub async fn adopt_posted_purchase_journal_entry<C: ConnectionTrait>(
     Ok(())
 }
 
-pub async fn draft_new_posted(
+/// Prefill for the post modal: template lines, with an anchor on each document line.
+pub struct DraftJournalPreview {
+    pub label: String,
+    pub lines_json: String,
+}
+
+pub async fn preview_draft_journal(
     db: &DatabaseConnection,
     draft_id: i64,
-    posted_at: DateTime<Utc>,
-    tz: &str,
-) -> Result<posted_purchase::Model, String> {
+    slot_prefix: &str,
+) -> Result<DraftJournalPreview, String> {
+    let prepared = prepare_draft_journal(db, draft_id).await?;
+    let lines_json = journal_specs_editor_json(
+        db,
+        &prepared.specs,
+        &prepared.line_item_indexes,
+        slot_prefix,
+    )
+    .await?;
+    Ok(DraftJournalPreview {
+        label: draft_journal_label(prepared.draft.id, &prepared.draft.number),
+        lines_json,
+    })
+}
+
+fn draft_journal_label(id: i64, number: &Option<String>) -> String {
+    match number.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(number) => format!("Draft {number}"),
+        None => format!("Draft #{id}"),
+    }
+}
+
+struct PreparedDraftJournal {
+    draft: draft_purchase::Model,
+    journal_id: i64,
+    specs: Vec<JournalLineSpec>,
+    line_item_indexes: Vec<usize>,
+    lines_with_taxes: Vec<LineWithTaxes>,
+    service_lines_with_taxes: Vec<ServiceLineWithTaxes>,
+    header_taxes: Vec<TaxModel>,
+    total_payable: Decimal,
+}
+
+async fn prepare_draft_journal(
+    db: &DatabaseConnection,
+    draft_id: i64,
+) -> Result<PreparedDraftJournal, String> {
     let draft = DraftPurchaseEntity::find_by_id(draft_id)
         .one(db)
         .await
@@ -519,6 +522,67 @@ pub async fn draft_new_posted(
         .collect();
     append_purchase_tax_lines(db, &mut specs, &tax_inputs, &header_taxes, journal_id).await?;
 
+    let mut totals = PurchaseLinesTotals::default();
+    let mut all_line_tax_ids = HashSet::new();
+    for (pre_tax_amount, taxes) in lines_with_taxes
+        .iter()
+        .map(|lwt| (lwt.line.pre_tax_amount, &lwt.taxes))
+        .chain(
+            service_lines_with_taxes
+                .iter()
+                .map(|lwt| (lwt.line.pre_tax_amount, &lwt.taxes)),
+        )
+    {
+        merge_purchase_line_tax_ids(&mut all_line_tax_ids, taxes);
+        let (untaxed, levied, withholding, _) = purchase_line_amounts(pre_tax_amount, taxes);
+        totals.untaxed_subtotal = decimal::dec_sum(totals.untaxed_subtotal, untaxed);
+        totals.lines_levied = decimal::dec_sum(totals.lines_levied, levied);
+        totals.lines_withholding = decimal::dec_sum(totals.lines_withholding, withholding);
+    }
+    let total_payable = purchase_receivable_grand_total(&totals, &header_taxes, &all_line_tax_ids);
+    Ok(PreparedDraftJournal {
+        draft,
+        journal_id,
+        specs,
+        line_item_indexes,
+        lines_with_taxes,
+        service_lines_with_taxes,
+        header_taxes,
+        total_payable,
+    })
+}
+
+pub async fn draft_new_posted(
+    db: &DatabaseConnection,
+    draft_id: i64,
+    posted_at: DateTime<Utc>,
+    tz: &str,
+) -> Result<posted_purchase::Model, String> {
+    draft_new_posted_with_lines(db, draft_id, posted_at, tz, None).await
+}
+
+pub async fn draft_new_posted_with_lines(
+    db: &DatabaseConnection,
+    draft_id: i64,
+    posted_at: DateTime<Utc>,
+    tz: &str,
+    submitted: Option<SubmittedJournalLines>,
+) -> Result<posted_purchase::Model, String> {
+    let PreparedDraftJournal {
+        draft,
+        journal_id,
+        mut specs,
+        mut line_item_indexes,
+        lines_with_taxes,
+        service_lines_with_taxes,
+        header_taxes,
+        total_payable,
+    } = prepare_draft_journal(db, draft_id).await?;
+    if let Some(submitted) = submitted {
+        line_item_indexes = doc_line_indexes(line_item_indexes.len(), &submitted.anchors);
+        specs = submitted.lines;
+    }
+
     let number = posted_purchase_number(db, &draft).await?;
     let dup_posted = PostedPurchaseEntity::find()
         .filter(posted_purchase::Column::Number.eq(&number))
@@ -541,25 +605,6 @@ pub async fn draft_new_posted(
     } else {
         draft.datetime
     };
-
-    let mut totals = PurchaseLinesTotals::default();
-    let mut all_line_tax_ids = HashSet::new();
-    for (pre_tax_amount, taxes) in lines_with_taxes
-        .iter()
-        .map(|lwt| (lwt.line.pre_tax_amount, &lwt.taxes))
-        .chain(
-            service_lines_with_taxes
-                .iter()
-                .map(|lwt| (lwt.line.pre_tax_amount, &lwt.taxes)),
-        )
-    {
-        merge_purchase_line_tax_ids(&mut all_line_tax_ids, taxes);
-        let (untaxed, levied, withholding, _) = purchase_line_amounts(pre_tax_amount, taxes);
-        totals.untaxed_subtotal = decimal::dec_sum(totals.untaxed_subtotal, untaxed);
-        totals.lines_levied = decimal::dec_sum(totals.lines_levied, levied);
-        totals.lines_withholding = decimal::dec_sum(totals.lines_withholding, withholding);
-    }
-    let total_payable = purchase_receivable_grand_total(&totals, &header_taxes, &all_line_tax_ids);
 
     let txn = db.begin().await.map_err(|e| e.to_string())?;
     let doc_id = create_source_doc(&txn, POSTED_PURCHASE_SOURCE_DOC_TYPE)
@@ -1032,7 +1077,7 @@ async fn insert_cancelled_service_line<C: ConnectionTrait>(
     row.try_get("", "id").map_err(|e| e.to_string())
 }
 
-/// Negate the posted purchase journal. Indexes still point at the first line of each goods or service template.
+/// Negate the posted purchase journal. Indexes are the stored anchor of each goods or service line.
 pub async fn cancelled_reversal_journal_lines(
     db: &DatabaseConnection,
     cancelled_id: i64,

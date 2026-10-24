@@ -24,6 +24,7 @@ mod m00020_product_journal_entry_templates;
 mod m00021_product_journal_entry_item_templates;
 mod m00022_drop_product_journal_receivable;
 mod m00023_default_product_journal_entry_item_templates;
+mod m00024_journal_formula_unit_rate;
 pub mod product_catalog_cleanup;
 
 use super::FinanceProductsTag;
@@ -58,6 +59,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00021_product_journal_entry_item_templates::Migration),
             Box::new(m00022_drop_product_journal_receivable::Migration),
             Box::new(m00023_default_product_journal_entry_item_templates::Migration),
+            Box::new(m00024_journal_formula_unit_rate::Migration),
         ]
     }
 }
