@@ -29,6 +29,8 @@ pub struct LocationRangeInput<'a> {
     pub center_label: &'a str,
     /// Tooltip on the second marker. Empty leaves that marker unlabeled.
     pub user_label: &'a str,
+    /// Move the second marker as the punch bar reports new geolocation fixes.
+    pub live_user: bool,
 }
 
 impl Default for LocationRangeInput<'static> {
@@ -48,6 +50,7 @@ impl Default for LocationRangeInput<'static> {
             user_longitude: None,
             center_label: "",
             user_label: "",
+            live_user: false,
         }
     }
 }
@@ -131,9 +134,14 @@ pub fn location_range_input(opts: LocationRangeInput<'_>) -> Markup {
     } else {
         ""
     };
+    let live_user = if opts.live_user {
+        r#" data-live-user="true""#
+    } else {
+        ""
+    };
     let height = if opts.readonly { "h-80" } else { "h-96" };
     let data = format!(
-        "{}{}{}{}{}{}{}{}",
+        "{}{}{}{}{}{}{}{}{}",
         data_num("data-lat", opts.latitude),
         data_num("data-lng", opts.longitude),
         data_num("data-range", opts.range_meters),
@@ -142,6 +150,7 @@ pub fn location_range_input(opts: LocationRangeInput<'_>) -> Markup {
         data_text("data-center-label", opts.center_label),
         data_text("data-user-label", opts.user_label),
         readonly,
+        live_user,
     );
     let editor = if opts.readonly {
         html! {}
@@ -235,7 +244,40 @@ mod tests {
         assert!(html.contains("name=\"attendance_latitude\""), "{html}");
         assert!(html.contains("name=\"attendance_longitude\""), "{html}");
         assert!(html.contains("name=\"attendance_range_meters\""), "{html}");
+        assert!(html.contains("lariv:geolocation"), "{html}");
+        assert!(html.contains("__larivGeoFix"), "{html}");
         assert!(!html.contains("unpkg.com"), "{html}");
         assert!(!html.contains("cdn.jsdelivr.net"), "{html}");
+    }
+
+    #[test]
+    fn live_user_marks_a_readonly_map_as_following_the_watch() {
+        let html = location_range_input(LocationRangeInput {
+            latitude: Some(12.97),
+            longitude: Some(77.59),
+            range_meters: Some(100.0),
+            readonly: true,
+            user_latitude: Some(13.01),
+            user_longitude: Some(77.61),
+            live_user: true,
+            ..Default::default()
+        })
+        .into_string();
+        assert!(html.contains("data-readonly=\"true\""), "{html}");
+        assert!(html.contains("data-live-user=\"true\""), "{html}");
+        assert!(html.contains("data-user-lat=\"13.01\""), "{html}");
+        assert!(html.contains("data-user-lng=\"77.61\""), "{html}");
+    }
+
+    #[test]
+    fn readonly_maps_are_not_live_by_default() {
+        let html = location_range_input(LocationRangeInput {
+            latitude: Some(12.97),
+            longitude: Some(77.59),
+            readonly: true,
+            ..Default::default()
+        })
+        .into_string();
+        assert!(!html.contains("data-live-user"), "{html}");
     }
 }

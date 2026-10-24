@@ -2,7 +2,9 @@
 
 use lariv_plugin_finance_accounts::accounting_sidebar::{self, AccountingSidebarRegistrar};
 
-use crate::routes::PurchaseDefaultRouteTag;
+use crate::routes::{
+    PurchaseDefaultRouteTag, PurchaseProductDefaultRouteTag, PurchaseServiceDefaultRouteTag,
+};
 
 #[derive(Clone, Copy, Default)]
 pub struct Hook;
@@ -12,11 +14,23 @@ impl AccountingSidebarRegistrar for Hook {
         self,
         cap: accounting_sidebar::AccountingSidebarRegistry,
     ) -> accounting_sidebar::AccountingSidebarRegistry {
-        cap.push(accounting_sidebar::link::<PurchaseDefaultRouteTag>(
+        let cap = cap.push(accounting_sidebar::link::<PurchaseDefaultRouteTag>(
             "purchases",
             "Purchases",
             110,
             Some("document-text"),
+        ));
+        let cap = cap.push(accounting_sidebar::link::<PurchaseProductDefaultRouteTag>(
+            "purchase-products",
+            "Purchase products",
+            111,
+            Some("cube"),
+        ));
+        cap.push(accounting_sidebar::link::<PurchaseServiceDefaultRouteTag>(
+            "purchase-services",
+            "Purchase services",
+            112,
+            Some("briefcase"),
         ))
     }
 

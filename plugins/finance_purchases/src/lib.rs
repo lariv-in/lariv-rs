@@ -16,14 +16,16 @@ pub mod hub_filter;
 pub mod hub_filter_addon;
 pub mod hub_sort;
 pub mod hub_table_addon;
-pub mod purchase_pdf_addon;
-pub mod purchase_pdf_assets;
-pub mod purchase_pdf_template;
 pub mod keys;
 pub mod logic;
 pub mod migrations;
 pub mod payment_term_kind;
 pub mod preferences_hints;
+pub mod purchase_pdf_addon;
+pub mod purchase_pdf_assets;
+pub mod purchase_pdf_template;
+pub mod purchase_products;
+pub mod purchase_services;
 pub mod routes;
 pub mod rune_env;
 pub mod scope;
@@ -31,9 +33,11 @@ pub mod source_docs;
 pub mod state;
 pub mod templates;
 
+mod vendor_ui;
+
+pub use payment_term_kind::{PaymentTermAmountKind, PaymentTermDateKind};
 pub use purchase_pdf_assets::VnodeImageContext;
 pub use purchase_pdf_template::DEFAULT_PURCHASE_PDF_TEMPLATE;
-pub use payment_term_kind::{PaymentTermAmountKind, PaymentTermDateKind};
 
 use frunk::{HCons, hlist::HList};
 
@@ -50,7 +54,11 @@ use state::PurchasesState;
 
 pub struct FinancePurchasesTag;
 
-lariv_core::define_passthrough_cap!(FinancePurchasesStateCap, FinancePurchasesTag, PurchasesState);
+lariv_core::define_passthrough_cap!(
+    FinancePurchasesStateCap,
+    FinancePurchasesTag,
+    PurchasesState
+);
 
 #[cfg(feature = "plugin-llm-assistant")]
 lariv_core::define_plugin_install! {

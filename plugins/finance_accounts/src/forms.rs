@@ -5,7 +5,9 @@ use lariv_core::html_form::{
 use maud::Markup;
 
 use crate::journal_lines_editor::input_journal_lines;
-use crate::routes::{AccountSelectRouteTag, CurrencySelectRouteTag, SourceDocSelectRouteTag};
+use crate::routes::{
+    AccountSelectRouteTag, CurrencySelectRouteTag, JournalSelectRouteTag, SourceDocSelectRouteTag,
+};
 
 /// Account, debit, and credit lines stored as JSON.
 pub struct JournalLines;
@@ -150,6 +152,29 @@ pub struct JournalEntryForm {
 
 #[html_form]
 pub struct CustomSourceDocForm {
+    #[form(label = "Title", required, widget = Text)]
+    pub title: String,
+
+    #[form(label = "Content", widget = Textarea, rows = 6)]
+    pub content: String,
+
+    #[form(label = "Lines", required, widget = JournalLines)]
+    pub lines: String,
+}
+
+/// Create form for the accounting sidebar list, where the journal is chosen here.
+#[html_form]
+pub struct CustomSourceDocIndexCreateForm {
+    #[form(
+        label = "Journal",
+        required,
+        widget = ForeignKey,
+        route = JournalSelectRouteTag,
+        display = "journal_display",
+        placeholder = "Select journal…"
+    )]
+    pub journal_id: String,
+
     #[form(label = "Title", required, widget = Text)]
     pub title: String,
 

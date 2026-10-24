@@ -6,7 +6,6 @@ pub struct Migration;
 #[derive(DeriveIden)]
 enum Journals {
     Table,
-    Id,
     CreatedAt,
     UpdatedAt,
     Name,
@@ -19,18 +18,6 @@ enum Currencies {
     Table,
     Id,
     Code,
-}
-
-#[derive(DeriveIden)]
-enum InvoicePreferences {
-    Table,
-    Id,
-    JournalId,
-    UpdatedAt,
-}
-
-fn subquery_expr(sel: SelectStatement) -> SimpleExpr {
-    SimpleExpr::SubQuery(None, Box::new(sel.into_sub_query_statement()))
 }
 
 #[async_trait::async_trait]
@@ -71,37 +58,10 @@ impl MigrationTrait for Migration {
             .to_owned();
         conn.execute(&journal_insert).await?;
 
-        let journal_id = Query::select()
-            .column(Journals::Id)
-            .from(Journals::Table)
-            .order_by(Journals::Id, Order::Asc)
-            .limit(1)
-            .to_owned();
-
-        let update = Query::update()
-            .table(InvoicePreferences::Table)
-            .values([
-                (InvoicePreferences::JournalId, subquery_expr(journal_id)),
-                (
-                    InvoicePreferences::UpdatedAt,
-                    Expr::current_timestamp().into(),
-                ),
-            ])
-            .and_where(Expr::col(InvoicePreferences::Id).eq(1))
-            .and_where(Expr::col(InvoicePreferences::JournalId).is_null())
-            .to_owned();
-        conn.execute(&update).await?;
-
         Ok(())
     }
 
-    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let update = Query::update()
-            .table(InvoicePreferences::Table)
-            .value(InvoicePreferences::JournalId, Expr::val(None::<i64>))
-            .and_where(Expr::col(InvoicePreferences::Id).eq(1))
-            .to_owned();
-        manager.get_connection().execute(&update).await?;
+    async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
         Ok(())
     }
 }

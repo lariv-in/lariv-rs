@@ -23,7 +23,7 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "search_taxes",
-        "search_taxes(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, name: string, percentage: string, tax_type: \"levied\"|\"withholding\", account_id: int|null }] }",
+        "search_taxes(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, name: string, percentage: string, tax_type: \"levied\"|\"withholding\" }] }",
         |_ctx| NativeBinding::Function(Arc::new(search_taxes)),
     );
 }
@@ -70,7 +70,6 @@ fn search_taxes(
             "name": t.name,
             "percentage": decimal::normalize(t.percentage).to_string(),
             "tax_type": t.tax_type.as_str(),
-            "account_id": t.account_id,
         })).collect::<Vec<_>>(),
     }))
 }

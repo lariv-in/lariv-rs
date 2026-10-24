@@ -11,14 +11,25 @@ use sea_orm::{
 };
 
 use lariv_plugin_finance_accounts::logic::journal::{
-    JournalLineSpec, create_reversing_journal_entry_in_txn, create_source_doc, insert_journal_entry,
-    update_source_doc_id,
+    JournalLineSpec, create_reversing_journal_entry_in_txn, create_source_doc,
+    insert_journal_entry, update_source_doc_id,
 };
 use lariv_plugin_finance_accounts::scope::load_journal_entry_items;
 use lariv_plugin_finance_common::decimal;
-use lariv_plugin_finance_products::preferences::optional_i64;
 use lariv_plugin_finance_taxes::entities::tax::Model as TaxModel;
+use lariv_plugin_finance_taxes::journal_template::evaluate_tax_for_document;
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
+
+use crate::purchase_products::journal_template::{
+    self as product_journal_template, ParsedTemplateLine as ProductTemplateLine,
+    evaluate_template_lines as evaluate_product_template_lines,
+};
+use crate::purchase_products::pricing as product_pricing;
+use crate::purchase_services::journal_template::{
+    self as service_journal_template, ParsedTemplateLine as ServiceTemplateLine,
+    evaluate_template_lines as evaluate_service_template_lines,
+};
+use crate::purchase_services::pricing as service_pricing;
 
 use crate::entities::{
     CancelledPurchaseEntity, DraftPurchaseEntity, DraftPurchaseGoodsLineEntity,
@@ -33,22 +44,18 @@ use crate::logic::draft_payment_term::{
     convert_draft_to_posted_payment_term, copy_posted_payment_term, posted_payment_term_to_draft,
 };
 use crate::logic::purchase_number::posted_purchase_number;
-use crate::logic::preferences::{
-    load_purchase_preferences, validate_purchase_preferences_for_posting,
-};
 use crate::logic::tax_assoc::{
-    load_cancelled_line_tax_ids, load_cancelled_purchase_tax_ids, load_cancelled_service_line_tax_ids,
-    load_draft_line_tax_ids, load_draft_purchase_tax_ids, load_draft_service_line_tax_ids,
-    load_posted_line_tax_ids, load_posted_purchase_tax_ids, load_posted_service_line_tax_ids,
-    set_cancelled_line_taxes, set_cancelled_purchase_taxes, set_cancelled_service_line_taxes,
-    set_draft_line_taxes, set_draft_purchase_taxes, set_draft_service_line_taxes,
-    set_posted_line_taxes, set_posted_purchase_taxes, set_posted_service_line_taxes,
+    load_cancelled_line_tax_ids, load_cancelled_purchase_tax_ids,
+    load_cancelled_service_line_tax_ids, load_draft_line_tax_ids, load_draft_purchase_tax_ids,
+    load_draft_service_line_tax_ids, load_posted_line_tax_ids, load_posted_purchase_tax_ids,
+    load_posted_service_line_tax_ids, set_cancelled_line_taxes, set_cancelled_purchase_taxes,
+    set_cancelled_service_line_taxes, set_draft_line_taxes, set_draft_purchase_taxes,
+    set_draft_service_line_taxes, set_posted_line_taxes, set_posted_purchase_taxes,
+    set_posted_service_line_taxes,
 };
 use crate::logic::tax_calculations::{
-    PurchaseLinesTotals, document_level_header_taxes, purchase_line_amounts,
-    purchase_receivable_grand_total, merge_purchase_line_tax_ids, tax_amount_for_tax,
-    tax_amount_on_base, taxes_levied, taxes_withholding, validate_withholding_tax_accounts,
-    withholding_tax_account_id,
+    PurchaseLinesTotals, document_level_header_taxes, merge_purchase_line_tax_ids,
+    purchase_line_amounts, purchase_receivable_grand_total,
 };
 use crate::scope::find_cancellable_posted;
 
@@ -65,106 +72,192 @@ struct ServiceLineWithTaxes {
     taxes: Vec<TaxModel>,
 }
 
-/// Accounts used to assemble a purchase's journal lines.
-pub struct PurchaseGlAccounts {
-    pub payable_id: i64,
-    pub expense_id: i64,
-    pub input_tax_id: i64,
+/// Journal lines for one document line, expanded from its product or service template.
+struct ExpandedLineJournal {
+    specs: Vec<JournalLineSpec>,
+    journal_id: i64,
 }
 
-/// One purchase line's amounts, as stored on the draft or posted document.
-pub struct PurchaseJournalLineInput {
-    pub pre_tax_amount: Decimal,
-    pub taxes: Vec<TaxModel>,
+fn note_journal(journal_id: &mut Option<i64>, next: i64) -> Result<(), String> {
+    if let Some(existing) = *journal_id {
+        if existing != next {
+            return Err(
+                "every product and service on a purchase must use the same journal".to_string(),
+            );
+        }
+    } else {
+        *journal_id = Some(next);
+    }
+    Ok(())
 }
 
-/// Balanced purchase lines plus the expense-item index for each input line.
-///
-/// Positive amounts are debits. Expense and input tax are debits; withholding
-/// and accounts payable are credits.
-pub struct AssembledPurchaseJournal {
-    pub lines: Vec<JournalLineSpec>,
-    pub expense_item_indices: Vec<usize>,
-    pub payable_total: Decimal,
-}
-
-/// Debit expense and input tax, credit withholding and accounts payable.
-pub fn assemble_purchase_journal_lines(
-    lines: &[PurchaseJournalLineInput],
-    header_taxes: &[TaxModel],
-    accounts: PurchaseGlAccounts,
-) -> Result<AssembledPurchaseJournal, String> {
-    let mut specs: Vec<JournalLineSpec> = Vec::new();
-    let mut expense_item_indices: Vec<usize> = Vec::new();
-
-    for line in lines {
-        let line_base = line.pre_tax_amount;
-        let levied_refs: Vec<_> = taxes_levied(&line.taxes);
-        let levied_pct: Decimal = levied_refs.iter().map(|t| t.percentage).sum();
-        let levied_tax = tax_amount_on_base(line_base, levied_pct);
-        expense_item_indices.push(specs.len());
-        specs.push(JournalLineSpec {
-            account_id: accounts.expense_id,
-            amount: line_base,
-        });
-        if !decimal::dec_is_zero(levied_tax) {
-            specs.push(JournalLineSpec {
-                account_id: accounts.input_tax_id,
-                amount: levied_tax,
-            });
-        }
-        for tax in taxes_withholding(&line.taxes) {
-            let wh = tax_amount_for_tax(line_base, tax);
-            if decimal::dec_is_zero(wh) {
-                continue;
-            }
-            specs.push(JournalLineSpec {
-                account_id: withholding_tax_account_id(tax)?,
-                amount: decimal::dec_neg(wh),
-            });
-        }
+async fn expand_product_journal(
+    db: &DatabaseConnection,
+    product_id: i64,
+    variable_values: &str,
+    quantity: Decimal,
+    rate: Decimal,
+    pre_tax: Decimal,
+) -> Result<ExpandedLineJournal, String> {
+    let product = crate::purchase_products::entities::product::Entity::find_by_id(product_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("product {product_id} not found"))?;
+    let Some(template) = product_journal_template::load_template(db, product_id).await? else {
+        return Err(format!("{} has no journal entry template", product.name));
+    };
+    if template.items.is_empty() {
+        return Err(format!(
+            "{} has no journal entry template lines",
+            product.name
+        ));
     }
-
-    let mut line_totals = PurchaseLinesTotals::default();
-    let mut line_tax_ids = HashSet::new();
-    for line in lines {
-        let (u, lev, wh, _) = purchase_line_amounts(line.pre_tax_amount, &line.taxes);
-        line_totals.untaxed_subtotal = decimal::dec_sum(line_totals.untaxed_subtotal, u);
-        line_totals.lines_levied = decimal::dec_sum(line_totals.lines_levied, lev);
-        line_totals.lines_withholding = decimal::dec_sum(line_totals.lines_withholding, wh);
-        merge_purchase_line_tax_ids(&mut line_tax_ids, &line.taxes);
-    }
-
-    for tax in document_level_header_taxes(header_taxes, &line_tax_ids) {
-        let amt = tax_amount_for_tax(line_totals.untaxed_subtotal, &tax);
-        if decimal::dec_is_zero(amt) {
-            continue;
-        }
-        if tax.tax_type == lariv_plugin_finance_taxes::entities::TaxKind::Withholding {
-            specs.push(JournalLineSpec {
-                account_id: withholding_tax_account_id(&tax)?,
-                amount: decimal::dec_neg(amt),
-            });
-        } else {
-            specs.push(JournalLineSpec {
-                account_id: accounts.input_tax_id,
-                amount: amt,
-            });
-        }
-    }
-
-    let payable_total =
-        purchase_receivable_grand_total(&line_totals, header_taxes, &line_tax_ids);
-    specs.push(JournalLineSpec {
-        account_id: accounts.payable_id,
-        amount: decimal::dec_neg(payable_total),
-    });
-
-    Ok(AssembledPurchaseJournal {
-        lines: specs,
-        expense_item_indices,
-        payable_total,
+    let parsed: Vec<ProductTemplateLine> = template
+        .items
+        .iter()
+        .map(|item| ProductTemplateLine {
+            account_id: item.account_id,
+            formula: item.formula.clone(),
+        })
+        .collect();
+    let base_cost = product_pricing::unit_formula_amount(
+        &product.variables,
+        &product.base_price_formula,
+        variable_values,
+    )
+    .map_err(|e| format!("{} base cost: {e}", product.name))?;
+    let sales_price = product_pricing::unit_formula_amount(
+        &product.variables,
+        &product.sales_price_formula,
+        variable_values,
+    )
+    .map_err(|e| format!("{} sales price: {e}", product.name))?;
+    let evaluated = evaluate_product_template_lines(
+        &product.variables,
+        &parsed,
+        variable_values,
+        quantity,
+        rate,
+        pre_tax,
+        base_cost,
+        sales_price,
+    )
+    .map_err(|e| format!("{}: {e}", product.name))?;
+    Ok(ExpandedLineJournal {
+        specs: evaluated
+            .into_iter()
+            .map(|line| JournalLineSpec {
+                account_id: line.account_id,
+                amount: line.amount,
+            })
+            .collect(),
+        journal_id: template.journal_id,
     })
+}
+
+async fn expand_service_journal(
+    db: &DatabaseConnection,
+    service_id: i64,
+    variable_values: &str,
+    quantity: Decimal,
+    rate: Decimal,
+    pre_tax: Decimal,
+) -> Result<ExpandedLineJournal, String> {
+    let service = crate::purchase_services::entities::service::Entity::find_by_id(service_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("service {service_id} not found"))?;
+    let Some(template) = service_journal_template::load_template(db, service_id).await? else {
+        return Err(format!("{} has no journal entry template", service.name));
+    };
+    if template.items.is_empty() {
+        return Err(format!(
+            "{} has no journal entry template lines",
+            service.name
+        ));
+    }
+    let parsed: Vec<ServiceTemplateLine> = template
+        .items
+        .iter()
+        .map(|item| ServiceTemplateLine {
+            account_id: item.account_id,
+            formula: item.formula.clone(),
+        })
+        .collect();
+    let base_cost = service_pricing::unit_formula_amount(
+        &service.variables,
+        &service.base_price_formula,
+        variable_values,
+    )
+    .map_err(|e| format!("{} base cost: {e}", service.name))?;
+    let sales_price = service_pricing::unit_formula_amount(
+        &service.variables,
+        &service.sales_price_formula,
+        variable_values,
+    )
+    .map_err(|e| format!("{} sales price: {e}", service.name))?;
+    let evaluated = evaluate_service_template_lines(
+        &service.variables,
+        &parsed,
+        variable_values,
+        quantity,
+        rate,
+        pre_tax,
+        base_cost,
+        sales_price,
+    )
+    .map_err(|e| format!("{}: {e}", service.name))?;
+    Ok(ExpandedLineJournal {
+        specs: evaluated
+            .into_iter()
+            .map(|line| JournalLineSpec {
+                account_id: line.account_id,
+                amount: line.amount,
+            })
+            .collect(),
+        journal_id: template.journal_id,
+    })
+}
+
+/// Append every tax template line onto the purchase journal.
+async fn append_purchase_tax_lines(
+    db: &DatabaseConnection,
+    specs: &mut Vec<JournalLineSpec>,
+    lines: &[(Decimal, Vec<TaxModel>)],
+    header_taxes: &[TaxModel],
+    journal_id: i64,
+) -> Result<(), String> {
+    let mut line_tax_ids = HashSet::new();
+    let mut pre_tax_sum = Decimal::ZERO;
+    for (base, taxes) in lines {
+        pre_tax_sum = decimal::dec_sum(pre_tax_sum, *base);
+        for tax in taxes {
+            if tax.id != 0 {
+                line_tax_ids.insert(tax.id);
+            }
+            let evaluated = evaluate_tax_for_document(db, tax, *base, journal_id).await?;
+            push_tax_lines(specs, &evaluated);
+        }
+    }
+    for tax in document_level_header_taxes(header_taxes, &line_tax_ids) {
+        let evaluated = evaluate_tax_for_document(db, &tax, pre_tax_sum, journal_id).await?;
+        push_tax_lines(specs, &evaluated);
+    }
+    Ok(())
+}
+
+fn push_tax_lines(
+    specs: &mut Vec<JournalLineSpec>,
+    evaluated: &[lariv_plugin_finance_taxes::journal_template::EvaluatedTemplateLine],
+) {
+    for line in evaluated {
+        specs.push(JournalLineSpec {
+            account_id: line.account_id,
+            amount: line.amount,
+        });
+    }
 }
 
 /// Recompute a posted purchase's journal lines from its stored accounts, lines, and taxes.
@@ -194,14 +287,10 @@ pub async fn posted_purchase_journal_lines(
         return Err(format!("posted purchase {posted_id} has no lines"));
     }
 
-    let header_tax_ids = load_posted_purchase_tax_ids(db, posted_id)
-        .await
-        .map_err(|e| e.to_string())?;
-    let header_taxes = load_taxes_by_ids(db, &header_tax_ids)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let mut inputs = Vec::with_capacity(lines.len());
+    let mut specs = Vec::new();
+    let mut indexes = Vec::with_capacity(lines.len() + service_lines.len());
+    let mut journal_id = None;
+    let mut tax_lines = Vec::with_capacity(lines.len() + service_lines.len());
     for line in lines {
         let tax_ids = load_posted_line_tax_ids(db, line.id)
             .await
@@ -209,10 +298,19 @@ pub async fn posted_purchase_journal_lines(
         let taxes = load_taxes_by_ids(db, &tax_ids)
             .await
             .map_err(|e| e.to_string())?;
-        inputs.push(PurchaseJournalLineInput {
-            pre_tax_amount: line.pre_tax_amount,
-            taxes,
-        });
+        tax_lines.push((line.pre_tax_amount, taxes));
+        let expanded = expand_product_journal(
+            db,
+            line.product_id,
+            &line.variable_values,
+            line.quantity,
+            line.rate,
+            line.pre_tax_amount,
+        )
+        .await?;
+        note_journal(&mut journal_id, expanded.journal_id)?;
+        indexes.push(specs.len());
+        specs.extend(expanded.specs);
     }
     for line in service_lines {
         let tax_ids = load_posted_service_line_tax_ids(db, line.id)
@@ -221,26 +319,29 @@ pub async fn posted_purchase_journal_lines(
         let taxes = load_taxes_by_ids(db, &tax_ids)
             .await
             .map_err(|e| e.to_string())?;
-        inputs.push(PurchaseJournalLineInput {
-            pre_tax_amount: line.pre_tax_amount,
-            taxes,
-        });
+        tax_lines.push((line.pre_tax_amount, taxes));
+        let expanded = expand_service_journal(
+            db,
+            line.service_id,
+            &line.variable_values,
+            line.quantity,
+            line.rate,
+            line.pre_tax_amount,
+        )
+        .await?;
+        note_journal(&mut journal_id, expanded.journal_id)?;
+        indexes.push(specs.len());
+        specs.extend(expanded.specs);
     }
-
-    let assembled = assemble_purchase_journal_lines(
-        &inputs,
-        &header_taxes,
-        PurchaseGlAccounts {
-            payable_id: posted.account_payable_id,
-            expense_id: posted.account_expense_id,
-            input_tax_id: posted.account_input_tax_id,
-        },
-    )?;
-    Ok((
-        posted.datetime,
-        assembled.lines,
-        assembled.expense_item_indices,
-    ))
+    let journal_id = journal_id.ok_or("posted purchase has no lines")?;
+    let header_tax_ids = load_posted_purchase_tax_ids(db, posted_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let header_taxes = load_taxes_by_ids(db, &header_tax_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+    append_purchase_tax_lines(db, &mut specs, &tax_lines, &header_taxes, journal_id).await?;
+    Ok((posted.datetime, specs, indexes))
 }
 
 /// Point a posted purchase and its lines at a regenerated journal entry.
@@ -338,11 +439,13 @@ pub async fn draft_new_posted(
 
     let lines = DraftPurchaseGoodsLineEntity::find()
         .filter(draft_purchase_goods_line::Column::DraftPurchaseId.eq(draft_id))
+        .order_by_asc(draft_purchase_goods_line::Column::Id)
         .all(db)
         .await
         .map_err(|e| e.to_string())?;
     let service_lines = DraftPurchaseServiceLineEntity::find()
         .filter(draft_purchase_service_line::Column::DraftPurchaseId.eq(draft_id))
+        .order_by_asc(draft_purchase_service_line::Column::Id)
         .all(db)
         .await
         .map_err(|e| e.to_string())?;
@@ -357,8 +460,11 @@ pub async fn draft_new_posted(
         .await
         .map_err(|e| e.to_string())?;
 
-    let mut all_taxes = header_taxes.clone();
     let mut lines_with_taxes = Vec::with_capacity(lines.len());
+    let mut service_lines_with_taxes = Vec::with_capacity(service_lines.len());
+    let mut specs = Vec::new();
+    let mut line_item_indexes = Vec::with_capacity(lines.len() + service_lines.len());
+    let mut journal_id = None;
     for line in lines {
         let tax_ids = load_draft_line_tax_ids(db, line.id)
             .await
@@ -366,10 +472,20 @@ pub async fn draft_new_posted(
         let taxes = load_taxes_by_ids(db, &tax_ids)
             .await
             .map_err(|e| e.to_string())?;
-        all_taxes.extend(taxes.clone());
+        let expanded = expand_product_journal(
+            db,
+            line.product_id,
+            &line.variable_values,
+            line.quantity,
+            line.rate,
+            line.pre_tax_amount,
+        )
+        .await?;
+        note_journal(&mut journal_id, expanded.journal_id)?;
+        line_item_indexes.push(specs.len());
+        specs.extend(expanded.specs);
         lines_with_taxes.push(LineWithTaxes { line, taxes });
     }
-    let mut service_lines_with_taxes = Vec::with_capacity(service_lines.len());
     for line in service_lines {
         let tax_ids = load_draft_service_line_tax_ids(db, line.id)
             .await
@@ -377,14 +493,31 @@ pub async fn draft_new_posted(
         let taxes = load_taxes_by_ids(db, &tax_ids)
             .await
             .map_err(|e| e.to_string())?;
-        all_taxes.extend(taxes.clone());
+        let expanded = expand_service_journal(
+            db,
+            line.service_id,
+            &line.variable_values,
+            line.quantity,
+            line.rate,
+            line.pre_tax_amount,
+        )
+        .await?;
+        note_journal(&mut journal_id, expanded.journal_id)?;
+        line_item_indexes.push(specs.len());
+        specs.extend(expanded.specs);
         service_lines_with_taxes.push(ServiceLineWithTaxes { line, taxes });
     }
-
-    validate_withholding_tax_accounts(&all_taxes)?;
-
-    let purchase_prefs = load_purchase_preferences(db).await;
-    validate_purchase_preferences_for_posting(db, &purchase_prefs).await?;
+    let journal_id = journal_id.ok_or("draft has no lines")?;
+    let tax_inputs: Vec<(Decimal, Vec<TaxModel>)> = lines_with_taxes
+        .iter()
+        .map(|lwt| (lwt.line.pre_tax_amount, lwt.taxes.clone()))
+        .chain(
+            service_lines_with_taxes
+                .iter()
+                .map(|lwt| (lwt.line.pre_tax_amount, lwt.taxes.clone())),
+        )
+        .collect();
+    append_purchase_tax_lines(db, &mut specs, &tax_inputs, &header_taxes, journal_id).await?;
 
     let number = posted_purchase_number(db, &draft).await?;
     let dup_posted = PostedPurchaseEntity::find()
@@ -409,34 +542,24 @@ pub async fn draft_new_posted(
         draft.datetime
     };
 
-    let payable_id = optional_i64(purchase_prefs.account_payable_id);
-    let expense_id = optional_i64(purchase_prefs.account_expense_id);
-    let input_tax_id = optional_i64(purchase_prefs.account_input_tax_id);
-    let journal_id = optional_i64(purchase_prefs.journal_id);
-
-    let mut inputs: Vec<PurchaseJournalLineInput> = lines_with_taxes
+    let mut totals = PurchaseLinesTotals::default();
+    let mut all_line_tax_ids = HashSet::new();
+    for (pre_tax_amount, taxes) in lines_with_taxes
         .iter()
-        .map(|lwt| PurchaseJournalLineInput {
-            pre_tax_amount: lwt.line.pre_tax_amount,
-            taxes: lwt.taxes.clone(),
-        })
-        .collect();
-    inputs.extend(service_lines_with_taxes.iter().map(|lwt| PurchaseJournalLineInput {
-        pre_tax_amount: lwt.line.pre_tax_amount,
-        taxes: lwt.taxes.clone(),
-    }));
-    let assembled = assemble_purchase_journal_lines(
-        &inputs,
-        &header_taxes,
-        PurchaseGlAccounts {
-            payable_id,
-            expense_id,
-            input_tax_id,
-        },
-    )?;
-    let specs = assembled.lines;
-    let expense_item_indices = assembled.expense_item_indices;
-    let total_payable = assembled.payable_total;
+        .map(|lwt| (lwt.line.pre_tax_amount, &lwt.taxes))
+        .chain(
+            service_lines_with_taxes
+                .iter()
+                .map(|lwt| (lwt.line.pre_tax_amount, &lwt.taxes)),
+        )
+    {
+        merge_purchase_line_tax_ids(&mut all_line_tax_ids, taxes);
+        let (untaxed, levied, withholding, _) = purchase_line_amounts(pre_tax_amount, taxes);
+        totals.untaxed_subtotal = decimal::dec_sum(totals.untaxed_subtotal, untaxed);
+        totals.lines_levied = decimal::dec_sum(totals.lines_levied, levied);
+        totals.lines_withholding = decimal::dec_sum(totals.lines_withholding, withholding);
+    }
+    let total_payable = purchase_receivable_grand_total(&totals, &header_taxes, &all_line_tax_ids);
 
     let txn = db.begin().await.map_err(|e| e.to_string())?;
     let doc_id = create_source_doc(&txn, POSTED_PURCHASE_SOURCE_DOC_TYPE)
@@ -459,15 +582,10 @@ pub async fn draft_new_posted(
         payment_reference: Set(draft.payment_reference.clone()),
         bank_account: Set(draft.bank_account.clone()),
         remarks: Set(draft.remarks.clone()),
-        account_payable_id: Set(payable_id),
-        account_expense_id: Set(expense_id),
-        account_input_tax_id: Set(input_tax_id),
         journal_id: Set(journal_id),
         datetime: Set(draft.datetime),
         delivery_date: Set(draft.delivery_date),
-        vendor_is_individual: Set(draft.vendor_is_individual),
-        vendor_contact_id: Set(draft.vendor_contact_id),
-        vendor_company_id: Set(draft.vendor_company_id),
+        vendor_id: Set(draft.vendor_id),
         journal_entry_id: Set(je_id),
         posted_payment_term_id: Set(Some(payment_term.id)),
         created_at: Set(Some(now)),
@@ -485,11 +603,13 @@ pub async fn draft_new_posted(
         .map_err(|e| e.to_string())?;
 
     for (i, lwt) in lines_with_taxes.iter().enumerate() {
-        let expense_idx = expense_item_indices[i];
+        let item_idx = *line_item_indexes
+            .get(i)
+            .ok_or("internal error: journal item index")?;
         let expense_item_id = je_items
-            .get(expense_idx)
+            .get(item_idx)
             .map(|it| it.id)
-            .ok_or("internal error: expense item index")?;
+            .ok_or("internal error: journal item index")?;
         let pl_am = posted_purchase_goods_line::ActiveModel {
             posted_purchase_id: Set(posted.id),
             product_id: Set(lwt.line.product_id),
@@ -510,11 +630,13 @@ pub async fn draft_new_posted(
             .map_err(|e| e.to_string())?;
     }
     for (i, lwt) in service_lines_with_taxes.iter().enumerate() {
-        let expense_idx = expense_item_indices[lines_with_taxes.len() + i];
+        let item_idx = *line_item_indexes
+            .get(lines_with_taxes.len() + i)
+            .ok_or("internal error: journal item index")?;
         let expense_item_id = je_items
-            .get(expense_idx)
+            .get(item_idx)
             .map(|it| it.id)
-            .ok_or("internal error: service expense item index")?;
+            .ok_or("internal error: journal item index")?;
         let pl_am = posted_purchase_service_line::ActiveModel {
             posted_purchase_id: Set(posted.id),
             service_id: Set(lwt.line.service_id),
@@ -605,15 +727,10 @@ pub async fn posted_new_cancelled(
         payment_reference: Set(posted.payment_reference.clone()),
         bank_account: Set(posted.bank_account.clone()),
         remarks: Set(posted.remarks.clone()),
-        account_payable_id: Set(posted.account_payable_id),
-        account_expense_id: Set(posted.account_expense_id),
-        account_input_tax_id: Set(posted.account_input_tax_id),
         journal_id: Set(posted.journal_id),
         datetime: Set(posted.datetime),
         delivery_date: Set(posted.delivery_date),
-        vendor_is_individual: Set(posted.vendor_is_individual),
-        vendor_contact_id: Set(posted.vendor_contact_id),
-        vendor_company_id: Set(posted.vendor_company_id),
+        vendor_id: Set(posted.vendor_id),
         reversed_journal_entry_id: Set(rev_je_id),
         reason: Set(Some(reason)),
         posted_payment_term_id: Set(payment_term_id),
@@ -721,9 +838,7 @@ pub async fn cancelled_new_draft(
         remarks: Set(cancelled.remarks.clone()),
         datetime: Set(cancelled.datetime),
         delivery_date: Set(cancelled.delivery_date),
-        vendor_is_individual: Set(cancelled.vendor_is_individual),
-        vendor_contact_id: Set(cancelled.vendor_contact_id),
-        vendor_company_id: Set(cancelled.vendor_company_id),
+        vendor_id: Set(cancelled.vendor_id),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -781,8 +896,12 @@ pub async fn cancelled_new_draft(
             service_id: Set(row.try_get("", "service_id").map_err(|e| e.to_string())?),
             rate: Set(row.try_get("", "rate").map_err(|e| e.to_string())?),
             quantity: Set(row.try_get("", "quantity").map_err(|e| e.to_string())?),
-            variable_values: Set(row.try_get("", "variable_values").map_err(|e| e.to_string())?),
-            pre_tax_amount: Set(row.try_get("", "pre_tax_amount").map_err(|e| e.to_string())?),
+            variable_values: Set(row
+                .try_get("", "variable_values")
+                .map_err(|e| e.to_string())?),
+            pre_tax_amount: Set(row
+                .try_get("", "pre_tax_amount")
+                .map_err(|e| e.to_string())?),
             remarks: Set(row.try_get("", "remarks").map_err(|e| e.to_string())?),
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
@@ -913,7 +1032,7 @@ async fn insert_cancelled_service_line<C: ConnectionTrait>(
     row.try_get("", "id").map_err(|e| e.to_string())
 }
 
-/// Negate the posted purchase journal. Indexes still point at each expense line.
+/// Negate the posted purchase journal. Indexes still point at the first line of each goods or service template.
 pub async fn cancelled_reversal_journal_lines(
     db: &DatabaseConnection,
     cancelled_id: i64,
@@ -990,78 +1109,4 @@ async fn query_i64s<C: ConnectionTrait>(db: &C, sql: &str, id: i64) -> Result<Ve
     rows.into_iter()
         .map(|row| row.try_get("", "id").map_err(|e| e.to_string()))
         .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use lariv_plugin_finance_taxes::entities::tax::{Model as TaxModel, TaxKind};
-    use rust_decimal::Decimal;
-
-    fn tax(id: i64, pct: i64, kind: TaxKind, account_id: Option<i64>) -> TaxModel {
-        TaxModel {
-            id,
-            created_at: None,
-            updated_at: None,
-            name: format!("tax-{id}"),
-            percentage: Decimal::new(pct, 0),
-            tax_type: kind,
-            account_id,
-        }
-    }
-
-    fn accounts() -> PurchaseGlAccounts {
-        PurchaseGlAccounts {
-            payable_id: 1,
-            expense_id: 2,
-            input_tax_id: 3,
-        }
-    }
-
-    #[test]
-    fn assemble_debits_expense_and_input_tax_and_credits_payable() {
-        let levied = tax(10, 18, TaxKind::Levied, None);
-        let withholding = tax(11, 10, TaxKind::Withholding, Some(9));
-        let assembled = assemble_purchase_journal_lines(
-            &[PurchaseJournalLineInput {
-                pre_tax_amount: Decimal::new(100, 0),
-                taxes: vec![levied, withholding],
-            }],
-            &[],
-            accounts(),
-        )
-        .expect("assemble");
-
-        assert_eq!(assembled.expense_item_indices, vec![0]);
-        assert_eq!(assembled.payable_total, Decimal::new(108, 0));
-        assert!(
-            assembled.lines.iter().all(|line| line.account_id != 0),
-            "no inventory account"
-        );
-        let expense = assembled
-            .lines
-            .iter()
-            .find(|line| line.account_id == 2)
-            .expect("expense");
-        assert_eq!(expense.amount, Decimal::new(100, 0));
-        let input_tax = assembled
-            .lines
-            .iter()
-            .find(|line| line.account_id == 3)
-            .expect("input tax");
-        assert_eq!(input_tax.amount, Decimal::new(18, 0));
-        let wh = assembled
-            .lines
-            .iter()
-            .find(|line| line.account_id == 9)
-            .expect("withholding");
-        assert_eq!(wh.amount, Decimal::new(-10, 0));
-        let payable = assembled
-            .lines
-            .iter()
-            .find(|line| line.account_id == 1)
-            .expect("payable");
-        assert_eq!(payable.amount, Decimal::new(-108, 0));
-        assert_eq!(assembled.lines.len(), 4);
-    }
 }

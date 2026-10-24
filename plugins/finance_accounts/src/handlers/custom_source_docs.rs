@@ -1,23 +1,34 @@
+use std::collections::HashMap;
+
 use axum::{
-    extract::Path,
+    extract::{Path, Query},
+    http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
 
-use lariv_core::components::{SharedChromeFolder, SlotCtx};
+use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use lariv_core::web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots};
+use lariv_core::template::RenderAppPane;
+use lariv_core::web::{
+    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
+    respond_create_modal_done,
+};
 use lariv_plugin_users::middleware::RequireAuth;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use lariv_plugin_users::role_authorization::scope_allowed;
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use serde::Deserialize;
 
 use crate::{
     entities::{
         account::Entity as AccountEntity,
         custom_source_doc::{self, Entity as CustomSourceDocEntity},
-        journal_entry::Entity as JournalEntryEntity,
+        journal::{self, Entity as JournalEntity},
+        journal_entry::{self, Entity as JournalEntryEntity},
         journal_entry_item::{self, Entity as JournalEntryItemEntity},
     },
-    forms::CustomSourceDocForm,
+    forms::{CustomSourceDocForm, CustomSourceDocIndexCreateForm},
+    keys::{CustomSourceDocCreateModalKey, CustomSourceDocIndexCreateModalKey},
     logic::{
         custom_source_doc::{
             create_custom_source_doc, delete_custom_source_doc, empty_lines_json,
@@ -27,18 +38,32 @@ use crate::{
         journal::{cascade_delete_preview, collect_journal_entry_cascade},
     },
     routes::{
-        CustomSourceDocCreatePostRouteTag, CustomSourceDocDetailRouteTag,
-        CustomSourceDocEditPostRouteTag, JournalCustomSourceDocsRouteTag, JournalListRouteTag,
+        CustomSourceDocDetailRouteTag, CustomSourceDocEditPostRouteTag,
+        JournalCustomSourceDocsRouteTag, JournalListRouteTag,
     },
-    scope::find_journal_scoped,
+    scope::{find_journal_scoped, load_default_journal, load_journal_display_label},
     source_doc_registry::SourceDocRegistry,
     state::AccountsState,
     templates::{
-        CustomSourceDocDeleteItem, CustomSourceDocDeleteModalPage, CustomSourceDocDetailPage,
-        CustomSourceDocFormPage, CustomSourceDocLineRow, CustomSourceDocListPage,
-        CustomSourceDocRow,
+        CustomSourceDocCreateModalPage, CustomSourceDocDeleteItem, CustomSourceDocDeleteModalPage,
+        CustomSourceDocDetailPage, CustomSourceDocFormPage, CustomSourceDocIndexCreateModalPage,
+        CustomSourceDocIndexPage, CustomSourceDocIndexRow, CustomSourceDocLineRow,
+        CustomSourceDocListPage, CustomSourceDocRow,
     },
 };
+
+use super::ModalNameQuery;
+use super::util::{parse_i64, path_and_query};
+
+#[derive(Debug, Deserialize, Default)]
+pub struct CustomSourceDocIndexQuery {
+    #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
+    pub page: QueryPage,
+    #[serde(default)]
+    pub page_size: QueryPageSize,
+}
 
 fn can_mutate() -> bool {
     lariv_core::components::role_permitted(&lariv_plugin_users::role_authorization::roles_for::<
@@ -81,35 +106,186 @@ pub async fn list(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
-pub async fn create_get(
+pub async fn index(
     Cap(state): Cap<AccountsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
-    Path(journal_id): Path<i64>,
-) -> Response {
-    let Some(journal) = find_journal_scoped(&state.db, journal_id).await else {
-        return Redirect::to(&JournalListRouteTag.url()).into_response();
+    uri: Uri,
+    Query(q): Query<CustomSourceDocIndexQuery>,
+) -> maud::Markup {
+    let (docs, total, prepared) = fetch_index_docs(
+        &state.db,
+        uri.query().unwrap_or(""),
+        q.sort.as_deref(),
+        q.page.get(),
+        q.page_size.get(),
+    )
+    .await;
+    let entry_ids: Vec<i64> = docs.iter().map(|doc| doc.journal_entry_id).collect();
+    let journals = journal_refs_by_entry(&state.db, &entry_ids).await;
+    let mut rows = Vec::with_capacity(docs.len());
+    for doc in docs {
+        let (journal_id, journal_name) = journals
+            .get(&doc.journal_entry_id)
+            .cloned()
+            .unwrap_or_else(|| (0, "—".into()));
+        rows.push(CustomSourceDocIndexRow {
+            id: doc.id,
+            title: doc.title,
+            journal_id,
+            journal_name,
+            created_by: user_name(&state.db, doc.created_by_id).await,
+            created_at: doc
+                .created_at
+                .map(|ts| ctx.format_datetime_seconds(ts).into_string())
+                .unwrap_or_else(|| "—".into()),
+            journal_entry_id: doc.journal_entry_id,
+        });
+    }
+    let page = CustomSourceDocIndexPage {
+        docs: ObjectList::from_page(rows, q.page.get(), q.page_size.get(), total),
+        fields: prepared.fields,
+        filters: prepared.filters,
+        filter_errors: prepared.errors,
+        sort: q.sort.clone().unwrap_or_default(),
+        path_and_query: path_and_query(&uri),
+        can_create: can_mutate(),
+        page_size: q.page_size.get(),
     };
-    let mutable = can_mutate() && journal.is_mutable;
-    let page = form_page(
-        journal.id,
-        journal.name,
-        FormDraft {
-            heading: "New custom source doc",
-            post_path: CustomSourceDocCreatePostRouteTag::new(journal_id).path(),
+    let slot_ctx = SlotCtx::from_auth(&ctx);
+    if htmx.targets::<crate::keys::CustomSourceDocIndexTableKey>() {
+        return page.render_table();
+    }
+    if htmx.wants_main_content() {
+        return page.render_main().into();
+    }
+    if htmx.wants_app_layout() {
+        return page.render_pane().into();
+    }
+    html_built_page_with_slots(&page, &chrome, &slot_ctx)
+}
+
+pub async fn index_create_get(
+    Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Query(q): Query<ModalNameQuery>,
+) -> maud::Markup {
+    let (journal_id, journal_display) = match load_default_journal(&state.db).await {
+        Some(journal) if journal.is_mutable => (journal.id.to_string(), journal.name),
+        _ => (String::new(), String::new()),
+    };
+    let page = index_form_page(IndexFormDraft {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
+        journal_id,
+        journal_display,
+        title: String::new(),
+        content: String::new(),
+        lines: empty_lines_json(),
+        error: String::new(),
+    });
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
+pub async fn index_create_post(
+    Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Query(q): Query<ModalNameQuery>,
+    HtmlFormBody(form): HtmlFormBody<CustomSourceDocIndexCreateForm>,
+) -> Response {
+    let journal_id_raw = form.journal_id.clone();
+    let title = form.title.clone();
+    let content = form.content.clone();
+    let lines_raw = submitted_lines(&form.lines);
+    let form_name = q.form_name();
+    let refresh_table = q.refresh_table();
+    let journal_display = journal_picker_label(&state.db, &journal_id_raw).await;
+    let render_err = |error: String| {
+        let page = index_form_page(IndexFormDraft {
+            form_name: form_name.clone(),
+            refresh_table: refresh_table.clone(),
+            journal_id: journal_id_raw.clone(),
+            journal_display: journal_display.clone(),
+            title: title.clone(),
+            content: content.clone(),
+            lines: lines_raw.clone(),
+            error,
+        });
+        html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    };
+    let Some(journal_id) = parse_i64(&journal_id_raw).filter(|id| *id > 0) else {
+        return render_err("Journal is required".into());
+    };
+    if find_journal_scoped(&state.db, journal_id).await.is_none() {
+        return render_err("Journal not found".into());
+    }
+    let lines = match parse_journal_lines(&form.lines) {
+        Ok(lines) => lines,
+        Err(e) => return render_err(e),
+    };
+    if let Err(e) = ensure_posting_accounts(&state.db, &lines).await {
+        return render_err(e);
+    }
+    match create_custom_source_doc(
+        &state.db,
+        journal_id,
+        &form.title,
+        &form.content,
+        ctx.user.id,
+        &lines,
+    )
+    .await
+    {
+        Ok(model) => respond_create_modal_done::<CustomSourceDocIndexCreateModalKey>(
+            &htmx,
+            &refresh_table,
+            &CustomSourceDocDetailRouteTag::new(model.id).url(),
+        ),
+        Err(e) => render_err(e),
+    }
+}
+
+pub async fn create_get(
+    Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    Path(journal_id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
+) -> maud::Markup {
+    let (id, name, mutable, missing) = match find_journal_scoped(&state.db, journal_id).await {
+        Some(journal) => (
+            journal.id,
+            journal.name,
+            can_mutate() && journal.is_mutable,
+            false,
+        ),
+        None => (journal_id, String::new(), false, true),
+    };
+    let error = if missing {
+        "Journal not found".to_string()
+    } else if mutable {
+        String::new()
+    } else {
+        "This journal is immutable. Enable Mutable on the journal edit page before adding source documents.".into()
+    };
+    let page = create_modal_page(
+        id,
+        name,
+        CreateModalDraft {
+            form_name: q.form_name(),
+            refresh_table: q.refresh_table(),
             title: String::new(),
             content: String::new(),
             lines: empty_lines_json(),
-            error: if mutable {
-                String::new()
-            } else {
-                "This journal is immutable. Enable Mutable on the journal edit page before adding source documents.".into()
-            },
+            error,
             can_save: mutable,
         },
     );
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
 }
 
 pub async fn create_post(
@@ -118,27 +294,49 @@ pub async fn create_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(journal_id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<CustomSourceDocForm>,
 ) -> Response {
     let Some(journal) = find_journal_scoped(&state.db, journal_id).await else {
-        return Redirect::to(&JournalListRouteTag.url()).into_response();
-    };
-    let render_err = |error: String| {
-        let page = form_page(
-            journal.id,
-            journal.name.clone(),
-            FormDraft {
-                heading: "New custom source doc",
-                post_path: CustomSourceDocCreatePostRouteTag::new(journal_id).path(),
-                title: form.title.clone(),
-                content: form.content.clone(),
+        let page = create_modal_page(
+            journal_id,
+            String::new(),
+            CreateModalDraft {
+                form_name: q.form_name(),
+                refresh_table: q.refresh_table(),
+                title: form.title,
+                content: form.content,
                 lines: submitted_lines(&form.lines),
-                error,
-                can_save: can_mutate() && journal.is_mutable,
+                error: "Journal not found".into(),
+                can_save: false,
             },
         );
-        html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
-            .into_response()
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
+    };
+    let title = form.title.clone();
+    let content = form.content.clone();
+    let lines_raw = submitted_lines(&form.lines);
+    let form_name = q.form_name();
+    let refresh_table = q.refresh_table();
+    let journal_name = journal.name.clone();
+    let saved_journal_id = journal.id;
+    let can_save = can_mutate() && journal.is_mutable;
+    let render_err = |error: String| {
+        let page = create_modal_page(
+            saved_journal_id,
+            journal_name.clone(),
+            CreateModalDraft {
+                form_name: form_name.clone(),
+                refresh_table: refresh_table.clone(),
+                title: title.clone(),
+                content: content.clone(),
+                lines: lines_raw.clone(),
+                error,
+                can_save,
+            },
+        );
+        html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
     };
     let lines = match parse_journal_lines(&form.lines) {
         Ok(lines) => lines,
@@ -157,9 +355,11 @@ pub async fn create_post(
     )
     .await
     {
-        Ok(model) => {
-            Redirect::to(&CustomSourceDocDetailRouteTag::new(model.id).url()).into_response()
-        }
+        Ok(model) => respond_create_modal_done::<CustomSourceDocCreateModalKey>(
+            &htmx,
+            &refresh_table,
+            &CustomSourceDocDetailRouteTag::new(model.id).url(),
+        ),
         Err(e) => render_err(e),
     }
 }
@@ -398,6 +598,143 @@ fn submitted_lines(raw: &str) -> String {
         empty_lines_json()
     } else {
         raw.to_string()
+    }
+}
+
+async fn fetch_index_docs(
+    db: &sea_orm::DatabaseConnection,
+    query_string: &str,
+    sort: Option<&str>,
+    page: u32,
+    page_size: u32,
+) -> (
+    Vec<custom_source_doc::Model>,
+    u64,
+    crate::filters::PreparedFilters,
+) {
+    let prepared = crate::filters::prepare(
+        query_string,
+        crate::filters::custom_source_doc_fields(),
+        db.get_database_backend(),
+    );
+    let mut query = scope_allowed::<super::super::routes::FinanceAccountsView, _>(
+        CustomSourceDocEntity::find(),
+    );
+    query = query.filter(prepared.condition.clone());
+    let sort = sort.unwrap_or("").trim();
+    query = match sort {
+        s if s.eq_ignore_ascii_case("Title DESC") => {
+            query.order_by_desc(custom_source_doc::Column::Title)
+        }
+        s if s.eq_ignore_ascii_case("Title ASC") || s.eq_ignore_ascii_case("Title") => {
+            query.order_by_asc(custom_source_doc::Column::Title)
+        }
+        s if s.eq_ignore_ascii_case("CreatedAt ASC") || s.eq_ignore_ascii_case("CreatedAt") => {
+            query.order_by_asc(custom_source_doc::Column::CreatedAt)
+        }
+        _ => query
+            .order_by_desc(custom_source_doc::Column::CreatedAt)
+            .order_by_desc(custom_source_doc::Column::Id),
+    };
+    let paginator = query.paginate(db, page_size as u64);
+    let total = paginator.num_items().await.unwrap_or(0);
+    let docs = paginator
+        .fetch_page((page as u64).saturating_sub(1))
+        .await
+        .unwrap_or_default();
+    (docs, total, prepared)
+}
+
+async fn journal_refs_by_entry(
+    db: &sea_orm::DatabaseConnection,
+    entry_ids: &[i64],
+) -> HashMap<i64, (i64, String)> {
+    if entry_ids.is_empty() {
+        return HashMap::new();
+    }
+    let entries = JournalEntryEntity::find()
+        .filter(journal_entry::Column::Id.is_in(entry_ids.to_vec()))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let journal_ids: Vec<i64> = entries.iter().map(|entry| entry.journal_id).collect();
+    if journal_ids.is_empty() {
+        return HashMap::new();
+    }
+    let journals = JournalEntity::find()
+        .filter(journal::Column::Id.is_in(journal_ids))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let names: HashMap<i64, String> = journals
+        .into_iter()
+        .map(|journal| (journal.id, journal.name))
+        .collect();
+    entries
+        .into_iter()
+        .filter_map(|entry| {
+            let name = names.get(&entry.journal_id)?.clone();
+            Some((entry.id, (entry.journal_id, name)))
+        })
+        .collect()
+}
+
+async fn journal_picker_label(db: &sea_orm::DatabaseConnection, raw: &str) -> String {
+    match parse_i64(raw).filter(|id| *id > 0) {
+        Some(id) => load_journal_display_label(db, Some(id)).await,
+        None => String::new(),
+    }
+}
+
+struct CreateModalDraft {
+    form_name: String,
+    refresh_table: String,
+    title: String,
+    content: String,
+    lines: String,
+    error: String,
+    can_save: bool,
+}
+
+fn create_modal_page(
+    journal_id: i64,
+    journal_name: String,
+    draft: CreateModalDraft,
+) -> CustomSourceDocCreateModalPage {
+    CustomSourceDocCreateModalPage {
+        form_name: draft.form_name,
+        refresh_table: draft.refresh_table,
+        journal_id,
+        journal_name,
+        title: draft.title,
+        content: draft.content,
+        lines: draft.lines,
+        error: draft.error,
+        can_save: draft.can_save,
+    }
+}
+
+struct IndexFormDraft {
+    form_name: String,
+    refresh_table: String,
+    journal_id: String,
+    journal_display: String,
+    title: String,
+    content: String,
+    lines: String,
+    error: String,
+}
+
+fn index_form_page(draft: IndexFormDraft) -> CustomSourceDocIndexCreateModalPage {
+    CustomSourceDocIndexCreateModalPage {
+        form_name: draft.form_name,
+        refresh_table: draft.refresh_table,
+        journal_id: draft.journal_id,
+        journal_display: draft.journal_display,
+        title: draft.title,
+        content: draft.content,
+        lines: draft.lines,
+        error: draft.error,
     }
 }
 

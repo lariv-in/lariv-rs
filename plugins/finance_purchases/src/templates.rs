@@ -35,7 +35,8 @@ use lariv_plugin_finance_accounts::templates::{
 };
 
 use crate::components::{
-    self, field_purchase_goods_lines, field_purchase_service_lines, fiscal_year_environment_selector,
+    self, field_purchase_goods_lines, field_purchase_service_lines,
+    fiscal_year_environment_selector,
 };
 use crate::logic::PaymentTermLineDisplayRow;
 use crate::logic::purchase_goods_line_editor::PurchaseGoodsLineDisplayRow;
@@ -44,8 +45,6 @@ use crate::logic::purchase_service_line_editor::PurchaseServiceLineDisplayRow;
 use super::forms::{
     CancelPurchaseForm, CancelPurchaseFormField, DraftPurchaseBulkEditForm,
     DraftPurchaseBulkEditFormField, DraftPurchaseForm, DraftPurchaseFormField,
-    PurchasePreferencesForm, PurchasePreferencesFormField, individual_is_on, individual_x_data,
-    with_contact_company_prefill,
 };
 use super::keys::{
     DraftPurchaseBulkDeleteModalKey, DraftPurchaseBulkEditModalKey, DraftPurchaseCreateModalKey,
@@ -63,8 +62,7 @@ use super::routes::{
     DraftPurchasePostRouteTag, PostedPurchaseBulkCancelGetRouteTag,
     PostedPurchaseBulkCancelPostRouteTag, PostedPurchaseCancelGetRouteTag,
     PostedPurchaseCancelRouteTag, PostedPurchaseDetailRouteTag, PostedPurchasePdfModalRouteTag,
-    PurchaseBulkPdfsRouteTag, PurchaseDefaultRouteTag, PurchasePreferencesPostRouteTag,
-    PurchasePreferencesRouteTag,
+    PurchaseBulkPdfsRouteTag, PurchaseDefaultRouteTag, PurchasePreferencesRouteTag,
 };
 use lariv_core::list_filters::{FilterField, FilterRowError};
 
@@ -90,6 +88,18 @@ lariv_core::define_register_items! {
         PurchasePreferencesIdx: PurchasePreferencesPageTag => PurchasePreferencesPage,
         ConfirmDeleteIdx: DraftPurchaseConfirmDeletePageTag => ConfirmDeletePage,
         ConfirmBulkDeleteIdx: DraftPurchaseConfirmBulkDeletePageTag => ConfirmBulkDeletePage,
+        PurchaseProductListIdx: PurchaseProductListPageTag => crate::purchase_products::templates::ProductListPage,
+        PurchaseProductDetailIdx: PurchaseProductDetailPageTag => crate::purchase_products::templates::ProductDetailPage,
+        PurchaseProductEditModalIdx: PurchaseProductEditModalPageTag => crate::purchase_products::templates::ProductEditModalPage,
+        PurchaseProductCreateModalIdx: PurchaseProductCreateModalPageTag => crate::purchase_products::templates::ProductCreateModalPage,
+        PurchaseProductSelectIdx: PurchaseProductSelectPageTag => crate::purchase_products::templates::ProductSelectPage,
+        PurchaseProductConfirmDeleteIdx: PurchaseProductConfirmDeletePageTag => crate::purchase_products::templates::ConfirmDeletePage,
+        PurchaseServiceListIdx: PurchaseServiceListPageTag => crate::purchase_services::templates::ServiceListPage,
+        PurchaseServiceDetailIdx: PurchaseServiceDetailPageTag => crate::purchase_services::templates::ServiceDetailPage,
+        PurchaseServiceEditModalIdx: PurchaseServiceEditModalPageTag => crate::purchase_services::templates::ServiceEditModalPage,
+        PurchaseServiceCreateModalIdx: PurchaseServiceCreateModalPageTag => crate::purchase_services::templates::ServiceCreateModalPage,
+        PurchaseServiceSelectIdx: PurchaseServiceSelectPageTag => crate::purchase_services::templates::ServiceSelectPage,
+        PurchaseServiceConfirmDeleteIdx: PurchaseServiceConfirmDeletePageTag => crate::purchase_services::templates::ConfirmDeletePage,
     ]
 }
 
@@ -916,8 +926,7 @@ pub struct DraftPurchaseEditModalPage {
     pub form_name: String,
     pub form: DraftPurchaseForm,
     pub error: String,
-    pub individual_display: String,
-    pub company_display: String,
+    pub vendor_display: String,
     pub tax_items: Vec<ManyToManyItem>,
     pub purchase_goods_lines_preview: String,
     pub purchase_service_lines_preview: String,
@@ -939,12 +948,7 @@ impl RenderTemplate for DraftPurchaseEditModalPage {
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: html! {
-                        (with_contact_company_prefill(DraftPurchaseForm::render_inputs(&FormCtx::form::<DraftPurchaseForm>(CsrfToken::current())
-                            .x_data(&individual_x_data(&self.form.vendor_is_individual))
-                            .checked(
-                                DraftPurchaseFormField::VendorIsIndividual,
-                                individual_is_on(&self.form.vendor_is_individual),
-                            )
+                        (DraftPurchaseForm::render_inputs(&FormCtx::form::<DraftPurchaseForm>(CsrfToken::current())
                             .value(DraftPurchaseFormField::Number, &self.form.number)
                             .value(DraftPurchaseFormField::Reference, &self.form.reference)
                             .value(DraftPurchaseFormField::PaymentReference, &self.form.payment_reference)
@@ -952,17 +956,14 @@ impl RenderTemplate for DraftPurchaseEditModalPage {
                             .value(DraftPurchaseFormField::Remarks, &self.form.remarks)
                             .value(DraftPurchaseFormField::Datetime, &self.form.datetime)
                             .value(DraftPurchaseFormField::DeliveryDate, &self.form.delivery_date)
-                            .value(DraftPurchaseFormField::VendorIsIndividual, &self.form.vendor_is_individual)
-                            .value(DraftPurchaseFormField::VendorContactId, &self.form.vendor_contact_id.to_string())
-                            .value(DraftPurchaseFormField::VendorCompanyId, &self.form.vendor_company_id.to_string())
+                            .value(DraftPurchaseFormField::VendorId, &self.form.vendor_id.to_string())
                             .value(DraftPurchaseFormField::PaymentTermLinesJson, &self.form.payment_term_lines_json)
                             .value(DraftPurchaseFormField::PurchaseGoodsLinesJson, &self.form.purchase_goods_lines_json)
-                            .display(DraftPurchaseFormField::VendorContactId, &self.individual_display)
-                            .display(DraftPurchaseFormField::VendorCompanyId, &self.company_display)
+                            .display(DraftPurchaseFormField::VendorId, &self.vendor_display)
                             .value(DraftPurchaseFormField::PurchaseServiceLinesJson, &self.form.purchase_service_lines_json)
                             .display(DraftPurchaseFormField::PurchaseGoodsLinesJson, &self.purchase_goods_lines_preview)
                             .display(DraftPurchaseFormField::PurchaseServiceLinesJson, &self.purchase_service_lines_preview)
-                            .m2m(DraftPurchaseFormField::Taxes, &self.tax_items))))
+                            .m2m(DraftPurchaseFormField::Taxes, &self.tax_items)))
                         (PreEscaped(&self.extra_inputs))
                     },
                     actions: html! {
@@ -989,8 +990,7 @@ pub struct DraftPurchaseCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
     pub form: DraftPurchaseForm,
-    pub individual_display: String,
-    pub company_display: String,
+    pub vendor_display: String,
     pub tax_items: Vec<ManyToManyItem>,
     pub purchase_goods_lines_preview: String,
     pub purchase_service_lines_preview: String,
@@ -1020,13 +1020,8 @@ impl RenderTemplate for DraftPurchaseCreateModalPage {
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: html! {
-                        (with_contact_company_prefill(DraftPurchaseForm::render_inputs(
+                        (DraftPurchaseForm::render_inputs(
                             &FormCtx::form::<DraftPurchaseForm>(CsrfToken::current())
-                                .x_data(&individual_x_data(&self.form.vendor_is_individual))
-                                .checked(
-                                    DraftPurchaseFormField::VendorIsIndividual,
-                                    individual_is_on(&self.form.vendor_is_individual),
-                                )
                                 .value(DraftPurchaseFormField::Number, &self.form.number)
                                 .value(DraftPurchaseFormField::Reference, &self.form.reference)
                                 .value(
@@ -1041,16 +1036,8 @@ impl RenderTemplate for DraftPurchaseCreateModalPage {
                                     &self.form.delivery_date,
                                 )
                                 .value(
-                                    DraftPurchaseFormField::VendorIsIndividual,
-                                    &self.form.vendor_is_individual,
-                                )
-                                .value(
-                                    DraftPurchaseFormField::VendorContactId,
-                                    &self.form.vendor_contact_id.to_string(),
-                                )
-                                .value(
-                                    DraftPurchaseFormField::VendorCompanyId,
-                                    &self.form.vendor_company_id.to_string(),
+                                    DraftPurchaseFormField::VendorId,
+                                    &self.form.vendor_id.to_string(),
                                 )
                                 .value(
                                     DraftPurchaseFormField::PaymentTermLinesJson,
@@ -1064,14 +1051,7 @@ impl RenderTemplate for DraftPurchaseCreateModalPage {
                                     DraftPurchaseFormField::PurchaseServiceLinesJson,
                                     &self.form.purchase_service_lines_json,
                                 )
-                                .display(
-                                    DraftPurchaseFormField::VendorContactId,
-                                    &self.individual_display,
-                                )
-                                .display(
-                                    DraftPurchaseFormField::VendorCompanyId,
-                                    &self.company_display,
-                                )
+                                .display(DraftPurchaseFormField::VendorId, &self.vendor_display)
                                 .display(
                                     DraftPurchaseFormField::PurchaseGoodsLinesJson,
                                     &self.purchase_goods_lines_preview,
@@ -1081,7 +1061,7 @@ impl RenderTemplate for DraftPurchaseCreateModalPage {
                                     &self.purchase_service_lines_preview,
                                 )
                                 .m2m(DraftPurchaseFormField::Taxes, &self.tax_items),
-                        )))
+                        ))
                         (PreEscaped(&self.extra_inputs))
                     },
                     actions: html! {
@@ -1108,8 +1088,7 @@ pub struct DraftPurchaseBulkEditModalPage {
     pub ids: String,
     pub selected_count: usize,
     pub form: DraftPurchaseBulkEditForm,
-    pub individual_display: String,
-    pub company_display: String,
+    pub vendor_display: String,
     pub tax_items: Vec<ManyToManyItem>,
     pub purchase_goods_lines_preview: String,
     pub purchase_service_lines_preview: String,
@@ -1151,13 +1130,8 @@ impl RenderTemplate for DraftPurchaseBulkEditModalPage {
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: html! {
                         input type="hidden" name="ids" value=(self.ids);
-                        (with_contact_company_prefill(DraftPurchaseBulkEditForm::render_inputs(
+                        (DraftPurchaseBulkEditForm::render_inputs(
                             &FormCtx::form::<DraftPurchaseBulkEditForm>(CsrfToken::current())
-                                .x_data(&individual_x_data(&self.form.vendor_is_individual))
-                                .checked(
-                                    DraftPurchaseBulkEditFormField::VendorIsIndividual,
-                                    individual_is_on(&self.form.vendor_is_individual),
-                                )
                                 .value(DraftPurchaseBulkEditFormField::Number, &self.form.number)
                                 .value(DraftPurchaseBulkEditFormField::Reference, &self.form.reference)
                                 .value(
@@ -1175,16 +1149,8 @@ impl RenderTemplate for DraftPurchaseBulkEditModalPage {
                                     &self.form.delivery_date,
                                 )
                                 .value(
-                                    DraftPurchaseBulkEditFormField::VendorIsIndividual,
-                                    &self.form.vendor_is_individual,
-                                )
-                                .value(
-                                    DraftPurchaseBulkEditFormField::VendorContactId,
-                                    &self.form.vendor_contact_id.to_string(),
-                                )
-                                .value(
-                                    DraftPurchaseBulkEditFormField::VendorCompanyId,
-                                    &self.form.vendor_company_id.to_string(),
+                                    DraftPurchaseBulkEditFormField::VendorId,
+                                    &self.form.vendor_id.to_string(),
                                 )
                                 .value(
                                     DraftPurchaseBulkEditFormField::PaymentTermLinesJson,
@@ -1199,12 +1165,8 @@ impl RenderTemplate for DraftPurchaseBulkEditModalPage {
                                     &self.form.purchase_service_lines_json,
                                 )
                                 .display(
-                                    DraftPurchaseBulkEditFormField::VendorContactId,
-                                    &self.individual_display,
-                                )
-                                .display(
-                                    DraftPurchaseBulkEditFormField::VendorCompanyId,
-                                    &self.company_display,
+                                    DraftPurchaseBulkEditFormField::VendorId,
+                                    &self.vendor_display,
                                 )
                                 .display(
                                     DraftPurchaseBulkEditFormField::PurchaseGoodsLinesJson,
@@ -1215,7 +1177,7 @@ impl RenderTemplate for DraftPurchaseBulkEditModalPage {
                                     &self.purchase_service_lines_preview,
                                 )
                                 .m2m(DraftPurchaseBulkEditFormField::Taxes, &self.tax_items),
-                        )))
+                        ))
                         (PreEscaped(&self.extra_inputs))
                     },
                     actions: html! {
@@ -1831,7 +1793,6 @@ impl RenderTemplate for CancelBulkPurchasePage {
 
 #[derive(Generic)]
 pub struct PurchasePreferencesPage {
-    pub form: PurchasePreferencesForm,
     pub can_edit: bool,
 }
 
@@ -1839,23 +1800,7 @@ impl PurchasePreferencesPage {
     fn body(&self) -> Markup {
         html! {
             (field_title(FieldTitle { value: "Purchase preferences", classes: "" }))
-            form method="post" action=(PurchasePreferencesPostRouteTag.url()) {
-                (PurchasePreferencesForm::render_inputs(&FormCtx::form::<PurchasePreferencesForm>(CsrfToken::current())
-                    .value(
-                        PurchasePreferencesFormField::AccountPayableId,
-                        &self.form.account_payable_id,
-                    )
-                    .value(
-                        PurchasePreferencesFormField::AccountExpenseId,
-                        &self.form.account_expense_id,
-                    )
-                    .value(
-                        PurchasePreferencesFormField::AccountInputTaxId,
-                        &self.form.account_input_tax_id,
-                    )
-                    .value(PurchasePreferencesFormField::JournalId, &self.form.journal_id)))
-                (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-            }
+            p { "Purchase accounts come from each product and service journal entry template." }
         }
     }
 }

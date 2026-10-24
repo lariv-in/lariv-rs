@@ -18,13 +18,13 @@ use crate::hub_sort::{
     expr_posted_final_due, expr_tax_levied_approx, expr_vendor,
 };
 use crate::logic::PurchaseListMetrics;
+use crate::routes::PurchaseProductFkSelectRouteTag;
 use lariv_core::datetime::parse_date;
 use lariv_core::db::trigram::{WORD_SIMILARITY_THRESHOLD, like_contains_pattern};
 use lariv_core::list_filters::{
     CmpOp, FilterClause, FilterField, FilterWidget, custom, date_column, datetime_column,
     text_column,
 };
-use lariv_plugin_finance_products::routes::ProductFkSelectRouteTag;
 
 /// Which purchase hub tab the catalog is built for.
 ///
@@ -319,7 +319,7 @@ where
         "product",
         "Product",
         FilterWidget::ForeignKey {
-            url: ProductFkSelectRouteTag.url(),
+            url: PurchaseProductFkSelectRouteTag.url(),
             placeholder: "Select product…".into(),
             search_key: "Name".into(),
         },

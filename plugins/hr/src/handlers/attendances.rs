@@ -620,9 +620,7 @@ async fn edit_error_response(
 }
 
 fn coord_text(value: Option<f64>) -> String {
-    value
-        .map(|number| number.to_string())
-        .unwrap_or_default()
+    value.map(|number| number.to_string()).unwrap_or_default()
 }
 
 fn format_optional_datetime(

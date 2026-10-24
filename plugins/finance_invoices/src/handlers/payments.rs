@@ -20,8 +20,7 @@ use lariv_core::web::{
 use lariv_plugin_users::middleware::RequireAuth;
 
 use lariv_plugin_finance_accounts::scope::{
-    CurrencyFormat, load_account_parent_label, load_journal_entry_currency_format,
-    load_journal_entry_currency_formats,
+    CurrencyFormat, load_journal_entry_currency_format, load_journal_entry_currency_formats,
 };
 use lariv_plugin_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
@@ -94,9 +93,8 @@ fn posted_invoice_display_label(id: i64, number: &str) -> String {
 async fn load_payment_form_context(
     db: &sea_orm::DatabaseConnection,
     posted_invoice_id: i64,
-    account_id: &str,
     tax_ids: &[i64],
-) -> (String, String, Vec<ManyToManyItem>) {
+) -> (String, Vec<ManyToManyItem>) {
     let posted_invoice_display = if posted_invoice_id > 0 {
         lariv_core::web::opt_or_log(
             PostedInvoiceEntity::find_by_id(posted_invoice_id)
@@ -110,19 +108,13 @@ async fn load_payment_form_context(
         String::new()
     };
 
-    let account_display = if let Ok(id) = account_id.trim().parse::<i64>() {
-        load_account_parent_label(db, Some(id)).await
-    } else {
-        String::new()
-    };
-
     let taxes = load_taxes_by_ids(db, tax_ids).await.unwrap_or_default();
     let tax_items = taxes
         .iter()
         .map(|t| ManyToManyItem::new(t.id.to_string(), tax_label(t)))
         .collect();
 
-    (posted_invoice_display, account_display, tax_items)
+    (posted_invoice_display, tax_items)
 }
 
 async fn payment_create_modal_page(
@@ -132,14 +124,13 @@ async fn payment_create_modal_page(
     error: String,
 ) -> PaymentCreateModalPage {
     let posted_invoice_id = form.posted_invoice_id;
-    let (posted_invoice_display, account_display, tax_items) =
-        load_payment_form_context(db, posted_invoice_id, &form.account_id, &form.taxes).await;
+    let (posted_invoice_display, tax_items) =
+        load_payment_form_context(db, posted_invoice_id, &form.taxes).await;
     PaymentCreateModalPage {
         form_name: q.modal.form_name(),
         refresh_table: q.modal.refresh_table(),
         form,
         posted_invoice_display,
-        account_display,
         tax_items,
         error,
     }
@@ -392,7 +383,6 @@ pub async fn create_get(
         PaymentForm {
             posted_invoice_id,
             amount,
-            account_id: String::new(),
             datetime: ctx.datetime_local_input(Utc::now()).into_string(),
             taxes: vec![],
             csrf: CsrfToken::current(),
@@ -420,16 +410,9 @@ pub async fn create_post(
                 .into_response();
         }
     };
-    let account_id = form
-        .account_id
-        .trim()
-        .parse::<i64>()
-        .ok()
-        .filter(|id| *id > 0);
     let input = CreatePaymentInput {
         posted_invoice_id,
         amount,
-        account_id,
         datetime: parse_invoice_datetime(&form.datetime, &ctx.timezone),
         withholding_tax_ids: form.taxes.clone(),
     };

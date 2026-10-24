@@ -6,7 +6,6 @@ pub struct Migration;
 #[derive(DeriveIden)]
 enum Journals {
     Table,
-    Id,
     CreatedAt,
     UpdatedAt,
     Name,
@@ -22,20 +21,11 @@ enum Currencies {
 }
 
 #[derive(DeriveIden)]
-enum Accounts {
-    Table,
-    Id,
-    Code,
-}
-
-#[derive(DeriveIden)]
 enum ProductPreferences {
     Table,
     Id,
     CreatedAt,
     UpdatedAt,
-    InventoryAccountId,
-    CostOfSalesAccountId,
 }
 
 #[derive(DeriveIden)]
@@ -44,10 +34,6 @@ enum InvoicePreferences {
     Id,
     CreatedAt,
     UpdatedAt,
-    AccountReceivableId,
-    AccountRevenueId,
-    AccountTaxPayableId,
-    JournalId,
 }
 
 #[derive(DeriveIden)]
@@ -56,7 +42,6 @@ enum PaymentPreferences {
     Id,
     CreatedAt,
     UpdatedAt,
-    PaymentAccountId,
 }
 
 #[derive(DeriveIden)]
@@ -66,23 +51,6 @@ enum AccountingPreferences {
     CreatedAt,
     UpdatedAt,
     DefaultCurrencyId,
-}
-
-fn account_id_by_code(code: i32) -> SelectStatement {
-    Query::select()
-        .column(Accounts::Id)
-        .from(Accounts::Table)
-        .and_where(Expr::col(Accounts::Code).eq(code))
-        .limit(1)
-        .to_owned()
-}
-
-fn default_journal_id() -> SelectStatement {
-    Query::select()
-        .column(Journals::Id)
-        .from(Journals::Table)
-        .limit(1)
-        .to_owned()
 }
 
 fn currency_id_by_code(code: i32) -> SelectStatement {
@@ -142,23 +110,15 @@ impl MigrationTrait for Migration {
                 ProductPreferences::Id,
                 ProductPreferences::CreatedAt,
                 ProductPreferences::UpdatedAt,
-                ProductPreferences::InventoryAccountId,
-                ProductPreferences::CostOfSalesAccountId,
             ])
             .values_panic([
                 1.into(),
                 Expr::current_timestamp().into(),
                 Expr::current_timestamp().into(),
-                subquery_expr(account_id_by_code(10301)).into(),
-                subquery_expr(account_id_by_code(50201)).into(),
             ])
             .on_conflict(
                 OnConflict::column(ProductPreferences::Id)
-                    .update_columns([
-                        ProductPreferences::InventoryAccountId,
-                        ProductPreferences::CostOfSalesAccountId,
-                        ProductPreferences::UpdatedAt,
-                    ])
+                    .update_columns([ProductPreferences::UpdatedAt])
                     .to_owned(),
             )
             .to_owned();
@@ -170,29 +130,15 @@ impl MigrationTrait for Migration {
                 InvoicePreferences::Id,
                 InvoicePreferences::CreatedAt,
                 InvoicePreferences::UpdatedAt,
-                InvoicePreferences::AccountReceivableId,
-                InvoicePreferences::AccountRevenueId,
-                InvoicePreferences::AccountTaxPayableId,
-                InvoicePreferences::JournalId,
             ])
             .values_panic([
                 1.into(),
                 Expr::current_timestamp().into(),
                 Expr::current_timestamp().into(),
-                subquery_expr(account_id_by_code(10201)).into(),
-                subquery_expr(account_id_by_code(40101)).into(),
-                subquery_expr(account_id_by_code(20203)).into(),
-                subquery_expr(default_journal_id()).into(),
             ])
             .on_conflict(
                 OnConflict::column(InvoicePreferences::Id)
-                    .update_columns([
-                        InvoicePreferences::AccountReceivableId,
-                        InvoicePreferences::AccountRevenueId,
-                        InvoicePreferences::AccountTaxPayableId,
-                        InvoicePreferences::JournalId,
-                        InvoicePreferences::UpdatedAt,
-                    ])
+                    .update_columns([InvoicePreferences::UpdatedAt])
                     .to_owned(),
             )
             .to_owned();
@@ -204,20 +150,15 @@ impl MigrationTrait for Migration {
                 PaymentPreferences::Id,
                 PaymentPreferences::CreatedAt,
                 PaymentPreferences::UpdatedAt,
-                PaymentPreferences::PaymentAccountId,
             ])
             .values_panic([
                 1.into(),
                 Expr::current_timestamp().into(),
                 Expr::current_timestamp().into(),
-                subquery_expr(account_id_by_code(10101)).into(),
             ])
             .on_conflict(
                 OnConflict::column(PaymentPreferences::Id)
-                    .update_columns([
-                        PaymentPreferences::PaymentAccountId,
-                        PaymentPreferences::UpdatedAt,
-                    ])
+                    .update_columns([PaymentPreferences::UpdatedAt])
                     .to_owned(),
             )
             .to_owned();
@@ -252,51 +193,7 @@ impl MigrationTrait for Migration {
         Ok(())
     }
 
-    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let conn = manager.get_connection();
-
-        let update_product = Query::update()
-            .table(ProductPreferences::Table)
-            .value(
-                ProductPreferences::InventoryAccountId,
-                Expr::val(None::<i64>),
-            )
-            .value(
-                ProductPreferences::CostOfSalesAccountId,
-                Expr::val(None::<i64>),
-            )
-            .and_where(Expr::col(ProductPreferences::Id).eq(1))
-            .to_owned();
-        conn.execute(&update_product).await?;
-
-        let update_invoice = Query::update()
-            .table(InvoicePreferences::Table)
-            .values([
-                (
-                    InvoicePreferences::AccountReceivableId,
-                    Expr::val(None::<i64>).into(),
-                ),
-                (
-                    InvoicePreferences::AccountRevenueId,
-                    Expr::val(None::<i64>).into(),
-                ),
-                (
-                    InvoicePreferences::AccountTaxPayableId,
-                    Expr::val(None::<i64>).into(),
-                ),
-                (InvoicePreferences::JournalId, Expr::val(None::<i64>).into()),
-            ])
-            .and_where(Expr::col(InvoicePreferences::Id).eq(1))
-            .to_owned();
-        conn.execute(&update_invoice).await?;
-
-        let update_payment = Query::update()
-            .table(PaymentPreferences::Table)
-            .value(PaymentPreferences::PaymentAccountId, Expr::val(None::<i64>))
-            .and_where(Expr::col(PaymentPreferences::Id).eq(1))
-            .to_owned();
-        conn.execute(&update_payment).await?;
-
+    async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
         Ok(())
     }
 }

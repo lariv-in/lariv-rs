@@ -8,14 +8,14 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_plugin_finance_common::decimal::{self, parse_decimal};
-use lariv_plugin_finance_products::{
+use crate::purchase_products::{
     entities::product::Entity as ProductEntity, preferences::load_product_tax_ids, pricing,
 };
-use lariv_plugin_finance_services::{
+use crate::purchase_services::{
     entities::service::Entity as ServiceEntity, preferences::load_service_tax_ids,
     pricing as service_pricing,
 };
+use lariv_plugin_finance_common::decimal::{self, parse_decimal};
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
 use crate::entities::{
@@ -213,26 +213,16 @@ async fn build_line<C: ConnectionTrait>(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("unknown product #{}", row.product_id))?;
     let quantity = parse_positive_quantity(&row.quantity)?;
-    let explicit_rate = optional_non_negative_rate(&row.rate)?;
-    let priced = if pricing::has_variable_pricing(&prod.variables) {
+    let rate =
+        optional_non_negative_rate(&row.rate)?.ok_or_else(|| "rate is required".to_string())?;
+    let mut priced = pricing::from_quantity_rate(quantity, rate)?;
+    if pricing::has_variable_pricing(&prod.variables) {
         let raw = row
             .variables
             .clone()
             .unwrap_or_else(|| serde_json::json!({}));
-        let unit = pricing::price_line(&prod.variables, &prod.sales_price_formula, &raw)?;
-        let mut priced = pricing::with_quantity(unit, quantity)?;
-        if let Some(rate) = explicit_rate {
-            priced.rate = decimal::normalize(rate);
-            priced.pre_tax = decimal::dec_mul(priced.quantity, priced.rate);
-        }
-        priced
-    } else {
-        let rate = match explicit_rate {
-            Some(rate) => rate,
-            None => pricing::unit_amount(&prod.sales_price_formula)?,
-        };
-        pricing::from_quantity_rate(quantity, rate)?
-    };
+        priced.variable_values = pricing::persist_line_variables(&prod.variables, &raw)?;
+    }
     let product_tax_ids = load_product_tax_ids(db, prod.id).await;
     let tax_ids = merge_tax_ids(header_tax_ids, &product_tax_ids, row.tax_ids.as_deref());
     if !tax_ids.is_empty() {
@@ -298,7 +288,7 @@ pub struct CreateDraftInput {
     pub remarks: Option<String>,
     pub datetime: DateTime<Utc>,
     pub delivery_date: Option<NaiveDate>,
-    pub bill_to: crate::logic::BillTo,
+    pub vendor_id: i64,
     pub payment_term_lines: Vec<DraftPaymentTermLineInput>,
     pub header_tax_ids: Vec<i64>,
     pub lines: Vec<DraftLinePending>,
@@ -307,17 +297,13 @@ pub struct CreateDraftInput {
 
 pub async fn create_draft_purchase(
     db: &DatabaseConnection,
-    mut input: CreateDraftInput,
+    input: CreateDraftInput,
     _tz: &str,
 ) -> Result<draft_purchase::Model, String> {
-    input.bill_to = crate::logic::bill_to::fill_company_from_contact(db, input.bill_to).await;
     let lines = occupied_goods_lines(&input.lines)?;
     let service_lines = occupied_service_lines(&input.service_lines)?;
     if lines.is_empty() && service_lines.is_empty() {
         return Err("add at least one goods or service line".to_string());
-    }
-    if input.bill_to.party_id() <= 0 {
-        return Err("select a contact or a company".to_string());
     }
 
     let txn = db.begin().await.map_err(|e| e.to_string())?;
@@ -334,9 +320,7 @@ pub async fn create_draft_purchase(
         remarks: Set(input.remarks),
         datetime: Set(input.datetime),
         delivery_date: Set(input.delivery_date),
-        vendor_is_individual: Set(input.bill_to.vendor_is_individual),
-        vendor_contact_id: Set(input.bill_to.vendor_contact_id),
-        vendor_company_id: Set(input.bill_to.vendor_company_id),
+        vendor_id: Set(crate::logic::bill_to::require_vendor_id(&txn, input.vendor_id).await?),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -382,7 +366,7 @@ pub struct UpdateDraftInput {
     pub remarks: Option<String>,
     pub datetime: DateTime<Utc>,
     pub delivery_date: Option<NaiveDate>,
-    pub bill_to: crate::logic::BillTo,
+    pub vendor_id: i64,
     pub payment_term_lines: Vec<DraftPaymentTermLineInput>,
     pub header_tax_ids: Vec<i64>,
     pub lines: Vec<DraftLinePending>,
@@ -392,10 +376,9 @@ pub struct UpdateDraftInput {
 pub async fn update_draft_purchase(
     db: &DatabaseConnection,
     draft_id: i64,
-    mut input: UpdateDraftInput,
+    input: UpdateDraftInput,
     _tz: &str,
 ) -> Result<draft_purchase::Model, String> {
-    input.bill_to = crate::logic::bill_to::fill_company_from_contact(db, input.bill_to).await;
     err_if_draft_sealed(db, draft_id).await?;
     let lines = occupied_goods_lines(&input.lines)?;
     let service_lines = occupied_service_lines(&input.service_lines)?;
@@ -423,9 +406,7 @@ pub async fn update_draft_purchase(
     am.remarks = Set(input.remarks);
     am.datetime = Set(input.datetime);
     am.delivery_date = Set(input.delivery_date);
-    am.vendor_is_individual = Set(input.bill_to.vendor_is_individual);
-    am.vendor_contact_id = Set(input.bill_to.vendor_contact_id);
-    am.vendor_company_id = Set(input.bill_to.vendor_company_id);
+    am.vendor_id = Set(crate::logic::bill_to::require_vendor_id(&txn, input.vendor_id).await?);
     am.updated_at = Set(Some(now));
     let draft = am.update(&txn).await.map_err(|e| e.to_string())?;
 
@@ -474,7 +455,7 @@ pub struct PatchDraftInput {
     pub remarks: Option<String>,
     pub datetime: Option<DateTime<Utc>>,
     pub delivery_date: Option<NaiveDate>,
-    pub bill_to: Option<crate::logic::BillTo>,
+    pub vendor_id: Option<i64>,
     pub payment_term_lines: Option<Vec<DraftPaymentTermLineInput>>,
     pub header_tax_ids: Option<Vec<i64>>,
     pub lines: Option<Vec<DraftLinePending>>,
@@ -490,7 +471,7 @@ impl PatchDraftInput {
             && self.remarks.is_none()
             && self.datetime.is_none()
             && self.delivery_date.is_none()
-            && self.bill_to.is_none()
+            && self.vendor_id.is_none()
             && self.payment_term_lines.is_none()
             && self.header_tax_ids.is_none()
             && self.lines.is_none()
@@ -501,13 +482,9 @@ impl PatchDraftInput {
 pub async fn patch_draft_purchase(
     db: &DatabaseConnection,
     draft_id: i64,
-    mut input: PatchDraftInput,
+    input: PatchDraftInput,
     _tz: &str,
 ) -> Result<draft_purchase::Model, String> {
-    if let Some(bill_to) = input.bill_to {
-        input.bill_to =
-            Some(crate::logic::bill_to::fill_company_from_contact(db, bill_to).await);
-    }
     err_if_draft_sealed(db, draft_id).await?;
     if input.is_empty() {
         return Err("fill at least one field to update".to_string());
@@ -554,13 +531,8 @@ pub async fn patch_draft_purchase(
     if let Some(delivery_date) = input.delivery_date {
         am.delivery_date = Set(Some(delivery_date));
     }
-    if let Some(bill_to) = input.bill_to {
-        if bill_to.party_id() <= 0 {
-            return Err("select a contact or a company".to_string());
-        }
-        am.vendor_is_individual = Set(bill_to.vendor_is_individual);
-        am.vendor_contact_id = Set(bill_to.vendor_contact_id);
-        am.vendor_company_id = Set(bill_to.vendor_company_id);
+    if let Some(vendor_id) = input.vendor_id {
+        am.vendor_id = Set(crate::logic::bill_to::require_vendor_id(&txn, vendor_id).await?);
     }
     am.updated_at = Set(Some(now));
     let draft = am.update(&txn).await.map_err(|e| e.to_string())?;
@@ -790,7 +762,10 @@ mod tests {
     #[test]
     fn optional_rate_overrides_formula_only_when_typed() {
         assert_eq!(optional_non_negative_rate(&None).unwrap(), None);
-        assert_eq!(optional_non_negative_rate(&Some("  ".into())).unwrap(), None);
+        assert_eq!(
+            optional_non_negative_rate(&Some("  ".into())).unwrap(),
+            None
+        );
         assert_eq!(
             optional_non_negative_rate(&Some("12.5".into())).unwrap(),
             Some(Decimal::new(125, 1))

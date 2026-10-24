@@ -1020,9 +1020,6 @@ const SHEETS: &[SheetDef] = &[
             "payment_reference",
             "bank_account",
             "remarks",
-            "account_receivable_id",
-            "account_revenue_id",
-            "account_tax_payable_id",
             "journal_id",
             "datetime",
             "delivery_date",
@@ -1036,18 +1033,6 @@ const SHEETS: &[SheetDef] = &[
             Fk {
                 column: "draft_invoice_id",
                 target: "draft_invoices",
-            },
-            Fk {
-                column: "account_receivable_id",
-                target: "accounts",
-            },
-            Fk {
-                column: "account_revenue_id",
-                target: "accounts",
-            },
-            Fk {
-                column: "account_tax_payable_id",
-                target: "accounts",
             },
             Fk {
                 column: "journal_id",
@@ -1082,9 +1067,6 @@ const SHEETS: &[SheetDef] = &[
             "payment_reference",
             "bank_account",
             "remarks",
-            "account_receivable_id",
-            "account_revenue_id",
-            "account_tax_payable_id",
             "journal_id",
             "datetime",
             "delivery_date",
@@ -1098,18 +1080,6 @@ const SHEETS: &[SheetDef] = &[
             Fk {
                 column: "posted_invoice_id",
                 target: "posted_invoices",
-            },
-            Fk {
-                column: "account_receivable_id",
-                target: "accounts",
-            },
-            Fk {
-                column: "account_revenue_id",
-                target: "accounts",
-            },
-            Fk {
-                column: "account_tax_payable_id",
-                target: "accounts",
             },
             Fk {
                 column: "journal_id",
@@ -1629,14 +1599,10 @@ const SHEETS: &[SheetDef] = &[
             "name",
             "percentage",
             "tax_type",
-            "account_id",
         ],
         root: false,
         parent: None,
-        fks: &[Fk {
-            column: "account_id",
-            target: "accounts",
-        }],
+        fks: &[],
     },
     SheetDef {
         table: "accounts",
@@ -1769,7 +1735,6 @@ const SHEETS: &[SheetDef] = &[
             "updated_at",
             "posted_invoice_id",
             "amount",
-            "account_id",
             "datetime",
             "journal_entry_id",
             "payment_batch_id",
@@ -1780,10 +1745,6 @@ const SHEETS: &[SheetDef] = &[
             Fk {
                 column: "posted_invoice_id",
                 target: "posted_invoices",
-            },
-            Fk {
-                column: "account_id",
-                target: "accounts",
             },
             Fk {
                 column: "journal_entry_id",
@@ -1802,22 +1763,15 @@ const SHEETS: &[SheetDef] = &[
             "created_at",
             "updated_at",
             "datetime",
-            "account_id",
             "journal_entry_id",
             "total_amount",
         ],
         root: false,
         parent: None,
-        fks: &[
-            Fk {
-                column: "account_id",
-                target: "accounts",
-            },
-            Fk {
-                column: "journal_entry_id",
-                target: "journal_entries",
-            },
-        ],
+        fks: &[Fk {
+            column: "journal_entry_id",
+            target: "journal_entries",
+        }],
     },
     SheetDef {
         table: "source_docs",

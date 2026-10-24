@@ -9,6 +9,10 @@
 //! entered and convert only at evaluation. Duration is seconds. Quantity is an
 //! integer count (`Number`, shown as `No.`). Decimal stores unit `None` and
 //! renders with no unit. A percent is the number the user typed (`18` for 18%).
+//!
+//! Formula source is rewritten before it reaches Rune: bare numeric literals are
+//! wrapped in `decimal(...)`, and a unary minus on anything else (`-pre_tax`)
+//! becomes `decimal("0") - ...` because Rune has no negation protocol.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -281,9 +285,8 @@ fn normalize_accepted_unit(ty: VariableType, unit: &str) -> Result<String, Formu
             let parsed = if unit.is_empty() {
                 WeightUnit::Kilogram
             } else {
-                parse_weight_unit(unit).ok_or_else(|| {
-                    FormulaError::msg(format!("unknown weight unit `{unit}`"))
-                })?
+                parse_weight_unit(unit)
+                    .ok_or_else(|| FormulaError::msg(format!("unknown weight unit `{unit}`")))?
             };
             Ok(parsed.as_str().to_string())
         }
@@ -347,9 +350,9 @@ pub fn schema_to_entries(schema: &VariableSchema) -> Vec<String> {
     keys.sort();
     keys.into_iter()
         .filter_map(|k| {
-            schema.get(&k).map(|def| {
-                format!("{}:{}:{}", k, def.ty.as_str(), def.accepted_unit)
-            })
+            schema
+                .get(&k)
+                .map(|def| format!("{}:{}:{}", k, def.ty.as_str(), def.accepted_unit))
         })
         .collect()
 }
@@ -579,9 +582,9 @@ pub fn convert_measure(measure: &Measure, accepted_unit: &str) -> Result<Decimal
 fn length_in_unit(value: &Decimal, from: &str, to: &str) -> Result<Decimal, FormulaError> {
     let mm = parse_length(&value.normalize().to_string(), from)?;
     let to_unit = length_unit(to)?;
-    let per_mm = Decimal::from(i64::try_from(length::NM_PER_MM).map_err(|_| {
-        FormulaError::msg("length overflow")
-    })?);
+    let per_mm = Decimal::from(
+        i64::try_from(length::NM_PER_MM).map_err(|_| FormulaError::msg("length overflow"))?,
+    );
     let per_to = Decimal::from(
         i64::try_from(to_unit.nm_per_unit()).map_err(|_| FormulaError::msg("length overflow"))?,
     );
@@ -771,22 +774,30 @@ fn bind_decimal(body: &mut String, name: &str, value: &Decimal) {
     ));
 }
 
-/// Turn base-10 numeric literals into `decimal("...")` calls.
+/// Turn base-10 numeric literals into `decimal("...")` calls and expand unary
+/// minus on non-literals into `decimal("0") - ...`.
 ///
 /// Rune literals are integers or `f64`. Rewriting the source keeps the digits the
 /// user typed. Strings and comments are left alone, so an existing `decimal("1.5")`
-/// is not wrapped again. A unary minus is folded into the literal (`-1.5` becomes
-/// `decimal("-1.5")`) because Rune only negates integers and floats.
-fn rewrite_numeric_literals(source: &str) -> String {
+/// is not wrapped again. A unary minus on a literal is folded into it (`-1.5`
+/// becomes `decimal("-1.5")`) because Rune only negates integers and floats.
+/// For everything else Rune has no negation protocol, so `-pre_tax` becomes
+/// `(decimal("0") - pre_tax)`.
+fn rewrite_decimals(source: &str) -> String {
     let mut out = String::with_capacity(source.len());
     let mut i = 0;
     let mut last_code: Option<char> = None;
+    let mut depth = 0usize;
+    let mut negations: Vec<usize> = Vec::new();
     while i < source.len() {
         if tail(source, i).starts_with("//") {
+            // A comment ends the operand, so close every expansion first.
+            close_negations(&mut out, &mut negations, 0);
             i = copy_line_comment(source, i, &mut out);
             continue;
         }
         if tail(source, i).starts_with("/*") {
+            close_negations(&mut out, &mut negations, 0);
             i = copy_block_comment(source, i, &mut out);
             continue;
         }
@@ -798,13 +809,17 @@ fn rewrite_numeric_literals(source: &str) -> String {
             last_code = Some(ch);
             continue;
         }
-        if ch == '-'
-            && is_unary_minus(last_code)
-            && let Some(number) = signed_decimal_literal(source, i)
-        {
-            push_decimal_call(&mut out, &number.payload);
-            last_code = Some(')');
-            i = number.end;
+        if ch == '-' && is_unary_minus(last_code) {
+            if let Some(number) = signed_decimal_literal(source, i) {
+                push_decimal_call(&mut out, &number.payload);
+                last_code = Some(')');
+                i = number.end;
+                continue;
+            }
+            out.push_str("(decimal(\"0\") - ");
+            negations.push(depth);
+            last_code = Some('-');
+            i += ch.len_utf8();
             continue;
         }
         if ch.is_ascii_digit() && !prev_is_ident(source, i) {
@@ -821,13 +836,68 @@ fn rewrite_numeric_literals(source: &str) -> String {
             i = number.end;
             continue;
         }
+        if ends_operand(ch) {
+            close_negations(&mut out, &mut negations, depth);
+        }
         out.push(ch);
+        match ch {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
         if !ch.is_whitespace() {
             last_code = Some(ch);
         }
         i += ch.len_utf8();
     }
+    close_negations(&mut out, &mut negations, 0);
     out
+}
+
+/// Characters that end the operand of an expanded unary minus.
+///
+/// A closing delimiter is included because `-pre_tax)` has to close both the
+/// group and the expansion before the delimiter is copied.
+fn ends_operand(ch: char) -> bool {
+    matches!(
+        ch,
+        '+' | '-'
+            | '*'
+            | '/'
+            | '%'
+            | '<'
+            | '>'
+            | '='
+            | '!'
+            | '&'
+            | '|'
+            | '^'
+            | '~'
+            | ','
+            | ';'
+            | ')'
+            | ']'
+            | '}'
+    )
+}
+
+/// Close every expansion that started at or inside `depth`. Depth zero closes
+/// all of them, which is what end of input and comments need.
+fn close_negations(out: &mut String, negations: &mut Vec<usize>, depth: usize) {
+    while negations.last().is_some_and(|open| *open >= depth) {
+        negations.pop();
+        push_closer(out);
+    }
+}
+
+/// Push `)` before any whitespace already written, so `-a * b` closes as
+/// `(decimal("0") - a) * b` instead of `(decimal("0") - a )* b`.
+fn push_closer(out: &mut String) {
+    let trimmed = out.trim_end().len();
+    let trailing = out.get(trimmed..).unwrap_or("").to_string();
+    out.truncate(trimmed);
+    out.push(')');
+    out.push_str(&trailing);
 }
 
 fn tail(source: &str, i: usize) -> &str {
@@ -1016,7 +1086,7 @@ fn consume_exponent(source: &str, end: usize) -> usize {
 }
 
 fn run_compute(source: &str) -> Result<Decimal, FormulaError> {
-    let source = rewrite_numeric_literals(source);
+    let source = rewrite_decimals(source);
     let mut context = Context::with_config(false).map_err(|e| FormulaError::msg(e.to_string()))?;
     context
         .install(decimal_module().map_err(|e| FormulaError::msg(e.to_string()))?)
@@ -1329,7 +1399,10 @@ mod tests {
     fn eval_underscored_name() {
         let schema = schema(&[("unit_price", VariableType::Decimal)]);
         let mut values = VariableValues::new();
-        values.insert("unit_price".into(), measure(VariableType::Decimal, 12, "None"));
+        values.insert(
+            "unit_price".into(),
+            measure(VariableType::Decimal, 12, "None"),
+        );
         let out = eval_formula(&schema, "unit_price * 2", &values).unwrap();
         assert_eq!(out, Decimal::from(24));
     }
@@ -1351,7 +1424,10 @@ mod tests {
     fn eval_decimal_division_no_f64() {
         let schema = schema(&[("duration", VariableType::Duration)]);
         let mut values = VariableValues::new();
-        values.insert("duration".into(), measure(VariableType::Duration, 3600, "s"));
+        values.insert(
+            "duration".into(),
+            measure(VariableType::Duration, 3600, "s"),
+        );
         let out = eval_formula(&schema, "duration / 3600 * 950", &values).unwrap();
         assert_eq!(out, Decimal::from(950));
     }
@@ -1380,7 +1456,10 @@ mod tests {
     fn eval_fractional_constant_times_variable() {
         let schema = schema(&[("unit_price", VariableType::Decimal)]);
         let mut values = VariableValues::new();
-        values.insert("unit_price".into(), measure(VariableType::Decimal, 12, "None"));
+        values.insert(
+            "unit_price".into(),
+            measure(VariableType::Decimal, 12, "None"),
+        );
         let out = eval_formula(&schema, "unit_price * 1.5", &values).unwrap();
         assert_eq!(out, Decimal::from(18));
     }
@@ -1389,7 +1468,10 @@ mod tests {
     fn eval_constant_on_the_left() {
         let schema = schema(&[("unit_price", VariableType::Decimal)]);
         let mut values = VariableValues::new();
-        values.insert("unit_price".into(), measure(VariableType::Decimal, 12, "None"));
+        values.insert(
+            "unit_price".into(),
+            measure(VariableType::Decimal, 12, "None"),
+        );
         let out = eval_formula(&schema, "2 * unit_price", &values).unwrap();
         assert_eq!(out, Decimal::from(24));
     }
@@ -1418,6 +1500,13 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out, Decimal::new(3, 1));
+        let out = eval_formula(
+            &VariableSchema::new(),
+            r#"decimal("0") - 1.5"#,
+            &VariableValues::new(),
+        )
+        .unwrap();
+        assert_eq!(out, Decimal::new(-15, 1));
     }
 
     #[test]
@@ -1431,8 +1520,52 @@ mod tests {
         let source = r#"decimal("1.5") + 0x10 // 2.5
 /* 3.5 */ 1.foo"#;
         assert_eq!(
-            rewrite_numeric_literals(source),
+            rewrite_decimals(source),
             "decimal(\"1.5\") + 0x10 // 2.5\n/* 3.5 */ decimal(\"1\").foo"
+        );
+    }
+
+    #[test]
+    fn rewrite_expands_negated_variables() {
+        assert_eq!(rewrite_decimals("-pre_tax"), "(decimal(\"0\") - pre_tax)");
+        assert_eq!(
+            rewrite_decimals("-quantity * base_cost"),
+            "(decimal(\"0\") - quantity) * base_cost"
+        );
+        assert_eq!(
+            rewrite_decimals("2 * -pre_tax"),
+            "decimal(\"2\") * (decimal(\"0\") - pre_tax)"
+        );
+        assert_eq!(
+            rewrite_decimals("-(pre_tax + 5)"),
+            "(decimal(\"0\") - (pre_tax + decimal(\"5\")))"
+        );
+        assert_eq!(
+            rewrite_decimals("-f(pre_tax) // credit"),
+            "(decimal(\"0\") - f(pre_tax)) // credit"
+        );
+    }
+
+    #[test]
+    fn eval_negated_variable() {
+        let schema = schema(&[("pre_tax", VariableType::Decimal)]);
+        let mut values = VariableValues::new();
+        values.insert("pre_tax".into(), measure(VariableType::Decimal, 20, "None"));
+        assert_eq!(
+            eval_formula(&schema, "-pre_tax", &values).unwrap(),
+            Decimal::from(-20)
+        );
+        assert_eq!(
+            eval_formula(&schema, "-pre_tax / 2", &values).unwrap(),
+            Decimal::from(-10)
+        );
+        assert_eq!(
+            eval_formula(&schema, "2 * -pre_tax", &values).unwrap(),
+            Decimal::from(-40)
+        );
+        assert_eq!(
+            eval_formula(&schema, "-(pre_tax + 5)", &values).unwrap(),
+            Decimal::from(-25)
         );
     }
 
@@ -1521,8 +1654,8 @@ mod tests {
     fn parse_values_names_invalid_variables() {
         let schema = schema(&[("qty", VariableType::Quantity)]);
         let err = parse_values(&schema, &serde_json::json!({"qty": "nope"}))
-        .unwrap_err()
-        .to_string();
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("`qty`"), "{err}");
         assert!(err.contains("invalid quantity"), "{err}");
     }
@@ -1541,7 +1674,10 @@ mod tests {
         assert_eq!(s.get("l"), Some(&measure(VariableType::Length, 1, "mm")));
         assert_eq!(s.get("w"), Some(&measure(VariableType::Weight, 1, "kg")));
         assert_eq!(s.get("d"), Some(&measure(VariableType::Duration, 1, "s")));
-        assert_eq!(s.get("q"), Some(&measure(VariableType::Quantity, 1, "Number")));
+        assert_eq!(
+            s.get("q"),
+            Some(&measure(VariableType::Quantity, 1, "Number"))
+        );
         assert_eq!(s.get("m"), Some(&measure(VariableType::Decimal, 1, "None")));
         assert_eq!(s.get("p"), Some(&measure(VariableType::Percent, 1, "%")));
     }
@@ -1550,7 +1686,10 @@ mod tests {
     fn format_values_display_duration() {
         let schema = schema(&[("duration", VariableType::Duration)]);
         let mut values = VariableValues::new();
-        values.insert("duration".into(), measure(VariableType::Duration, 7200, "s"));
+        values.insert(
+            "duration".into(),
+            measure(VariableType::Duration, 7200, "s"),
+        );
         let out = format_values_display(&schema, &values);
         assert_eq!(out, "Duration: 2 hours");
     }
@@ -1570,7 +1709,8 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(schema["time"].accepted_unit, "None");
-        let raw = serde_json::json!({"time": {"kind": "decimal", "value": "90.5", "unit": "Seconds"}});
+        let raw =
+            serde_json::json!({"time": {"kind": "decimal", "value": "90.5", "unit": "Seconds"}});
         let values = parse_values(&schema, &raw).unwrap();
         assert_eq!(values["time"].unit, "None");
         assert_eq!(format_values_display(&schema, &values), "Time: 90.5");

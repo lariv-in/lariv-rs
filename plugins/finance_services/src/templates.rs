@@ -406,6 +406,8 @@ pub struct ServiceDetailPage {
     pub variables: String,
     pub base_price_formula: String,
     pub sales_price_formula: String,
+    pub journal_name: String,
+    pub journal_lines: String,
 }
 
 impl ServiceDetailPage {
@@ -427,6 +429,11 @@ impl ServiceDetailPage {
                     })))
                     (label("Sales price of one service", field_text(FieldText {
                         value: if self.sales_price_formula.trim().is_empty() { "—" } else { self.sales_price_formula.as_str() },
+                        classes: "",
+                    })))
+                    (label("Journal", field_text(FieldText { value: &self.journal_name, classes: "" })))
+                    (label("Journal entry template", field_text(FieldText {
+                        value: &self.journal_lines,
                         classes: "",
                     })))
                     (label("SAC code", field_text(FieldText { value: &self.sac_code, classes: "" })))
@@ -480,6 +487,9 @@ pub struct ServiceEditModalPage {
     pub variables: Vec<String>,
     pub base_price_formula: String,
     pub sales_price_formula: String,
+    pub journal_id: String,
+    pub journal_display: String,
+    pub journal_lines: String,
     pub sac_code: i64,
     pub tax_items: Vec<ManyToManyItem>,
     pub error: String,
@@ -509,6 +519,9 @@ impl RenderTemplate for ServiceEditModalPage {
                                 ServiceFormField::SalesPriceFormula,
                                 &self.sales_price_formula,
                             )
+                            .value(ServiceFormField::JournalId, &self.journal_id)
+                            .display(ServiceFormField::JournalId, &self.journal_display)
+                            .value(ServiceFormField::JournalLines, &self.journal_lines)
                             .value(ServiceFormField::SacCode, self.sac_code.to_string())
                             .m2m(ServiceFormField::TaxIds, &self.tax_items),
                     ),
@@ -543,6 +556,9 @@ pub struct ServiceCreateModalPage {
     pub variables: Vec<String>,
     pub base_price_formula: String,
     pub sales_price_formula: String,
+    pub journal_id: String,
+    pub journal_display: String,
+    pub journal_lines: String,
     pub sac_code: i64,
     pub tax_items: Vec<ManyToManyItem>,
     pub error: String,
@@ -581,6 +597,9 @@ impl RenderTemplate for ServiceCreateModalPage {
                                 ServiceFormField::SalesPriceFormula,
                                 &self.sales_price_formula,
                             )
+                            .value(ServiceFormField::JournalId, &self.journal_id)
+                            .display(ServiceFormField::JournalId, &self.journal_display)
+                            .value(ServiceFormField::JournalLines, &self.journal_lines)
                             .value(ServiceFormField::SacCode, self.sac_code.to_string())
                             .m2m(ServiceFormField::TaxIds, &self.tax_items),
                     ),

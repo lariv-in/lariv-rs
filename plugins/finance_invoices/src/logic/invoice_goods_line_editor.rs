@@ -25,13 +25,12 @@ use crate::entities::{
     posted_invoice::Entity as PostedInvoiceEntity,
     posted_invoice_goods_line::{self, Entity as PostedInvoiceGoodsLineEntity},
 };
-use crate::logic::preferences::load_invoice_preferences;
 use crate::logic::tax_assoc::{
     load_cancelled_line_tax_ids, load_draft_line_tax_ids, load_posted_line_tax_ids,
 };
 
 pub fn default_lines_json() -> String {
-    r#"[{"product_id":0,"quantity":"1","rate":"","product_label":"","fk_slot":"line-slot-0","tax_ids":[],"has_formula":false,"variable_rows":[],"pre_tax":"","remarks":""}]"#
+    r#"[{"product_id":0,"quantity":"1","rate":"","product_label":"","fk_slot":"InvoiceLineProduct_0","tax_ids":[],"has_formula":false,"variable_rows":[],"pre_tax":"","remarks":""}]"#
         .to_string()
 }
 
@@ -354,8 +353,24 @@ pub async fn draft_invoice_goods_line_display_rows(
         .all(db)
         .await
         .unwrap_or_default();
-    let prefs = load_invoice_preferences(db).await;
-    let currency = currency_for_journal_or_default(db, prefs.journal_id).await;
+    let mut journal_id = None;
+    let mut mixed_journals = false;
+    for ln in &lines {
+        if let Ok(Some(template)) =
+            lariv_plugin_finance_products::journal_template::load_template(db, ln.product_id).await
+        {
+            match journal_id {
+                Some(existing) if existing != template.journal_id => mixed_journals = true,
+                None => journal_id = Some(template.journal_id),
+                _ => {}
+            }
+        }
+    }
+    let currency = if mixed_journals {
+        load_default_currency_format(db).await
+    } else {
+        currency_for_journal_or_default(db, journal_id).await
+    };
 
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {

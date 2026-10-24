@@ -1,4 +1,4 @@
-//! Which party an purchase is billed to: one contact or one company.
+//! Vendor on a purchase: one `purchase_vendors` row, shown as a contact or a company.
 
 use std::collections::HashMap;
 
@@ -6,7 +6,9 @@ use lariv_plugin_contacts::entities::{
     company::{self, Entity as CompanyEntity},
     contact::{self, Entity as ContactEntity},
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter};
+
+use crate::entities::vendor::{self, Entity as VendorEntity};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BillTo {
@@ -28,6 +30,14 @@ impl BillTo {
         }
     }
 
+    pub fn from_vendor(row: &vendor::Model) -> Self {
+        if row.is_individual {
+            Self::new(true, row.individual_id, None)
+        } else {
+            Self::new(false, None, row.company_id)
+        }
+    }
+
     pub fn party_id(self) -> i64 {
         if self.vendor_is_individual {
             self.vendor_contact_id.unwrap_or(0)
@@ -35,86 +45,69 @@ impl BillTo {
             self.vendor_company_id.unwrap_or(0)
         }
     }
-
-    pub fn checkbox_value(self) -> String {
-        if self.vendor_is_individual {
-            "on".into()
-        } else {
-            String::new()
-        }
-    }
-}
-
-pub fn checkbox_on(raw: &str) -> bool {
-    raw == "on" || raw == "true" || raw == "1"
-}
-
-/// Contact is required when billing an individual; company is required otherwise.
-/// A company id sent with an individual is kept (the contact's company, or an override).
-pub fn require_bill_to(
-    vendor_is_individual: bool,
-    individual: i64,
-    company: i64,
-) -> Result<BillTo, String> {
-    let company_id = if company > 0 { Some(company) } else { None };
-    if vendor_is_individual {
-        if individual <= 0 {
-            return Err("select a contact".to_string());
-        }
-        Ok(BillTo::new(true, Some(individual), company_id))
-    } else if company_id.is_none() {
-        Err("select a company".to_string())
-    } else {
-        Ok(BillTo::new(false, None, company_id))
-    }
-}
-
-/// When an individual is selected and no company was posted, copy the contact's company.
-pub async fn fill_company_from_contact(db: &DatabaseConnection, bill: BillTo) -> BillTo {
-    if !bill.vendor_is_individual || bill.vendor_company_id.filter(|id| *id > 0).is_some() {
-        return bill;
-    }
-    let Some(contact_id) = bill.vendor_contact_id.filter(|id| *id > 0) else {
-        return bill;
-    };
-    let company_id = ContactEntity::find_by_id(contact_id)
-        .one(db)
-        .await
-        .ok()
-        .flatten()
-        .and_then(|c| c.company_id)
-        .filter(|id| *id > 0);
-    BillTo {
-        vendor_company_id: company_id,
-        ..bill
-    }
-}
-
-/// Bulk edit: neither id leaves the existing party. When both are set, the checkbox wins.
-pub fn optional_bill_to(
-    vendor_is_individual: bool,
-    individual: i64,
-    company: i64,
-) -> Result<Option<BillTo>, String> {
-    if individual <= 0 && company <= 0 {
-        return Ok(None);
-    }
-    let individual_side = if individual > 0 && company > 0 {
-        vendor_is_individual
-    } else {
-        individual > 0
-    };
-    require_bill_to(individual_side, individual, company).map(Some)
 }
 
 pub fn vendor_name_sql(purchase_table: &str) -> String {
     format!(
-        "(CASE WHEN {purchase_table}.vendor_is_individual THEN \
-           (SELECT name FROM crm_contacts WHERE crm_contacts.id = {purchase_table}.vendor_contact_id) \
+        "(SELECT CASE WHEN purchase_vendors.is_individual THEN \
+           (SELECT name FROM crm_contacts WHERE crm_contacts.id = purchase_vendors.individual_id) \
          ELSE \
-           (SELECT name FROM crm_companies WHERE crm_companies.id = {purchase_table}.vendor_company_id) \
-         END)"
+           (SELECT name FROM crm_companies WHERE crm_companies.id = purchase_vendors.company_id) \
+         END FROM purchase_vendors WHERE purchase_vendors.id = {purchase_table}.vendor_id)"
     )
+}
+
+pub async fn require_vendor_id<C: ConnectionTrait>(db: &C, vendor_id: i64) -> Result<i64, String> {
+    if vendor_id <= 0 {
+        return Err("select a vendor".to_string());
+    }
+    match VendorEntity::find_by_id(vendor_id).one(db).await {
+        Ok(Some(_)) => Ok(vendor_id),
+        Ok(None) => Err("select a vendor".to_string()),
+        Err(err) => Err(err.to_string()),
+    }
+}
+
+pub async fn vendor_label(db: &DatabaseConnection, vendor_id: i64) -> String {
+    if vendor_id <= 0 {
+        return String::new();
+    }
+    let name = PartyLabels::one(db, load_bill_to(db, vendor_id).await).await;
+    if name == "—" { String::new() } else { name }
+}
+
+pub async fn load_bill_to<C: ConnectionTrait>(db: &C, vendor_id: i64) -> BillTo {
+    let Ok(Some(row)) = VendorEntity::find_by_id(vendor_id).one(db).await else {
+        return BillTo::new(false, None, None);
+    };
+    BillTo::from_vendor(&row)
+}
+
+pub async fn load_bill_tos<C: ConnectionTrait>(db: &C, vendor_ids: &[i64]) -> HashMap<i64, BillTo> {
+    if vendor_ids.is_empty() {
+        return HashMap::new();
+    }
+    VendorEntity::find()
+        .filter(vendor::Column::Id.is_in(vendor_ids.to_vec()))
+        .all(db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|row| (row.id, BillTo::from_vendor(&row)))
+        .collect()
+}
+
+pub async fn parties_in_order<C: ConnectionTrait>(db: &C, vendor_ids: &[i64]) -> Vec<BillTo> {
+    let loaded = load_bill_tos(db, vendor_ids).await;
+    vendor_ids
+        .iter()
+        .map(|id| {
+            loaded
+                .get(id)
+                .copied()
+                .unwrap_or_else(|| BillTo::new(false, None, None))
+        })
+        .collect()
 }
 
 pub struct PartyLabels {
@@ -189,62 +182,42 @@ impl PartyLabels {
     }
 }
 
-pub async fn party_displays(
-    db: &DatabaseConnection,
-    individual: i64,
-    company: i64,
-) -> (String, String) {
-    let labels = PartyLabels::load(
-        db,
-        &[
-            BillTo::new(true, Some(individual), None),
-            BillTo::new(false, None, Some(company)),
-        ],
-    )
-    .await;
-    (
-        if individual > 0 {
-            labels.name(BillTo::new(true, Some(individual), None))
-        } else {
-            String::new()
-        },
-        if company > 0 {
-            labels.name(BillTo::new(false, None, Some(company)))
-        } else {
-            String::new()
-        },
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn require_bill_to_keeps_one_side() {
-        let company = require_bill_to(false, 4, 9).unwrap();
-        assert!(!company.vendor_is_individual);
-        assert_eq!(company.vendor_company_id, Some(9));
-        assert_eq!(company.vendor_contact_id, None);
-
-        let person = require_bill_to(true, 4, 9).unwrap();
-        assert!(person.vendor_is_individual);
-        assert_eq!(person.vendor_contact_id, Some(4));
-        assert_eq!(person.vendor_company_id, Some(9));
-
-        let person_only = require_bill_to(true, 4, 0).unwrap();
-        assert_eq!(person_only.vendor_contact_id, Some(4));
-        assert_eq!(person_only.vendor_company_id, None);
-
-        assert!(require_bill_to(true, 0, 9).is_err());
-        assert!(require_bill_to(false, 4, 0).is_err());
+    fn vendor(
+        is_individual: bool,
+        company_id: Option<i64>,
+        individual_id: Option<i64>,
+    ) -> vendor::Model {
+        vendor::Model {
+            id: 1,
+            created_at: None,
+            updated_at: None,
+            is_individual,
+            company_id,
+            individual_id,
+        }
     }
 
     #[test]
-    fn optional_bill_to_skips_when_both_empty() {
-        assert_eq!(optional_bill_to(true, 0, 0).unwrap(), None);
-        let picked = optional_bill_to(false, 3, 8).unwrap().unwrap();
-        assert!(!picked.vendor_is_individual);
-        assert_eq!(picked.vendor_company_id, Some(8));
+    fn vendor_row_becomes_one_party() {
+        let company = BillTo::from_vendor(&vendor(false, Some(9), None));
+        assert!(!company.vendor_is_individual);
+        assert_eq!(company.vendor_company_id, Some(9));
+        assert_eq!(company.party_id(), 9);
+
+        let person = BillTo::from_vendor(&vendor(true, None, Some(4)));
+        assert!(person.vendor_is_individual);
+        assert_eq!(person.vendor_contact_id, Some(4));
+        assert_eq!(person.party_id(), 4);
+    }
+
+    #[test]
+    fn vendor_name_sql_reads_vendor() {
+        let sql = vendor_name_sql("draft_purchases");
+        assert!(sql.contains("draft_purchases.vendor_id"));
+        assert!(sql.contains("purchase_vendors"));
     }
 }

@@ -22,6 +22,7 @@ pub mod invoice_pdf_template;
 pub mod keys;
 pub mod logic;
 pub mod migrations;
+pub mod payment_journal_template;
 pub mod payment_term_kind;
 pub mod preferences_hints;
 pub mod routes;

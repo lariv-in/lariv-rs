@@ -172,7 +172,7 @@ async fn query_services(
             pricing::unit_amount(&p.sales_price_formula)
                 .ok()
                 .filter(|amount| !dec_is_zero(*amount))
-                .map(|amount| decimal::decimal_display(amount))
+                .map(decimal::decimal_display)
                 .unwrap_or_default()
         };
         rows.push(ServiceRow {
@@ -245,6 +245,7 @@ pub async fn detail(
         .await
         .unwrap_or_default();
     let tax_labels: Vec<String> = taxes.iter().map(tax_label).collect();
+    let template = journal_template_summary(&state.db, p.id).await;
     let page = ServiceDetailPage {
         id: p.id,
         name: p.name,
@@ -255,6 +256,8 @@ pub async fn detail(
         variables: pricing::schema_entries_from_stored(&p.variables).join("\n"),
         base_price_formula: p.base_price_formula,
         sales_price_formula: p.sales_price_formula,
+        journal_name: template.journal_name,
+        journal_lines: template.lines_display,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -265,6 +268,8 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
+    let (journal_id, journal_display) =
+        lariv_plugin_finance_accounts::scope::load_default_journal_form(&state.db).await;
     let default_tax_ids = load_default_service_tax_ids(&state.db).await;
     let tax_items = tax_items_from_ids(&state.db, &default_tax_ids).await;
     let page = ServiceCreateModalPage {
@@ -277,6 +282,9 @@ pub async fn create_get(
         variables: Vec::new(),
         base_price_formula: String::new(),
         sales_price_formula: String::new(),
+        journal_id,
+        journal_display,
+        journal_lines: crate::journal_template::empty_lines_json(),
         sac_code: 0,
         tax_items,
         error: String::new(),
@@ -301,6 +309,9 @@ async fn service_edit_modal_page_from_form(
         variables: form.variables.clone(),
         base_price_formula: form.base_price_formula.clone(),
         sales_price_formula: form.sales_price_formula.clone(),
+        journal_id: form.journal_id.clone(),
+        journal_display: journal_display(db, &form.journal_id).await,
+        journal_lines: form.journal_lines.clone(),
         sac_code: form.sac_code,
         tax_items,
         error,
@@ -326,9 +337,94 @@ async fn service_create_modal_page_from_form(
         variables: form.variables.clone(),
         base_price_formula: form.base_price_formula.clone(),
         sales_price_formula: form.sales_price_formula.clone(),
+        journal_id: form.journal_id.clone(),
+        journal_display: journal_display(db, &form.journal_id).await,
+        journal_lines: form.journal_lines.clone(),
         sac_code: form.sac_code,
         tax_items,
         error,
+    }
+}
+
+struct TemplateFormFields {
+    journal_id: String,
+    journal_display: String,
+    journal_lines: String,
+}
+
+struct TemplateSummary {
+    journal_name: String,
+    lines_display: String,
+}
+
+async fn journal_display(db: &sea_orm::DatabaseConnection, raw: &str) -> String {
+    let id = raw.trim().parse::<i64>().ok().filter(|id| *id > 0);
+    let label = lariv_plugin_finance_accounts::scope::load_journal_display_label(db, id).await;
+    if label == "—" { String::new() } else { label }
+}
+
+async fn template_form_fields(
+    db: &sea_orm::DatabaseConnection,
+    service_id: i64,
+) -> TemplateFormFields {
+    let Ok(Some(template)) = crate::journal_template::load_template(db, service_id).await else {
+        let (journal_id, journal_display) =
+            lariv_plugin_finance_accounts::scope::load_default_journal_form(db).await;
+        return TemplateFormFields {
+            journal_id,
+            journal_display,
+            journal_lines: crate::journal_template::empty_lines_json(),
+        };
+    };
+    let items = &template.items;
+    let mut labels = Vec::with_capacity(items.len());
+    for item in items {
+        let label = lariv_plugin_finance_accounts::scope::load_account_parent_label(
+            db,
+            Some(item.account_id),
+        )
+        .await;
+        labels.push(if label == "—" { String::new() } else { label });
+    }
+    TemplateFormFields {
+        journal_id: template.journal_id.to_string(),
+        journal_display: journal_display(db, &template.journal_id.to_string()).await,
+        journal_lines: crate::journal_template::lines_to_json(items, &labels),
+    }
+}
+
+async fn journal_template_summary(
+    db: &sea_orm::DatabaseConnection,
+    service_id: i64,
+) -> TemplateSummary {
+    let Ok(Some(template)) = crate::journal_template::load_template(db, service_id).await else {
+        return TemplateSummary {
+            journal_name: "—".into(),
+            lines_display: "—".into(),
+        };
+    };
+    let items = &template.items;
+    let journal_name = lariv_plugin_finance_accounts::scope::load_journal_display_label(
+        db,
+        Some(template.journal_id),
+    )
+    .await;
+    let mut lines = Vec::new();
+    for item in items {
+        let account = lariv_plugin_finance_accounts::scope::load_account_parent_label(
+            db,
+            Some(item.account_id),
+        )
+        .await;
+        lines.push(format!("{account}: {}", item.formula));
+    }
+    TemplateSummary {
+        journal_name,
+        lines_display: if lines.is_empty() {
+            "—".into()
+        } else {
+            lines.join("\n")
+        },
     }
 }
 
@@ -350,6 +446,7 @@ async fn save_service_from_form(
     let sales_price_formula = form.sales_price_formula.trim().to_string();
     pricing::validate_price_formula(&schema, &base_price_formula, "base price formula")?;
     pricing::validate_price_formula(&schema, &sales_price_formula, "sales price formula")?;
+    crate::journal_template::ensure_schema_allows_bindings(&schema)?;
     let now = Utc::now();
     let tax_ids = &form.tax_ids;
 
@@ -373,9 +470,17 @@ async fn save_service_from_form(
         am.sac_code = Set(form.sac_code);
         am.updated_at = Set(Some(now));
         am.update(db).await.map_err(|e| e.to_string())?;
-        set_service_tax_ids(db, id, &tax_ids)
+        set_service_tax_ids(db, id, tax_ids)
             .await
             .map_err(|e| e.to_string())?;
+        crate::journal_template::save_service_template(
+            db,
+            id,
+            &form.journal_id,
+            &form.journal_lines,
+            &schema,
+        )
+        .await?;
         Ok(id)
     } else {
         let am = service::ActiveModel {
@@ -395,9 +500,17 @@ async fn save_service_from_form(
             ..Default::default()
         };
         let m = am.insert(db).await.map_err(|e| e.to_string())?;
-        set_service_tax_ids(db, m.id, &tax_ids)
+        set_service_tax_ids(db, m.id, tax_ids)
             .await
             .map_err(|e| e.to_string())?;
+        crate::journal_template::save_service_template(
+            db,
+            m.id,
+            &form.journal_id,
+            &form.journal_lines,
+            &schema,
+        )
+        .await?;
         Ok(m.id)
     }
 }
@@ -421,7 +534,7 @@ pub async fn create_post(
                 String::new()
             } else {
                 pricing::unit_amount(&form.sales_price_formula)
-                    .map(|amount| decimal::decimal_display(amount))
+                    .map(decimal::decimal_display)
                     .unwrap_or_default()
             };
             respond_create_modal_done_fk_extra::<ServiceCreateModalKey>(
@@ -466,6 +579,7 @@ pub async fn edit_get(
     };
     let tax_ids = load_service_tax_ids(&state.db, id).await;
     let tax_items = tax_items_from_ids(&state.db, &tax_ids).await;
+    let template = template_form_fields(&state.db, p.id).await;
     let page = ServiceEditModalPage {
         id: p.id,
         form_name: q.form_name(),
@@ -475,6 +589,9 @@ pub async fn edit_get(
         variables: pricing::schema_entries_from_stored(&p.variables),
         base_price_formula: p.base_price_formula,
         sales_price_formula: p.sales_price_formula,
+        journal_id: template.journal_id,
+        journal_display: template.journal_display,
+        journal_lines: template.journal_lines,
         sac_code: p.sac_code,
         tax_items,
         error: String::new(),

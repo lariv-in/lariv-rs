@@ -17,7 +17,7 @@ use lariv_core::web::{
 use lariv_plugin_users::middleware::RequireAuth;
 
 use lariv_plugin_finance_accounts::scope::{
-    load_account_parent_label, load_journal_currency_format, load_journal_entry_currency_format,
+    load_journal_currency_format, load_journal_entry_currency_format,
 };
 use lariv_plugin_finance_taxes::scope::{load_all_taxes, load_taxes_by_ids, tax_label};
 
@@ -238,13 +238,6 @@ async fn payment_batch_create_modal_page(
     form: PaymentBatchForm,
     error: String,
 ) -> PaymentBatchCreateModalPage {
-    let account_id = form
-        .account_id
-        .trim()
-        .parse::<i64>()
-        .ok()
-        .filter(|id| *id > 0);
-    let account_display = load_account_parent_label(&state.db, account_id).await;
     let allocations_json = enrich_allocations_json(&state.db, &form.allocations_json).await;
     PaymentBatchCreateModalPage {
         form_name: q.form_name(),
@@ -253,7 +246,6 @@ async fn payment_batch_create_modal_page(
             allocations_json,
             ..form
         },
-        account_display,
         batch_allocations_preview: batch_allocations_preview(&state.db).await,
         error,
     }
@@ -282,7 +274,6 @@ pub async fn create_get(
         &q.modal,
         PaymentBatchForm {
             datetime: ctx.datetime_local_input(Utc::now()).into_string(),
-            account_id: String::new(),
             allocations_json,
             csrf: CsrfToken::current(),
         },
@@ -309,16 +300,8 @@ pub async fn create_post(
         }
     };
 
-    let account_id = form
-        .account_id
-        .trim()
-        .parse::<i64>()
-        .ok()
-        .filter(|id| *id > 0);
-
     let input = CreatePaymentBatchInput {
         datetime: parse_invoice_datetime(&form.datetime, &ctx.timezone),
-        account_id,
         allocations,
     };
 
@@ -348,7 +331,6 @@ pub async fn detail(
     );
 
     let page = if let Some(b) = batch {
-        let account_label = load_account_parent_label(&state.db, Some(b.account_id)).await;
         let payments = PaymentEntity::find()
             .filter(payment::Column::PaymentBatchId.eq(b.id))
             .all(&state.db)
@@ -404,7 +386,6 @@ pub async fn detail(
         PaymentBatchDetailPage {
             id: b.id,
             datetime: dates.datetime(b.datetime, &ctx.timezone),
-            account_label,
             total_amount: batch_currency.display(b.total_amount),
             journal_entry_id: b.journal_entry_id,
             payments: payment_rows,
@@ -418,7 +399,6 @@ pub async fn detail(
         PaymentBatchDetailPage {
             id,
             datetime: String::new(),
-            account_label: String::new(),
             total_amount: String::new(),
             journal_entry_id: 0,
             payments: vec![],

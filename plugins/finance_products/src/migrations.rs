@@ -1,5 +1,6 @@
 use sea_orm_migration::prelude::*;
 
+pub mod formula_measure_sql;
 mod m00001_create_products;
 mod m00002_product_gl_accounts;
 mod m00003_product_type_reference_remarks;
@@ -19,7 +20,10 @@ mod m00016_formula_measure;
 mod m00017_formula_fixed_units;
 mod m00018_decimal_unit_none;
 mod m00019_product_stock;
-pub mod formula_measure_sql;
+mod m00020_product_journal_entry_templates;
+mod m00021_product_journal_entry_item_templates;
+mod m00022_drop_product_journal_receivable;
+mod m00023_default_product_journal_entry_item_templates;
 pub mod product_catalog_cleanup;
 
 use super::FinanceProductsTag;
@@ -50,6 +54,10 @@ impl MigratorTrait for Migrator {
             Box::new(m00017_formula_fixed_units::Migration),
             Box::new(m00018_decimal_unit_none::Migration),
             Box::new(m00019_product_stock::Migration),
+            Box::new(m00020_product_journal_entry_templates::Migration),
+            Box::new(m00021_product_journal_entry_item_templates::Migration),
+            Box::new(m00022_drop_product_journal_receivable::Migration),
+            Box::new(m00023_default_product_journal_entry_item_templates::Migration),
         ]
     }
 }

@@ -6,7 +6,8 @@ use maud::Markup;
 
 use lariv_plugin_crm::routes::CustomerFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
-use lariv_plugin_finance_accounts::routes::{AccountSelectRouteTag, JournalSelectRouteTag};
+use lariv_plugin_finance_accounts::routes::JournalSelectRouteTag;
+use lariv_plugin_finance_taxes::journal_template_editor::input_journal_template_lines;
 use lariv_plugin_finance_taxes::routes::TaxMultiSelectRouteTag;
 
 use crate::components::{
@@ -14,7 +15,22 @@ use crate::components::{
     input_invoice_goods_lines_draft, input_invoice_service_lines_draft,
     input_payment_term_lines_draft,
 };
+use crate::payment_journal_template::{FORMULA_VARIABLES_HINT, empty_lines_json};
 use crate::routes::PostedInvoiceFkSelectRouteTag;
+
+/// Account and formula lines stored as JSON.
+pub struct PaymentJournalTemplateLines;
+
+impl FormWidget for PaymentJournalTemplateLines {
+    fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        let defaults = if field.value.trim().is_empty() {
+            empty_lines_json()
+        } else {
+            field.value.to_string()
+        };
+        input_journal_template_lines(field.name, field.label, &defaults, ctx.hint_of(field.spec))
+    }
+}
 
 /// Custom widget for draft invoice goods lines (Alpine editor + hidden JSON).
 pub struct InvoiceGoodsLinesDraft;
@@ -202,16 +218,6 @@ pub struct PaymentForm {
     #[form(label = "Settlement amount", required, widget = Text)]
     pub amount: String,
 
-    #[form(
-        label = "Payment account",
-        widget = ForeignKey,
-        route = AccountSelectRouteTag,
-        swap_key = "payment-account",
-        display = "payment_account",
-        placeholder = "Uses preference default…"
-    )]
-    pub account_id: String,
-
     #[form(label = "Payment date & time", required, widget = Datetime)]
     pub datetime: String,
 
@@ -230,16 +236,6 @@ pub struct PaymentForm {
 pub struct PaymentBatchForm {
     #[form(label = "Payment date & time", required, widget = Datetime)]
     pub datetime: String,
-
-    #[form(
-        label = "Payment account",
-        widget = ForeignKey,
-        route = AccountSelectRouteTag,
-        swap_key = "payment-batch-account",
-        display = "payment_account",
-        placeholder = "Uses preference default…"
-    )]
-    pub account_id: String,
 
     #[form(label = "Allocations", required, widget = PaymentBatchAllocations, display = "batch_allocations_preview")]
     pub allocations_json: String,
@@ -337,59 +333,23 @@ pub struct InvoiceCompanyPreferencesForm {
 }
 
 #[html_form]
-pub struct InvoicePreferencesForm {
+pub struct PaymentPreferencesForm {
     #[form(
-        label = "Accounts receivable (invoices)",
-        widget = ForeignKey,
-        route = AccountSelectRouteTag,
-        swap_key = "pref-invoice-ar",
-        display = "account_receivable",
-        placeholder = "Select debit account…"
-    )]
-    pub account_receivable_id: String,
-
-    #[form(
-        label = "Revenue account (invoices)",
-        widget = ForeignKey,
-        route = AccountSelectRouteTag,
-        swap_key = "pref-invoice-revenue",
-        display = "account_revenue",
-        placeholder = "Select credit account…"
-    )]
-    pub account_revenue_id: String,
-
-    #[form(
-        label = "Tax payable (invoices)",
-        widget = ForeignKey,
-        route = AccountSelectRouteTag,
-        swap_key = "pref-invoice-tax",
-        display = "account_tax_payable",
-        placeholder = "Select credit account…"
-    )]
-    pub account_tax_payable_id: String,
-
-    #[form(
-        label = "Journal (invoices)",
+        label = "Journal",
         widget = ForeignKey,
         route = JournalSelectRouteTag,
-        swap_key = "pref-invoice-journal",
+        swap_key = "pref-payment-journal",
         display = "journal",
         placeholder = "Select journal…"
     )]
     pub journal_id: String,
-}
 
-#[html_form]
-pub struct PaymentPreferencesForm {
     #[form(
-        label = "Payment account (receipts)",
-        widget = ForeignKey,
-        route = AccountSelectRouteTag,
-        swap_key = "pref-payment-account",
-        display = "payment_account",
-        placeholder = "Bank or cash account…"
+        label = "Journal entry template",
+        widget = PaymentJournalTemplateLines,
+        hint = FORMULA_VARIABLES_HINT
     )]
-    pub payment_account_id: String,
+    pub journal_lines: String,
 }
 
 #[html_form]
@@ -426,5 +386,17 @@ mod tests {
             !alpine_js_leaked_as_text(&html),
             "Alpine JS rendered as text on the draft invoice form: {html}"
         );
+    }
+
+    #[test]
+    fn payment_template_label_lists_injected_variables() {
+        let html = PaymentPreferencesForm::render_inputs(&FormCtx::form::<PaymentPreferencesForm>(
+            CsrfToken::current(),
+        ))
+        .into_string();
+        assert!(html.contains("Journal entry template"));
+        assert!(html.contains("amount — settlement on this payment"));
+        assert!(html.contains("withholding — withheld tax on this payment"));
+        assert!(html.contains("hintOpen"));
     }
 }

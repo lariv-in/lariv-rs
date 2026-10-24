@@ -15,7 +15,6 @@ pub struct Model {
     pub posted_invoice_id: i64,
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
     pub amount: Decimal,
-    pub account_id: i64,
     pub datetime: DateTime<Utc>,
     pub journal_entry_id: i64,
     pub payment_batch_id: Option<i64>,

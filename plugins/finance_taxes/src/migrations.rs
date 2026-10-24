@@ -5,6 +5,9 @@ mod m00002_seed_service_tax;
 mod m00003_tax_type_account;
 mod m00004_taxes_drop_deleted_at;
 mod m00005_taxes_pg_trgm;
+mod m00006_tax_journal_entry_item_templates;
+mod m00007_drop_tax_journal_receivable;
+mod m00008_default_tax_journal_entry_item_templates;
 
 use super::FinanceTaxesTag;
 
@@ -20,6 +23,9 @@ impl MigratorTrait for Migrator {
             Box::new(m00003_tax_type_account::Migration),
             Box::new(m00004_taxes_drop_deleted_at::Migration),
             Box::new(m00005_taxes_pg_trgm::Migration),
+            Box::new(m00006_tax_journal_entry_item_templates::Migration),
+            Box::new(m00007_drop_tax_journal_receivable::Migration),
+            Box::new(m00008_default_tax_journal_entry_item_templates::Migration),
         ]
     }
 }

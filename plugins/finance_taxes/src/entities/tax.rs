@@ -53,7 +53,6 @@ pub struct Model {
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
     pub percentage: Decimal,
     pub tax_type: TaxKind,
-    pub account_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

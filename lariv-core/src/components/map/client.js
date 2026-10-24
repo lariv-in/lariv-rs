@@ -1,8 +1,12 @@
 // Mounts one MapLibre map and tears it down on Alpine destroy, HTMX cleanup, or DOM removal.
+// Read-only maps with `data-live-user` move their user marker as the punch bar
+// broadcasts `lariv:geolocation` fixes.
 const STYLE = "https://tiles.openfreemap.org/styles/liberty";
 const MIN_RANGE = 1;
 const MAX_RANGE = 100000;
 const DEFAULT_RANGE = 100;
+const GEO_EVENT = "lariv:geolocation";
+const GEO_FIX_MAX_AGE_MS = 30000;
 
 function num(value) {
   if (value == null || value === "") return null;
@@ -50,11 +54,30 @@ function emptyCollection() {
   return { type: "FeatureCollection", features: [] };
 }
 
+function readLastFix() {
+  const fix = window.__larivGeoFix;
+  if (!fix) return null;
+  const at = num(fix.at);
+  if (at == null || Date.now() - at > GEO_FIX_MAX_AGE_MS) return null;
+  const lat = num(fix.latitude);
+  const lng = num(fix.longitude);
+  return lat == null || lng == null ? null : { lat, lng };
+}
+
+function readEventFix(event) {
+  const detail = event && event.detail;
+  if (!detail) return null;
+  const lat = num(detail.latitude);
+  const lng = num(detail.longitude);
+  return lat == null || lng == null ? null : { lat, lng };
+}
+
 function mount(root) {
   if (!root || root._larivMap) return;
   const canvas = root.querySelector("[data-map-canvas]");
   if (!canvas || !maplibregl.Map) return;
   const readonly = root.dataset.readonly === "true";
+  const liveUser = root.dataset.liveUser === "true";
   const latInput = root.querySelector("[data-lat-input]");
   const lngInput = root.querySelector("[data-lng-input]");
   const rangeInput = root.querySelector("[data-range-input]");
@@ -62,8 +85,8 @@ function mount(root) {
   let centerLat = num(root.dataset.lat);
   let centerLng = num(root.dataset.lng);
   let range = num(root.dataset.range);
-  const userLat = num(root.dataset.userLat);
-  const userLng = num(root.dataset.userLng);
+  let userLat = num(root.dataset.userLat);
+  let userLng = num(root.dataset.userLng);
   let dead = false;
   let centerMarker = null;
   let handleMarker = null;
@@ -94,6 +117,7 @@ function mount(root) {
     observer.disconnect();
     document.removeEventListener("htmx:beforeCleanupElement", onCleanup);
     document.removeEventListener("htmx:before:cleanup", onCleanup);
+    window.removeEventListener(GEO_EVENT, onGeolocation);
     if (centerMarker) centerMarker.remove();
     if (handleMarker) handleMarker.remove();
     if (userMarker) userMarker.remove();
@@ -235,8 +259,31 @@ function mount(root) {
       userMarker = new maplibregl.Marker({ color: "#dc2626" })
         .setLngLat([userLng, userLat])
         .addTo(map);
+    } else {
+      userMarker.setLngLat([userLng, userLat]);
     }
     labelMarker(userMarker, root.dataset.userLabel);
+  }
+
+  function fitToLiveUser() {
+    if (dead || userLat == null || userLng == null) return;
+    try {
+      if (map.getBounds().contains([userLng, userLat])) return;
+    } catch (_err) {
+      return;
+    }
+    fit();
+  }
+
+  function onGeolocation(event) {
+    if (dead) return;
+    const fix = readEventFix(event);
+    if (!fix) return;
+    userLat = fix.lat;
+    userLng = fix.lng;
+    if (!map.isStyleLoaded()) return;
+    placeUser();
+    fitToLiveUser();
   }
 
   function labelMarker(marker, label) {
@@ -389,6 +436,15 @@ function mount(root) {
         });
       }).catch(() => {});
     }
+  }
+
+  if (liveUser) {
+    const last = readLastFix();
+    if (last) {
+      userLat = last.lat;
+      userLng = last.lng;
+    }
+    window.addEventListener(GEO_EVENT, onGeolocation);
   }
 
   if (!readonly) {

@@ -23,12 +23,12 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "create_product",
-        "create_product(#{ name: string, stock_id: int, base_price_formula: string, sales_price_formula: string, reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // new product id. stock_id is the inventory stock this product is kept in. Both formulas are the price of one product; invoice quantity multiplies them.",
+        "create_product(#{ name: string, stock_id: int, base_price_formula: string, sales_price_formula: string, reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}], journal_id?: int, journal_lines?: [{ account_id: int, formula: string }] }) -> int  // new product id. stock_id is the inventory stock this product is kept in. Both formulas are the price of one product; invoice quantity multiplies them. journal_lines formulas may use quantity, rate, pre_tax, base_cost, sales_price, and the product variables. Lines must balance.",
         |_ctx| NativeBinding::Function(Arc::new(create_product)),
     );
     rune_env.register_contextual(
         "update_product",
-        "update_product(#{ id: int, name: string, stock_id: int, base_price_formula: string, sales_price_formula: string, reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // updated product id (full replace). stock_id is the inventory stock this product is kept in. Both formulas are the price of one product; invoice quantity multiplies them.",
+        "update_product(#{ id: int, name: string, stock_id: int, base_price_formula: string, sales_price_formula: string, reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}], journal_id?: int, journal_lines?: [{ account_id: int, formula: string }] }) -> int  // updated product id (full replace). stock_id is the inventory stock this product is kept in. Both formulas are the price of one product; invoice quantity multiplies them. journal_lines formulas may use quantity, rate, pre_tax, base_cost, sales_price, and the product variables.",
         |_ctx| NativeBinding::Function(Arc::new(update_product)),
     );
     rune_env.register_contextual(
@@ -135,6 +135,10 @@ mod args {
         #[serde(default)]
         sales_price_formula: String,
         #[serde(default)]
+        journal_id: i64,
+        #[serde(default)]
+        journal_lines: Option<serde_json::Value>,
+        #[serde(default)]
         hsn_code: i64,
         #[serde(default)]
         tax_ids: Vec<i64>,
@@ -156,6 +160,8 @@ mod args {
         pub remarks: Option<String>,
         pub base_price_formula: String,
         pub sales_price_formula: String,
+        pub journal_id: String,
+        pub journal_lines: String,
         pub hsn_code: i64,
         pub tax_ids: Vec<i64>,
         pub variables: String,
@@ -216,21 +222,32 @@ mod args {
         }
         let variables = parse_variables(parsed.variables.clone())?;
         let schema = crate::pricing::load_schema(&variables)?;
+        crate::journal_template::ensure_schema_allows_bindings(&schema)?;
+        let base_price_formula =
+            parse_formula(&schema, &parsed.base_price_formula, "base price formula")?;
+        let sales_price_formula =
+            parse_formula(&schema, &parsed.sales_price_formula, "sales price formula")?;
+        let journal_lines = match parsed.journal_lines {
+            Some(value) if !value.is_null() => value.to_string(),
+            _ => crate::journal_template::empty_lines_json(),
+        };
+        if parsed.journal_id > 0 {
+            let lines = crate::journal_template::parse_template_lines(&journal_lines)?;
+            crate::journal_template::validate_parsed_lines(&schema, &lines)?;
+        }
         Ok(ProductInput {
             name,
             stock_id: parsed.stock_id,
             reference: opt_string(parsed.reference),
             remarks: opt_string(parsed.remarks),
-            base_price_formula: parse_formula(
-                &schema,
-                &parsed.base_price_formula,
-                "base price formula",
-            )?,
-            sales_price_formula: parse_formula(
-                &schema,
-                &parsed.sales_price_formula,
-                "sales price formula",
-            )?,
+            base_price_formula,
+            sales_price_formula,
+            journal_id: if parsed.journal_id > 0 {
+                parsed.journal_id.to_string()
+            } else {
+                String::new()
+            },
+            journal_lines,
             hsn_code: parsed.hsn_code,
             tax_ids: parsed.tax_ids,
             variables,
@@ -286,6 +303,15 @@ mod args {
         set_product_tax_ids(db, m.id, &input.tax_ids)
             .await
             .map_err(|e| e.to_string())?;
+        let schema = crate::pricing::load_schema(&input.variables)?;
+        crate::journal_template::save_product_template(
+            db,
+            m.id,
+            &input.journal_id,
+            &input.journal_lines,
+            &schema,
+        )
+        .await?;
         Ok(m.id)
     }
 
@@ -305,7 +331,7 @@ mod args {
         am.stock_id = Set(input.stock_id);
         am.reference = Set(input.reference);
         am.remarks = Set(input.remarks);
-        am.variables = Set(input.variables);
+        am.variables = Set(input.variables.clone());
         am.base_price_formula = Set(input.base_price_formula);
         am.sales_price_formula = Set(input.sales_price_formula);
         am.hsn_code = Set(input.hsn_code);
@@ -314,6 +340,15 @@ mod args {
         set_product_tax_ids(db, id, &input.tax_ids)
             .await
             .map_err(|e| e.to_string())?;
+        let schema = crate::pricing::load_schema(&input.variables)?;
+        crate::journal_template::save_product_template(
+            db,
+            id,
+            &input.journal_id,
+            &input.journal_lines,
+            &schema,
+        )
+        .await?;
         Ok(())
     }
 }
@@ -460,7 +495,7 @@ mod tests {
         let out = rune_engine::compile_and_run(
             &cap,
             &env_ctx,
-            r#"create_product(#{ name: "Widget", base_price_formula: "nope", sales_price_formula: "decimal(\"2\")" })"#,
+            r#"create_product(#{ name: "Widget", stock_id: 1, base_price_formula: "nope", sales_price_formula: "decimal(\"2\")" })"#,
             &[],
         )
         .await;
@@ -472,6 +507,26 @@ mod tests {
             error.contains("base price formula"),
             "unexpected error payload: {out}"
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn create_product_via_rune_rejects_invalid_journal_formula() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run(
+            &cap,
+            &env_ctx,
+            r#"create_product(#{ name: "Widget", stock_id: 1, base_price_formula: "decimal(\"1\")", sales_price_formula: "decimal(\"2\")", journal_id: 1, journal_lines: [#{ account_id: 1, formula: "nope" }] })"#,
+            &[],
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(error.contains("formula"), "unexpected error payload: {out}");
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -491,6 +546,8 @@ create_product(#{
     stock_id: 1,
     base_price_formula: cost,
     sales_price_formula: "decimal(\"25\")",
+    journal_id: 1,
+    journal_lines: [#{ account_id: 1, formula: cost }],
     hsn_code: 1234
 })
 "#,
@@ -579,6 +636,8 @@ create_product(#{
             "remarks": "  Steel widget  ",
             "base_price_formula": "decimal(\"10\")",
             "sales_price_formula": "decimal(\"25.50\")",
+            "journal_id": 3,
+            "journal_lines": [{ "account_id": 9, "formula": "pre_tax" }, { "account_id": 10, "formula": "-pre_tax" }],
             "hsn_code": 9983,
             "tax_ids": [1, 2]
         }))
@@ -590,6 +649,8 @@ create_product(#{
         assert_eq!(input.remarks.as_deref(), Some("Steel widget"));
         assert_eq!(input.base_price_formula, "decimal(\"10\")");
         assert_eq!(input.sales_price_formula, "decimal(\"25.50\")");
+        assert_eq!(input.journal_id, "3");
+        assert!(input.journal_lines.contains("-pre_tax"));
         assert_eq!(input.hsn_code, 9983);
         assert_eq!(input.tax_ids, vec![1, 2]);
     }

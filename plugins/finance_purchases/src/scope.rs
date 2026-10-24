@@ -154,7 +154,10 @@ pub async fn find_active_draft(db: &DatabaseConnection, id: i64) -> Option<draft
 }
 
 /// Posted purchase still listed under the posted hub tab.
-pub async fn find_active_posted(db: &DatabaseConnection, id: i64) -> Option<posted_purchase::Model> {
+pub async fn find_active_posted(
+    db: &DatabaseConnection,
+    id: i64,
+) -> Option<posted_purchase::Model> {
     lariv_core::web::opt_or_log(
         PostedPurchaseEntity::find_by_id(id)
             .filter(sql_posted_not_cancelled())

@@ -1,7 +1,6 @@
 #![feature(impl_trait_in_assoc_type)]
 //! Finance services plugin.
 
-pub mod accounting_preferences_patch;
 pub mod accounting_sidebar;
 pub mod apps;
 pub mod create_modals;
@@ -10,6 +9,8 @@ pub mod forms;
 pub mod handlers;
 #[cfg(feature = "plugin-llm-assistant")]
 pub mod hitl;
+pub mod journal_template;
+pub mod journal_template_editor;
 pub mod keys;
 pub mod migrations;
 pub mod preferences;

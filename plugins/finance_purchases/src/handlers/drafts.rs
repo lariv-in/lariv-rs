@@ -17,8 +17,8 @@ use lariv_core::web::{
 };
 use lariv_plugin_users::middleware::RequireAuth;
 
+use crate::purchase_products::entities::product::Entity as ProductEntity;
 use lariv_plugin_finance_common::decimal;
-use lariv_plugin_finance_products::{entities::product::Entity as ProductEntity, pricing};
 use lariv_plugin_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
 use crate::{
@@ -30,25 +30,24 @@ use crate::{
     entities::draft_purchase::{self, Entity as DraftPurchaseEntity},
     forms::{DraftPurchaseBulkEditForm, DraftPurchaseForm},
     keys::{
-        DraftPurchaseBulkDeleteModalKey, DraftPurchaseBulkEditModalKey, DraftPurchaseCreateModalKey,
-        DraftPurchaseDeleteModalKey, DraftPurchaseEditModalKey, DraftPurchaseSelectModalKey,
-        DraftPurchaseSelectTableKey, PurchaseHubTableKey,
+        DraftPurchaseBulkDeleteModalKey, DraftPurchaseBulkEditModalKey,
+        DraftPurchaseCreateModalKey, DraftPurchaseDeleteModalKey, DraftPurchaseEditModalKey,
+        DraftPurchaseSelectModalKey, DraftPurchaseSelectTableKey, PurchaseHubTableKey,
     },
-    logic::bill_to::{self, BillTo, PartyLabels},
+    logic::bill_to::{self, PartyLabels},
     logic::draft_payment_term::draft_payment_term_display_rows,
     logic::purchase_goods_line_editor::{
-        default_lines_json, draft_purchase_goods_line_display_rows, draft_lines_form_json,
-        purchase_vendor_name, purchase_goods_line_editor_preview_json,
+        default_lines_json, draft_lines_form_json, draft_purchase_goods_line_display_rows,
+        purchase_goods_line_editor_preview_json, purchase_vendor_name,
     },
     logic::tax_assoc::load_draft_purchase_tax_ids,
     logic::{
         CreateDraftInput, PatchDraftInput, UpdateDraftInput, create_draft_purchase,
         default_payment_term_lines_json, delete_draft, format_delivery_date, format_purchase_date,
         load_purchase_date_formats, load_purchase_preferences, optional_display,
-        optional_trimmed_text, parse_delivery_date, parse_lines_json, parse_purchase_datetime,
-        parse_service_lines_json,
-        parse_payment_term_lines_json, patch_draft_purchase, payment_term_lines_form_json,
-        update_draft_purchase,
+        optional_trimmed_text, parse_delivery_date, parse_lines_json,
+        parse_payment_term_lines_json, parse_purchase_datetime, parse_service_lines_json,
+        patch_draft_purchase, payment_term_lines_form_json, update_draft_purchase,
     },
     routes::{DraftPurchaseDetailRouteTag, PostedPurchaseDetailRouteTag},
     scope::{find_active_draft, hub_tab_url},
@@ -82,8 +81,8 @@ pub async fn service_line_price(
     RequireAuth(_ctx): RequireAuth,
     Query(q): Query<ServiceLinePriceQuery>,
 ) -> Json<serde_json::Value> {
-    use lariv_plugin_finance_services::entities::service::Entity as ServiceEntity;
-    use lariv_plugin_finance_services::pricing as service_pricing;
+    use crate::purchase_services::entities::service::Entity as ServiceEntity;
+    use crate::purchase_services::pricing as service_pricing;
 
     let raw = if q.values.trim().is_empty() {
         serde_json::json!({})
@@ -126,19 +125,11 @@ pub async fn line_price(
         .await
         .ok()
         .flatten();
-    let Some(product) = product else {
+    if product.is_none() {
         return Json(serde_json::json!({"pre_tax": "", "error": "unknown product"}));
-    };
-    if !pricing::has_variable_pricing(&product.variables) {
-        return Json(serde_json::json!({"pre_tax": "", "error": ""}));
     }
-    match pricing::price_line(&product.variables, &product.sales_price_formula, &raw) {
-        Ok(priced) => Json(serde_json::json!({
-            "pre_tax": decimal::decimal_display(priced.pre_tax),
-            "error": "",
-        })),
-        Err(error) => Json(serde_json::json!({"pre_tax": "", "error": error})),
-    }
+    let _ = raw;
+    Json(serde_json::json!({"pre_tax": "", "error": ""}))
 }
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -211,11 +202,6 @@ fn path_and_query(uri: &Uri) -> String {
 }
 
 fn form_to_input(form: &DraftPurchaseForm, tz: &str) -> Result<CreateDraftInput, String> {
-    let bill_to = bill_to::require_bill_to(
-        bill_to::checkbox_on(&form.vendor_is_individual),
-        form.vendor_contact_id,
-        form.vendor_company_id,
-    )?;
     let payment_term_lines = parse_payment_term_lines_json(&form.payment_term_lines_json)?;
     let lines = parse_lines_json(&form.purchase_goods_lines_json)?;
     let service_lines = parse_service_lines_json(&form.purchase_service_lines_json)?;
@@ -227,7 +213,7 @@ fn form_to_input(form: &DraftPurchaseForm, tz: &str) -> Result<CreateDraftInput,
         remarks: optional_trimmed_text(&form.remarks),
         datetime: parse_purchase_datetime(&form.datetime, tz),
         delivery_date: parse_delivery_date(&form.delivery_date)?,
-        bill_to,
+        vendor_id: form.vendor_id,
         payment_term_lines,
         header_tax_ids: form.taxes.clone(),
         lines,
@@ -244,13 +230,12 @@ fn blank_bulk_edit_form() -> DraftPurchaseBulkEditForm {
         remarks: String::new(),
         datetime: String::new(),
         delivery_date: String::new(),
-        vendor_is_individual: String::new(),
-        vendor_contact_id: 0,
-        vendor_company_id: 0,
+        vendor_id: 0,
         payment_term_lines_json: default_payment_term_lines_json(),
         taxes: vec![],
         purchase_goods_lines_json: default_lines_json(),
-        purchase_service_lines_json: crate::logic::purchase_service_line_editor::default_lines_json(),
+        purchase_service_lines_json: crate::logic::purchase_service_line_editor::default_lines_json(
+        ),
         csrf: CsrfToken::default(),
     }
 }
@@ -280,11 +265,11 @@ fn bulk_form_to_patch(
         Some(parse_purchase_datetime(&form.datetime, tz))
     };
     let delivery_date = parse_delivery_date(&form.delivery_date)?;
-    let bill_to = bill_to::optional_bill_to(
-        bill_to::checkbox_on(&form.vendor_is_individual),
-        form.vendor_contact_id,
-        form.vendor_company_id,
-    )?;
+    let vendor_id = if form.vendor_id > 0 {
+        Some(form.vendor_id)
+    } else {
+        None
+    };
     let payment_term_lines = if form.payment_term_lines_json.trim().is_empty()
         || payment_term_lines_unchanged_from_blank(&form.payment_term_lines_json)
     {
@@ -321,7 +306,7 @@ fn bulk_form_to_patch(
         remarks,
         datetime,
         delivery_date,
-        bill_to,
+        vendor_id,
         payment_term_lines,
         header_tax_ids,
         lines,
@@ -332,7 +317,11 @@ fn bulk_form_to_patch(
             } else {
                 let parsed = parse_service_lines_json(raw)?;
                 let filled: Vec<_> = parsed.into_iter().filter(|l| l.service_id > 0).collect();
-                if filled.is_empty() { None } else { Some(filled) }
+                if filled.is_empty() {
+                    None
+                } else {
+                    Some(filled)
+                }
             }
         },
     };
@@ -350,8 +339,7 @@ fn purchase_select_label(id: i64, number: &Option<String>) -> String {
 }
 
 struct DraftFormContext {
-    individual_display: String,
-    company_display: String,
+    vendor_display: String,
     tax_items: Vec<ManyToManyItem>,
     purchase_goods_lines_preview: String,
     purchase_service_lines_preview: String,
@@ -360,14 +348,12 @@ struct DraftFormContext {
 
 async fn load_draft_form_context(
     db: &sea_orm::DatabaseConnection,
-    vendor_contact_id: i64,
-    vendor_company_id: i64,
+    vendor_id: i64,
     tax_ids: &[i64],
     draft_id: Option<i64>,
     posted: Option<&UrlencodedFields>,
 ) -> DraftFormContext {
-    let (individual_display, company_display) =
-        bill_to::party_displays(db, vendor_contact_id, vendor_company_id).await;
+    let vendor_display = bill_to::vendor_label(db, vendor_id).await;
 
     let taxes = load_taxes_by_ids(db, tax_ids).await.unwrap_or_default();
     let tax_items = taxes
@@ -382,8 +368,7 @@ async fn load_draft_form_context(
     let extra_inputs = render_draft_purchase_form_extras(db, draft_id, posted).await;
 
     DraftFormContext {
-        individual_display,
-        company_display,
+        vendor_display,
         tax_items,
         purchase_goods_lines_preview,
         purchase_service_lines_preview,
@@ -398,21 +383,12 @@ async fn draft_create_modal_page(
     error: String,
     posted: Option<&UrlencodedFields>,
 ) -> DraftPurchaseCreateModalPage {
-    let ctx_data = load_draft_form_context(
-        db,
-        form.vendor_contact_id,
-        form.vendor_company_id,
-        &form.taxes,
-        None,
-        posted,
-    )
-    .await;
+    let ctx_data = load_draft_form_context(db, form.vendor_id, &form.taxes, None, posted).await;
     DraftPurchaseCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
         form,
-        individual_display: ctx_data.individual_display,
-        company_display: ctx_data.company_display,
+        vendor_display: ctx_data.vendor_display,
         tax_items: ctx_data.tax_items,
         purchase_goods_lines_preview: ctx_data.purchase_goods_lines_preview,
         purchase_service_lines_preview: ctx_data.purchase_service_lines_preview,
@@ -429,22 +405,13 @@ async fn draft_edit_modal_page(
     error: String,
     posted: Option<&UrlencodedFields>,
 ) -> DraftPurchaseEditModalPage {
-    let ctx_data = load_draft_form_context(
-        db,
-        form.vendor_contact_id,
-        form.vendor_company_id,
-        &form.taxes,
-        Some(id),
-        posted,
-    )
-    .await;
+    let ctx_data = load_draft_form_context(db, form.vendor_id, &form.taxes, Some(id), posted).await;
     DraftPurchaseEditModalPage {
         id,
         form_name,
         form,
         error,
-        individual_display: ctx_data.individual_display,
-        company_display: ctx_data.company_display,
+        vendor_display: ctx_data.vendor_display,
         tax_items: ctx_data.tax_items,
         purchase_goods_lines_preview: ctx_data.purchase_goods_lines_preview,
         purchase_service_lines_preview: ctx_data.purchase_service_lines_preview,
@@ -462,23 +429,14 @@ async fn draft_bulk_edit_modal_page(
     can_submit: bool,
     posted: Option<&UrlencodedFields>,
 ) -> DraftPurchaseBulkEditModalPage {
-    let ctx_data = load_draft_form_context(
-        db,
-        form.vendor_contact_id,
-        form.vendor_company_id,
-        &form.taxes,
-        None,
-        posted,
-    )
-    .await;
+    let ctx_data = load_draft_form_context(db, form.vendor_id, &form.taxes, None, posted).await;
     DraftPurchaseBulkEditModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
         ids: ids.to_string(),
         selected_count,
         form,
-        individual_display: ctx_data.individual_display,
-        company_display: ctx_data.company_display,
+        vendor_display: ctx_data.vendor_display,
         tax_items: ctx_data.tax_items,
         purchase_goods_lines_preview: ctx_data.purchase_goods_lines_preview,
         purchase_service_lines_preview: ctx_data.purchase_service_lines_preview,
@@ -506,13 +464,12 @@ pub async fn create_get(
             remarks: String::new(),
             datetime: format_purchase_date(Utc::now(), &ctx.timezone),
             delivery_date: String::new(),
-            vendor_is_individual: String::new(),
-            vendor_contact_id: 0,
-            vendor_company_id: 0,
+            vendor_id: 0,
             payment_term_lines_json: default_payment_term_lines_json(),
             taxes: vec![],
             purchase_goods_lines_json: default_lines_json(),
-        purchase_service_lines_json: crate::logic::purchase_service_line_editor::default_lines_json(),
+            purchase_service_lines_json:
+                crate::logic::purchase_service_line_editor::default_lines_json(),
             csrf: CsrfToken::current(),
         },
         String::new(),
@@ -583,11 +540,7 @@ pub async fn detail(
         taxes.iter().map(tax_label).collect::<Vec<_>>().join(", ")
     };
 
-    let party = BillTo::new(
-        d.vendor_is_individual,
-        d.vendor_contact_id,
-        d.vendor_company_id,
-    );
+    let party = bill_to::load_bill_to(&state.db, d.vendor_id).await;
     let vendor_name = purchase_vendor_name(&state.db, party).await;
 
     let dates = load_purchase_date_formats(&state.db).await;
@@ -609,7 +562,7 @@ pub async fn detail(
         remarks: optional_display(&d.remarks),
         datetime: dates.datetime(d.datetime, &ctx.timezone),
         delivery_date: dates.calendar_or_dash(d.delivery_date),
-        vendor_is_individual: d.vendor_is_individual,
+        vendor_is_individual: party.vendor_is_individual,
         vendor_id: party.party_id(),
         vendor_name,
         payment_term_rows,
@@ -645,15 +598,6 @@ pub async fn edit_get(
     let service_lines_json =
         crate::logic::purchase_service_line_editor::draft_lines_form_json(&state.db, d.id).await;
     let payment_term_lines_json = payment_term_lines_form_json(&state.db, d.id).await;
-    let party = bill_to::fill_company_from_contact(
-        &state.db,
-        BillTo::new(
-            d.vendor_is_individual,
-            d.vendor_contact_id,
-            d.vendor_company_id,
-        ),
-    )
-    .await;
     let form = DraftPurchaseForm {
         number: d.number.unwrap_or_default(),
         reference: d.reference.unwrap_or_default(),
@@ -662,9 +606,7 @@ pub async fn edit_get(
         remarks: d.remarks.unwrap_or_default(),
         datetime: format_purchase_date(d.datetime, &ctx.timezone),
         delivery_date: format_delivery_date(d.delivery_date),
-        vendor_is_individual: party.checkbox_value(),
-        vendor_contact_id: party.vendor_contact_id.unwrap_or(0),
-        vendor_company_id: party.vendor_company_id.unwrap_or(0),
+        vendor_id: d.vendor_id,
         payment_term_lines_json,
         taxes: tax_ids,
         purchase_goods_lines_json: lines_json,
@@ -698,7 +640,7 @@ pub async fn edit_post(
                 remarks: input.remarks,
                 datetime: input.datetime,
                 delivery_date: input.delivery_date,
-                bill_to: input.bill_to,
+                vendor_id: input.vendor_id,
                 payment_term_lines: input.payment_term_lines,
                 header_tax_ids: input.header_tax_ids,
                 lines: input.lines,
@@ -1093,16 +1035,8 @@ pub async fn multi_select(
         .fetch_page((page_num as u64).saturating_sub(1))
         .await
         .unwrap_or_default();
-    let parties: Vec<BillTo> = models
-        .iter()
-        .map(|d| {
-            BillTo::new(
-                d.vendor_is_individual,
-                d.vendor_contact_id,
-                d.vendor_company_id,
-            )
-        })
-        .collect();
+    let vendor_ids: Vec<i64> = models.iter().map(|d| d.vendor_id).collect();
+    let parties = bill_to::parties_in_order(&state.db, &vendor_ids).await;
     let vendors = PartyLabels::load(&state.db, &parties).await;
     let rows: Vec<DraftPurchaseSelectRow> = models
         .into_iter()
@@ -1122,5 +1056,7 @@ pub async fn multi_select(
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
-    respond_picker_select::<DraftPurchaseSelectTableKey, DraftPurchaseSelectModalKey, _>(&htmx, &page)
+    respond_picker_select::<DraftPurchaseSelectTableKey, DraftPurchaseSelectModalKey, _>(
+        &htmx, &page,
+    )
 }

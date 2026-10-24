@@ -44,9 +44,9 @@ use crate::logic::invoice_service_line_editor::InvoiceServiceLineDisplayRow;
 
 use super::forms::{
     CancelInvoiceForm, CancelInvoiceFormField, DraftInvoiceBulkEditForm,
-    DraftInvoiceBulkEditFormField, DraftInvoiceForm, DraftInvoiceFormField, InvoicePreferencesForm,
-    InvoicePreferencesFormField, PaymentBatchForm, PaymentBatchFormField, PaymentForm,
-    PaymentFormField, PaymentPreferencesForm, PaymentPreferencesFormField,
+    DraftInvoiceBulkEditFormField, DraftInvoiceForm, DraftInvoiceFormField, PaymentBatchForm,
+    PaymentBatchFormField, PaymentForm, PaymentFormField, PaymentPreferencesForm,
+    PaymentPreferencesFormField,
 };
 use super::keys::{
     DraftInvoiceBulkDeleteModalKey, DraftInvoiceBulkEditModalKey, DraftInvoiceCreateModalKey,
@@ -64,8 +64,8 @@ use super::routes::{
     DraftInvoiceDeleteGetRouteTag, DraftInvoiceDeletePostRouteTag, DraftInvoiceDetailRouteTag,
     DraftInvoiceEditGetRouteTag, DraftInvoiceEditPostRouteTag, DraftInvoicePdfModalRouteTag,
     DraftInvoicePostGetRouteTag, InvoiceBulkPdfsRouteTag, InvoiceDefaultRouteTag,
-    InvoiceExcelExportRouteTag, InvoicePreferencesPostRouteTag, InvoicePreferencesRouteTag,
-    PaidInvoiceDetailRouteTag, PaidInvoicePdfModalRouteTag, PartiallyPaidInvoiceDetailRouteTag,
+    InvoiceExcelExportRouteTag, InvoicePreferencesRouteTag, PaidInvoiceDetailRouteTag,
+    PaidInvoicePdfModalRouteTag, PartiallyPaidInvoiceDetailRouteTag,
     PartiallyPaidInvoicePdfModalRouteTag, PaymentBatchCreateGetRouteTag,
     PaymentBatchCreatePostRouteTag, PaymentBatchDetailRouteTag, PaymentCreateGetRouteTag,
     PaymentCreatePostRouteTag, PaymentDetailRouteTag, PaymentListRouteTag,
@@ -2227,7 +2227,6 @@ pub struct PaymentCreateModalPage {
     pub refresh_table: String,
     pub form: PaymentForm,
     pub posted_invoice_display: String,
-    pub account_display: String,
     pub tax_items: Vec<ManyToManyItem>,
     pub error: String,
 }
@@ -2260,13 +2259,11 @@ impl RenderTemplate for PaymentCreateModalPage {
                                 &self.form.posted_invoice_id.to_string(),
                             )
                             .value(PaymentFormField::Amount, &self.form.amount)
-                            .value(PaymentFormField::AccountId, &self.form.account_id)
                             .value(PaymentFormField::Datetime, &self.form.datetime)
                             .display(
                                 PaymentFormField::PostedInvoiceId,
                                 &self.posted_invoice_display,
                             )
-                            .display(PaymentFormField::AccountId, &self.account_display)
                             .m2m(PaymentFormField::Taxes, &self.tax_items),
                     ),
                     actions: html! {
@@ -2361,7 +2358,6 @@ pub struct PaymentBatchCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
     pub form: PaymentBatchForm,
-    pub account_display: String,
     pub batch_allocations_preview: String,
     pub error: String,
 }
@@ -2390,12 +2386,10 @@ impl RenderTemplate for PaymentBatchCreateModalPage {
                     inputs: PaymentBatchForm::render_inputs(
                         &FormCtx::form::<PaymentBatchForm>(CsrfToken::current())
                             .value(PaymentBatchFormField::Datetime, &self.form.datetime)
-                            .value(PaymentBatchFormField::AccountId, &self.form.account_id)
                             .value(
                                 PaymentBatchFormField::AllocationsJson,
                                 &self.form.allocations_json,
                             )
-                            .display(PaymentBatchFormField::AccountId, &self.account_display)
                             .display(
                                 PaymentBatchFormField::AllocationsJson,
                                 &self.batch_allocations_preview,
@@ -2431,7 +2425,6 @@ pub struct PaymentBatchPaymentRow {
 pub struct PaymentBatchDetailPage {
     pub id: i64,
     pub datetime: String,
-    pub account_label: String,
     pub total_amount: String,
     pub journal_entry_id: i64,
     pub payments: Vec<PaymentBatchPaymentRow>,
@@ -2445,7 +2438,6 @@ impl PaymentBatchDetailPage {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &format!("Payment batch #{}", self.id), classes: "" }))
                     (label("Datetime", field_text(FieldText { value: &self.datetime, classes: "" })))
-                    (label("Bank account", field_text(FieldText { value: &self.account_label, classes: "" })))
                     (label("Total settlement", field_text(FieldText { value: &self.total_amount, classes: "" })))
                     (label("Journal entry", journal_entry_link(self.journal_entry_id)))
                     h3 class="text-lg font-semibold mt-4" { "Payments in batch" }
@@ -2845,7 +2837,6 @@ impl RenderTemplate for CancelBulkInvoicePage {
 
 #[derive(Generic)]
 pub struct InvoicePreferencesPage {
-    pub form: InvoicePreferencesForm,
     pub can_edit: bool,
 }
 
@@ -2853,23 +2844,7 @@ impl InvoicePreferencesPage {
     fn body(&self) -> Markup {
         html! {
             (field_title(FieldTitle { value: "Invoice preferences", classes: "" }))
-            form method="post" action=(InvoicePreferencesPostRouteTag.url()) {
-                (InvoicePreferencesForm::render_inputs(&FormCtx::form::<InvoicePreferencesForm>(CsrfToken::current())
-                    .value(
-                        InvoicePreferencesFormField::AccountReceivableId,
-                        &self.form.account_receivable_id,
-                    )
-                    .value(
-                        InvoicePreferencesFormField::AccountRevenueId,
-                        &self.form.account_revenue_id,
-                    )
-                    .value(
-                        InvoicePreferencesFormField::AccountTaxPayableId,
-                        &self.form.account_tax_payable_id,
-                    )
-                    .value(InvoicePreferencesFormField::JournalId, &self.form.journal_id)))
-                (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-            }
+            p { "Invoice accounts come from each product's journal entry template." }
         }
     }
 }
@@ -2911,10 +2886,8 @@ impl PaymentPreferencesPage {
             (field_title(FieldTitle { value: "Payment preferences", classes: "" }))
             form method="post" action=(PaymentPreferencesPostRouteTag.url()) {
                 (PaymentPreferencesForm::render_inputs(&FormCtx::form::<PaymentPreferencesForm>(CsrfToken::current())
-                    .value(
-                        PaymentPreferencesFormField::PaymentAccountId,
-                        &self.form.payment_account_id,
-                    )))
+                    .value(PaymentPreferencesFormField::JournalId, &self.form.journal_id)
+                    .value(PaymentPreferencesFormField::JournalLines, &self.form.journal_lines)))
                 (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
             }
         }

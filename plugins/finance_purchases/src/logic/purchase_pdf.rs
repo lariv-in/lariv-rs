@@ -12,49 +12,50 @@ use lariv_plugin_contacts::entities::{
 };
 
 use crate::logic::BillTo;
+use crate::purchase_products::entities::product::Entity as ProductEntity;
+use crate::purchase_products::pricing;
 use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_format,
 };
 use lariv_plugin_finance_common::{decimal::decimal_display_currency, typst};
-use lariv_plugin_finance_products::entities::product::Entity as ProductEntity;
-use lariv_plugin_finance_products::pricing;
 use lariv_plugin_finance_taxes::entities::tax::{self, TaxKind};
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 use minijinja::{Environment, UndefinedBehavior};
 use num2words::{Lang, Num2Words};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait,     QueryFilter, Statement,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
+    Statement,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::entities::preferences;
 use crate::entities::{
-    CancelledPurchaseEntity, DraftPurchaseEntity, DraftPurchaseGoodsLineEntity, PostedPurchaseEntity,
-    PostedPurchaseGoodsLineEntity,
+    CancelledPurchaseEntity, DraftPurchaseEntity, DraftPurchaseGoodsLineEntity,
+    PostedPurchaseEntity, PostedPurchaseGoodsLineEntity,
 };
 use crate::entities::{draft_purchase_goods_line, posted_purchase, posted_purchase_goods_line};
-use crate::purchase_pdf_addon::{collect_purchase_pdf_extras, collect_purchase_pdf_sample_extras};
-use crate::purchase_pdf_assets::VnodeImageContext;
-use crate::purchase_pdf_template::DEFAULT_PURCHASE_PDF_TEMPLATE;
 use crate::logic::draft_payment_term::{
     draft_payment_term_line_display, load_draft_purchase_payment_term_lines,
     load_posted_payment_term_for_cancelled, load_posted_payment_term_for_posted,
     posted_payment_term_line_display, resolve_due_date,
 };
 use crate::logic::preferences::{
-    format_pref_calendar_date, format_pref_datetime, purchase_date_format, purchase_datetime_format,
-    load_purchase_preferences,
+    format_pref_calendar_date, format_pref_datetime, load_purchase_preferences,
+    purchase_date_format, purchase_datetime_format,
 };
 use crate::logic::tax_assoc::{
-    load_cancelled_purchase_tax_ids, load_cancelled_line_tax_ids, load_draft_purchase_tax_ids,
-    load_draft_line_tax_ids, load_posted_purchase_tax_ids, load_posted_line_tax_ids,
+    load_cancelled_line_tax_ids, load_cancelled_purchase_tax_ids, load_draft_line_tax_ids,
+    load_draft_purchase_tax_ids, load_posted_line_tax_ids, load_posted_purchase_tax_ids,
 };
 use crate::logic::tax_calculations::{
-    PurchaseLinesTotals, purchase_line_amounts, purchase_receivable_grand_total,
-    merge_purchase_line_tax_ids,
+    PurchaseLinesTotals, merge_purchase_line_tax_ids, purchase_line_amounts,
+    purchase_receivable_grand_total,
 };
+use crate::purchase_pdf_addon::{collect_purchase_pdf_extras, collect_purchase_pdf_sample_extras};
+use crate::purchase_pdf_assets::VnodeImageContext;
+use crate::purchase_pdf_template::DEFAULT_PURCHASE_PDF_TEMPLATE;
 use lariv_plugin_filesystem::state::FilesystemState;
 
 #[derive(Debug, thiserror::Error)]
@@ -424,7 +425,7 @@ async fn load_service_pdf(
     db: &DatabaseConnection,
     id: i64,
 ) -> Result<(PdfProduct, String), PurchasePdfError> {
-    use lariv_plugin_finance_services::entities::service::Entity as ServiceEntity;
+    use crate::purchase_services::entities::service::Entity as ServiceEntity;
     let p = ServiceEntity::find_by_id(id)
         .one(db)
         .await
@@ -466,8 +467,8 @@ async fn load_product_pdf(
             reference: p.reference.unwrap_or_default(),
             remarks: p.remarks.unwrap_or_default(),
             variable_types: json_object(&p.variables),
-            base_price_formula: p.base_price_formula,
-            sales_price_formula: p.sales_price_formula,
+            base_price_formula: String::new(),
+            sales_price_formula: String::new(),
         },
         schema,
     ))
@@ -831,6 +832,47 @@ async fn build_pdf_root(
     })
 }
 
+async fn draft_purchase_currency(db: &DatabaseConnection, draft_id: i64) -> CurrencyFormat {
+    let lines = DraftPurchaseGoodsLineEntity::find()
+        .filter(draft_purchase_goods_line::Column::DraftPurchaseId.eq(draft_id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let service_lines = crate::entities::DraftPurchaseServiceLineEntity::find()
+        .filter(crate::entities::draft_purchase_service_line::Column::DraftPurchaseId.eq(draft_id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let mut journal_id = None;
+    let mut mixed = false;
+    let mut consider = |template_journal_id: i64| match journal_id {
+        Some(existing) if existing != template_journal_id => mixed = true,
+        None => journal_id = Some(template_journal_id),
+        _ => {}
+    };
+    for line in lines {
+        if let Ok(Some(template)) =
+            crate::purchase_products::journal_template::load_template(db, line.product_id).await
+        {
+            consider(template.journal_id);
+        }
+    }
+    for line in service_lines {
+        if let Ok(Some(template)) =
+            crate::purchase_services::journal_template::load_template(db, line.service_id).await
+        {
+            consider(template.journal_id);
+        }
+    }
+    if mixed {
+        return load_default_currency_format(db).await;
+    }
+    match journal_id {
+        Some(id) => load_journal_currency_format(db, id).await,
+        None => load_default_currency_format(db).await,
+    }
+}
+
 pub async fn render_draft_purchase_pdf(
     fs: &FilesystemState,
     id: i64,
@@ -847,10 +889,7 @@ pub async fn render_draft_purchase_pdf(
         .map_err(|e| PurchasePdfError::msg(e.to_string()))?;
     let line_rows = load_draft_lines(db, draft.id).await?;
     let prefs = load_purchase_preferences(db).await;
-    let currency = match prefs.journal_id.filter(|&id| id > 0) {
-        Some(jid) => load_journal_currency_format(db, jid).await,
-        None => load_default_currency_format(db).await,
-    };
+    let currency = draft_purchase_currency(db, draft.id).await;
     let date_fmt = purchase_date_format(&prefs);
     let payment_term =
         load_draft_payment_term_pdf(db, draft.id, draft.datetime, tz, date_fmt, &currency).await?;
@@ -864,11 +903,7 @@ pub async fn render_draft_purchase_pdf(
         draft.remarks.clone(),
         draft.datetime,
         draft.delivery_date,
-        BillTo::new(
-            draft.vendor_is_individual,
-            draft.vendor_contact_id,
-            draft.vendor_company_id,
-        ),
+        crate::logic::bill_to::load_bill_to(db, draft.vendor_id).await,
         header_tax_ids,
         line_rows,
         LineTaxSource::Draft,
@@ -912,11 +947,7 @@ pub async fn render_posted_purchase_pdf(
         posted.remarks.clone(),
         posted.datetime,
         posted.delivery_date,
-        BillTo::new(
-            posted.vendor_is_individual,
-            posted.vendor_contact_id,
-            posted.vendor_company_id,
-        ),
+        crate::logic::bill_to::load_bill_to(db, posted.vendor_id).await,
         header_tax_ids,
         line_rows,
         LineTaxSource::Posted,
@@ -962,11 +993,7 @@ pub async fn render_cancelled_purchase_pdf(
         inv.remarks.clone(),
         inv.datetime,
         inv.delivery_date,
-        BillTo::new(
-            inv.vendor_is_individual,
-            inv.vendor_contact_id,
-            inv.vendor_company_id,
-        ),
+        crate::logic::bill_to::load_bill_to(db, inv.vendor_id).await,
         header_tax_ids,
         line_rows,
         LineTaxSource::Cancelled,
@@ -1184,7 +1211,9 @@ fn merge_pdf_context(
     let mut value = serde_json::to_value(root)
         .map_err(|e| PurchasePdfError::msg(format!("serialize purchase PDF context: {e}")))?;
     let Some(obj) = value.as_object_mut() else {
-        return Err(PurchasePdfError::msg("purchase PDF context is not an object"));
+        return Err(PurchasePdfError::msg(
+            "purchase PDF context is not an object",
+        ));
     };
     if let serde_json::Value::Object(extra) = extras {
         for (key, extra_value) in extra {
@@ -1352,7 +1381,6 @@ fn pdf_receivable_grand_total(root: &PdfRoot) -> Decimal {
                 name: t.name.clone(),
                 percentage: t.percentage.parse().unwrap_or(Decimal::ZERO),
                 tax_type: TaxKind::parse(&t.tax_type).unwrap_or(TaxKind::Levied),
-                account_id: None,
             })
             .collect();
         let (untaxed, levied, withholding, _) = purchase_line_amounts(untaxed, &taxes);
@@ -1371,7 +1399,6 @@ fn pdf_receivable_grand_total(root: &PdfRoot) -> Decimal {
             name: t.name.clone(),
             percentage: t.percentage.parse().unwrap_or(Decimal::ZERO),
             tax_type: TaxKind::parse(&t.tax_type).unwrap_or(TaxKind::Levied),
-            account_id: None,
         })
         .collect();
     purchase_receivable_grand_total(&totals, &header_taxes, &line_tax_ids)

@@ -10,8 +10,8 @@ impl RuneEnvRegistrar for Hook {
     fn register_rune_env(self, rune_env: &mut RuneEnvCapability) {
         #[cfg(feature = "cap-llm")]
         register(rune_env);
-        #[cfg(not(feature = "cap-llm"))]
-        let _ = rune_env;
+        crate::purchase_products::rune_env::Hook.register_rune_env(rune_env);
+        crate::purchase_services::rune_env::Hook.register_rune_env(rune_env);
     }
 }
 
@@ -23,17 +23,17 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "create_purchase",
-        "create_purchase(#{ vendor_is_individual?: bool, vendor_contact_id?: int, vendor_company_id?: int, lines: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new draft purchase id. Quantity multiplies the price of one product. When the product has variables, pass them; an omitted rate uses the sales formula, and a given rate is the price of one product. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
+        "create_purchase(#{ vendor_id?: int, lines: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new draft purchase id. product_id is a purchase product. Quantity multiplies the price of one product. When the product has variables, pass them; an omitted rate uses the sales formula, and a given rate is the price of one product. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
         |_ctx| NativeBinding::Function(Arc::new(create_purchase)),
     );
     rune_env.register_contextual(
         "update_purchase",
-        "update_purchase(#{ id: int, vendor_is_individual?: bool, vendor_contact_id?: int, vendor_company_id?: int, lines: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated draft purchase id (full replace; purchase must be in draft state). Quantity multiplies the price of one product. When the product has variables, an omitted rate uses the sales formula, and a given rate is the price of one product. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
+        "update_purchase(#{ id: int, vendor_id?: int, lines: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated draft purchase id (full replace; purchase must be in draft state). product_id is a purchase product. Quantity multiplies the price of one product. When the product has variables, an omitted rate uses the sales formula, and a given rate is the price of one product. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
         |_ctx| NativeBinding::Function(Arc::new(update_purchase)),
     );
     rune_env.register_contextual(
         "search_purchases",
-        "search_purchases(#{ query: string, limit?: int }) -> #{ drafts: [#{ id: int, number: string|null, reference: string|null, vendor_is_individual: bool, vendor_contact_id: int|null, vendor_company_id: int|null, datetime: string }], posted: [#{ id: int, draft_purchase_id: int, number: string, reference: string|null, vendor_is_individual: bool, vendor_contact_id: int|null, vendor_company_id: int|null, datetime: string }] }",
+        "search_purchases(#{ query: string, limit?: int }) -> #{ drafts: [#{ id: int, number: string|null, reference: string|null, vendor_id: int, datetime: string }], posted: [#{ id: int, draft_purchase_id: int, number: string, reference: string|null, vendor_id: int, datetime: string }] }",
         |_ctx| NativeBinding::Function(Arc::new(search_purchases)),
     );
 }
@@ -131,9 +131,7 @@ fn search_purchases(
             "id": d.id,
             "number": d.number,
             "reference": d.reference,
-            "vendor_is_individual": d.vendor_is_individual,
-            "vendor_contact_id": d.vendor_contact_id,
-            "vendor_company_id": d.vendor_company_id,
+            "vendor_id": d.vendor_id,
             "datetime": d.datetime,
         })).collect::<Vec<_>>(),
         "posted": posted.into_iter().map(|p| json!({
@@ -141,9 +139,7 @@ fn search_purchases(
             "draft_purchase_id": p.draft_purchase_id,
             "number": p.number,
             "reference": p.reference,
-            "vendor_is_individual": p.vendor_is_individual,
-            "vendor_contact_id": p.vendor_contact_id,
-            "vendor_company_id": p.vendor_company_id,
+            "vendor_id": p.vendor_id,
             "datetime": p.datetime,
         })).collect::<Vec<_>>(),
     }))
@@ -157,8 +153,8 @@ mod args {
     use crate::logic::draft::DraftLinePending;
     use crate::logic::{
         CreateDraftInput, DraftPaymentTermLineInput, UpdateDraftInput,
-        default_payment_term_lines_json, parse_delivery_date, parse_purchase_datetime,
-        parse_payment_term_lines_json,
+        default_payment_term_lines_json, parse_delivery_date, parse_payment_term_lines_json,
+        parse_purchase_datetime,
     };
     use crate::{PaymentTermAmountKind, PaymentTermDateKind};
 
@@ -228,11 +224,7 @@ mod args {
         #[serde(default)]
         timezone: Option<String>,
         #[serde(default)]
-        vendor_is_individual: bool,
-        #[serde(default)]
-        vendor_contact_id: Option<i64>,
-        #[serde(default)]
-        vendor_company_id: Option<i64>,
+        vendor_id: Option<i64>,
         #[serde(default)]
         payment_term_lines: Option<Vec<PaymentTermArg>>,
         #[serde(default)]
@@ -303,11 +295,7 @@ mod args {
                 remarks: parsed.remarks,
                 datetime,
                 delivery_date,
-                bill_to: crate::logic::bill_to::require_bill_to(
-                    parsed.vendor_is_individual,
-                    parsed.vendor_contact_id.unwrap_or(0),
-                    parsed.vendor_company_id.unwrap_or(0),
-                )?,
+                vendor_id: parsed.vendor_id.unwrap_or(0),
                 payment_term_lines: payment_term_lines(parsed.payment_term_lines)?,
                 header_tax_ids: parsed.header_tax_ids,
                 lines: draft_lines(parsed.lines),
@@ -356,7 +344,7 @@ mod args {
                 remarks: create.remarks,
                 datetime: create.datetime,
                 delivery_date: create.delivery_date,
-                bill_to: create.bill_to,
+                vendor_id: create.vendor_id,
                 payment_term_lines: create.payment_term_lines,
                 header_tax_ids: create.header_tax_ids,
                 lines: create.lines,
@@ -446,7 +434,7 @@ mod tests {
         let out = rune_engine::compile_and_run(
             &cap,
             &env_ctx,
-            "create_purchase(#{ vendor_company_id: 1, lines: [] })",
+            "create_purchase(#{ vendor_id: 1, lines: [] })",
             &[],
         )
         .await;
@@ -489,7 +477,7 @@ mod tests {
             &env_ctx,
             r#"
 let purchase_number = "P26RIN100294";
-let vendor_company_id = 5;
+let vendor_id = 5;
 let purchase_date = "27/04/2026";
 let product_id = 1;
 let quantity = 1;
@@ -497,7 +485,7 @@ let rate = 162000;
 create_purchase(#{
     number: purchase_number,
     reference: purchase_number,
-    vendor_company_id: vendor_company_id,
+    vendor_id: vendor_id,
     date: purchase_date,
     lines: [#{ product_id: product_id, quantity: quantity, rate: rate }]
 })
@@ -524,7 +512,7 @@ create_purchase(#{
         let out = rune_engine::compile_and_run(
             &cap,
             &env_ctx,
-            r#"update_purchase(#{ vendor_company_id: 1, lines: [#{ product_id: 1, quantity: "1" }] })"#,
+            r#"update_purchase(#{ vendor_id: 1, lines: [#{ product_id: 1, quantity: "1" }] })"#,
             &[],
         )
         .await;
@@ -547,7 +535,7 @@ create_purchase(#{
         let out = rune_engine::compile_and_run(
             &cap,
             &env_ctx,
-            r#"update_purchase(#{ id: 0, vendor_company_id: 1, lines: [#{ product_id: 1, quantity: "1" }] })"#,
+            r#"update_purchase(#{ id: 0, vendor_id: 1, lines: [#{ product_id: 1, quantity: "1" }] })"#,
             &[],
         )
         .await;
@@ -570,7 +558,7 @@ create_purchase(#{
         let out = rune_engine::compile_and_run(
             &cap,
             &env_ctx,
-            "update_purchase(#{ id: 1, vendor_company_id: 1, lines: [] })",
+            "update_purchase(#{ id: 1, vendor_id: 1, lines: [] })",
             &[],
         )
         .await;
@@ -605,7 +593,7 @@ create_purchase(#{
 
         let value = json_to_rune(json!({
             "id": 42,
-            "vendor_company_id": 5,
+            "vendor_id": 5,
             "number": "P26RIN100294",
             "date": "27/04/2026",
             "lines": [{ "product_id": 1, "quantity": 2, "rate": 100 }]
@@ -613,9 +601,7 @@ create_purchase(#{
         .expect("json to rune");
         let (id, input, tz) = parse_update_args(&[value]).expect("parse update args");
         assert_eq!(id, 42);
-        assert!(!input.bill_to.vendor_is_individual);
-        assert_eq!(input.bill_to.vendor_company_id, Some(5));
-        assert_eq!(input.bill_to.vendor_contact_id, None);
+        assert_eq!(input.vendor_id, 5);
         assert_eq!(input.number.as_deref(), Some("P26RIN100294"));
         assert_eq!(input.lines.len(), 1);
         assert_eq!(input.lines[0].product_id, 1);

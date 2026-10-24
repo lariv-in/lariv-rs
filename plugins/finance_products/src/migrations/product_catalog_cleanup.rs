@@ -7,6 +7,9 @@
 
 pub const CLEANUP_PRODUCT_CATALOG: &str = r#"
 DO $$
+DECLARE
+    v_table text;
+    v_has_lines boolean;
 BEGIN
     IF to_regclass('public.services') IS NULL THEN
         RETURN;
@@ -28,48 +31,30 @@ BEGIN
           AND table_name = 'services'
           AND column_name = 'legacy_product_id'
     ) THEN
-        IF to_regclass('public.draft_invoice_goods_lines') IS NOT NULL AND EXISTS (
-            SELECT 1
-            FROM draft_invoice_goods_lines AS line
-            JOIN services AS service ON service.legacy_product_id = line.product_id
-        ) THEN
-            RAISE EXCEPTION 'invoice goods lines still reference a product copied to services';
-        END IF;
-        IF to_regclass('public.posted_invoice_goods_lines') IS NOT NULL AND EXISTS (
-            SELECT 1
-            FROM posted_invoice_goods_lines AS line
-            JOIN services AS service ON service.legacy_product_id = line.product_id
-        ) THEN
-            RAISE EXCEPTION 'invoice goods lines still reference a product copied to services';
-        END IF;
-        IF to_regclass('public.cancelled_invoice_goods_lines') IS NOT NULL AND EXISTS (
-            SELECT 1
-            FROM cancelled_invoice_goods_lines AS line
-            JOIN services AS service ON service.legacy_product_id = line.product_id
-        ) THEN
-            RAISE EXCEPTION 'invoice goods lines still reference a product copied to services';
-        END IF;
-        IF to_regclass('public.draft_purchase_goods_lines') IS NOT NULL AND EXISTS (
-            SELECT 1
-            FROM draft_purchase_goods_lines AS line
-            JOIN services AS service ON service.legacy_product_id = line.product_id
-        ) THEN
-            RAISE EXCEPTION 'purchase goods lines still reference a product copied to services';
-        END IF;
-        IF to_regclass('public.posted_purchase_goods_lines') IS NOT NULL AND EXISTS (
-            SELECT 1
-            FROM posted_purchase_goods_lines AS line
-            JOIN services AS service ON service.legacy_product_id = line.product_id
-        ) THEN
-            RAISE EXCEPTION 'purchase goods lines still reference a product copied to services';
-        END IF;
-        IF to_regclass('public.cancelled_purchase_goods_lines') IS NOT NULL AND EXISTS (
-            SELECT 1
-            FROM cancelled_purchase_goods_lines AS line
-            JOIN services AS service ON service.legacy_product_id = line.product_id
-        ) THEN
-            RAISE EXCEPTION 'purchase goods lines still reference a product copied to services';
-        END IF;
+        FOREACH v_table IN ARRAY ARRAY[
+            'draft_invoice_goods_lines',
+            'posted_invoice_goods_lines',
+            'cancelled_invoice_goods_lines',
+            'draft_purchase_goods_lines',
+            'posted_purchase_goods_lines',
+            'cancelled_purchase_goods_lines'
+        ]
+        LOOP
+            IF to_regclass('public.' || v_table) IS NOT NULL THEN
+                EXECUTE format(
+                    'SELECT EXISTS (
+                        SELECT 1
+                        FROM %I AS line
+                        JOIN services AS service ON service.legacy_product_id = line.product_id
+                    )',
+                    v_table
+                ) INTO v_has_lines;
+
+                IF v_has_lines THEN
+                    RAISE EXCEPTION '% lines still reference a product copied to services', v_table;
+                END IF;
+            END IF;
+        END LOOP;
 
         DELETE FROM product_taxes
         WHERE product_id IN (

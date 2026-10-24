@@ -43,6 +43,9 @@ mod m00037_decimal_unit_none;
 mod m00038_invoice_customer_fk;
 mod m00039_invoice_eway_bill_number;
 mod m00040_goods_and_service_lines;
+mod m00041_drop_invoice_gl_preferences;
+mod m00042_payment_journal_entry_item_templates;
+mod m00043_drop_receivable_account;
 
 use super::FinanceInvoicesTag;
 
@@ -95,6 +98,11 @@ impl MigratorTrait for Migrator {
             Box::new(m00038_invoice_customer_fk::Migration),
             Box::new(m00039_invoice_eway_bill_number::Migration),
             Box::new(m00040_goods_and_service_lines::Migration),
+            // Seed payment templates while invoice preference GL columns still
+            // exist, then retire those columns.
+            Box::new(m00042_payment_journal_entry_item_templates::Migration),
+            Box::new(m00041_drop_invoice_gl_preferences::Migration),
+            Box::new(m00043_drop_receivable_account::Migration),
         ]
     }
 }

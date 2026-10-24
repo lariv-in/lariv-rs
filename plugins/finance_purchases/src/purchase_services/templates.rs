@@ -1,0 +1,716 @@
+use frunk::Generic;
+use maud::{Markup, html};
+
+use lariv_core::components::table::table_grid_content;
+use lariv_core::components::{
+    ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay, DeleteConfirmation,
+    FieldText, FieldTitle, FilterClauseView, FormOpts, ListFilterBuilder, ManyToManyItem,
+    ObjectList, PaginationPage, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader,
+    TableListContent, TablePagination, TableRow, breadcrumbs, button_modal_form, button_submit,
+    column_sort_url, container_column, container_row, data_table, delete_confirmation, detail,
+    field_text, field_title, filter_error_banner, form, form_hx_get_route, form_hx_post_selector,
+    form_hx_post_url, label, list_filter_builder, modal, modal_keyed, pagination_pages,
+    row_attr_navigate_route, row_attr_select_extra, sort_indicator, table_button_columns,
+    table_button_filter, table_create_button, table_list_content, table_pagination,
+};
+use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
+use lariv_core::list_filters::{FilterField, FilterRowError};
+use lariv_core::picker::{RenderPickerSelect, picker_create_button};
+use lariv_core::template::{RenderAppPane, RenderTemplate};
+use lariv_core::web::{modal_create_post_query, modal_edit_post_url};
+
+use lariv_plugin_finance_accounts::accounting_detail_menu::{
+    DetailMenuNavItem, detail_sidebar_menu,
+};
+use lariv_plugin_finance_accounts::templates::{
+    app_scaffold, app_scaffold_with_sidebar, layout_main_with_crumbs,
+    layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
+};
+
+use super::forms::{ServiceForm, ServiceFormField};
+
+fn data_table_with_filter_errors<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
+) -> Markup {
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|header| header.key)
+        .filter(|key| !key.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    data_table(DataTable {
+        uid: K::ID,
+        title,
+        classes: "w-full",
+        actions: toolbar,
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
+            },
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
+            },
+        ],
+        pagination,
+        refresh_url,
+        column_keys: &column_keys,
+        ..Default::default()
+    })
+}
+use super::keys::{
+    ServiceCreateModalKey, ServiceDeleteModalKey, ServiceEditModalKey, ServiceSelectModalKey,
+    ServiceSelectTableKey, ServiceTableKey,
+};
+use crate::routes::{
+    PurchaseServiceCreatePostRouteTag, PurchaseServiceDefaultRouteTag,
+    PurchaseServiceDeleteGetRouteTag, PurchaseServiceDeletePostRouteTag,
+    PurchaseServiceDetailRouteTag, PurchaseServiceEditGetRouteTag, PurchaseServiceEditPostRouteTag,
+    PurchaseServiceFkSelectRouteTag,
+};
+
+fn services_list_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Purchase services",
+        href: None,
+    }])
+}
+
+fn service_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
+    let list_url = PurchaseServiceDefaultRouteTag.url();
+    let detail_url = PurchaseServiceDetailRouteTag::new(id).url();
+    match action {
+        None => breadcrumbs(&[
+            Crumb {
+                label: "Purchase services",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: None,
+            },
+        ]),
+        Some(act) => breadcrumbs(&[
+            Crumb {
+                label: "Purchase services",
+                href: Some(&list_url),
+            },
+            Crumb {
+                label: name,
+                href: Some(&detail_url),
+            },
+            Crumb {
+                label: act,
+                href: None,
+            },
+        ]),
+    }
+}
+
+fn service_detail_menu(id: i64, name: &str) -> Markup {
+    let menu_title = format!("Purchase service: {name}");
+    let detail_url = PurchaseServiceDetailRouteTag::new(id).url();
+    let nav = vec![DetailMenuNavItem {
+        title: "Purchase service",
+        url: detail_url,
+        active: true,
+    }];
+    detail_sidebar_menu(menu_title, &nav, None, html! {})
+}
+
+fn service_list_filter(page: &ServiceListPage) -> Markup {
+    list_filter_builder(ListFilterBuilder {
+        fields: &page.fields,
+        rows: &page.filters,
+        page_size: page.page_size,
+        sort: &page.sort,
+        attrs: form_hx_get_route::<ServiceTableKey, PurchaseServiceDefaultRouteTag>(
+            PurchaseServiceDefaultRouteTag,
+        ),
+        apply_label: "Apply Filters",
+        extra: html! {},
+    })
+}
+
+fn service_select_filter(page: &ServiceSelectPage) -> Markup {
+    let target_input = page.target_input.clone();
+    list_filter_builder(ListFilterBuilder {
+        fields: &page.fields,
+        rows: &page.filters,
+        page_size: page.page_size,
+        sort: &page.sort,
+        attrs: form_hx_get_route::<ServiceSelectTableKey, PurchaseServiceFkSelectRouteTag>(
+            PurchaseServiceFkSelectRouteTag,
+        )
+        .set("hx-push-url", "false"),
+        apply_label: "Apply",
+        extra: html! {
+            input type="hidden" name="target_input" value=(target_input) {}
+        },
+    })
+}
+
+fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let owned = pagination_pages(path_and_query, number, num_pages, true);
+    let pages: Vec<PaginationPage<'_>> = owned
+        .iter()
+        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
+            ellipsis: *ellipsis,
+            url: url.as_str(),
+            push_url: *push_url,
+            active: *active,
+            label: label.as_str(),
+        })
+        .collect();
+    table_pagination(TablePagination {
+        pages: &pages,
+        hx_target: K::SELECTOR,
+    })
+}
+
+#[derive(Clone)]
+pub struct ServiceRow {
+    pub id: i64,
+    pub reference: String,
+    pub name: String,
+    pub base_price_formula: String,
+    pub sales_price_formula: String,
+    /// Plain unit sales price for picker → rate fill when the service has no variables.
+    pub sales_price_value: String,
+    pub sac_code: String,
+    pub has_formula: bool,
+    /// JSON array of `{name, type, placeholder}` for the purchase line editor.
+    pub variables_json: String,
+    /// Copied onto an purchase line when this service is picked.
+    pub remarks: String,
+}
+
+#[derive(Generic)]
+pub struct ServiceListPage {
+    pub services: ObjectList<ServiceRow>,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
+    pub sort: String,
+    pub path_and_query: String,
+    pub page_size: u32,
+}
+
+impl ServiceListPage {
+    pub fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let reference_sort = column_sort_url(&self.path_and_query, "Reference", &self.sort);
+        let base_price_sort = column_sort_url(&self.path_and_query, "BasePriceFormula", &self.sort);
+        let sales_price_sort =
+            column_sort_url(&self.path_and_query, "SalesPriceFormula", &self.sort);
+        let hsn_sort = column_sort_url(&self.path_and_query, "SAC", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let reference_label = format!("Reference{}", sort_indicator(&self.sort, "Reference"));
+        let base_price_label = format!(
+            "Base price of one service{}",
+            sort_indicator(&self.sort, "BasePriceFormula")
+        );
+        let sales_price_label = format!(
+            "Sales price of one service{}",
+            sort_indicator(&self.sort, "SalesPriceFormula")
+        );
+        let hsn_label = format!("SAC{}", sort_indicator(&self.sort, "SAC"));
+        let headers = [
+            TableColumnHeader {
+                key: "Name",
+                label: &name_label,
+                sort_url: Some(&name_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Reference",
+                label: &reference_label,
+                sort_url: Some(&reference_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "BasePriceFormula",
+                label: &base_price_label,
+                sort_url: Some(&base_price_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "SalesPriceFormula",
+                label: &sales_price_label,
+                sort_url: Some(&sales_price_sort),
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "SAC",
+                label: &hsn_label,
+                sort_url: Some(&hsn_sort),
+                push_url: true,
+            },
+        ];
+        let rows: Vec<TableRow> = self
+            .services
+            .items
+            .iter()
+            .map(|p| TableRow {
+                attrs: row_attr_navigate_route(PurchaseServiceDetailRouteTag::new(p.id)),
+                cells: vec![
+                    field_text(FieldText {
+                        value: &p.name,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &p.reference,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &p.base_price_formula,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &p.sales_price_formula,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &p.sac_code,
+                        classes: "",
+                    }),
+                ],
+                key: String::new(),
+                children: Vec::new(),
+            })
+            .collect();
+        let mut actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: service_list_filter(self),
+                ..Default::default()
+            }))
+        };
+        if lariv_core::components::role_permitted(
+            &lariv_plugin_users::role_authorization::roles_for::<
+                crate::routes::FinancePurchasesMutate,
+            >(),
+        ) {
+            actions = html! {
+                (actions)
+                (table_create_button::<ServiceTableKey, ServiceCreateModalKey>(
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
+            };
+        }
+        let pagination = render_pagination::<ServiceTableKey>(
+            &self.path_and_query,
+            self.services.number,
+            self.services.num_pages,
+        );
+        data_table_with_filter_errors::<ServiceTableKey>(
+            "Purchase services",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+            &self.filter_errors,
+        )
+    }
+
+    fn body(&self) -> Markup {
+        self.render_table()
+    }
+}
+
+impl RenderAppPane for ServiceListPage {
+    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
+        layout_with_sidebar_crumbs(&self.path_and_query, services_list_crumbs(), self.body())
+    }
+    fn render_main(&self) -> lariv_core::components::MainContentHtml {
+        layout_main_with_crumbs(services_list_crumbs(), self.body())
+    }
+}
+
+impl RenderTemplate for ServiceListPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Purchase services",
+            chrome,
+            services_list_crumbs(),
+            self.body(),
+            &self.path_and_query,
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct ServiceDetailPage {
+    pub id: i64,
+    pub name: String,
+    pub reference: String,
+    pub remarks: String,
+    pub sac_code: String,
+    pub taxes: String,
+    pub variables: String,
+    pub base_price_formula: String,
+    pub sales_price_formula: String,
+    pub journal_name: String,
+    pub journal_lines: String,
+}
+
+impl ServiceDetailPage {
+    fn body(&self) -> Markup {
+        html! {
+            (detail(html! {
+                (container_column("", html! {
+                    (field_title(FieldTitle { value: &self.name, classes: "" }))
+                    (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
+                    (label("Remarks", field_text(FieldText { value: &self.remarks, classes: "" })))
+                    (label("Taxes", field_text(FieldText { value: &self.taxes, classes: "" })))
+                    (label("Variables", field_text(FieldText {
+                        value: if self.variables.trim().is_empty() { "—" } else { self.variables.as_str() },
+                        classes: "",
+                    })))
+                    (label("Base price of one service", field_text(FieldText {
+                        value: if self.base_price_formula.trim().is_empty() { "—" } else { self.base_price_formula.as_str() },
+                        classes: "",
+                    })))
+                    (label("Sales price of one service", field_text(FieldText {
+                        value: if self.sales_price_formula.trim().is_empty() { "—" } else { self.sales_price_formula.as_str() },
+                        classes: "",
+                    })))
+                    (label("Journal", field_text(FieldText { value: &self.journal_name, classes: "" })))
+                    (label("Journal entry template", field_text(FieldText {
+                        value: &self.journal_lines,
+                        classes: "",
+                    })))
+                    (label("SAC code", field_text(FieldText { value: &self.sac_code, classes: "" })))
+                    @if lariv_core::components::role_permitted(&lariv_plugin_users::role_authorization::roles_for::<crate::routes::FinancePurchasesMutate>()) {
+                        (container_row("flex gap-2 mt-4", html! {
+                            (button_modal_form(ButtonModalForm {
+                                name: "p_finance_purchases.PurchaseServiceEditForm",
+                                href: &PurchaseServiceEditGetRouteTag::new(self.id).url(),
+                                form_post_url: &PurchaseServiceEditPostRouteTag::new(self.id).path(),
+                                modal_uid: ServiceEditModalKey::ID,
+                                label: "Edit",
+                                classes: "btn-outline",
+                                ..Default::default()
+                            }))
+                        }))
+                    }
+                }))
+            }))
+        }
+    }
+
+    fn menu(&self) -> Markup {
+        service_detail_menu(self.id, &self.name)
+    }
+}
+
+impl RenderAppPane for ServiceDetailPage {
+    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
+        let crumbs = service_crumbs(self.id, &self.name, None);
+        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
+    }
+    fn render_main(&self) -> lariv_core::components::MainContentHtml {
+        layout_main_with_crumbs(service_crumbs(self.id, &self.name, None), self.body())
+    }
+}
+
+impl RenderTemplate for ServiceDetailPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        let crumbs = service_crumbs(self.id, &self.name, None);
+        app_scaffold_with_sidebar("Service", chrome, self.menu(), crumbs, self.body())
+    }
+}
+
+#[derive(Generic)]
+pub struct ServiceEditModalPage {
+    pub id: i64,
+    pub form_name: String,
+    pub name: String,
+    pub reference: String,
+    pub remarks: String,
+    pub variables: Vec<String>,
+    pub base_price_formula: String,
+    pub sales_price_formula: String,
+    pub journal_id: String,
+    pub journal_display: String,
+    pub journal_lines: String,
+    pub sac_code: i64,
+    pub tax_items: Vec<ManyToManyItem>,
+    pub error: String,
+}
+
+impl RenderTemplate for ServiceEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let delete_url = PurchaseServiceDeleteGetRouteTag::new(self.id).url();
+        modal_keyed::<ServiceEditModalKey>(
+            &self.form_name,
+            html! {
+                h3 class="font-bold text-lg mb-4" { "Edit service" }
+                (form(&CsrfToken::current(), FormOpts {
+                    attrs: form_hx_post_url::<ServiceEditModalKey>(&modal_edit_post_url(
+                        PurchaseServiceEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: ServiceForm::render_inputs(
+                        &FormCtx::form::<ServiceForm>(CsrfToken::current())
+                            .value(ServiceFormField::Name, &self.name)
+                            .value(ServiceFormField::Reference, &self.reference)
+                            .value(ServiceFormField::Remarks, &self.remarks)
+                            .list(ServiceFormField::Variables, &self.variables)
+                            .value(ServiceFormField::BasePriceFormula, &self.base_price_formula)
+                            .value(
+                                ServiceFormField::SalesPriceFormula,
+                                &self.sales_price_formula,
+                            )
+                            .value(ServiceFormField::JournalId, &self.journal_id)
+                            .display(ServiceFormField::JournalId, &self.journal_display)
+                            .value(ServiceFormField::JournalLines, &self.journal_lines)
+                            .value(ServiceFormField::SacCode, self.sac_code.to_string())
+                            .m2m(ServiceFormField::TaxIds, &self.tax_items),
+                    ),
+                    actions: html! {
+                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
+                        (button_modal_form(ButtonModalForm {
+                            label: "Delete",
+                            icon_name: Some("trash"),
+                            name: "p_finance_purchases.PurchaseServiceDeleteForm",
+                            href: &delete_url,
+                            form_post_url: &delete_url,
+                            modal_uid: ServiceDeleteModalKey::ID,
+                            classes: "btn-error",
+                            ..Default::default()
+                        }))
+                    },
+                    ..Default::default()
+                }))
+            },
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct ServiceCreateModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub target_input: String,
+    pub name: String,
+    pub reference: String,
+    pub remarks: String,
+    pub variables: Vec<String>,
+    pub base_price_formula: String,
+    pub sales_price_formula: String,
+    pub journal_id: String,
+    pub journal_display: String,
+    pub journal_lines: String,
+    pub sac_code: i64,
+    pub tax_items: Vec<ManyToManyItem>,
+    pub error: String,
+}
+
+impl RenderTemplate for ServiceCreateModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_finance_purchases.PurchaseServiceCreateForm"
+        } else {
+            self.form_name.as_str()
+        };
+        modal_keyed::<ServiceCreateModalKey>(
+            "",
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Create Service",
+                    subtitle: "Create a new service",
+                    classes: "@container",
+                    attrs: form_hx_post_url::<ServiceCreateModalKey>(&modal_create_post_query(
+                        PurchaseServiceCreatePostRouteTag,
+                        form_name,
+                        &self.refresh_table,
+                        &self.target_input,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: ServiceForm::render_inputs(
+                        &FormCtx::form::<ServiceForm>(CsrfToken::current())
+                            .value(ServiceFormField::Name, &self.name)
+                            .value(ServiceFormField::Reference, &self.reference)
+                            .value(ServiceFormField::Remarks, &self.remarks)
+                            .list(ServiceFormField::Variables, &self.variables)
+                            .value(ServiceFormField::BasePriceFormula, &self.base_price_formula)
+                            .value(
+                                ServiceFormField::SalesPriceFormula,
+                                &self.sales_price_formula,
+                            )
+                            .value(ServiceFormField::JournalId, &self.journal_id)
+                            .display(ServiceFormField::JournalId, &self.journal_display)
+                            .value(ServiceFormField::JournalLines, &self.journal_lines)
+                            .value(ServiceFormField::SacCode, self.sac_code.to_string())
+                            .m2m(ServiceFormField::TaxIds, &self.tax_items),
+                    ),
+                    actions: html! {
+                        (container_row("flex justify-end gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save Service",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
+                        }))
+                    },
+                    ..Default::default()
+                },
+            ),
+        )
+    }
+}
+
+#[derive(Generic)]
+pub struct ServiceSelectPage {
+    pub services: ObjectList<ServiceRow>,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
+    pub target_input: String,
+    pub sort: String,
+    pub path_and_query: String,
+    pub page_size: u32,
+}
+
+impl RenderPickerSelect<ServiceSelectTableKey, ServiceSelectModalKey> for ServiceSelectPage {
+    fn render_table(&self) -> Markup {
+        let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
+        let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
+        let headers = [TableColumnHeader {
+            key: "Name",
+            label: &name_label,
+            sort_url: Some(&name_sort),
+            push_url: false,
+        }];
+        let rows: Vec<TableRow> = self
+            .services
+            .items
+            .iter()
+            .map(|p| TableRow {
+                attrs: row_attr_select_extra(
+                    &self.target_input,
+                    &p.id.to_string(),
+                    &p.name,
+                    &[
+                        ("sales_price", p.sales_price_value.as_str()),
+                        ("has_formula", if p.has_formula { "1" } else { "0" }),
+                        ("variables", p.variables_json.as_str()),
+                        ("remarks", p.remarks.as_str()),
+                    ],
+                ),
+                cells: vec![field_text(FieldText {
+                    value: &p.name,
+                    classes: "",
+                })],
+                key: String::new(),
+                children: Vec::new(),
+            })
+            .collect();
+        let mut actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: service_select_filter(self),
+                ..Default::default()
+            }))
+        };
+        if lariv_core::components::role_permitted(
+            &lariv_plugin_users::role_authorization::roles_for::<
+                crate::routes::FinancePurchasesMutate,
+            >(),
+        ) {
+            actions = html! {
+                (actions)
+                (picker_create_button::<ServiceCreateModalKey>(
+                    &self.target_input,
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
+            };
+        }
+        let pagination = render_pagination::<ServiceSelectTableKey>(
+            &self.path_and_query,
+            self.services.number,
+            self.services.num_pages,
+        );
+        data_table_with_filter_errors::<ServiceSelectTableKey>(
+            "Select Service",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+            &self.filter_errors,
+        )
+    }
+}
+
+impl RenderTemplate for ServiceSelectPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        self.render_modal().into_inner()
+    }
+}
+
+#[derive(Generic)]
+pub struct ConfirmDeletePage {
+    pub modal_uid: String,
+    pub message: String,
+    pub form_name: String,
+    pub id: i64,
+    pub error: String,
+}
+
+impl RenderTemplate for ConfirmDeletePage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let target = if self.modal_uid.is_empty() {
+            format!("#{}", ServiceDeleteModalKey::ID)
+        } else {
+            format!("#{}", self.modal_uid)
+        };
+        let uid = if self.modal_uid.is_empty() {
+            ServiceDeleteModalKey::ID
+        } else {
+            self.modal_uid.as_str()
+        };
+        let post_url = PurchaseServiceDeletePostRouteTag::new(self.id).url();
+        modal(lariv_core::components::Modal {
+            uid,
+            children: delete_confirmation(DeleteConfirmation {
+                title: "Confirm Deletion",
+                message: &self.message,
+                attrs: form_hx_post_selector(&post_url, &target),
+                form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+    }
+}

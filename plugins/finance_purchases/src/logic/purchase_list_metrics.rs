@@ -13,21 +13,22 @@ use lariv_plugin_finance_common::decimal;
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
 use crate::entities::{
-    draft_purchase, draft_purchase_goods_line, draft_purchase_service_line, posted_purchase_goods_line,
-    posted_purchase_service_line,
+    draft_purchase, draft_purchase_goods_line, draft_purchase_service_line,
+    posted_purchase_goods_line, posted_purchase_service_line,
 };
 use crate::logic::draft_payment_term::{
     load_draft_purchase_payment_term_lines, load_posted_payment_term_for_cancelled,
     load_posted_payment_term_for_posted, resolve_due_date,
 };
 use crate::logic::tax_assoc::{
-    load_cancelled_line_tax_ids, load_cancelled_purchase_tax_ids, load_cancelled_service_line_tax_ids,
-    load_draft_line_tax_ids, load_draft_purchase_tax_ids, load_draft_service_line_tax_ids,
-    load_posted_line_tax_ids, load_posted_purchase_tax_ids, load_posted_service_line_tax_ids,
+    load_cancelled_line_tax_ids, load_cancelled_purchase_tax_ids,
+    load_cancelled_service_line_tax_ids, load_draft_line_tax_ids, load_draft_purchase_tax_ids,
+    load_draft_service_line_tax_ids, load_posted_line_tax_ids, load_posted_purchase_tax_ids,
+    load_posted_service_line_tax_ids,
 };
 use crate::logic::tax_calculations::{
-    PurchaseLinesTotals, purchase_amounts_from_line_totals, purchase_line_amounts,
-    merge_purchase_line_tax_ids,
+    PurchaseLinesTotals, merge_purchase_line_tax_ids, purchase_amounts_from_line_totals,
+    purchase_line_amounts,
 };
 
 #[derive(Clone, Debug, Default)]

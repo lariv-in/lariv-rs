@@ -13,7 +13,6 @@ pub struct Model {
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub datetime: DateTime<Utc>,
-    pub account_id: i64,
     pub journal_entry_id: i64,
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
     pub total_amount: Decimal,

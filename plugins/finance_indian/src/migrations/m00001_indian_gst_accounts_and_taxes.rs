@@ -24,7 +24,6 @@ enum Taxes {
     Name,
     Percentage,
     TaxType,
-    AccountId,
 }
 
 #[derive(DeriveIden)]
@@ -159,7 +158,7 @@ impl MigrationTrait for Migration {
             conn.execute(&insert).await?;
         }
 
-        for &(name, pct, acct_code) in GST_TAXES {
+        for &(name, pct, _acct_code) in GST_TAXES {
             let insert = Query::insert()
                 .into_table(Taxes::Table)
                 .columns([
@@ -168,7 +167,6 @@ impl MigrationTrait for Migration {
                     Taxes::Name,
                     Taxes::Percentage,
                     Taxes::TaxType,
-                    Taxes::AccountId,
                 ])
                 .values_panic([
                     Expr::current_timestamp().into(),
@@ -176,7 +174,6 @@ impl MigrationTrait for Migration {
                     name.into(),
                     Expr::val(pct).cast_as(Alias::new("numeric")).into(),
                     Expr::val("levied").cast_as(TaxKind::Enum).into(),
-                    subquery_expr(account_id_by_code(acct_code)).into(),
                 ])
                 .to_owned();
             conn.execute(&insert).await?;

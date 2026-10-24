@@ -82,34 +82,29 @@ pub fn expr_posted_final_due(purchase_table: &str) -> SimpleExpr {
     ))
 }
 
-pub fn expr_ar_amount(purchase_table: &str) -> SimpleExpr {
-    Expr::cust(format!(
-        "(SELECT amount FROM journal_entry_items \
-          WHERE journal_entry_items.journal_entry_id = {purchase_table}.journal_entry_id \
-            AND journal_entry_items.account_id = {purchase_table}.account_payable_id \
-          LIMIT 1)"
-    ))
+fn expr_purchase_total_sql(purchase_table: &str) -> String {
+    format!(
+        "(SELECT COALESCE(SUM(amount), 0) FROM posted_purchase_payment_term_lines \
+          WHERE posted_purchase_payment_term_lines.posted_payment_term_id = {purchase_table}.posted_payment_term_id)"
+    )
 }
 
-/// Tax levied ≈ receivable − untaxed (ignores withholding differences for sort order).
+pub fn expr_ar_amount(purchase_table: &str) -> SimpleExpr {
+    Expr::cust(expr_purchase_total_sql(purchase_table))
+}
+
+/// Tax levied ≈ purchase total − untaxed (ignores withholding differences for sort order).
 pub fn expr_tax_levied_approx(purchase_table: &str, lines_table: &str, fk: &str) -> SimpleExpr {
     Expr::cust(format!(
-        "((SELECT amount FROM journal_entry_items \
-           WHERE journal_entry_items.journal_entry_id = {purchase_table}.journal_entry_id \
-             AND journal_entry_items.account_id = {purchase_table}.account_payable_id \
-           LIMIT 1) \
+        "({} \
           - (SELECT COALESCE(SUM(pre_tax_amount), 0) FROM {lines_table} \
-             WHERE {lines_table}.{fk} = {purchase_table}.id))"
+             WHERE {lines_table}.{fk} = {purchase_table}.id))",
+        expr_purchase_total_sql(purchase_table)
     ))
 }
 
 pub fn expr_open_balance(purchase_table: &str) -> SimpleExpr {
-    Expr::cust(format!(
-        "(-(SELECT amount FROM journal_entry_items \
-           WHERE journal_entry_items.journal_entry_id = {purchase_table}.journal_entry_id \
-             AND journal_entry_items.account_id = {purchase_table}.account_payable_id \
-           LIMIT 1))"
-    ))
+    Expr::cust(expr_purchase_total_sql(purchase_table))
 }
 
 pub fn expr_settlement_posted_number(settlement_table: &str) -> SimpleExpr {
@@ -156,19 +151,17 @@ pub fn expr_settlement_final_due(settlement_table: &str) -> SimpleExpr {
 
 pub fn expr_settlement_ar_amount(settlement_table: &str) -> SimpleExpr {
     Expr::cust(format!(
-        "(SELECT jei.amount FROM journal_entry_items jei \
-          INNER JOIN posted_purchases pi ON pi.journal_entry_id = jei.journal_entry_id \
-            AND jei.account_id = pi.account_payable_id \
-          WHERE pi.id = {settlement_table}.posted_purchase_id LIMIT 1)"
+        "(SELECT COALESCE(SUM(ptl.amount), 0) FROM posted_purchase_payment_term_lines ptl \
+          INNER JOIN posted_purchases pi ON pi.posted_payment_term_id = ptl.posted_payment_term_id \
+          WHERE pi.id = {settlement_table}.posted_purchase_id)"
     ))
 }
 
 pub fn expr_settlement_tax_levied_approx(settlement_table: &str) -> SimpleExpr {
     Expr::cust(format!(
-        "((SELECT jei.amount FROM journal_entry_items jei \
-           INNER JOIN posted_purchases pi ON pi.journal_entry_id = jei.journal_entry_id \
-             AND jei.account_id = pi.account_payable_id \
-           WHERE pi.id = {settlement_table}.posted_purchase_id LIMIT 1) \
+        "((SELECT COALESCE(SUM(ptl.amount), 0) FROM posted_purchase_payment_term_lines ptl \
+           INNER JOIN posted_purchases pi ON pi.posted_payment_term_id = ptl.posted_payment_term_id \
+           WHERE pi.id = {settlement_table}.posted_purchase_id) \
           - (SELECT COALESCE(SUM(pre_tax_amount), 0) FROM posted_purchase_goods_lines \
              WHERE posted_purchase_goods_lines.posted_purchase_id = {settlement_table}.posted_purchase_id))"
     ))

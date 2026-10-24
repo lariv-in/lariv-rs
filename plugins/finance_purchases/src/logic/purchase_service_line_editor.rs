@@ -7,13 +7,13 @@ use sea_orm::{
 use serde::Serialize;
 
 use crate::logic::bill_to::{BillTo, PartyLabels};
+use crate::purchase_services::{
+    entities::service::Entity as ServiceEntity, preferences::load_service_tax_ids, pricing,
+};
 use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_format,
 };
 use lariv_plugin_finance_common::decimal;
-use lariv_plugin_finance_services::{
-    entities::service::Entity as ServiceEntity, preferences::load_service_tax_ids, pricing,
-};
 use lariv_plugin_finance_taxes::{
     entities::tax::TaxKind,
     scope::{load_all_taxes, load_taxes_by_ids, tax_label},
@@ -25,14 +25,13 @@ use crate::entities::{
     posted_purchase::Entity as PostedPurchaseEntity,
     posted_purchase_service_line::{self, Entity as PostedPurchaseServiceLineEntity},
 };
-use crate::logic::preferences::load_purchase_preferences;
 use crate::logic::tax_assoc::{
     load_cancelled_service_line_tax_ids, load_draft_service_line_tax_ids,
     load_posted_service_line_tax_ids,
 };
 
 pub fn default_lines_json() -> String {
-    r#"[{"service_id":0,"quantity":"1","rate":"","service_label":"","fk_slot":"line-slot-0","tax_ids":[],"has_formula":false,"variable_rows":[],"pre_tax":"","remarks":""}]"#
+    r#"[{"service_id":0,"quantity":"1","rate":"","service_label":"","fk_slot":"PurchaseLineService_0","tax_ids":[],"has_formula":false,"variable_rows":[],"pre_tax":"","remarks":""}]"#
         .to_string()
 }
 
@@ -238,7 +237,9 @@ pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> St
             .map(|p| variable_rows_for_line(&p.variables, has_formula, &ln.variable_values))
             .unwrap_or_default();
         let service_label = product.map(|p| p.name).unwrap_or_default();
-        let tax_ids = load_draft_service_line_tax_ids(db, ln.id).await.unwrap_or_default();
+        let tax_ids = load_draft_service_line_tax_ids(db, ln.id)
+            .await
+            .unwrap_or_default();
         rows.push(DraftLineFormRow {
             service_id: ln.service_id,
             quantity: decimal::decimal_display(ln.quantity),
@@ -355,12 +356,30 @@ pub async fn draft_purchase_service_line_display_rows(
         .all(db)
         .await
         .unwrap_or_default();
-    let prefs = load_purchase_preferences(db).await;
-    let currency = currency_for_journal_or_default(db, prefs.journal_id).await;
+    let mut journal_id = None;
+    let mut mixed_journals = false;
+    for ln in &lines {
+        if let Ok(Some(template)) =
+            crate::purchase_services::journal_template::load_template(db, ln.service_id).await
+        {
+            match journal_id {
+                Some(existing) if existing != template.journal_id => mixed_journals = true,
+                None => journal_id = Some(template.journal_id),
+                _ => {}
+            }
+        }
+    }
+    let currency = if mixed_journals {
+        load_default_currency_format(db).await
+    } else {
+        currency_for_journal_or_default(db, journal_id).await
+    };
 
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {
-        let tax_ids = load_draft_service_line_tax_ids(db, ln.id).await.unwrap_or_default();
+        let tax_ids = load_draft_service_line_tax_ids(db, ln.id)
+            .await
+            .unwrap_or_default();
         rows.push(
             build_line_display_row(
                 db,

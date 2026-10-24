@@ -210,7 +210,6 @@ pub struct TaxRow {
     pub name: String,
     pub tax_type: String,
     pub percentage: String,
-    pub account_label: String,
 }
 
 #[derive(Generic)]
@@ -251,12 +250,6 @@ impl TaxListPage {
                 sort_url: Some(&percentage_sort),
                 push_url: true,
             },
-            TableColumnHeader {
-                key: "Account",
-                label: "Account",
-                sort_url: None,
-                push_url: true,
-            },
         ];
         let rows: Vec<TableRow> = self
             .taxes
@@ -275,10 +268,6 @@ impl TaxListPage {
                     }),
                     field_text(FieldText {
                         value: &t.percentage,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &t.account_label,
                         classes: "",
                     }),
                 ],
@@ -352,7 +341,8 @@ pub struct TaxDetailPage {
     pub name: String,
     pub tax_type: String,
     pub percentage: String,
-    pub account_label: String,
+    pub journal_name: String,
+    pub journal_lines: String,
 }
 
 impl TaxDetailPage {
@@ -363,7 +353,8 @@ impl TaxDetailPage {
                     (field_title(FieldTitle { value: &self.name, classes: "" }))
                     (lariv_core::components::label("Type", field_text(FieldText { value: &self.tax_type, classes: "" })))
                     (lariv_core::components::label("Percentage", field_text(FieldText { value: &self.percentage, classes: "" })))
-                    (lariv_core::components::label("Account", field_text(FieldText { value: &self.account_label, classes: "" })))
+                    (lariv_core::components::label("Journal", field_text(FieldText { value: &self.journal_name, classes: "" })))
+                    (lariv_core::components::label("Journal entry template", field_text(FieldText { value: &self.journal_lines, classes: "" })))
                     @if lariv_core::components::role_permitted(&lariv_plugin_users::role_authorization::roles_for::<super::routes::FinanceTaxesMutate>()) {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
@@ -411,8 +402,9 @@ pub struct TaxEditModalPage {
     pub name: String,
     pub tax_type: String,
     pub percentage: String,
-    pub account_id: String,
-    pub account_display: String,
+    pub journal_id: String,
+    pub journal_display: String,
+    pub journal_lines: String,
     pub error: String,
 }
 
@@ -435,8 +427,9 @@ impl RenderTemplate for TaxEditModalPage {
                             .value(TaxFormField::Name, &self.name)
                             .value(TaxFormField::TaxType, &self.tax_type)
                             .value(TaxFormField::Percentage, &self.percentage)
-                            .value(TaxFormField::AccountId, &self.account_id)
-                            .display(TaxFormField::AccountId, &self.account_display)
+                            .value(TaxFormField::JournalId, &self.journal_id)
+                            .display(TaxFormField::JournalId, &self.journal_display)
+                            .value(TaxFormField::JournalLines, &self.journal_lines)
                             .choices(TaxFormField::TaxType, &choices),
                     ),
                     actions: html! {
@@ -467,8 +460,9 @@ pub struct TaxCreateModalPage {
     pub name: String,
     pub tax_type: String,
     pub percentage: String,
-    pub account_id: String,
-    pub account_display: String,
+    pub journal_id: String,
+    pub journal_display: String,
+    pub journal_lines: String,
     pub error: String,
 }
 
@@ -500,8 +494,9 @@ impl RenderTemplate for TaxCreateModalPage {
                             .value(TaxFormField::Name, &self.name)
                             .value(TaxFormField::TaxType, &self.tax_type)
                             .value(TaxFormField::Percentage, &self.percentage)
-                            .value(TaxFormField::AccountId, &self.account_id)
-                            .display(TaxFormField::AccountId, &self.account_display)
+                            .value(TaxFormField::JournalId, &self.journal_id)
+                            .display(TaxFormField::JournalId, &self.journal_display)
+                            .value(TaxFormField::JournalLines, &self.journal_lines)
                             .choices(TaxFormField::TaxType, &choices),
                     ),
                     actions: html! {

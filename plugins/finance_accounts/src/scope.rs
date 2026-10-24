@@ -141,6 +141,28 @@ pub async fn load_journal_display_label(
         .unwrap_or_else(|| "—".into())
 }
 
+/// Earliest active journal. The Indian chart seed creates this as "General"
+/// when no journal exists yet, and form pickers use it as the prefilled journal.
+pub async fn load_default_journal(db: &DatabaseConnection) -> Option<journal::Model> {
+    lariv_core::web::opt_or_log(
+        JournalEntity::find()
+            .filter(journal::Column::IsActive.eq(true))
+            .order_by_asc(journal::Column::Id)
+            .one(db)
+            .await,
+        "load default journal",
+    )
+}
+
+/// `(id, name)` for an empty journal foreign key. Both strings are empty when
+/// no active journal exists.
+pub async fn load_default_journal_form(db: &DatabaseConnection) -> (String, String) {
+    match load_default_journal(db).await {
+        Some(journal) => (journal.id.to_string(), journal.name),
+        None => (String::new(), String::new()),
+    }
+}
+
 pub async fn load_account_parent_label(db: &DatabaseConnection, parent_id: Option<i64>) -> String {
     let Some(pid) = parent_id.filter(|&id| id > 0) else {
         return "—".into();

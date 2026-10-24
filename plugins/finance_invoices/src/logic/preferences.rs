@@ -3,12 +3,6 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 
-use lariv_plugin_finance_accounts::{
-    logic::journal::{credit_balance_type, debit_balance_type},
-    validate_leaf_account_balance_type,
-};
-use lariv_plugin_finance_products::preferences::optional_i64;
-
 use crate::entities::{
     payment_preferences::{self, Entity as PaymentPreferencesEntity},
     preferences::{self, Entity as InvoicePreferencesEntity},
@@ -31,10 +25,6 @@ pub async fn load_invoice_preferences(db: &DatabaseConnection) -> preferences::M
         id: 1,
         created_at: Some(now),
         updated_at: Some(now),
-        account_receivable_id: None,
-        account_revenue_id: None,
-        account_tax_payable_id: None,
-        journal_id: None,
         invoice_number_format: Some(default_format),
         invoice_date_format: None,
         invoice_datetime_format: None,
@@ -127,40 +117,6 @@ pub fn format_pref_datetime(dt: DateTime<Utc>, tz: &str, fmt: &str) -> String {
         .to_string()
 }
 
-pub async fn validate_invoice_preferences_for_posting(
-    db: &DatabaseConnection,
-    prefs: &preferences::Model,
-) -> Result<(), String> {
-    validate_leaf_account_balance_type(
-        db,
-        optional_i64(prefs.account_receivable_id),
-        debit_balance_type(),
-        "accounts receivable",
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-    validate_leaf_account_balance_type(
-        db,
-        optional_i64(prefs.account_revenue_id),
-        credit_balance_type(),
-        "revenue account",
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-    validate_leaf_account_balance_type(
-        db,
-        optional_i64(prefs.account_tax_payable_id),
-        credit_balance_type(),
-        "tax payable account",
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-    if optional_i64(prefs.journal_id) == 0 {
-        return Err("journal is required in invoice preferences".to_string());
-    }
-    Ok(())
-}
-
 pub async fn load_payment_preferences(db: &DatabaseConnection) -> payment_preferences::Model {
     if let Ok(Some(p)) = PaymentPreferencesEntity::find_by_id(1i64).one(db).await {
         return p;
@@ -176,21 +132,17 @@ pub async fn load_payment_preferences(db: &DatabaseConnection) -> payment_prefer
         id: 1,
         created_at: Some(now),
         updated_at: Some(now),
-        payment_account_id: None,
     })
 }
 
 pub async fn validate_payment_preferences_for_create(
     db: &DatabaseConnection,
-    prefs: &payment_preferences::Model,
+    _prefs: &payment_preferences::Model,
 ) -> Result<(), String> {
-    let account_id = optional_i64(prefs.payment_account_id);
-    if account_id == 0 {
-        return Err("payment account is required in payment preferences".to_string());
+    match crate::payment_journal_template::load_template(db).await? {
+        Some(_) => Ok(()),
+        None => Err("payment preferences need a journal entry template".into()),
     }
-    validate_leaf_account_balance_type(db, account_id, debit_balance_type(), "payment account")
-        .await
-        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -203,10 +155,6 @@ mod tests {
             id: 1,
             created_at: None,
             updated_at: None,
-            account_receivable_id: None,
-            account_revenue_id: None,
-            account_tax_payable_id: None,
-            journal_id: None,
             invoice_number_format: None,
             invoice_date_format: date.map(|s| s.to_string()),
             invoice_datetime_format: datetime.map(|s| s.to_string()),

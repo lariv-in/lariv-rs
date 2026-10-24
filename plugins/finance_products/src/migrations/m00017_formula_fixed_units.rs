@@ -12,7 +12,8 @@ impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let conn = manager.get_connection();
         conn.execute_unprepared(REFRESH_FORMULA_FIXED_UNITS).await?;
-        conn.execute_unprepared(REFRESH_PRODUCT_SCHEMA_UNITS).await?;
+        conn.execute_unprepared(REFRESH_PRODUCT_SCHEMA_UNITS)
+            .await?;
         Ok(())
     }
 

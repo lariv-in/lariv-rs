@@ -13,6 +13,7 @@ cap-llm = ["lariv_core/cap-llm"]
 
 [dependencies]
 lariv_core = { package = "lariv-core", path = "../../lariv-core" }
+lariv-formula = { workspace = true }
 lariv-rs-macros = { workspace = true }
 lariv-plugin-filesystem = { path = "../filesystem" }
 lariv-plugin-finance-common = { path = "../finance_common" }

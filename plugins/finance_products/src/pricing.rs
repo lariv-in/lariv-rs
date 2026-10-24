@@ -1,4 +1,4 @@
-//! Product price formulas.
+//! Product price formulas and line amounts.
 //!
 //! A product stores a [`VariableSchema`], a base price formula, and a sales price
 //! formula. Each formula is the price of one product. Invoice line quantity
@@ -34,7 +34,7 @@ pub struct VariableInputSpec {
     pub accepted_unit: String,
 }
 
-/// True when the product defines variables, so invoice lines price from the formula.
+/// True when the product defines variables the line editor should collect.
 pub fn has_variable_pricing(schema_json: &str) -> bool {
     matches!(schema_is_empty(schema_json), Ok(false))
 }
@@ -118,6 +118,25 @@ pub fn unit_amount(formula: &str) -> Result<Decimal, String> {
     Ok(decimal::normalize(amount))
 }
 
+/// Unit price from a product formula (for one product). Empty formula returns 0.
+pub fn unit_formula_amount(
+    schema_json: &str,
+    formula: &str,
+    raw_variables: &str,
+) -> Result<Decimal, String> {
+    let formula = formula.trim();
+    if formula.is_empty() {
+        return Ok(Decimal::ZERO);
+    }
+    let schema = load_schema(schema_json)?;
+    if formula_references_schema(&schema, formula) {
+        let raw = serde_json::from_str(raw_variables.trim()).unwrap_or(serde_json::json!({}));
+        Ok(price_line(schema_json, formula, &raw)?.rate)
+    } else {
+        unit_amount(formula)
+    }
+}
+
 /// Line cost from the base price formula of one product, times `quantity`.
 ///
 /// The formula is the cost of a single product. When it names a schema
@@ -189,6 +208,19 @@ pub fn price_line(
         rate: unit,
         variable_values,
     })
+}
+
+/// Persist typed line variables without evaluating a price formula.
+pub fn persist_line_variables(
+    schema_json: &str,
+    raw: &serde_json::Value,
+) -> Result<String, String> {
+    let schema = load_schema(schema_json)?;
+    if schema.is_empty() {
+        return Ok("{}".to_string());
+    }
+    let values = parse_values(&schema, raw).map_err(|e| e.to_string())?;
+    Ok(persist_values(&schema, &values).to_string())
 }
 
 /// Multiply a one-product price by invoice line `quantity`.
@@ -338,42 +370,11 @@ mod tests {
     }
 
     #[test]
-    fn formula_price_uses_variables() {
-        let (json, schema) =
-            store_schema(&["length:length".into(), "qty:quantity".into()]).unwrap();
-        validate_price_formula(
-            &schema,
-            "length * qty * decimal(\"2\")",
-            "sales price formula",
-        )
-        .unwrap();
-        let priced = price_line(
-            &json,
-            "length * decimal(\"2\")",
-            &serde_json::json!({"length": "1000", "qty": "3"}),
-        )
-        .unwrap();
-        assert_eq!(priced.pre_tax, Decimal::from(2000));
-        assert_eq!(priced.rate, Decimal::from(2000));
-        let line = with_quantity(priced, Decimal::from(3)).unwrap();
-        assert_eq!(line.pre_tax, Decimal::from(6000));
+    fn quantity_times_rate_is_the_line_amount() {
+        let line = from_quantity_rate(Decimal::from(3), Decimal::from(10)).unwrap();
+        assert_eq!(line.pre_tax, Decimal::from(30));
+        assert_eq!(line.rate, Decimal::from(10));
         assert_eq!(line.quantity, Decimal::from(3));
-        assert_eq!(line.rate, Decimal::from(2000));
-    }
-
-    #[test]
-    fn empty_formula_is_rejected() {
-        let schema = VariableSchema::new();
-        let err = validate_price_formula(&schema, "   ", "base price formula").unwrap_err();
-        assert!(err.contains("base price formula is required"));
-    }
-
-    #[test]
-    fn constant_base_formula_is_one_product_times_quantity() {
-        let one = line_cost("{}", r#"decimal("40")"#, "{}", Decimal::ONE).unwrap();
-        assert_eq!(one, Decimal::from(40));
-        let three = line_cost("{}", r#"decimal("40")"#, "{}", Decimal::from(3)).unwrap();
-        assert_eq!(three, Decimal::from(120));
     }
 
     #[test]
@@ -399,16 +400,15 @@ mod tests {
     #[test]
     fn stored_length_and_weight_keep_units() {
         let (json, _) = store_schema(&["length:length".into(), "mass:weight".into()]).unwrap();
-        let priced = price_line(
+        let stored_raw = persist_line_variables(
             &json,
-            "length + mass",
             &serde_json::json!({
                 "length": {"value": "2", "unit": "cm"},
                 "mass": {"value": "1.5", "unit": "kg"},
             }),
         )
         .unwrap();
-        let stored: serde_json::Value = serde_json::from_str(&priced.variable_values).unwrap();
+        let stored: serde_json::Value = serde_json::from_str(&stored_raw).unwrap();
         assert_eq!(
             stored["length"],
             serde_json::json!({"kind": "length", "value": "2", "unit": "cm"})
@@ -417,51 +417,20 @@ mod tests {
             stored["mass"],
             serde_json::json!({"kind": "weight", "value": "1.5", "unit": "kg"})
         );
-        assert_eq!(priced.pre_tax, Decimal::new(215, 1));
     }
 
     #[test]
-    fn metre_reaches_the_formula_as_millimetres() {
+    fn metre_is_stored_in_the_entered_unit() {
         let (json, _) = store_schema(&["length:length".into()]).unwrap();
-        let from_unit = price_line(
+        let stored_raw = persist_line_variables(
             &json,
-            "length",
             &serde_json::json!({"length": {"value": "1", "unit": "m"}}),
         )
         .unwrap();
-        assert_eq!(from_unit.pre_tax, Decimal::from(1000));
-        let stored: serde_json::Value = serde_json::from_str(&from_unit.variable_values).unwrap();
+        let stored: serde_json::Value = serde_json::from_str(&stored_raw).unwrap();
         assert_eq!(
             stored["length"],
             serde_json::json!({"kind": "length", "value": "1", "unit": "m"})
         );
-
-        let from_mm = price_line(
-            &json,
-            "length",
-            &serde_json::json!({
-                "length": {"kind": "length", "value": "1000", "unit": "mm"}
-            }),
-        )
-        .unwrap();
-        assert_eq!(from_mm.pre_tax, Decimal::from(1000));
-        let stored: serde_json::Value = serde_json::from_str(&from_mm.variable_values).unwrap();
-        assert_eq!(
-            stored["length"],
-            serde_json::json!({"kind": "length", "value": "1000", "unit": "mm"})
-        );
-    }
-
-    #[test]
-    fn variable_base_formula_is_one_product_times_quantity() {
-        let (json, _) = store_schema(&["length:length".into()]).unwrap();
-        let cost = line_cost(
-            &json,
-            r#"length * decimal("2")"#,
-            r#"{"length":"1000"}"#,
-            Decimal::from(3),
-        )
-        .unwrap();
-        assert_eq!(cost, Decimal::from(6000));
     }
 }

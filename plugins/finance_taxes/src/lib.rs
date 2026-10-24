@@ -7,6 +7,8 @@ pub mod create_modals;
 pub mod entities;
 pub mod forms;
 pub mod handlers;
+pub mod journal_template;
+pub mod journal_template_editor;
 pub mod keys;
 pub mod migrations;
 pub mod routes;

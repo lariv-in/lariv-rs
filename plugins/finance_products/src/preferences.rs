@@ -24,8 +24,6 @@ pub async fn load_product_preferences(db: &DatabaseConnection) -> product_prefer
         id: 1,
         created_at: Some(now),
         updated_at: Some(now),
-        inventory_account_id: None,
-        cost_of_sales_account_id: None,
     })
 }
 

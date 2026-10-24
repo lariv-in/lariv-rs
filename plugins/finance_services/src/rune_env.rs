@@ -23,12 +23,12 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "create_service",
-        "create_service(#{ name: string, base_price_formula: string, sales_price_formula: string, reference?: string, remarks?: string, sac_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // new service id. Both formulas are the price of one service; invoice quantity multiplies them.",
+        "create_service(#{ name: string, base_price_formula: string, sales_price_formula: string, reference?: string, remarks?: string, sac_code?: int, tax_ids?: [int], variables?: object|[{string}], journal_id?: int, journal_lines?: [{ account_id: int, formula: string }] }) -> int  // new service id. Both formulas are the price of one service; invoice quantity multiplies them. journal_lines formulas may use quantity, rate, pre_tax, base_cost, sales_price, and the service variables. Lines must balance.",
         |_ctx| NativeBinding::Function(Arc::new(create_service)),
     );
     rune_env.register_contextual(
         "update_service",
-        "update_service(#{ id: int, name: string, base_price_formula: string, sales_price_formula: string, reference?: string, remarks?: string, sac_code?: int, tax_ids?: [int], variables?: object|[{string}] }) -> int  // updated service id (full replace). Both formulas are the price of one service; invoice quantity multiplies them.",
+        "update_service(#{ id: int, name: string, base_price_formula: string, sales_price_formula: string, reference?: string, remarks?: string, sac_code?: int, tax_ids?: [int], variables?: object|[{string}], journal_id?: int, journal_lines?: [{ account_id: int, formula: string }] }) -> int  // updated service id (full replace). Both formulas are the price of one service; invoice quantity multiplies them. journal_lines formulas may use quantity, rate, pre_tax, base_cost, sales_price, and the service variables.",
         |_ctx| NativeBinding::Function(Arc::new(update_service)),
     );
     rune_env.register_contextual(
@@ -138,6 +138,10 @@ mod args {
         tax_ids: Vec<i64>,
         #[serde(default)]
         variables: Option<serde_json::Value>,
+        #[serde(default)]
+        journal_id: i64,
+        #[serde(default)]
+        journal_lines: Option<serde_json::Value>,
     }
 
     #[derive(Debug, Deserialize)]
@@ -156,6 +160,8 @@ mod args {
         pub sac_code: i64,
         pub tax_ids: Vec<i64>,
         pub variables: String,
+        pub journal_id: String,
+        pub journal_lines: String,
     }
 
     fn opt_string(s: String) -> Option<String> {
@@ -210,6 +216,15 @@ mod args {
         }
         let variables = parse_variables(parsed.variables.clone())?;
         let schema = crate::pricing::load_schema(&variables)?;
+        crate::journal_template::ensure_schema_allows_bindings(&schema)?;
+        let journal_lines = match parsed.journal_lines {
+            Some(value) if !value.is_null() => value.to_string(),
+            _ => crate::journal_template::empty_lines_json(),
+        };
+        if parsed.journal_id > 0 {
+            let lines = crate::journal_template::parse_template_lines(&journal_lines)?;
+            crate::journal_template::validate_parsed_lines(&schema, &lines)?;
+        }
         Ok(ServiceInput {
             name,
             reference: opt_string(parsed.reference),
@@ -227,6 +242,12 @@ mod args {
             sac_code: parsed.sac_code,
             tax_ids: parsed.tax_ids,
             variables,
+            journal_id: if parsed.journal_id > 0 {
+                parsed.journal_id.to_string()
+            } else {
+                String::new()
+            },
+            journal_lines,
         })
     }
 
@@ -278,6 +299,15 @@ mod args {
         set_service_tax_ids(db, m.id, &input.tax_ids)
             .await
             .map_err(|e| e.to_string())?;
+        let schema = crate::pricing::load_schema(&input.variables)?;
+        crate::journal_template::save_service_template(
+            db,
+            m.id,
+            &input.journal_id,
+            &input.journal_lines,
+            &schema,
+        )
+        .await?;
         Ok(m.id)
     }
 
@@ -296,7 +326,7 @@ mod args {
         am.name = Set(input.name);
         am.reference = Set(input.reference);
         am.remarks = Set(input.remarks);
-        am.variables = Set(input.variables);
+        am.variables = Set(input.variables.clone());
         am.base_price_formula = Set(input.base_price_formula);
         am.sales_price_formula = Set(input.sales_price_formula);
         am.sac_code = Set(input.sac_code);
@@ -305,6 +335,15 @@ mod args {
         set_service_tax_ids(db, id, &input.tax_ids)
             .await
             .map_err(|e| e.to_string())?;
+        let schema = crate::pricing::load_schema(&input.variables)?;
+        crate::journal_template::save_service_template(
+            db,
+            id,
+            &input.journal_id,
+            &input.journal_lines,
+            &schema,
+        )
+        .await?;
         Ok(())
     }
 }
@@ -481,8 +520,7 @@ create_service(#{
     name: service_name,
     sac_code: 9983,
     base_price_formula: cost,
-    sales_price_formula: "decimal(\"25\")",
-    sac_code: 1234
+    sales_price_formula: "decimal(\"25\")"
 })
 "#,
             &[],

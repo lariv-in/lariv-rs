@@ -32,11 +32,13 @@ use sha2::{Digest, Sha256};
 
 use crate::entities::preferences;
 use crate::entities::{
-    CancelledInvoiceEntity, DraftInvoiceEntity, DraftInvoiceGoodsLineEntity, PaidInvoiceEntity,
-    PartiallyPaidInvoiceEntity, PaymentEntity, PostedInvoiceEntity, PostedInvoiceGoodsLineEntity,
+    CancelledInvoiceEntity, DraftInvoiceEntity, DraftInvoiceGoodsLineEntity,
+    DraftInvoiceServiceLineEntity, PaidInvoiceEntity, PartiallyPaidInvoiceEntity, PaymentEntity,
+    PostedInvoiceEntity, PostedInvoiceGoodsLineEntity,
 };
 use crate::entities::{
-    draft_invoice_goods_line, payment, posted_invoice, posted_invoice_goods_line,
+    draft_invoice_goods_line, draft_invoice_service_line, payment, posted_invoice,
+    posted_invoice_goods_line,
 };
 use crate::invoice_pdf_addon::{collect_invoice_pdf_extras, collect_invoice_pdf_sample_extras};
 use crate::invoice_pdf_assets::VnodeImageContext;
@@ -868,6 +870,49 @@ async fn build_pdf_root(
     })
 }
 
+async fn draft_invoice_currency(db: &DatabaseConnection, draft_id: i64) -> CurrencyFormat {
+    let lines = DraftInvoiceGoodsLineEntity::find()
+        .filter(draft_invoice_goods_line::Column::DraftInvoiceId.eq(draft_id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let service_lines = DraftInvoiceServiceLineEntity::find()
+        .filter(draft_invoice_service_line::Column::DraftInvoiceId.eq(draft_id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let mut journal_id = None;
+    let mut mixed = false;
+    let mut consider = |template_journal_id: i64| match journal_id {
+        Some(existing) if existing != template_journal_id => mixed = true,
+        None => journal_id = Some(template_journal_id),
+        _ => {}
+    };
+    for line in lines {
+        if let Ok(Some(template)) =
+            lariv_plugin_finance_products::journal_template::load_template(db, line.product_id)
+                .await
+        {
+            consider(template.journal_id);
+        }
+    }
+    for line in service_lines {
+        if let Ok(Some(template)) =
+            lariv_plugin_finance_services::journal_template::load_template(db, line.service_id)
+                .await
+        {
+            consider(template.journal_id);
+        }
+    }
+    if mixed {
+        return load_default_currency_format(db).await;
+    }
+    match journal_id {
+        Some(id) => load_journal_currency_format(db, id).await,
+        None => load_default_currency_format(db).await,
+    }
+}
+
 pub async fn render_draft_invoice_pdf(
     fs: &FilesystemState,
     id: i64,
@@ -884,10 +929,7 @@ pub async fn render_draft_invoice_pdf(
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
     let line_rows = load_draft_lines(db, draft.id).await?;
     let prefs = load_invoice_preferences(db).await;
-    let currency = match prefs.journal_id.filter(|&id| id > 0) {
-        Some(jid) => load_journal_currency_format(db, jid).await,
-        None => load_default_currency_format(db).await,
-    };
+    let currency = draft_invoice_currency(db, draft.id).await;
     let date_fmt = invoice_date_format(&prefs);
     let payment_term =
         load_draft_payment_term_pdf(db, draft.id, draft.datetime, tz, date_fmt, &currency).await?;
@@ -1436,7 +1478,6 @@ fn pdf_receivable_grand_total(root: &PdfRoot) -> Decimal {
                 name: t.name.clone(),
                 percentage: t.percentage.parse().unwrap_or(Decimal::ZERO),
                 tax_type: TaxKind::parse(&t.tax_type).unwrap_or(TaxKind::Levied),
-                account_id: None,
             })
             .collect();
         let (untaxed, levied, withholding, _) = invoice_line_amounts(untaxed, &taxes);
@@ -1455,7 +1496,6 @@ fn pdf_receivable_grand_total(root: &PdfRoot) -> Decimal {
             name: t.name.clone(),
             percentage: t.percentage.parse().unwrap_or(Decimal::ZERO),
             tax_type: TaxKind::parse(&t.tax_type).unwrap_or(TaxKind::Levied),
-            account_id: None,
         })
         .collect();
     invoice_receivable_grand_total(&totals, &header_taxes, &line_tax_ids)

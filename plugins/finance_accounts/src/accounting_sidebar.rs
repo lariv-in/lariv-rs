@@ -23,8 +23,8 @@ use crate::accounting_preferences_patch::{
     AccountingPreferencesRegistry, store_accounting_preferences_addons,
 };
 use crate::routes::{
-    AccountDetailRouteTag, AccountingPreferencesRouteTag, FinanceDefaultRouteTag,
-    JournalEntryDetailRouteTag, JournalListRouteTag,
+    AccountDetailRouteTag, AccountingPreferencesRouteTag, CustomSourceDocIndexRouteTag,
+    FinanceDefaultRouteTag, JournalEntryDetailRouteTag, JournalListRouteTag,
 };
 
 /// Directory of a route path, dropping a `{param}` segment and the slash before it.
@@ -351,10 +351,16 @@ impl AccountingSidebarRegistrar for BaseHook {
             Some("book-open"),
             JOURNALS_MATCH_PREFIXES,
         ))
+        .push(link::<CustomSourceDocIndexRouteTag>(
+            "custom-source-docs",
+            "Custom source docs",
+            35,
+            Some("clipboard-document-list"),
+        ))
         .push(link::<AccountingPreferencesRouteTag>(
             "preferences",
             "Accounting preferences",
-            40,
+            1000,
             Some("adjustments-horizontal"),
         ))
     }
@@ -427,11 +433,72 @@ mod tests {
             .add_hook::<TestAddonTag, _>(TestAddonHook)
             .resolve_hooks();
 
-        assert_eq!(cap.items.links().len(), 5);
+        assert_eq!(cap.items.links().len(), 6);
         let sections: Vec<_> = cap.items.links().iter().map(|l| l.section).collect();
         assert!(sections.contains(&"accounts"));
+        assert!(sections.contains(&"custom-source-docs"));
         assert!(sections.contains(&"test-addon"));
         assert!(sections.contains(&"preferences"));
+    }
+
+    #[test]
+    fn preferences_sorts_last() {
+        #[derive(Copy, Clone)]
+        struct LateLink;
+
+        impl AccountingSidebarRegistrar for LateLink {
+            fn register_accounting_sidebar(
+                self,
+                cap: AccountingSidebarRegistry,
+            ) -> AccountingSidebarRegistry {
+                cap.push(link::<FinanceDefaultRouteTag>(
+                    "late-addon",
+                    "Late addon",
+                    500,
+                    None,
+                ))
+            }
+        }
+
+        let cap = AccountingSidebarCap::<HNil>::new()
+            .add_hook::<crate::FinanceAccountsTag, _>(BaseHook)
+            .add_hook::<TestAddonTag, _>(LateLink)
+            .resolve_hooks();
+        let sorted = cap.items.clone().sorted_links();
+        assert_eq!(sorted.last().map(|link| link.section), Some("preferences"));
+    }
+
+    #[test]
+    fn custom_source_docs_prefix_beats_accounts() {
+        let cap = AccountingSidebarCap::<HNil>::new()
+            .add_hook::<crate::FinanceAccountsTag, _>(BaseHook)
+            .resolve_hooks();
+        let links = cap.items.links();
+        assert_eq!(
+            active_section_for_path(links, CustomSourceDocIndexRouteTag::PATH),
+            Some("custom-source-docs")
+        );
+        assert_eq!(
+            active_section_for_path(
+                links,
+                &format!("{}/create", CustomSourceDocIndexRouteTag::PATH)
+            ),
+            Some("custom-source-docs")
+        );
+        assert_eq!(
+            active_section_for_path(links, &format!("{}/9", CustomSourceDocIndexRouteTag::PATH)),
+            Some("custom-source-docs")
+        );
+        assert_eq!(
+            active_section_for_path(
+                links,
+                &format!(
+                    "{}/1/custom-source-docs",
+                    route_dir(crate::routes::JournalDetailRouteTag::PATH)
+                )
+            ),
+            Some("journals")
+        );
     }
 
     #[test]

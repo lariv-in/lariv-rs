@@ -463,10 +463,12 @@ mod tests {
         assert!(html.contains("percent"));
         assert!(html.contains("this.fixedUnits[item.type] || choices[0][0]"));
         assert!(
-            html.contains(r#""length":"mm""#) || html.contains(r#"&quot;length&quot;:&quot;mm&quot;"#)
+            html.contains(r#""length":"mm""#)
+                || html.contains(r#"&quot;length&quot;:&quot;mm&quot;"#)
         );
         assert!(
-            html.contains(r#""weight":"kg""#) || html.contains(r#"&quot;weight&quot;:&quot;kg&quot;"#)
+            html.contains(r#""weight":"kg""#)
+                || html.contains(r#"&quot;weight&quot;:&quot;kg&quot;"#)
         );
         assert!(html.contains("Search type"));
         assert!(html.contains(r#"pattern="[A-Za-z][A-Za-z0-9_]*""#));

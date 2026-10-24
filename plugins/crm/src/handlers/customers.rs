@@ -77,10 +77,11 @@ pub async fn select(
             .unwrap_or_else(|| "CustomerID".into()),
         page_size,
     };
-    respond_picker_select::<crate::keys::CustomerSelectTableKey, crate::keys::CustomerSelectModalKey, _>(
-        &htmx,
-        &page_model,
-    )
+    respond_picker_select::<
+        crate::keys::CustomerSelectTableKey,
+        crate::keys::CustomerSelectModalKey,
+        _,
+    >(&htmx, &page_model)
 }
 
 pub async fn create_get(

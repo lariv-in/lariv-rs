@@ -3,12 +3,6 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 
-use lariv_plugin_finance_accounts::{
-    logic::journal::{credit_balance_type, debit_balance_type},
-    validate_leaf_account_balance_type,
-};
-use lariv_plugin_finance_products::preferences::optional_i64;
-
 use crate::entities::preferences::{self, Entity as PurchasePreferencesEntity};
 
 pub async fn load_purchase_preferences(db: &DatabaseConnection) -> preferences::Model {
@@ -28,10 +22,6 @@ pub async fn load_purchase_preferences(db: &DatabaseConnection) -> preferences::
         id: 1,
         created_at: Some(now),
         updated_at: Some(now),
-        account_payable_id: None,
-        account_expense_id: None,
-        account_input_tax_id: None,
-        journal_id: None,
         purchase_number_format: Some(default_format),
         purchase_date_format: None,
         purchase_datetime_format: None,
@@ -124,40 +114,6 @@ pub fn format_pref_datetime(dt: DateTime<Utc>, tz: &str, fmt: &str) -> String {
         .to_string()
 }
 
-pub async fn validate_purchase_preferences_for_posting(
-    db: &DatabaseConnection,
-    prefs: &preferences::Model,
-) -> Result<(), String> {
-    validate_leaf_account_balance_type(
-        db,
-        optional_i64(prefs.account_payable_id),
-        credit_balance_type(),
-        "accounts payable",
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-    validate_leaf_account_balance_type(
-        db,
-        optional_i64(prefs.account_expense_id),
-        debit_balance_type(),
-        "expense account",
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-    validate_leaf_account_balance_type(
-        db,
-        optional_i64(prefs.account_input_tax_id),
-        debit_balance_type(),
-        "input tax account",
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-    if optional_i64(prefs.journal_id) == 0 {
-        return Err("journal is required in purchase preferences".to_string());
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,10 +124,6 @@ mod tests {
             id: 1,
             created_at: None,
             updated_at: None,
-            account_payable_id: None,
-            account_expense_id: None,
-            account_input_tax_id: None,
-            journal_id: None,
             purchase_number_format: None,
             purchase_date_format: date.map(|s| s.to_string()),
             purchase_datetime_format: datetime.map(|s| s.to_string()),

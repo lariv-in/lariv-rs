@@ -56,10 +56,10 @@ pub mod plugins {
     pub use lariv_plugin_finance_indian as finance_indian;
     #[cfg(feature = "plugin-finance-invoices")]
     pub use lariv_plugin_finance_invoices as finance_invoices;
-    #[cfg(feature = "plugin-finance-purchases")]
-    pub use lariv_plugin_finance_purchases as finance_purchases;
     #[cfg(feature = "plugin-finance-products")]
     pub use lariv_plugin_finance_products as finance_products;
+    #[cfg(feature = "plugin-finance-purchases")]
+    pub use lariv_plugin_finance_purchases as finance_purchases;
     #[cfg(feature = "plugin-finance-services")]
     pub use lariv_plugin_finance_services as finance_services;
     #[cfg(feature = "plugin-finance-taxes")]

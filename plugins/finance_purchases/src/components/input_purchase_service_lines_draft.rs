@@ -117,7 +117,7 @@ lineTaxPickHref(fkSlot) {
 	const b = this.tax_pick_base || '';
 	if (!b || !fkSlot) return b || '#';
 	const sep = b.indexOf('?') >= 0 ? '&' : '?';
-	const name = 'PurchaseLineTaxes_' + String(fkSlot);
+	const name = 'PurchaseServiceLineTaxes_' + String(fkSlot);
 	return b + sep + 'target_input=' + encodeURIComponent(name);
 },
 formatDec(n) {
@@ -512,8 +512,7 @@ fn preview_parts(preview: &str) -> (String, String, String, String) {
 
 /// Render the draft purchase lines editor.
 pub fn input_purchase_service_lines_draft(opts: InputPurchaseServiceLinesDraft<'_>) -> Markup {
-    let service_pick_fallback =
-        lariv_plugin_finance_services::routes::ServiceFkSelectRouteTag.url();
+    let service_pick_fallback = crate::routes::PurchaseServiceFkSelectRouteTag.url();
     let tax_pick_fallback = lariv_plugin_finance_taxes::routes::TaxMultiSelectRouteTag.url();
     let service_pick_url = if opts.service_pick_url.is_empty() {
         service_pick_fallback.as_str()
@@ -526,7 +525,7 @@ pub fn input_purchase_service_lines_draft(opts: InputPurchaseServiceLinesDraft<'
         opts.tax_pick_url
     };
     let defaults = if opts.defaults.trim().is_empty() {
-        r#"[{"service_id":0,"quantity":"1","rate":"","service_label":"","fk_slot":"line-slot-0","tax_ids":[],"remarks":""}]"#
+        r#"[{"service_id":0,"quantity":"1","rate":"","service_label":"","fk_slot":"PurchaseLineService_0","tax_ids":[],"remarks":""}]"#
     } else {
         opts.defaults.trim()
     };
@@ -551,10 +550,12 @@ if (typeof Alpine !== 'undefined' && Alpine.store && !Alpine.store('m2mSelection
 (function () {{
 	const d = Alpine.$data($el);
 	if (!d || !Array.isArray(d.lines) || typeof d.allocFkSlot !== 'function') return;
+	const taken = new Set();
 	for (const line of d.lines) {{
 		if (line.quantity == null || line.quantity === '') line.quantity = '1';
 		if (line.service_label == null) line.service_label = '';
-		if (!line.fk_slot) line.fk_slot = d.allocFkSlot();
+		if (!String(line.fk_slot || '').startsWith('PurchaseLineService_') || taken.has(String(line.fk_slot))) line.fk_slot = d.allocFkSlot();
+		taken.add(String(line.fk_slot));
 		if (!Array.isArray(line.line_taxes)) line.line_taxes = [];
 		if (!Array.isArray(line.variable_rows)) line.variable_rows = [];
 		d.hydrateLineVariables(line);
@@ -592,8 +593,8 @@ $el.closest('form').addEventListener('submit', (ev) => {{
 	}});
 	h.value = JSON.stringify(d.lines.map(strip));
 }}, true);"#,
-        name_q =
-            serde_json::to_string(opts.name).unwrap_or_else(|_| "\"PurchaseServiceLinesJSON\"".into())
+        name_q = serde_json::to_string(opts.name)
+            .unwrap_or_else(|_| "\"PurchaseServiceLinesJSON\"".into())
     );
 
     let fk_select_handler = r#"if (!$event.detail) return;
@@ -609,7 +610,7 @@ $el.closest('form').addEventListener('submit', (ev) => {{
 	const v = $event.detail.value;
 	const disp = $event.detail.display || '';
 	for (const line of lines) {
-		const expected = 'PurchaseLineTaxes_' + String(line.fk_slot || '');
+		const expected = 'PurchaseServiceLineTaxes_' + String(line.fk_slot || '');
 		if (expected !== n) continue;
 		const value = String(v);
 		const items = line.line_taxes || (line.line_taxes = []);
@@ -625,7 +626,7 @@ $el.closest('form').addEventListener('submit', (ev) => {{
         div class=(format!("my-1 {}", opts.classes)) {
             div class="w-full min-w-0" {
                     (PreEscaped(format!(
-                        r#"<div data-purchase-lines-root="" x-data="{alpine}" x-init="{init}" x-effect="{effect}" @fk-select.window="{fk_sel}" @fk-multi-select.window="{fk_m2m}" @lariv-fk-created.window="{fk_created}">"#,
+                        r#"<div data-purchase-service-lines-root="" x-data="{alpine}" x-init="{init}" x-effect="{effect}" @fk-select.window="{fk_sel}" @fk-multi-select.window="{fk_m2m}" @lariv-fk-created.window="{fk_created}">"#,
                         alpine = escape_attr(&alpine_data),
                         init = escape_attr(&init_js),
                         effect = escape_attr(x_effect),
@@ -728,14 +729,14 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                                 span class="text-sm" x-text="lineTotal(line)" {}
                                             }
                                             td class="align-middle w-24" {
-                                                (PreEscaped(r#"<button type="button" class="btn btn-ghost btn-sm" @click="lines.splice(i, 1); if (lines.length === 0) lines.push(blankLine()); $nextTick(() => { const r = $el.closest('[data-purchase-lines-root]'); if (r && window.htmx) window.htmx.process(r) })">Remove</button>"#))
+                                                (PreEscaped(r#"<button type="button" class="btn btn-ghost btn-sm" @click="lines.splice(i, 1); $nextTick(() => { const r = $el.closest('[data-purchase-service-lines-root]'); if (r && window.htmx) window.htmx.process(r) })">Remove</button>"#))
                                             }
                                         }
                                     }
                                 }
                             }
                         }
-                        (PreEscaped(r#"<button type="button" class="btn btn-outline btn-sm mt-2 w-full sm:w-auto" @click="lines.push(blankLine()); $nextTick(() => { const r = $el.closest('[data-purchase-lines-root]'); if (r && window.htmx) window.htmx.process(r) })">Add line</button>"#))
+                        (PreEscaped(r#"<button type="button" class="btn btn-outline btn-sm mt-2 w-full sm:w-auto" @click="lines.push(blankLine()); $nextTick(() => { const r = $el.closest('[data-purchase-service-lines-root]'); if (r && window.htmx) window.htmx.process(r) })">Add line</button>"#))
                         div class="mt-3 w-full rounded-box border border-base-300 bg-base-100 overflow-hidden divide-y divide-base-300" {
                             div class="grid grid-cols-[1fr_auto] gap-x-4 items-center px-4 py-3" {
                                 div class="text-sm font-bold min-w-0 truncate" { "Services subtotal" }
@@ -877,6 +878,10 @@ mod tests {
             html.contains("@lariv-fk-created.window=\"if ($event)"),
             "lariv-fk-created must start with if so Alpine wraps the handler; a leading brace is parsed as an object literal"
         );
+        assert!(html.contains("PurchaseLineService_0"));
+        assert!(html.contains("PurchaseServiceLineTaxes_"));
+        assert!(!html.contains("line-slot-0"));
+        assert!(!html.contains("if (lines.length === 0) lines.push(blankLine())"));
         assert!(
             !lariv_core::components::attrs::alpine_js_leaked_as_text(&html),
             "Alpine JS rendered as text: {html}"

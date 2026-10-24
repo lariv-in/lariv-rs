@@ -9,15 +9,10 @@ use sea_orm::{
     EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Statement, TransactionTrait,
 };
 
-use lariv_plugin_finance_accounts::{
-    logic::journal::debit_balance_type,
-    logic::journal::{
-        JournalLineSpec, create_source_doc, insert_journal_entry, update_source_doc_id,
-    },
-    validate_leaf_account_balance_type,
+use lariv_plugin_finance_accounts::logic::journal::{
+    JournalLineSpec, create_source_doc, insert_journal_entry, update_source_doc_id,
 };
 use lariv_plugin_finance_common::decimal::{self, parse_decimal};
-use lariv_plugin_finance_products::preferences::optional_i64;
 use lariv_plugin_finance_taxes::entities::tax;
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
@@ -29,17 +24,16 @@ use crate::entities::{
 use crate::logic::preferences::{
     load_payment_preferences, validate_payment_preferences_for_create,
 };
-use crate::logic::tax_assoc::set_payment_taxes;
+use crate::logic::tax_assoc::{load_posted_invoice_tax_ids, set_payment_taxes};
 use crate::logic::tax_calculations::{
     InvoiceLinesTotals, invoice_line_amounts, invoice_receivable_grand_total,
-    merge_invoice_line_tax_ids, payment_bank_amount, payment_withholding_base, taxes_withholding,
-    validate_payment_taxes, withholding_tax_account_id,
+    merge_invoice_line_tax_ids, payment_withholding_base, payment_withholding_total,
+    taxes_withholding, validate_payment_taxes,
 };
 
 pub struct CreatePaymentInput {
     pub posted_invoice_id: i64,
     pub amount: Decimal,
-    pub account_id: Option<i64>,
     pub datetime: DateTime<Utc>,
     pub withholding_tax_ids: Vec<i64>,
 }
@@ -71,18 +65,11 @@ async fn posted_invoice_amounts(
     db: &DatabaseConnection,
     posted_id: i64,
 ) -> Result<PostedInvoiceAmounts, String> {
-    let _posted = posted_invoice::Entity::find_by_id(posted_id)
+    let posted = posted_invoice::Entity::find_by_id(posted_id)
         .one(db)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "posted invoice not found".to_string())?;
-
-    let header_tax_ids = crate::logic::tax_assoc::load_posted_invoice_tax_ids(db, posted_id)
-        .await
-        .unwrap_or_default();
-    let header_taxes = load_taxes_by_ids(db, &header_tax_ids)
-        .await
-        .map_err(|e| e.to_string())?;
 
     let lines = posted_invoice_goods_line::Entity::find()
         .filter(posted_invoice_goods_line::Column::PostedInvoiceId.eq(posted_id))
@@ -126,9 +113,16 @@ async fn posted_invoice_amounts(
         totals.lines_levied = decimal::dec_sum(totals.lines_levied, levied);
         totals.lines_withholding = decimal::dec_sum(totals.lines_withholding, withholding);
     }
+    let header_tax_ids = load_posted_invoice_tax_ids(db, posted.id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let header_taxes = load_taxes_by_ids(db, &header_tax_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+    let receivable_total = invoice_receivable_grand_total(&totals, &header_taxes, &line_tax_ids);
     Ok(PostedInvoiceAmounts {
         untaxed_subtotal: totals.untaxed_subtotal,
-        receivable_total: invoice_receivable_grand_total(&totals, &header_taxes, &line_tax_ids),
+        receivable_total,
     })
 }
 
@@ -225,46 +219,50 @@ pub async fn validate_payment_allocation(
     Ok((posted, inv_total, amounts.untaxed_subtotal, is_full))
 }
 
-/// AR credit and withholding debit lines for one invoice allocation (excludes bank debit).
+/// Payment template lines plus withholding lines for one invoice allocation.
 ///
 /// `withholding_base` is the untaxed amount the withholding percent applies to (not the
 /// GST-inclusive settlement).
-pub fn build_payment_lines_for_allocation(
+pub async fn build_payment_lines_for_allocation(
+    db: &DatabaseConnection,
     posted: &posted_invoice::Model,
     settlement: Decimal,
     withholding_base: Decimal,
     taxes: &[tax::Model],
-) -> Result<(Decimal, Vec<JournalLineSpec>), String> {
+) -> Result<Vec<JournalLineSpec>, String> {
     let settlement = decimal::normalize(settlement);
     let withholding_base = decimal::normalize(withholding_base);
-    let bank_amt = payment_bank_amount(settlement, withholding_base, taxes);
-    if bank_amt < Decimal::ZERO {
-        return Err("withholding exceeds settlement amount".to_string());
-    }
-
-    let mut lines = vec![JournalLineSpec {
-        account_id: posted.account_receivable_id,
-        amount: decimal::dec_neg(settlement),
-    }];
+    let withheld = payment_withholding_total(withholding_base, taxes);
+    let mut withholding_lines = Vec::new();
     for tax in taxes_withholding(taxes) {
-        let wh_amt = crate::logic::tax_calculations::tax_amount_for_tax(withholding_base, tax);
-        if wh_amt.is_zero() {
-            continue;
-        }
-        let acct_id = withholding_tax_account_id(tax)?;
-        lines.push(JournalLineSpec {
-            account_id: acct_id,
-            amount: wh_amt,
-        });
+        let evaluated = lariv_plugin_finance_taxes::journal_template::evaluate_withholding_lines(
+            db,
+            tax,
+            withholding_base,
+            posted.journal_id,
+        )
+        .await?;
+        withholding_lines.extend(evaluated.into_iter().map(|line| JournalLineSpec {
+            account_id: line.account_id,
+            amount: line.amount,
+        }));
     }
-    Ok((bank_amt, lines))
+    let mut lines = crate::payment_journal_template::evaluate_payment_template(
+        db,
+        settlement,
+        withheld,
+        posted.journal_id,
+    )
+    .await?;
+    lines.extend(withholding_lines);
+    Ok(lines)
 }
 
-/// Bank amount and allocation lines for a stored payment, from the payment and its invoice.
+/// Template and withholding lines for a stored payment, from the payment and its invoice.
 pub(crate) async fn allocation_lines_for_payment(
     db: &DatabaseConnection,
     pay: &payment::Model,
-) -> Result<(Decimal, Vec<JournalLineSpec>), String> {
+) -> Result<Vec<JournalLineSpec>, String> {
     let posted = posted_invoice::Entity::find_by_id(pay.posted_invoice_id)
         .one(db)
         .await
@@ -282,10 +280,10 @@ pub(crate) async fn allocation_lines_for_payment(
         amounts.receivable_total,
         amounts.untaxed_subtotal,
     );
-    build_payment_lines_for_allocation(&posted, pay.amount, withholding_base, &taxes)
+    build_payment_lines_for_allocation(db, &posted, pay.amount, withholding_base, &taxes).await
 }
 
-/// Recompute a payment's journal lines from the payment account, amount, and withholding taxes.
+/// Recompute a payment's journal lines from the payment template, amount, and withholding taxes.
 pub async fn payment_journal_lines(
     db: &DatabaseConnection,
     payment_id: i64,
@@ -295,12 +293,7 @@ pub async fn payment_journal_lines(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("payment {payment_id} not found"))?;
-    let (bank_amt, alloc_lines) = allocation_lines_for_payment(db, &pay).await?;
-    let mut lines = vec![JournalLineSpec {
-        account_id: pay.account_id,
-        amount: bank_amt,
-    }];
-    lines.extend(alloc_lines);
+    let lines = allocation_lines_for_payment(db, &pay).await?;
     Ok((pay.datetime, lines))
 }
 
@@ -382,14 +375,6 @@ pub async fn create_payment(
     let payment_prefs = load_payment_preferences(db).await;
     validate_payment_preferences_for_create(db, &payment_prefs).await?;
 
-    let account_id = input
-        .account_id
-        .filter(|id| *id > 0)
-        .unwrap_or_else(|| optional_i64(payment_prefs.payment_account_id));
-    validate_leaf_account_balance_type(db, account_id, debit_balance_type(), "payment account")
-        .await
-        .map_err(|e| e.to_string())?;
-
     let (posted, inv_total, untaxed_subtotal, is_full) =
         validate_payment_allocation(db, input.posted_invoice_id, input.amount).await?;
 
@@ -413,14 +398,9 @@ pub async fn create_payment(
 
     let settlement = decimal::normalize(input.amount);
     let withholding_base = payment_withholding_base(settlement, inv_total, untaxed_subtotal);
-    let (bank_amt, alloc_lines) =
-        build_payment_lines_for_allocation(&posted, settlement, withholding_base, &taxes)?;
-
-    let mut lines = vec![JournalLineSpec {
-        account_id,
-        amount: bank_amt,
-    }];
-    lines.extend(alloc_lines);
+    let lines =
+        build_payment_lines_for_allocation(db, &posted, settlement, withholding_base, &taxes)
+            .await?;
 
     let (je_id, _) = insert_journal_entry(&txn, dt, posted.journal_id, doc_id, &lines)
         .await
@@ -429,7 +409,6 @@ pub async fn create_payment(
     let pay = payment::ActiveModel {
         posted_invoice_id: Set(posted.id),
         amount: Set(settlement),
-        account_id: Set(account_id),
         datetime: Set(dt),
         journal_entry_id: Set(je_id),
         payment_batch_id: Set(None),

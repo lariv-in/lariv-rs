@@ -95,6 +95,104 @@ fn fk_value(id: i64) -> String {
     }
 }
 
+/// Alpine state for the punch bar. Location is watched for the whole time the
+/// bar is on screen; punch in and punch out submit the latest fix.
+const PUNCH_LOCATION_STATE: &str = r#"{
+    denied: false,
+    permissionDenied: false,
+    latitude: '',
+    longitude: '',
+    watchId: null,
+    waitTimer: null,
+    busy: false,
+    init() {
+        if (this.$el.dataset.watch !== 'true') return;
+        if (!navigator.geolocation) {
+            if (this.$el.dataset.geofence === 'true') this.denied = true;
+            return;
+        }
+        this.watchId = navigator.geolocation.watchPosition(
+            (pos) => this.remember(pos),
+            (err) => {
+                if (err && err.code === 1) {
+                    this.permissionDenied = true;
+                    if (this.$el.dataset.geofence === 'true') this.denied = true;
+                }
+            },
+            { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
+        );
+    },
+    destroy() {
+        if (this.watchId != null && navigator.geolocation) {
+            navigator.geolocation.clearWatch(this.watchId);
+            this.watchId = null;
+        }
+        if (this.waitTimer != null) {
+            clearInterval(this.waitTimer);
+            this.waitTimer = null;
+        }
+    },
+    remember(pos) {
+        if (!pos || !pos.coords) return;
+        const lat = String(pos.coords.latitude);
+        const lng = String(pos.coords.longitude);
+        this.latitude = lat;
+        this.longitude = lng;
+        this.permissionDenied = false;
+        this.denied = false;
+        this.$el.querySelectorAll('input[name=latitude]').forEach((input) => { input.value = lat; });
+        this.$el.querySelectorAll('input[name=longitude]').forEach((input) => { input.value = lng; });
+        const fix = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            at: Date.now()
+        };
+        window.__larivGeoFix = fix;
+        window.dispatchEvent(new CustomEvent('lariv:geolocation', { detail: fix }));
+    },
+    async punch(form) {
+        if (!form || this.busy) return;
+        const geofence = this.$el.dataset.geofence === 'true';
+        if (!navigator.geolocation) {
+            if (geofence) this.denied = true;
+            else this.submit(form, '', '');
+            return;
+        }
+        this.busy = true;
+        try {
+            if (!this.latitude || !this.longitude) await this.waitForFix(20000);
+            if (geofence && (!this.latitude || !this.longitude)) {
+                this.denied = true;
+                return;
+            }
+            this.submit(form, this.latitude || '', this.longitude || '');
+        } finally {
+            this.busy = false;
+        }
+    },
+    waitForFix(ms) {
+        if (this.latitude && this.longitude) return Promise.resolve(true);
+        return new Promise((resolve) => {
+            const started = Date.now();
+            this.waitTimer = setInterval(() => {
+                const ready = !!(this.latitude && this.longitude);
+                if (ready || this.permissionDenied || Date.now() - started >= ms) {
+                    clearInterval(this.waitTimer);
+                    this.waitTimer = null;
+                    resolve(ready);
+                }
+            }, 200);
+        });
+    },
+    submit(form, lat, lng) {
+        const latInput = form.querySelector('[name=latitude]');
+        const lngInput = form.querySelector('[name=longitude]');
+        if (latInput) latInput.value = lat;
+        if (lngInput) lngInput.value = lng;
+        form.requestSubmit();
+    }
+}"#;
+
 fn attendance_form_inputs(
     user_id: i64,
     user_display: &str,
@@ -238,13 +336,16 @@ impl AttendanceListPage {
                 "No open attendance."
             };
             let geofence = if punch.geofence { "true" } else { "false" };
-            let punch_state = format!(
-                r#"{{ denied: false, async punch(form) {{ if (!form) return; const geofence = this.$el.dataset.geofence === 'true'; const submit = (lat, lng) => {{ const latInput = form.querySelector('[name=latitude]'); const lngInput = form.querySelector('[name=longitude]'); if (latInput) latInput.value = lat; if (lngInput) lngInput.value = lng; form.requestSubmit(); }}; if (!navigator.geolocation) {{ if (geofence) {{ this.denied = true; return; }} submit('', ''); return; }} try {{ const pos = await new Promise((resolve, reject) => {{ navigator.geolocation.getCurrentPosition(resolve, reject, {{ enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }}); }}); submit(String(pos.coords.latitude), String(pos.coords.longitude)); }} catch (err) {{ if (geofence) this.denied = true; else submit('', ''); }} }} }}"#
-            );
+            let watch = if punch.punch_in_enabled || punch.punch_out_enabled {
+                "true"
+            } else {
+                "false"
+            };
             html! {
-                (PreEscaped(format!(
-                    r#"<div class="mb-4 flex flex-col gap-3 rounded-box border border-base-300 bg-base-200 px-4 py-4" x-data="{punch_state}" data-geofence="{geofence}">"#
-                )))
+                div class="mb-4 flex flex-col gap-3 rounded-box border border-base-300 bg-base-200 px-4 py-4"
+                    x-data=(PUNCH_LOCATION_STATE)
+                    data-geofence=(geofence)
+                    data-watch=(watch) {
                     @if !self.error.is_empty() {
                         div role="alert" class="alert alert-error py-2 text-sm" { (self.error) }
                     }
@@ -280,7 +381,7 @@ impl AttendanceListPage {
                             p class="text-sm" { (note) }
                         }
                     }
-                (PreEscaped("</div>"))
+                }
             }
         } else if !self.error.is_empty() {
             let message = self.error.as_str();
@@ -617,6 +718,7 @@ pub fn outside_zone_modal(
                     readonly: true,
                     user_latitude: Some(point.latitude),
                     user_longitude: Some(point.longitude),
+                    live_user: true,
                     ..Default::default()
                 }))
             },
@@ -674,9 +776,26 @@ mod tests {
         assert!(!submit_is_disabled(&html, "Punch out"));
         assert!(html.contains("Already punched in."));
         assert!(html.contains("navigator.geolocation"));
+        assert!(html.contains("watchPosition"));
+        assert!(html.contains("clearWatch"));
+        assert!(html.contains("lariv:geolocation"));
+        assert!(html.contains("__larivGeoFix"));
+        assert!(!html.contains("getCurrentPosition"));
         assert!(html.contains("data-geofence=\"true\""));
+        assert!(html.contains("data-watch=\"true\""));
         assert!(html.contains(">Position<"));
         assert!(!html.contains("attendance_latitude"));
+    }
+
+    #[test]
+    fn location_watch_stays_off_when_punching_is_disabled() {
+        let html = render(Some(AttendancePunchBar {
+            punch_in_enabled: false,
+            punch_out_enabled: false,
+            note: "employee is required".into(),
+            geofence: true,
+        }));
+        assert!(html.contains("data-watch=\"false\""));
     }
 
     #[test]
@@ -684,5 +803,22 @@ mod tests {
         let html = render(None);
         assert!(!html.contains("Punch in"));
         assert!(!html.contains("Punch out"));
+    }
+
+    #[test]
+    fn outside_zone_modal_follows_the_live_location() {
+        use lariv_core::db::location::LatLng;
+
+        let html = super::outside_zone_modal(
+            LatLng::new(13.01, 77.61).expect("point"),
+            LatLng::new(12.97, 77.59).expect("center"),
+            100.0,
+            500.0,
+            "You are 500 m away.",
+        )
+        .into_string();
+        assert!(html.contains("data-live-user=\"true\""), "{html}");
+        assert!(html.contains("data-user-lat=\"13.01\""), "{html}");
+        assert!(html.contains("data-user-lng=\"77.61\""), "{html}");
     }
 }

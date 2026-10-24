@@ -40,9 +40,21 @@ lariv_core::swap_key!(
     "finance-journal-entry-delete-modal"
 );
 lariv_core::swap_key!(
+    CustomSourceDocCreateModalKey,
+    "finance-custom-source-doc-create-modal"
+);
+lariv_core::swap_key!(
+    CustomSourceDocIndexCreateModalKey,
+    "finance-custom-source-doc-index-create-modal"
+);
+lariv_core::swap_key!(
     CustomSourceDocDeleteModalKey,
     "finance-custom-source-doc-delete-modal"
 );
 lariv_core::swap_key!(CustomSourceDocTableKey, "finance-custom-source-docs-table");
+lariv_core::swap_key!(
+    CustomSourceDocIndexTableKey,
+    "finance-custom-source-doc-index-table"
+);
 lariv_core::swap_key!(JournalEntrySelectTableKey, "journal-entry-select-table");
 lariv_core::swap_key!(JournalEntrySelectModalKey, "journal-entry-select-modal");

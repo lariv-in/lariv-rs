@@ -1,13 +1,13 @@
-use lariv_core::html_form::FormFieldKey;
 use lariv_core::html_form::{
     FieldRender, FormCtx, FormWidget, html_form,
-    widgets::{Checkbox, Date, Text, Textarea},
+    widgets::{Date, Text, Textarea},
 };
-use maud::{Markup, html};
+use maud::Markup;
 
 use lariv_plugin_contacts::routes::{CompanyFkSelectRouteTag, ContactFkSelectRouteTag};
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
-use lariv_plugin_finance_accounts::routes::{AccountSelectRouteTag, JournalSelectRouteTag};
+
+use crate::routes::VendorFkSelectRouteTag;
 use lariv_plugin_finance_taxes::routes::TaxMultiSelectRouteTag;
 
 use crate::components::{
@@ -76,29 +76,16 @@ pub struct DraftPurchaseForm {
     #[form(label = "Delivery date", widget = Date)]
     pub delivery_date: String,
 
-    #[form(label = "Vendor is an individual", widget = Checkbox, model = "billToIndividual")]
-    pub vendor_is_individual: String,
-
     #[form(
-        label = "Contact",
+        label = "Vendor",
+        required,
         widget = ForeignKey,
-        route = ContactFkSelectRouteTag,
-        swap_key = "fk-purchase-vendor-individual",
-        display = "vendor_contact_id",
-        placeholder = "Select contact…",
-        show = "billToIndividual"
+        route = VendorFkSelectRouteTag,
+        swap_key = "fk-purchase-vendor",
+        display = "vendor",
+        placeholder = "Select vendor…"
     )]
-    pub vendor_contact_id: i64,
-
-    #[form(
-        label = "Company",
-        widget = ForeignKey,
-        route = CompanyFkSelectRouteTag,
-        swap_key = "fk-purchase-vendor-company",
-        display = "vendor_company_id",
-        placeholder = "Select company…"
-    )]
-    pub vendor_company_id: i64,
+    pub vendor_id: i64,
 
     #[form(label = "Payment schedule", required, widget = PaymentTermLinesDraft)]
     pub payment_term_lines_json: String,
@@ -153,29 +140,15 @@ pub struct DraftPurchaseBulkEditForm {
     #[form(label = "Delivery date", widget = Date)]
     pub delivery_date: String,
 
-    #[form(label = "Vendor is an individual", widget = Checkbox, model = "billToIndividual")]
-    pub vendor_is_individual: String,
-
     #[form(
-        label = "Contact",
+        label = "Vendor",
         widget = ForeignKey,
-        route = ContactFkSelectRouteTag,
-        swap_key = "fk-purchase-vendor-individual",
-        display = "vendor_contact_id",
-        placeholder = "Leave empty to keep existing…",
-        show = "billToIndividual"
-    )]
-    pub vendor_contact_id: i64,
-
-    #[form(
-        label = "Company",
-        widget = ForeignKey,
-        route = CompanyFkSelectRouteTag,
-        swap_key = "fk-purchase-vendor-company",
-        display = "vendor_company_id",
+        route = VendorFkSelectRouteTag,
+        swap_key = "fk-purchase-vendor",
+        display = "vendor",
         placeholder = "Leave empty to keep existing…"
     )]
-    pub vendor_company_id: i64,
+    pub vendor_id: i64,
 
     #[form(label = "Payment schedule", widget = PaymentTermLinesDraft)]
     pub payment_term_lines_json: String,
@@ -204,41 +177,6 @@ pub struct DraftPurchaseBulkEditForm {
         hint = "Quantity multiplies the unit price of one service. Leave both line sections empty to keep existing lines."
     )]
     pub purchase_service_lines_json: String,
-}
-
-/// Alpine state for the vendor-is-individual checkbox (`x-model="billToIndividual"`).
-pub fn individual_x_data(raw: &str) -> String {
-    format!(
-        "{{ billToIndividual: {} }}",
-        if crate::logic::bill_to::checkbox_on(raw) {
-            "true"
-        } else {
-            "false"
-        }
-    )
-}
-
-pub fn individual_is_on(raw: &str) -> bool {
-    crate::logic::bill_to::checkbox_on(raw)
-}
-
-/// When a contact is picked, copy that contact's company into the company field.
-pub fn with_contact_company_prefill(inputs: Markup) -> Markup {
-    let handler = contact_company_prefill_js(
-        DraftPurchaseFormField::VendorContactId.html_name(),
-        DraftPurchaseFormField::VendorCompanyId.html_name(),
-    );
-    html! {
-        div x-data="{}" "@fk-select.window"=(handler.clone()) "@lariv-fk-created.window"=(handler) {
-            (inputs)
-        }
-    }
-}
-
-fn contact_company_prefill_js(contact: &str, company: &str) -> String {
-    format!(
-        "const d=$event.detail;if(!d||d.name!=='{contact}')return;const id=d.company_id;if(id==null||String(id).trim()===''||String(id)==='0')return;$dispatch('fk-select',{{name:'{company}',value:String(id),display:d.company_name||''}})"
-    )
 }
 
 /// Purchase number format + PDF template field names (custom UI on preferences page).
@@ -321,48 +259,28 @@ pub struct PurchaseCompanyPreferencesForm {
     pub default_bank_account: String,
 }
 
+/// A vendor is one company or one contact. Exactly one of the two is set.
 #[html_form]
-pub struct PurchasePreferencesForm {
+pub struct VendorForm {
     #[form(
-        label = "Accounts payable",
+        label = "Company",
         widget = ForeignKey,
-        route = AccountSelectRouteTag,
-        swap_key = "pref-purchase-ap",
-        display = "account_payable",
-        placeholder = "Select credit account…"
+        route = CompanyFkSelectRouteTag,
+        swap_key = "purchase-vendor-company",
+        display = "company",
+        placeholder = "Select company…"
     )]
-    pub account_payable_id: String,
+    pub company_id: i64,
 
     #[form(
-        label = "Expense account",
+        label = "Contact",
         widget = ForeignKey,
-        route = AccountSelectRouteTag,
-        swap_key = "pref-purchase-expense",
-        display = "account_expense",
-        placeholder = "Select debit account…"
+        route = ContactFkSelectRouteTag,
+        swap_key = "purchase-vendor-contact",
+        display = "individual",
+        placeholder = "Select contact…"
     )]
-    pub account_expense_id: String,
-
-    #[form(
-        label = "Input tax",
-        widget = ForeignKey,
-        route = AccountSelectRouteTag,
-        swap_key = "pref-purchase-tax",
-        display = "account_input_tax",
-        placeholder = "Select debit account…"
-    )]
-    pub account_input_tax_id: String,
-
-    #[form(
-        label = "Journal (purchases)",
-        name = "PurchaseJournalId",
-        widget = ForeignKey,
-        route = JournalSelectRouteTag,
-        swap_key = "pref-purchase-journal",
-        display = "purchase_journal",
-        placeholder = "Select journal…"
-    )]
-    pub journal_id: String,
+    pub individual_id: i64,
 }
 
 #[html_form]
@@ -381,18 +299,16 @@ mod tests {
     fn draft_purchase_create_form_keeps_alpine_in_attributes() {
         let html = DraftPurchaseForm::render_inputs(
             &FormCtx::form::<DraftPurchaseForm>(CsrfToken::current())
-                .value(DraftPurchaseFormField::VendorIsIndividual, "")
-                .value(DraftPurchaseFormField::VendorCompanyId, "1")
-                .display(DraftPurchaseFormField::VendorCompanyId, "Acme Co")
+                .value(DraftPurchaseFormField::VendorId, "1")
+                .display(DraftPurchaseFormField::VendorId, "Acme Co")
                 .value(DraftPurchaseFormField::Datetime, "2025-06-01")
                 .value(DraftPurchaseFormField::PaymentTermLinesJson, "")
                 .value(DraftPurchaseFormField::PurchaseGoodsLinesJson, ""),
         )
         .into_string();
-        assert!(html.contains("Vendor is an individual"));
-        assert!(html.contains("x-model=\"billToIndividual\""));
-        assert!(html.contains("x-show=\"billToIndividual\""));
-        assert!(html.contains("Company") || html.contains("Contact"));
+        assert!(html.contains("Vendor"));
+        assert!(html.contains("fk-purchase-vendor"));
+        assert!(!html.contains("billToIndividual"));
         assert!(
             !html.contains(r#"querySelector('input[type="hidden"]"#),
             "Alpine JS leaked as text on the draft purchase form: {html}"
@@ -425,7 +341,6 @@ mod tests {
             PurchaseCompanyPreferencesFormField::CompanyGstin.html_name(),
             PurchaseCompanyPreferencesFormField::PlaceOfSupply.html_name(),
             PurchaseCompanyPreferencesFormField::DefaultBankAccount.html_name(),
-            PurchasePreferencesFormField::JournalId.html_name(),
         ];
         for name in purchase_names {
             assert!(
@@ -440,7 +355,7 @@ CompanyPhone=1&PurchaseCompanyPhone=2&\
 CompanyGstin=INV-GST&PurchaseCompanyGstin=PUR-GST&\
 PlaceOfSupply=KA&PurchasePlaceOfSupply=TN&\
 DefaultBankAccount=inv-bank&PurchaseDefaultBankAccount=pur-bank&\
-JournalId=11&PurchaseJournalId=22";
+JournalId=11";
         let company: PurchaseCompanyPreferencesForm =
             lariv_core::html_form::deserialize_urlencoded(body).expect("company form");
         assert_eq!(company.company_name, "Pur Co");
@@ -449,8 +364,5 @@ JournalId=11&PurchaseJournalId=22";
         assert_eq!(company.company_gstin, "PUR-GST");
         assert_eq!(company.place_of_supply, "TN");
         assert_eq!(company.default_bank_account, "pur-bank");
-        let prefs: PurchasePreferencesForm =
-            lariv_core::html_form::deserialize_urlencoded(body).expect("gl form");
-        assert_eq!(prefs.journal_id, "22");
     }
 }

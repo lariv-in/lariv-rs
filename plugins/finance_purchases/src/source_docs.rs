@@ -6,14 +6,16 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use lariv_plugin_finance_accounts::{
     SourceDocInstance, SourceDocJournalLine, SourceDocJournalSpec, SourceDocRegistrar,
-    SourceDocRegistry,     SourceDocType, logic::journal::JournalLineSpec,
+    SourceDocRegistry, SourceDocType, logic::journal::JournalLineSpec,
 };
 use sea_orm::{DatabaseConnection, DatabaseTransaction, EntityTrait};
 
 use crate::logic::purchase_posting;
 use crate::{
     entities::{
-        cancelled_purchase::{Entity as CancelledPurchaseEntity, PURCHASE_REVERSAL_SOURCE_DOC_TYPE},
+        cancelled_purchase::{
+            Entity as CancelledPurchaseEntity, PURCHASE_REVERSAL_SOURCE_DOC_TYPE,
+        },
         posted_purchase::{Entity as PostedPurchaseEntity, POSTED_PURCHASE_SOURCE_DOC_TYPE},
     },
     routes::{CancelledPurchaseDetailRouteTag, PostedPurchaseDetailRouteTag},
@@ -243,4 +245,3 @@ impl SourceDocType for PurchaseReversalSourceDocType {
         .map_err(anyhow::Error::msg)
     }
 }
-

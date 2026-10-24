@@ -1,4 +1,4 @@
-//! Patches purchase presentation + GL preferences onto `/finance/preferences`.
+//! Patches purchase presentation preferences onto `/finance/preferences`.
 
 use chrono::Utc;
 use lariv_core::components::{
@@ -9,14 +9,9 @@ use lariv_core::components::{
     label_hint,
 };
 use lariv_core::html_form::FormFieldKey;
-use lariv_plugin_finance_accounts::{
-    account_select_route_url,
-    accounting_preferences_patch::{
-        AccountingPreferenceGroup, AccountingPreferencesAddon, opt_i64_form_value, str_to_opt_i64,
-        str_to_opt_string,
-    },
-    logic::journal::{credit_balance_type, debit_balance_type},
-    scope::{load_account_parent_label, load_journal_display_label},
+use lariv_plugin_finance_accounts::accounting_preferences_patch::{
+    AccountingPreferenceGroup, AccountingPreferencesAddon, opt_i64_form_value, str_to_opt_i64,
+    str_to_opt_string,
 };
 use maud::{PreEscaped, html};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
@@ -26,8 +21,7 @@ use crate::{
     forms::{
         PurchaseCompanyPreferencesForm, PurchaseCompanyPreferencesFormField,
         PurchasePdfAssetPreferencesForm, PurchasePdfAssetPreferencesFormField,
-        PurchasePreferencesForm, PurchasePreferencesFormField, PurchasePresentationPreferencesForm,
-        PurchasePresentationPreferencesFormField,
+        PurchasePresentationPreferencesForm, PurchasePresentationPreferencesFormField,
     },
     logic::preferences::load_purchase_preferences,
     preferences_hints::{
@@ -63,14 +57,6 @@ impl AccountingPreferencesAddon for PurchasesAccountingPreferencesAddon {
         use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 
         let inv = load_purchase_preferences(db).await;
-
-        let ar_display = load_account_parent_label(db, inv.account_payable_id).await;
-        let revenue_display = load_account_parent_label(db, inv.account_expense_id).await;
-        let tax_display = load_account_parent_label(db, inv.account_input_tax_id).await;
-        let journal_display = load_journal_display_label(db, inv.journal_id).await;
-
-        let debit_url = account_select_route_url(debit_balance_type().as_str());
-        let credit_url = account_select_route_url(credit_balance_type().as_str());
 
         let number_format = inv.purchase_number_format.unwrap_or_default();
         let date_format = inv.purchase_date_format.unwrap_or_default();
@@ -193,35 +179,6 @@ impl AccountingPreferencesAddon for PurchasesAccountingPreferencesAddon {
                     }
                 },
             ))
-            (PurchasePreferencesForm::render_inputs(
-                &FormCtx::form::<PurchasePreferencesForm>(CsrfToken::current())
-                    .value(
-                        PurchasePreferencesFormField::AccountPayableId,
-                        fk_value(inv.account_payable_id),
-                    )
-                    .display(PurchasePreferencesFormField::AccountPayableId, &ar_display)
-                    .url(PurchasePreferencesFormField::AccountPayableId, &credit_url)
-                    .value(
-                        PurchasePreferencesFormField::AccountExpenseId,
-                        fk_value(inv.account_expense_id),
-                    )
-                    .display(PurchasePreferencesFormField::AccountExpenseId, &revenue_display)
-                    .url(PurchasePreferencesFormField::AccountExpenseId, &debit_url)
-                    .value(
-                        PurchasePreferencesFormField::AccountInputTaxId,
-                        fk_value(inv.account_input_tax_id),
-                    )
-                    .display(
-                        PurchasePreferencesFormField::AccountInputTaxId,
-                        &tax_display,
-                    )
-                    .url(PurchasePreferencesFormField::AccountInputTaxId, &debit_url)
-                    .value(
-                        PurchasePreferencesFormField::JournalId,
-                        fk_value(inv.journal_id),
-                    )
-                    .display(PurchasePreferencesFormField::JournalId, &journal_display),
-            ))
             },
         }]
     }
@@ -231,9 +188,6 @@ impl AccountingPreferencesAddon for PurchasesAccountingPreferencesAddon {
         db: &DatabaseConnection,
         post: &lariv_plugin_finance_accounts::accounting_preferences_patch::AccountingPreferencesPost,
     ) -> Result<(), String> {
-        let inv_form = post
-            .deserialize::<PurchasePreferencesForm>()
-            .map_err(|e| e.to_string())?;
         let presentation = post
             .deserialize::<PurchasePresentationPreferencesForm>()
             .map_err(|e| e.to_string())?;
@@ -248,10 +202,6 @@ impl AccountingPreferencesAddon for PurchasesAccountingPreferencesAddon {
 
         let inv_prefs = load_purchase_preferences(db).await;
         let mut inv_am: preferences::ActiveModel = inv_prefs.into();
-        inv_am.account_payable_id = Set(str_to_opt_i64(&inv_form.account_payable_id));
-        inv_am.account_expense_id = Set(str_to_opt_i64(&inv_form.account_expense_id));
-        inv_am.account_input_tax_id = Set(str_to_opt_i64(&inv_form.account_input_tax_id));
-        inv_am.journal_id = Set(str_to_opt_i64(&inv_form.journal_id));
         inv_am.purchase_number_format =
             Set(str_to_opt_string(&presentation.purchase_number_format));
         inv_am.purchase_date_format = Set(str_to_opt_string(&presentation.purchase_date_format));

@@ -24,8 +24,6 @@ pub async fn load_service_preferences(db: &DatabaseConnection) -> service_prefer
         id: 1,
         created_at: Some(now),
         updated_at: Some(now),
-        cost_of_sales_account_id: None,
-        cost_credit_account_id: None,
     })
 }
 

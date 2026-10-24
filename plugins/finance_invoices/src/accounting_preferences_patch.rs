@@ -10,28 +10,22 @@ use lariv_core::components::{
 };
 use lariv_core::html_form::FormFieldKey;
 use lariv_plugin_finance_accounts::{
-    account_select_route_url,
     accounting_preferences_patch::{
         AccountingPreferenceGroup, AccountingPreferencesAddon, opt_i64_form_value, str_to_opt_i64,
         str_to_opt_string,
     },
-    logic::journal::{credit_balance_type, debit_balance_type},
-    scope::{load_account_parent_label, load_journal_display_label},
+    scope::{load_account_parent_label, load_default_journal_form, load_journal_display_label},
 };
 use maud::{PreEscaped, html};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 
 use crate::{
-    entities::{
-        payment_preferences::{self},
-        preferences::{self},
-    },
+    entities::preferences::{self},
     forms::{
         InvoiceCompanyPreferencesForm, InvoiceCompanyPreferencesFormField,
         InvoicePdfAssetPreferencesForm, InvoicePdfAssetPreferencesFormField,
-        InvoicePreferencesForm, InvoicePreferencesFormField, InvoicePresentationPreferencesForm,
-        InvoicePresentationPreferencesFormField, PaymentPreferencesForm,
-        PaymentPreferencesFormField,
+        InvoicePresentationPreferencesForm, InvoicePresentationPreferencesFormField,
+        PaymentPreferencesForm, PaymentPreferencesFormField,
     },
     invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE,
     logic::preferences::{load_invoice_preferences, load_payment_preferences},
@@ -55,6 +49,32 @@ fn fk_value(id: Option<i64>) -> String {
     opt_i64_form_value(id)
 }
 
+async fn payment_template_form(db: &DatabaseConnection) -> (String, String, String) {
+    let Ok(Some(template)) = crate::payment_journal_template::load_template(db).await else {
+        let (journal_id, journal_display) = load_default_journal_form(db).await;
+        return (
+            journal_id,
+            journal_display,
+            crate::payment_journal_template::empty_lines_json(),
+        );
+    };
+    let mut labels = Vec::with_capacity(template.items.len());
+    for item in &template.items {
+        let label = load_account_parent_label(db, Some(item.account_id)).await;
+        labels.push(if label == "—" { String::new() } else { label });
+    }
+    let journal_display = load_journal_display_label(db, Some(template.journal_id)).await;
+    (
+        template.journal_id.to_string(),
+        if journal_display == "—" {
+            String::new()
+        } else {
+            journal_display
+        },
+        crate::payment_journal_template::lines_to_json(&template.items, &labels),
+    )
+}
+
 pub(crate) struct InvoicesAccountingPreferencesAddon;
 
 #[async_trait::async_trait]
@@ -67,16 +87,8 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
         use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 
         let inv = load_invoice_preferences(db).await;
-        let pay = load_payment_preferences(db).await;
-
-        let ar_display = load_account_parent_label(db, inv.account_receivable_id).await;
-        let revenue_display = load_account_parent_label(db, inv.account_revenue_id).await;
-        let tax_display = load_account_parent_label(db, inv.account_tax_payable_id).await;
-        let journal_display = load_journal_display_label(db, inv.journal_id).await;
-        let payment_display = load_account_parent_label(db, pay.payment_account_id).await;
-
-        let debit_url = account_select_route_url(debit_balance_type().as_str());
-        let credit_url = account_select_route_url(credit_balance_type().as_str());
+        let _pay = load_payment_preferences(db).await;
+        let (journal_id, journal_display, journal_lines) = payment_template_form(db).await;
 
         let number_format = inv.invoice_number_format.unwrap_or_default();
         let date_format = inv.invoice_date_format.unwrap_or_default();
@@ -197,45 +209,13 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
                     }
                 },
             ))
-            (InvoicePreferencesForm::render_inputs(
-                &FormCtx::form::<InvoicePreferencesForm>(CsrfToken::current())
-                    .value(
-                        InvoicePreferencesFormField::AccountReceivableId,
-                        fk_value(inv.account_receivable_id),
-                    )
-                    .display(InvoicePreferencesFormField::AccountReceivableId, &ar_display)
-                    .url(InvoicePreferencesFormField::AccountReceivableId, &debit_url)
-                    .value(
-                        InvoicePreferencesFormField::AccountRevenueId,
-                        fk_value(inv.account_revenue_id),
-                    )
-                    .display(InvoicePreferencesFormField::AccountRevenueId, &revenue_display)
-                    .url(InvoicePreferencesFormField::AccountRevenueId, &credit_url)
-                    .value(
-                        InvoicePreferencesFormField::AccountTaxPayableId,
-                        fk_value(inv.account_tax_payable_id),
-                    )
-                    .display(
-                        InvoicePreferencesFormField::AccountTaxPayableId,
-                        &tax_display,
-                    )
-                    .url(InvoicePreferencesFormField::AccountTaxPayableId, &credit_url)
-                    .value(
-                        InvoicePreferencesFormField::JournalId,
-                        fk_value(inv.journal_id),
-                    )
-                    .display(InvoicePreferencesFormField::JournalId, &journal_display),
-            ))
         };
         let payments = html! {
             (PaymentPreferencesForm::render_inputs(
                 &FormCtx::form::<PaymentPreferencesForm>(CsrfToken::current())
-                    .value(
-                        PaymentPreferencesFormField::PaymentAccountId,
-                        fk_value(pay.payment_account_id),
-                    )
-                    .display(PaymentPreferencesFormField::PaymentAccountId, &payment_display)
-                    .url(PaymentPreferencesFormField::PaymentAccountId, &debit_url),
+                    .value(PaymentPreferencesFormField::JournalId, &journal_id)
+                    .display(PaymentPreferencesFormField::JournalId, &journal_display)
+                    .value(PaymentPreferencesFormField::JournalLines, &journal_lines),
             ))
         };
         vec![
@@ -255,9 +235,6 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
         db: &DatabaseConnection,
         post: &lariv_plugin_finance_accounts::accounting_preferences_patch::AccountingPreferencesPost,
     ) -> Result<(), String> {
-        let inv_form = post
-            .deserialize::<InvoicePreferencesForm>()
-            .map_err(|e| e.to_string())?;
         let presentation = post
             .deserialize::<InvoicePresentationPreferencesForm>()
             .map_err(|e| e.to_string())?;
@@ -275,10 +252,6 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
 
         let inv_prefs = load_invoice_preferences(db).await;
         let mut inv_am: preferences::ActiveModel = inv_prefs.into();
-        inv_am.account_receivable_id = Set(str_to_opt_i64(&inv_form.account_receivable_id));
-        inv_am.account_revenue_id = Set(str_to_opt_i64(&inv_form.account_revenue_id));
-        inv_am.account_tax_payable_id = Set(str_to_opt_i64(&inv_form.account_tax_payable_id));
-        inv_am.journal_id = Set(str_to_opt_i64(&inv_form.journal_id));
         inv_am.invoice_number_format = Set(str_to_opt_string(&presentation.invoice_number_format));
         inv_am.invoice_date_format = Set(str_to_opt_string(&presentation.invoice_date_format));
         inv_am.invoice_datetime_format =
@@ -295,11 +268,13 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
         inv_am.updated_at = Set(Some(now));
         inv_am.update(db).await.map_err(|e| e.to_string())?;
 
-        let pay_prefs = load_payment_preferences(db).await;
-        let mut pay_am: payment_preferences::ActiveModel = pay_prefs.into();
-        pay_am.payment_account_id = Set(str_to_opt_i64(&payment.payment_account_id));
-        pay_am.updated_at = Set(Some(now));
-        pay_am.update(db).await.map_err(|e| e.to_string())?;
+        let _pay_prefs = load_payment_preferences(db).await;
+        crate::payment_journal_template::save_payment_template(
+            db,
+            &payment.journal_id,
+            &payment.journal_lines,
+        )
+        .await?;
 
         Ok(())
     }

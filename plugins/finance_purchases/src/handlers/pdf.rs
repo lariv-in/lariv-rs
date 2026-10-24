@@ -21,9 +21,7 @@ use crate::logic::purchase_pdf::{
 };
 use crate::{
     keys::PurchasePdfModalKey,
-    routes::{
-        CancelledPurchasePdfRouteTag, DraftPurchasePdfRouteTag, PostedPurchasePdfRouteTag,
-    },
+    routes::{CancelledPurchasePdfRouteTag, DraftPurchasePdfRouteTag, PostedPurchasePdfRouteTag},
     scope::{find_active_draft, find_active_posted, hub_tab_url},
     state::PurchasesState,
 };

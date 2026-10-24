@@ -118,6 +118,26 @@ pub fn unit_amount(formula: &str) -> Result<Decimal, String> {
     Ok(decimal::normalize(amount))
 }
 
+/// Evaluate a formula as the price of one service, using saved variable values
+/// when the formula references the service schema.
+pub fn unit_formula_amount(
+    schema_json: &str,
+    formula: &str,
+    raw_variables: &str,
+) -> Result<Decimal, String> {
+    let formula = formula.trim();
+    if formula.is_empty() {
+        return Ok(Decimal::ZERO);
+    }
+    let schema = load_schema(schema_json)?;
+    if formula_references_schema(&schema, formula) {
+        let raw = serde_json::from_str(raw_variables.trim()).unwrap_or(serde_json::json!({}));
+        Ok(price_line(schema_json, formula, &raw)?.rate)
+    } else {
+        unit_amount(formula)
+    }
+}
+
 /// Line cost from the base price formula of one service, times `quantity`.
 ///
 /// The formula is the cost of a single service. When it names a schema

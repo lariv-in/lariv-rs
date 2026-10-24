@@ -21,10 +21,11 @@ use crate::{
     logic::{
         cancelled_new_draft,
         draft_payment_term::cancelled_payment_term_display_rows,
-        purchase_goods_line_editor::{
-            cancelled_purchase_goods_line_display_rows, purchase_vendor_name, purchase_header_tax_labels,
-        },
         load_purchase_date_formats, optional_display,
+        purchase_goods_line_editor::{
+            cancelled_purchase_goods_line_display_rows, purchase_header_tax_labels,
+            purchase_vendor_name,
+        },
         tax_assoc::load_cancelled_purchase_tax_ids,
     },
     routes::{
@@ -59,11 +60,7 @@ pub async fn detail(
             .await
             .unwrap_or_default();
         let tax_labels = purchase_header_tax_labels(&state.db, &tax_ids).await;
-        let party = crate::logic::BillTo::new(
-            c.vendor_is_individual,
-            c.vendor_contact_id,
-            c.vendor_company_id,
-        );
+        let party = crate::logic::bill_to::load_bill_to(&state.db, c.vendor_id).await;
         let vendor_name = purchase_vendor_name(&state.db, party).await;
         let currency = load_journal_currency_format(&state.db, c.journal_id).await;
         let dates = load_purchase_date_formats(&state.db).await;
@@ -95,7 +92,8 @@ pub async fn detail(
         };
 
         let reversal_label = format!("Journal entry #{}", c.reversed_journal_entry_id);
-        let reversal_href = Some(JournalEntryDetailRouteTag::new(c.reversed_journal_entry_id).url());
+        let reversal_href =
+            Some(JournalEntryDetailRouteTag::new(c.reversed_journal_entry_id).url());
 
         CancelledPurchaseDetailPage {
             id: c.id,

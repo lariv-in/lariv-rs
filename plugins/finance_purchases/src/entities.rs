@@ -10,6 +10,7 @@ pub mod posted_purchase;
 pub mod posted_purchase_goods_line;
 pub mod posted_purchase_service_line;
 pub mod preferences;
+pub mod vendor;
 
 pub use crate::payment_term_kind::{PaymentTermAmountKind, PaymentTermDateKind};
 pub use cancelled_purchase::Entity as CancelledPurchaseEntity;
@@ -24,3 +25,4 @@ pub use posted_purchase::Entity as PostedPurchaseEntity;
 pub use posted_purchase_goods_line::Entity as PostedPurchaseGoodsLineEntity;
 pub use posted_purchase_service_line::Entity as PostedPurchaseServiceLineEntity;
 pub use preferences::Entity as PurchasePreferencesEntity;
+pub use vendor::Entity as VendorEntity;

@@ -14,7 +14,7 @@ use lariv_core::template::RenderAppPane;
 use lariv_core::web::{Htmx, QueryPage, QueryPageSize, html_built_page_with_slots};
 use lariv_plugin_users::middleware::RequireAuth;
 
-use crate::logic::bill_to::{BillTo, PartyLabels};
+use crate::logic::bill_to::PartyLabels;
 use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_formats,
 };
@@ -91,7 +91,7 @@ async fn hub_product_display(db: &sea_orm::DatabaseConnection, raw: &str) -> Str
         return String::new();
     };
     lariv_core::web::opt_or_log(
-        lariv_plugin_finance_products::entities::product::Entity::find_by_id(id)
+        crate::purchase_products::entities::product::Entity::find_by_id(id)
             .one(db)
             .await,
         "find product for purchase hub filter",
@@ -541,16 +541,8 @@ async fn query_posted_rows(
         .fetch_page((page_num as u64).saturating_sub(1))
         .await
         .unwrap_or_default();
-    let parties: Vec<BillTo> = models
-        .iter()
-        .map(|p| {
-            BillTo::new(
-                p.vendor_is_individual,
-                p.vendor_contact_id,
-                p.vendor_company_id,
-            )
-        })
-        .collect();
+    let vendor_ids: Vec<i64> = models.iter().map(|p| p.vendor_id).collect();
+    let parties = crate::logic::bill_to::parties_in_order(db, &vendor_ids).await;
     let vendors = PartyLabels::load(db, &parties).await;
     let journal_ids: Vec<i64> = models.iter().map(|p| p.journal_id).collect();
     let currency_fmts = load_journal_currency_formats(db, &journal_ids).await;

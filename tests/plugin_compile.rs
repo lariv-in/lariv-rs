@@ -12,8 +12,7 @@ use std::path::PathBuf;
 use lariv_rs::app::App;
 use lariv_rs::plugins::{
     blog, contacts, crm, customer, dashboard, filesystem, forms, import, inventory, llm_assistant,
-    meets,
-    otp, pwa, signup, users, website,
+    meets, otp, pwa, signup, users, website,
 };
 
 const MINIMAL_DB_TOML: &str = r#"database_url = "sqlite::memory:""#;

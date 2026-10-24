@@ -38,7 +38,7 @@ use crate::{
         TaxMultiSelectTableKey, TaxTableKey,
     },
     routes::{TaxDefaultRouteTag, TaxDetailRouteTag},
-    scope::{account_label, find_tax_scoped, model_to_row},
+    scope::{find_tax_scoped, model_to_row},
     state::TaxesState,
     templates::{
         ConfirmDeletePage, TaxCreateModalPage, TaxDetailPage, TaxEditModalPage, TaxListPage,
@@ -113,25 +113,43 @@ fn path_and_query(uri: &Uri) -> String {
         .unwrap_or_else(|| uri.path().to_string())
 }
 
-fn parse_account_id(s: &str) -> Option<i64> {
-    let s = s.trim();
-    if s.is_empty() {
-        None
-    } else {
-        s.parse().ok().filter(|&id| id > 0)
-    }
-}
-
 fn parse_percentage(s: &str) -> Option<Decimal> {
     lariv_plugin_finance_common::decimal::parse_decimal(s)
 }
 
-fn validate_tax(tax_type: TaxKind, account_id: Option<i64>) -> bool {
-    if tax_type == TaxKind::Withholding {
-        account_id.filter(|&id| id > 0).is_some()
-    } else {
-        true
+async fn journal_display(db: &sea_orm::DatabaseConnection, raw: &str) -> String {
+    let id = raw.trim().parse::<i64>().ok().filter(|id| *id > 0);
+    let label = lariv_plugin_finance_accounts::scope::load_journal_display_label(db, id).await;
+    if label == "—" { String::new() } else { label }
+}
+
+async fn template_fields(
+    db: &sea_orm::DatabaseConnection,
+    tax_id: i64,
+) -> (String, String, String) {
+    let Ok(Some(template)) = crate::journal_template::load_template(db, tax_id).await else {
+        let (journal_id, journal_display) =
+            lariv_plugin_finance_accounts::scope::load_default_journal_form(db).await;
+        return (
+            journal_id,
+            journal_display,
+            crate::journal_template::empty_lines_json(),
+        );
+    };
+    let mut labels = Vec::with_capacity(template.items.len());
+    for item in &template.items {
+        let label = lariv_plugin_finance_accounts::scope::load_account_parent_label(
+            db,
+            Some(item.account_id),
+        )
+        .await;
+        labels.push(if label == "—" { String::new() } else { label });
     }
+    (
+        template.journal_id.to_string(),
+        journal_display(db, &template.journal_id.to_string()).await,
+        crate::journal_template::lines_to_json(&template.items, &labels),
+    )
 }
 
 async fn query_taxes(
@@ -224,21 +242,47 @@ pub async fn detail(
     let Some(t) = find_tax_scoped(&state.db, id).await else {
         return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
     };
+    let (journal_name, journal_lines) =
+        match crate::journal_template::load_template(&state.db, t.id).await {
+            Ok(Some(template)) => {
+                let journal_name =
+                    lariv_plugin_finance_accounts::scope::load_journal_display_label(
+                        &state.db,
+                        Some(template.journal_id),
+                    )
+                    .await;
+                let mut lines = Vec::new();
+                for item in &template.items {
+                    let account = lariv_plugin_finance_accounts::scope::load_account_parent_label(
+                        &state.db,
+                        Some(item.account_id),
+                    )
+                    .await;
+                    lines.push(format!("{account}: {}", item.formula));
+                }
+                (journal_name, lines.join("\n"))
+            }
+            _ => ("—".into(), "—".into()),
+        };
     let page = TaxDetailPage {
         id: t.id,
         name: t.name,
         tax_type: tax_type_label(&t.tax_type),
         percentage: t.percentage.normalize().to_string(),
-        account_label: account_label(&state.db, t.account_id).await,
+        journal_name,
+        journal_lines,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn create_get(
+    Cap(state): Cap<TaxesState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
+    let (journal_id, journal_display) =
+        lariv_plugin_finance_accounts::scope::load_default_journal_form(&state.db).await;
     let page = TaxCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -246,8 +290,9 @@ pub async fn create_get(
         name: String::new(),
         tax_type: TaxKind::Levied.as_str().to_string(),
         percentage: String::new(),
-        account_id: String::new(),
-        account_display: String::new(),
+        journal_id,
+        journal_display,
+        journal_lines: crate::journal_template::empty_lines_json(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -261,7 +306,7 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<TaxForm>,
 ) -> Response {
-    let account_display = account_label(&state.db, parse_account_id(&form.account_id)).await;
+    let journal_display = journal_display(&state.db, &form.journal_id).await;
     let render_error = |error: String| {
         let page = TaxCreateModalPage {
             form_name: q.form_name(),
@@ -270,8 +315,9 @@ pub async fn create_post(
             name: form.name.clone(),
             tax_type: form.tax_type.clone(),
             percentage: form.percentage.clone(),
-            account_id: form.account_id.clone(),
-            account_display: account_display.clone(),
+            journal_id: form.journal_id.clone(),
+            journal_display: journal_display.clone(),
+            journal_lines: form.journal_lines.clone(),
             error,
         };
         html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -282,31 +328,38 @@ pub async fn create_post(
     let Some(percentage) = parse_percentage(&form.percentage) else {
         return render_error("Invalid percentage".into());
     };
-    let account_id = parse_account_id(&form.account_id);
-    if !validate_tax(tax_type, account_id) {
-        return render_error("Withholding taxes require an account".into());
-    }
     let now = Utc::now();
     let model = tax::ActiveModel {
         name: Set(form.name.clone()),
         tax_type: Set(tax_type),
         percentage: Set(percentage),
-        account_id: Set(account_id),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
     };
-    match model.insert(&state.db).await {
-        Ok(saved) => respond_create_modal_done_fk::<TaxCreateModalKey>(
-            &htmx,
-            &q.refresh_table(),
-            &TaxDetailRouteTag::new(saved.id).url(),
-            saved.id,
-            &saved.name,
-            &q.target_input(),
-        ),
-        Err(e) => render_error(e.to_string()),
+    let saved = match model.insert(&state.db).await {
+        Ok(saved) => saved,
+        Err(e) => return render_error(e.to_string()),
+    };
+    if let Err(e) = crate::journal_template::save_tax_template(
+        &state.db,
+        saved.id,
+        &form.journal_id,
+        &form.journal_lines,
+    )
+    .await
+    {
+        let _ = TaxEntity::delete_by_id(saved.id).exec(&state.db).await;
+        return render_error(e);
     }
+    respond_create_modal_done_fk::<TaxCreateModalKey>(
+        &htmx,
+        &q.refresh_table(),
+        &TaxDetailRouteTag::new(saved.id).url(),
+        saved.id,
+        &saved.name,
+        &q.target_input(),
+    )
 }
 
 pub async fn edit_get(
@@ -319,14 +372,16 @@ pub async fn edit_get(
     let Some(t) = find_tax_scoped(&state.db, id).await else {
         return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
     };
+    let (journal_id, journal_display, journal_lines) = template_fields(&state.db, t.id).await;
     let page = TaxEditModalPage {
         id: t.id,
         form_name: q.form_name(),
         name: t.name,
         tax_type: t.tax_type.as_str().to_string(),
         percentage: t.percentage.normalize().to_string(),
-        account_id: t.account_id.map(|id| id.to_string()).unwrap_or_default(),
-        account_display: account_label(&state.db, t.account_id).await,
+        journal_id,
+        journal_display,
+        journal_lines,
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -336,7 +391,7 @@ fn tax_edit_modal_page_from_form(
     id: i64,
     form: &TaxForm,
     form_name: String,
-    account_display: String,
+    journal_display: String,
     error: String,
 ) -> TaxEditModalPage {
     TaxEditModalPage {
@@ -345,8 +400,9 @@ fn tax_edit_modal_page_from_form(
         name: form.name.clone(),
         tax_type: form.tax_type.clone(),
         percentage: form.percentage.clone(),
-        account_id: form.account_id.clone(),
-        account_display,
+        journal_id: form.journal_id.clone(),
+        journal_display,
+        journal_lines: form.journal_lines.clone(),
         error,
     }
 }
@@ -363,13 +419,13 @@ pub async fn edit_post(
     let Some(existing) = find_tax_scoped(&state.db, id).await else {
         return Redirect::to(&TaxDefaultRouteTag.url()).into_response();
     };
-    let account_display = account_label(&state.db, parse_account_id(&form.account_id)).await;
+    let journal_display = journal_display(&state.db, &form.journal_id).await;
     let Some(tax_type) = TaxKind::parse(&form.tax_type) else {
         let page = tax_edit_modal_page_from_form(
             id,
             &form,
             q.form_name(),
-            account_display,
+            journal_display,
             "invalid tax type".into(),
         );
         return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -380,49 +436,40 @@ pub async fn edit_post(
             id,
             &form,
             q.form_name(),
-            account_display,
+            journal_display,
             "invalid percentage".into(),
         );
         return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
             .into_response();
     };
-    let account_id = parse_account_id(&form.account_id);
-    if !validate_tax(tax_type, account_id) {
-        let page = tax_edit_modal_page_from_form(
-            id,
-            &form,
-            q.form_name(),
-            account_display,
-            "invalid tax configuration".into(),
-        );
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-            .into_response();
-    }
     let now = Utc::now();
     let model = tax::ActiveModel {
         id: Set(existing.id),
         name: Set(form.name.clone()),
         tax_type: Set(tax_type),
         percentage: Set(percentage),
-        account_id: Set(account_id),
         updated_at: Set(Some(now)),
         ..Default::default()
     };
-    match model.update(&state.db).await {
-        Ok(_) => {
-            respond_edit_modal_done::<TaxEditModalKey>(&htmx, &TaxDetailRouteTag::new(id).url())
-        }
-        Err(e) => {
-            let page = tax_edit_modal_page_from_form(
-                id,
-                &form,
-                q.form_name(),
-                account_display,
-                e.to_string(),
-            );
-            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
-        }
+    if let Err(e) = model.update(&state.db).await {
+        let page =
+            tax_edit_modal_page_from_form(id, &form, q.form_name(), journal_display, e.to_string());
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
     }
+    if let Err(e) = crate::journal_template::save_tax_template(
+        &state.db,
+        id,
+        &form.journal_id,
+        &form.journal_lines,
+    )
+    .await
+    {
+        let page = tax_edit_modal_page_from_form(id, &form, q.form_name(), journal_display, e);
+        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response();
+    }
+    respond_edit_modal_done::<TaxEditModalKey>(&htmx, &TaxDetailRouteTag::new(id).url())
 }
 
 pub async fn delete_get(

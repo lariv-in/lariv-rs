@@ -10,15 +10,12 @@ use sea_orm::{
 };
 
 use lariv_plugin_finance_accounts::{
-    logic::journal::debit_balance_type,
     logic::journal::{
         JournalLineSpec, create_source_doc, insert_journal_entry, update_source_doc_id,
     },
     scope::load_journal_display_label,
-    validate_leaf_account_balance_type,
 };
 use lariv_plugin_finance_common::decimal;
-use lariv_plugin_finance_products::preferences::optional_i64;
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
 use crate::entities::payment_batch::PAYMENT_BATCH_SOURCE_DOC_TYPE;
@@ -42,7 +39,6 @@ pub struct BatchAllocation {
 
 pub struct CreatePaymentBatchInput {
     pub datetime: DateTime<Utc>,
-    pub account_id: Option<i64>,
     pub allocations: Vec<BatchAllocation>,
 }
 
@@ -128,14 +124,6 @@ pub async fn create_payment_batch(
     let payment_prefs = load_payment_preferences(db).await;
     validate_payment_preferences_for_create(db, &payment_prefs).await?;
 
-    let account_id = input
-        .account_id
-        .filter(|id| *id > 0)
-        .unwrap_or_else(|| optional_i64(payment_prefs.payment_account_id));
-    validate_leaf_account_balance_type(db, account_id, debit_balance_type(), "payment account")
-        .await
-        .map_err(|e| e.to_string())?;
-
     let posted_ids: Vec<i64> = input
         .allocations
         .iter()
@@ -179,7 +167,6 @@ pub async fn create_payment_batch(
     }
 
     let mut prepared = Vec::with_capacity(input.allocations.len());
-    let mut total_bank = Decimal::ZERO;
     let mut total_settlement = Decimal::ZERO;
 
     for alloc in &input.allocations {
@@ -192,10 +179,10 @@ pub async fn create_payment_batch(
 
         let settlement = decimal::normalize(alloc.amount);
         let withholding_base = payment_withholding_base(settlement, inv_total, untaxed_subtotal);
-        let (bank_amt, journal_lines) =
-            build_payment_lines_for_allocation(&posted, settlement, withholding_base, &taxes)?;
+        let journal_lines =
+            build_payment_lines_for_allocation(db, &posted, settlement, withholding_base, &taxes)
+                .await?;
 
-        total_bank = decimal::dec_sum(total_bank, bank_amt);
         total_settlement = decimal::dec_sum(total_settlement, settlement);
 
         prepared.push(PreparedAllocation {
@@ -220,10 +207,7 @@ pub async fn create_payment_batch(
         .await
         .map_err(|e| e.to_string())?;
 
-    let mut lines = vec![JournalLineSpec {
-        account_id,
-        amount: total_bank,
-    }];
+    let mut lines = Vec::new();
     for prep in &prepared {
         lines.extend(prep.journal_lines.clone());
     }
@@ -234,7 +218,6 @@ pub async fn create_payment_batch(
 
     let batch = payment_batch::ActiveModel {
         datetime: Set(dt),
-        account_id: Set(account_id),
         journal_entry_id: Set(je_id),
         total_amount: Set(total_settlement),
         created_at: Set(Some(now)),
@@ -250,7 +233,6 @@ pub async fn create_payment_batch(
         let pay = payment::ActiveModel {
             posted_invoice_id: Set(prep.posted.id),
             amount: Set(prep.settlement),
-            account_id: Set(account_id),
             datetime: Set(dt),
             journal_entry_id: Set(je_id),
             payment_batch_id: Set(Some(batch.id)),
@@ -281,7 +263,7 @@ pub async fn create_payment_batch(
     Ok(CreatePaymentBatchResult { batch, payment_ids })
 }
 
-/// Recompute a payment batch's journal lines from the batch account and each payment allocation.
+/// Recompute a payment batch's journal lines from each payment's template and withholding lines.
 pub async fn payment_batch_journal_lines(
     db: &DatabaseConnection,
     batch_id: i64,
@@ -301,19 +283,10 @@ pub async fn payment_batch_journal_lines(
         return Err(format!("payment batch {batch_id} has no payments"));
     }
 
-    let mut total_bank = Decimal::ZERO;
-    let mut alloc_lines = Vec::new();
+    let mut lines = Vec::new();
     for pay in &payments {
-        let (bank_amt, lines) = allocation_lines_for_payment(db, pay).await?;
-        total_bank = decimal::dec_sum(total_bank, bank_amt);
-        alloc_lines.extend(lines);
+        lines.extend(allocation_lines_for_payment(db, pay).await?);
     }
-
-    let mut lines = vec![JournalLineSpec {
-        account_id: batch.account_id,
-        amount: total_bank,
-    }];
-    lines.extend(alloc_lines);
     Ok((batch.datetime, lines))
 }
 
@@ -357,7 +330,7 @@ mod tests {
         Decimal::from_str(s).unwrap()
     }
 
-    fn sample_posted(id: i64, ar_id: i64) -> posted_invoice::Model {
+    fn sample_posted(id: i64) -> posted_invoice::Model {
         posted_invoice::Model {
             id,
             created_at: None,
@@ -370,27 +343,12 @@ mod tests {
             payment_reference: None,
             bank_account: None,
             remarks: None,
-            account_receivable_id: ar_id,
-            account_revenue_id: 0,
-            account_tax_payable_id: 0,
             journal_id: 1,
             datetime: Utc::now(),
             delivery_date: None,
             customer_id: 1,
             journal_entry_id: 0,
             posted_payment_term_id: None,
-        }
-    }
-
-    fn withholding_tax(id: i64, pct: Decimal, acct: i64) -> tax::Model {
-        tax::Model {
-            id,
-            created_at: None,
-            updated_at: None,
-            name: format!("WH {id}"),
-            percentage: pct,
-            tax_type: TaxKind::Withholding,
-            account_id: Some(acct),
         }
     }
 
@@ -434,35 +392,26 @@ mod tests {
     }
 
     #[test]
-    fn batch_journal_lines_balance_with_withholding() {
-        let posted1 = sample_posted(1, 100);
-        let posted2 = sample_posted(2, 200);
-        let taxes = vec![withholding_tax(10, d("10"), 300)];
-
-        // Withholding base is untaxed (100), not GST-inclusive settlement (118).
-        let (bank1, lines1) =
-            build_payment_lines_for_allocation(&posted1, d("118"), d("100"), &taxes).unwrap();
-        let (bank2, lines2) =
-            build_payment_lines_for_allocation(&posted2, d("200"), d("200"), &[]).unwrap();
-
-        let mut lines = vec![JournalLineSpec {
-            account_id: 50,
-            amount: decimal::dec_sum(bank1, bank2),
-        }];
-        lines.extend(lines1);
-        lines.extend(lines2);
-
-        let balance: Decimal = lines.iter().map(|l| l.amount).sum();
-        assert!(decimal::dec_is_zero(balance));
-        // 10% of untaxed 100 = 10; bank = 118 - 10 = 108
+    fn batch_bank_amount_withholds_from_untaxed_base() {
+        let tax = tax::Model {
+            id: 10,
+            created_at: None,
+            updated_at: None,
+            name: "WH 10".into(),
+            percentage: d("10"),
+            tax_type: TaxKind::Withholding,
+        };
+        // 10% of untaxed 100 = 10; bank = 118 - 10 = 108. The settlement 200 has no tax.
+        let bank1 = crate::logic::tax_calculations::payment_bank_amount(d("118"), d("100"), &[tax]);
+        let bank2 = crate::logic::tax_calculations::payment_bank_amount(d("200"), d("200"), &[]);
         assert_eq!(bank1, d("108"));
         assert_eq!(bank2, d("200"));
     }
 
     #[test]
     fn validate_same_journal_rejects_mixed() {
-        let mut a = sample_posted(1, 100);
-        let mut b = sample_posted(2, 200);
+        let mut a = sample_posted(1);
+        let mut b = sample_posted(2);
         b.journal_id = 2;
         let err = validate_same_journal(&[a.clone(), b.clone()]).unwrap_err();
         assert!(err.contains("multiple journals"));

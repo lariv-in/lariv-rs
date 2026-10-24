@@ -17,6 +17,9 @@ fn register(hitl: &mut HitlCapability) {
 
     use lariv_core::rune_env::NativeBinding;
 
+    crate::purchase_products::hitl::Hook.register_hitl(hitl);
+    crate::purchase_services::hitl::Hook.register_hitl(hitl);
+
     hitl.register(
         "delete_draft_purchase",
         "delete_draft_purchase(#{ id: int }) -> ()  // requires human approval; purchase must still be draft",

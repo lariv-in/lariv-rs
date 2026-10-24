@@ -7,13 +7,13 @@ use sea_orm::{
 use serde::Serialize;
 
 use crate::logic::bill_to::{BillTo, PartyLabels};
+use crate::purchase_products::{
+    entities::product::Entity as ProductEntity, preferences::load_product_tax_ids, pricing,
+};
 use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_format,
 };
 use lariv_plugin_finance_common::decimal;
-use lariv_plugin_finance_products::{
-    entities::product::Entity as ProductEntity, preferences::load_product_tax_ids, pricing,
-};
 use lariv_plugin_finance_taxes::{
     entities::tax::TaxKind,
     scope::{load_all_taxes, load_taxes_by_ids, tax_label},
@@ -25,13 +25,12 @@ use crate::entities::{
     posted_purchase::Entity as PostedPurchaseEntity,
     posted_purchase_goods_line::{self, Entity as PostedPurchaseGoodsLineEntity},
 };
-use crate::logic::preferences::load_purchase_preferences;
 use crate::logic::tax_assoc::{
     load_cancelled_line_tax_ids, load_draft_line_tax_ids, load_posted_line_tax_ids,
 };
 
 pub fn default_lines_json() -> String {
-    r#"[{"product_id":0,"quantity":"1","rate":"","product_label":"","fk_slot":"line-slot-0","tax_ids":[],"has_formula":false,"variable_rows":[],"pre_tax":"","remarks":""}]"#
+    r#"[{"product_id":0,"quantity":"1","rate":"","product_label":"","fk_slot":"PurchaseLineProduct_0","tax_ids":[],"has_formula":false,"variable_rows":[],"pre_tax":"","remarks":""}]"#
         .to_string()
 }
 
@@ -70,18 +69,10 @@ pub async fn purchase_goods_line_editor_preview_json(db: &DatabaseConnection) ->
     for p in products {
         let tax_ids = load_product_tax_ids(db, p.id).await;
         let has_formula = pricing::has_variable_pricing(&p.variables);
-        let sales_price = if has_formula {
-            None
-        } else {
-            pricing::unit_amount(&p.sales_price_formula)
-                .ok()
-                .filter(|amount| !decimal::dec_is_zero(*amount))
-                .map(|amount| decimal::decimal_display(amount))
-        };
         product_opts.push(PurchaseLineProductOpt {
             id: p.id,
             name: p.name.clone(),
-            sales_price,
+            sales_price: None,
             tax_ids,
             has_formula,
             variables: pricing::variable_input_specs(&p.variables),
@@ -354,8 +345,24 @@ pub async fn draft_purchase_goods_line_display_rows(
         .all(db)
         .await
         .unwrap_or_default();
-    let prefs = load_purchase_preferences(db).await;
-    let currency = currency_for_journal_or_default(db, prefs.journal_id).await;
+    let mut journal_id = None;
+    let mut mixed_journals = false;
+    for ln in &lines {
+        if let Ok(Some(template)) =
+            crate::purchase_products::journal_template::load_template(db, ln.product_id).await
+        {
+            match journal_id {
+                Some(existing) if existing != template.journal_id => mixed_journals = true,
+                None => journal_id = Some(template.journal_id),
+                _ => {}
+            }
+        }
+    }
+    let currency = if mixed_journals {
+        load_default_currency_format(db).await
+    } else {
+        currency_for_journal_or_default(db, journal_id).await
+    };
 
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {

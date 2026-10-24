@@ -129,29 +129,6 @@ fn header_tax_split(
     (levied, withholding)
 }
 
-pub fn withholding_tax_account_id(t: &tax::Model) -> Result<i64, String> {
-    match t.account_id {
-        Some(id) if id > 0 => Ok(id),
-        _ => {
-            let name = if t.name.trim().is_empty() {
-                format!("#{}", t.id)
-            } else {
-                t.name.clone()
-            };
-            Err(format!("withholding tax {name} requires a ledger account"))
-        }
-    }
-}
-
-pub fn validate_withholding_tax_accounts(taxes: &[tax::Model]) -> Result<(), String> {
-    for t in taxes {
-        if t.tax_type == TaxKind::Withholding {
-            withholding_tax_account_id(t)?;
-        }
-    }
-    Ok(())
-}
-
 /// Untaxed portion of a payment settlement used as the withholding base.
 ///
 /// Collection-time withholding (e.g. TDS) applies to taxable value excluding levied tax,
@@ -195,7 +172,6 @@ pub fn payment_bank_amount(
 }
 
 pub fn validate_payment_taxes(taxes: &[tax::Model]) -> Result<(), String> {
-    validate_withholding_tax_accounts(taxes)?;
     for t in taxes {
         if t.tax_type != TaxKind::Withholding {
             let name = if t.name.trim().is_empty() {
@@ -243,7 +219,6 @@ mod tests {
             name: "TDS".into(),
             percentage: d("10"),
             tax_type: TaxKind::Withholding,
-            account_id: Some(1),
         };
         // 10% of 100 untaxed = 10; bank = 118 - 10
         assert_eq!(payment_bank_amount(d("118"), d("100"), &[tax]), d("108"));
