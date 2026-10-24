@@ -20,6 +20,7 @@ use serde::Deserialize;
 
 use crate::entities::tax::Model as TaxModel;
 use crate::entities::tax_journal_entry_item_template::{self, Entity as ItemTemplateEntity};
+use crate::entities::tax_preference_journal_item::{self, Entity as PreferenceItemEntity};
 
 pub const LINE_BINDINGS: &[&str] = &["percentage", "base"];
 
@@ -355,6 +356,178 @@ pub async fn evaluate_withholding_lines<C: ConnectionTrait>(
         return Err(format!("{} template produced no journal lines", tax.name));
     }
     Ok(out)
+}
+
+/// Shared default copied onto each new tax.
+const PREFERENCES_ID: i64 = 1;
+
+#[derive(Clone, Debug)]
+pub struct LoadedPreferenceTemplate {
+    pub journal_id: i64,
+    pub items: Vec<tax_preference_journal_item::Model>,
+}
+
+pub struct PreferenceFormFields {
+    pub journal_id: String,
+    pub journal_display: String,
+    pub journal_lines: String,
+}
+
+fn blank_lines_json(slot_prefix: &str) -> String {
+    serde_json::to_string(&serde_json::json!([{
+        "account_id": 0,
+        "formula": "",
+        "account_label": "",
+        "fk_slot": format!("{slot_prefix}-0"),
+    }]))
+    .unwrap_or_else(|_| empty_lines_json())
+}
+
+fn rows_to_json(rows: &[(i64, &str)], labels: &[String], slot_prefix: &str) -> String {
+    let items: Vec<serde_json::Value> = rows
+        .iter()
+        .enumerate()
+        .map(|(i, (account_id, formula))| {
+            serde_json::json!({
+                "account_id": account_id,
+                "formula": formula,
+                "account_label": labels.get(i).cloned().unwrap_or_default(),
+                "fk_slot": format!("{slot_prefix}-{i}"),
+            })
+        })
+        .collect();
+    if items.is_empty() {
+        blank_lines_json(slot_prefix)
+    } else {
+        serde_json::to_string(&items).unwrap_or_else(|_| blank_lines_json(slot_prefix))
+    }
+}
+
+/// Save or clear the default product template. An empty journal and no lines clears it.
+pub async fn save_preference_template(
+    db: &DatabaseConnection,
+    journal_raw: &str,
+    lines_json: &str,
+) -> Result<(), String> {
+    let journal_id = journal_raw.trim().parse::<i64>().unwrap_or(0);
+    let lines = parse_template_lines(lines_json)?;
+    if journal_id <= 0 && lines.is_empty() {
+        return delete_preference_template(db).await;
+    }
+    if journal_id <= 0 {
+        return Err("journal is required when the template has lines".into());
+    }
+    if lines.is_empty() {
+        return Err("at least one journal template line is required".into());
+    }
+    validate_parsed_lines(&lines)?;
+    if JournalEntity::find_by_id(journal_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .is_none()
+    {
+        return Err("journal not found".into());
+    }
+    ensure_leaf_accounts(db, &lines).await?;
+    crate::preferences::load_tax_preferences(db).await;
+
+    let txn = db.begin().await.map_err(|e| e.to_string())?;
+    delete_preference_template(&txn).await?;
+    let now = Utc::now();
+    for line in &lines {
+        let am = tax_preference_journal_item::ActiveModel {
+            tax_preferences_id: Set(PREFERENCES_ID),
+            journal_id: Set(journal_id),
+            account_id: Set(line.account_id),
+            formula: Set(line.formula.clone()),
+            created_at: Set(Some(now)),
+            updated_at: Set(Some(now)),
+            ..Default::default()
+        };
+        am.insert(&txn).await.map_err(|e| e.to_string())?;
+    }
+    txn.commit().await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub async fn delete_preference_template<C: ConnectionTrait>(db: &C) -> Result<(), String> {
+    PreferenceItemEntity::delete_many()
+        .filter(tax_preference_journal_item::Column::TaxPreferencesId.eq(PREFERENCES_ID))
+        .exec(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub async fn load_preference_template(
+    db: &DatabaseConnection,
+) -> Result<Option<LoadedPreferenceTemplate>, String> {
+    let items = PreferenceItemEntity::find()
+        .filter(tax_preference_journal_item::Column::TaxPreferencesId.eq(PREFERENCES_ID))
+        .order_by_asc(tax_preference_journal_item::Column::Id)
+        .all(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(first) = items.first() else {
+        return Ok(None);
+    };
+    let journal_id = first.journal_id;
+    if items.iter().any(|item| item.journal_id != journal_id) {
+        return Err("tax preference journal template lines must use the same journal".into());
+    }
+    Ok(Some(LoadedPreferenceTemplate { journal_id, items }))
+}
+
+/// Journal and lines for a form. `slot_prefix` keeps account pickers distinct on one page.
+pub async fn preference_form_fields(
+    db: &DatabaseConnection,
+    slot_prefix: &str,
+) -> PreferenceFormFields {
+    let template = match load_preference_template(db).await {
+        Ok(template) => template,
+        Err(err) => {
+            tracing::error!(error = %err, "tax preference journal template");
+            None
+        }
+    };
+    let Some(template) = template else {
+        let (journal_id, journal_display) =
+            lariv_plugin_finance_accounts::scope::load_default_journal_form(db).await;
+        return PreferenceFormFields {
+            journal_id,
+            journal_display,
+            journal_lines: blank_lines_json(slot_prefix),
+        };
+    };
+    let mut labels = Vec::with_capacity(template.items.len());
+    for item in &template.items {
+        let label = lariv_plugin_finance_accounts::scope::load_account_parent_label(
+            db,
+            Some(item.account_id),
+        )
+        .await;
+        labels.push(if label == "—" { String::new() } else { label });
+    }
+    let rows: Vec<(i64, &str)> = template
+        .items
+        .iter()
+        .map(|item| (item.account_id, item.formula.as_str()))
+        .collect();
+    let journal_display = lariv_plugin_finance_accounts::scope::load_journal_display_label(
+        db,
+        Some(template.journal_id),
+    )
+    .await;
+    PreferenceFormFields {
+        journal_id: template.journal_id.to_string(),
+        journal_display: if journal_display == "—" {
+            String::new()
+        } else {
+            journal_display
+        },
+        journal_lines: rows_to_json(&rows, &labels, slot_prefix),
+    }
 }
 
 #[cfg(test)]

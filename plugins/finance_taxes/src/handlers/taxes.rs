@@ -281,8 +281,8 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
-    let (journal_id, journal_display) =
-        lariv_plugin_finance_accounts::scope::load_default_journal_form(&state.db).await;
+    let defaults =
+        crate::journal_template::preference_form_fields(&state.db, "template-line").await;
     let page = TaxCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -290,9 +290,9 @@ pub async fn create_get(
         name: String::new(),
         tax_type: TaxKind::Levied.as_str().to_string(),
         percentage: String::new(),
-        journal_id,
-        journal_display,
-        journal_lines: crate::journal_template::empty_lines_json(),
+        journal_id: defaults.journal_id,
+        journal_display: defaults.journal_display,
+        journal_lines: defaults.journal_lines,
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()

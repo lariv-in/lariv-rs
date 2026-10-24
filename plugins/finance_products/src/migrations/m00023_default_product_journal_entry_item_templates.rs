@@ -1,9 +1,11 @@
 //! Seed default product journal templates from the old GL preferences.
 //!
-//! The templates reproduce the pre-template posting behaviour: receivable
-//! debits `pre_tax`, revenue credits it back, cost of sales debits the base
-//! cost, and inventory credits it back. Once the accounts are copied onto the
-//! per-product templates the preference columns are retired.
+//! Each product posts its own sale: receivable debits `pre_tax` and revenue
+//! credits it back. Cost of sales and inventory are not copied onto products.
+//! Invoice posting expands every product template, so those lines would be
+//! booked once per product. The same two sales lines are stored on product
+//! preferences so a new product opens with that default. Once the accounts
+//! are copied, the preference columns are retired.
 //!
 //! Formulas are stored plainly: numeric constants are wrapped in `decimal(...)`
 //! when a formula is evaluated, so a credit line is just `-pre_tax`.
@@ -14,13 +16,30 @@ use sea_orm_migration::prelude::*;
 pub struct Migration;
 
 const UP: &str = r#"
+CREATE TABLE IF NOT EXISTS product_preference_journal_items (
+    id bigserial PRIMARY KEY,
+    created_at timestamptz NULL,
+    updated_at timestamptz NULL,
+    product_preferences_id bigint NOT NULL
+        REFERENCES product_preferences(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    journal_id bigint NOT NULL
+        REFERENCES journals(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    account_id bigint NOT NULL
+        REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    formula text NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_product_preference_journal_items_prefs_id
+    ON product_preference_journal_items (product_preferences_id);
+CREATE INDEX IF NOT EXISTS idx_product_preference_journal_items_journal_id
+    ON product_preference_journal_items (journal_id);
+CREATE INDEX IF NOT EXISTS idx_product_preference_journal_items_account_id
+    ON product_preference_journal_items (account_id);
+
 DO $$
 DECLARE
     v_journal_id bigint;
     v_receivable_id bigint;
     v_revenue_id bigint;
-    v_inventory_id bigint;
-    v_cogs_id bigint;
 BEGIN
     IF to_regclass('public.product_journal_entry_item_templates') IS NULL
        OR to_regclass('public.product_preferences') IS NULL
@@ -59,12 +78,6 @@ BEGIN
          WHERE id = 1;
     END IF;
 
-    SELECT NULLIF(inventory_account_id, 0),
-           NULLIF(cost_of_sales_account_id, 0)
-      INTO v_inventory_id, v_cogs_id
-      FROM product_preferences
-     WHERE id = 1;
-
     IF v_journal_id IS NULL AND to_regclass('public.journals') IS NOT NULL THEN
         SELECT id
           INTO v_journal_id
@@ -76,9 +89,7 @@ BEGIN
 
     IF v_journal_id IS NULL
        OR v_receivable_id IS NULL
-       OR v_revenue_id IS NULL
-       OR v_inventory_id IS NULL
-       OR v_cogs_id IS NULL THEN
+       OR v_revenue_id IS NULL THEN
         RETURN;
     END IF;
 
@@ -88,9 +99,7 @@ BEGIN
       FROM products AS p
      CROSS JOIN (VALUES
          (1, v_receivable_id, 'pre_tax'),
-         (2, v_revenue_id, '-pre_tax'),
-         (3, v_cogs_id, 'quantity * base_cost'),
-         (4, v_inventory_id, '-quantity * base_cost')
+         (2, v_revenue_id, '-pre_tax')
      ) AS line(ord, account_id, formula)
      WHERE NOT EXISTS (
          SELECT 1
@@ -98,6 +107,30 @@ BEGIN
           WHERE existing.product_id = p.id
      )
      ORDER BY p.id, line.ord;
+
+    INSERT INTO product_preferences (id, created_at, updated_at)
+    VALUES (1, NOW(), NOW())
+    ON CONFLICT (id) DO NOTHING;
+
+    IF pg_get_serial_sequence('product_preferences', 'id') IS NOT NULL THEN
+        PERFORM setval(
+            pg_get_serial_sequence('product_preferences', 'id'),
+            GREATEST(COALESCE((SELECT MAX(id) FROM product_preferences), 1), 1),
+            TRUE
+        );
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+          FROM product_preference_journal_items
+         WHERE product_preferences_id = 1
+    ) THEN
+        INSERT INTO product_preference_journal_items
+            (created_at, updated_at, product_preferences_id, journal_id, account_id, formula)
+        VALUES
+            (NOW(), NOW(), 1, v_journal_id, v_receivable_id, 'pre_tax'),
+            (NOW(), NOW(), 1, v_journal_id, v_revenue_id, '-pre_tax');
+    END IF;
 END $$;
 
 ALTER TABLE product_preferences
@@ -106,6 +139,8 @@ ALTER TABLE product_preferences
 "#;
 
 const DOWN: &str = r#"
+DROP TABLE IF EXISTS product_preference_journal_items;
+
 ALTER TABLE product_preferences
     ADD COLUMN IF NOT EXISTS inventory_account_id bigint NULL,
     ADD COLUMN IF NOT EXISTS cost_of_sales_account_id bigint NULL;

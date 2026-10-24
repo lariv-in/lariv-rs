@@ -19,4 +19,12 @@ impl AccountingSidebarRegistrar for Hook {
             Some("cube"),
         ))
     }
+
+    fn register_accounting_preferences(
+        self,
+        cap: lariv_plugin_finance_accounts::accounting_preferences_patch::AccountingPreferencesRegistry,
+    ) -> lariv_plugin_finance_accounts::accounting_preferences_patch::AccountingPreferencesRegistry
+    {
+        cap.register_addon(&crate::accounting_preferences_patch::PRODUCTS_ADDON)
+    }
 }

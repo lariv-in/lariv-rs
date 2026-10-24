@@ -1,6 +1,7 @@
 #![feature(impl_trait_in_assoc_type)]
 //! Finance products plugin.
 
+pub mod accounting_preferences_patch;
 pub mod accounting_sidebar;
 pub mod apps;
 pub mod create_modals;

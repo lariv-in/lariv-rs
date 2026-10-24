@@ -104,6 +104,28 @@ pub struct ProductForm {
     pub tax_ids: Vec<i64>,
 }
 
+#[html_form]
+pub struct ProductJournalPreferencesForm {
+    #[form(
+        label = "Journal",
+        name = "ProductJournalId",
+        widget = ForeignKey,
+        route = JournalSelectRouteTag,
+        swap_key = "pref-product-journal",
+        display = "journal",
+        placeholder = "Select journal…"
+    )]
+    pub journal_id: String,
+
+    #[form(
+        label = "Journal entry template",
+        name = "ProductJournalLines",
+        widget = JournalTemplateLines,
+        hint = FORMULA_VARIABLES_HINT
+    )]
+    pub journal_lines: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

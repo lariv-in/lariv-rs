@@ -1,14 +1,12 @@
-//! Seed default service journal templates from the old GL preferences.
+//! Seed default service journal templates from the old invoice GL preferences.
 //!
-//! Service preferences carry their own cost accounts. When those are unset the
-//! migration falls back to the product-side accounts, which is what the legacy
-//! service rows used before services were split out of products. Because the
-//! product migration already retired the product preference columns, that
-//! fallback also reads the product templates seeded immediately before this
-//! migration.
-//!
-//! Formulas are stored plainly: numeric constants are wrapped in `decimal(...)`
-//! when a formula is evaluated, so a credit line is just `-pre_tax`.
+//! Each service posts its own sale: receivable debits `pre_tax` and revenue
+//! credits it back. Cost of sales is not copied onto services. Invoice posting
+//! expands every service template, so those lines would be booked once per
+//! service. The same two sales lines are stored on service preferences so a
+//! new service opens with that default. Formulas are stored plainly: numeric
+//! constants are wrapped in `decimal(...)` when a formula is evaluated, so a
+//! credit line is just `-pre_tax`.
 
 use sea_orm_migration::prelude::*;
 
@@ -16,13 +14,30 @@ use sea_orm_migration::prelude::*;
 pub struct Migration;
 
 const UP: &str = r#"
+CREATE TABLE IF NOT EXISTS service_preference_journal_items (
+    id bigserial PRIMARY KEY,
+    created_at timestamptz NULL,
+    updated_at timestamptz NULL,
+    service_preferences_id bigint NOT NULL
+        REFERENCES service_preferences(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    journal_id bigint NOT NULL
+        REFERENCES journals(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    account_id bigint NOT NULL
+        REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    formula text NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_service_preference_journal_items_prefs_id
+    ON service_preference_journal_items (service_preferences_id);
+CREATE INDEX IF NOT EXISTS idx_service_preference_journal_items_journal_id
+    ON service_preference_journal_items (journal_id);
+CREATE INDEX IF NOT EXISTS idx_service_preference_journal_items_account_id
+    ON service_preference_journal_items (account_id);
+
 DO $$
 DECLARE
     v_journal_id bigint;
     v_receivable_id bigint;
     v_revenue_id bigint;
-    v_cogs_id bigint;
-    v_credit_id bigint;
 BEGIN
     IF to_regclass('public.service_journal_entry_item_templates') IS NULL
        OR to_regclass('public.service_preferences') IS NULL
@@ -61,82 +76,6 @@ BEGIN
          WHERE id = 1;
     END IF;
 
-    IF EXISTS (
-        SELECT 1
-          FROM information_schema.columns
-         WHERE table_schema = 'public'
-           AND table_name = 'service_preferences'
-           AND column_name = 'cost_of_sales_account_id'
-    )
-    AND EXISTS (
-        SELECT 1
-          FROM information_schema.columns
-         WHERE table_schema = 'public'
-           AND table_name = 'service_preferences'
-           AND column_name = 'cost_credit_account_id'
-    )
-    THEN
-        SELECT NULLIF(cost_of_sales_account_id, 0),
-               NULLIF(cost_credit_account_id, 0)
-          INTO v_cogs_id, v_credit_id
-          FROM service_preferences
-         WHERE id = 1;
-    END IF;
-
-    IF v_cogs_id IS NULL
-       AND to_regclass('public.product_preferences') IS NOT NULL
-       AND EXISTS (
-           SELECT 1
-             FROM information_schema.columns
-            WHERE table_schema = 'public'
-              AND table_name = 'product_preferences'
-              AND column_name = 'cost_of_sales_account_id'
-       )
-    THEN
-        SELECT NULLIF(cost_of_sales_account_id, 0)
-          INTO v_cogs_id
-          FROM product_preferences
-         WHERE id = 1;
-    END IF;
-
-    IF v_credit_id IS NULL
-       AND to_regclass('public.product_preferences') IS NOT NULL
-       AND EXISTS (
-           SELECT 1
-             FROM information_schema.columns
-            WHERE table_schema = 'public'
-              AND table_name = 'product_preferences'
-              AND column_name = 'inventory_account_id'
-       )
-    THEN
-        SELECT NULLIF(inventory_account_id, 0)
-          INTO v_credit_id
-          FROM product_preferences
-         WHERE id = 1;
-    END IF;
-
-    IF v_cogs_id IS NULL
-       AND to_regclass('public.product_journal_entry_item_templates') IS NOT NULL
-    THEN
-        SELECT account_id
-          INTO v_cogs_id
-          FROM product_journal_entry_item_templates
-         WHERE formula = 'quantity * base_cost'
-         ORDER BY id
-         LIMIT 1;
-    END IF;
-
-    IF v_credit_id IS NULL
-       AND to_regclass('public.product_journal_entry_item_templates') IS NOT NULL
-    THEN
-        SELECT account_id
-          INTO v_credit_id
-          FROM product_journal_entry_item_templates
-         WHERE formula IN ('-quantity * base_cost', 'decimal("0") - quantity * base_cost')
-         ORDER BY id
-         LIMIT 1;
-    END IF;
-
     IF v_journal_id IS NULL AND to_regclass('public.journals') IS NOT NULL THEN
         SELECT id
           INTO v_journal_id
@@ -148,9 +87,7 @@ BEGIN
 
     IF v_journal_id IS NULL
        OR v_receivable_id IS NULL
-       OR v_revenue_id IS NULL
-       OR v_cogs_id IS NULL
-       OR v_credit_id IS NULL THEN
+       OR v_revenue_id IS NULL THEN
         RETURN;
     END IF;
 
@@ -160,9 +97,7 @@ BEGIN
       FROM services AS s
      CROSS JOIN (VALUES
          (1, v_receivable_id, 'pre_tax'),
-         (2, v_revenue_id, '-pre_tax'),
-         (3, v_cogs_id, 'quantity * base_cost'),
-         (4, v_credit_id, '-quantity * base_cost')
+         (2, v_revenue_id, '-pre_tax')
      ) AS line(ord, account_id, formula)
      WHERE NOT EXISTS (
          SELECT 1
@@ -170,6 +105,30 @@ BEGIN
           WHERE existing.service_id = s.id
      )
      ORDER BY s.id, line.ord;
+
+    INSERT INTO service_preferences (id, created_at, updated_at)
+    VALUES (1, NOW(), NOW())
+    ON CONFLICT (id) DO NOTHING;
+
+    IF pg_get_serial_sequence('service_preferences', 'id') IS NOT NULL THEN
+        PERFORM setval(
+            pg_get_serial_sequence('service_preferences', 'id'),
+            GREATEST(COALESCE((SELECT MAX(id) FROM service_preferences), 1), 1),
+            TRUE
+        );
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+          FROM service_preference_journal_items
+         WHERE service_preferences_id = 1
+    ) THEN
+        INSERT INTO service_preference_journal_items
+            (created_at, updated_at, service_preferences_id, journal_id, account_id, formula)
+        VALUES
+            (NOW(), NOW(), 1, v_journal_id, v_receivable_id, 'pre_tax'),
+            (NOW(), NOW(), 1, v_journal_id, v_revenue_id, '-pre_tax');
+    END IF;
 END $$;
 
 ALTER TABLE service_preferences
@@ -178,6 +137,8 @@ ALTER TABLE service_preferences
 "#;
 
 const DOWN: &str = r#"
+DROP TABLE IF EXISTS service_preference_journal_items;
+
 ALTER TABLE service_preferences
     ADD COLUMN IF NOT EXISTS cost_of_sales_account_id bigint NULL,
     ADD COLUMN IF NOT EXISTS cost_credit_account_id bigint NULL;

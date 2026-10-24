@@ -12,7 +12,9 @@
 //!
 //! Formulas are stored plainly: numeric constants are wrapped in `decimal(...)`
 //! when a formula is evaluated, so a credit line is just `-base * percentage / 100`.
-//! Once the lines are copied, `taxes.account_id` is retired.
+//! Tax preferences keep the shared levied pair (receivable, then the invoice
+//! tax-payable account) so a new tax opens with that default. Once the lines
+//! are copied, `taxes.account_id` is retired.
 
 use sea_orm_migration::prelude::*;
 
@@ -20,6 +22,31 @@ use sea_orm_migration::prelude::*;
 pub struct Migration;
 
 const UP: &str = r#"
+CREATE TABLE IF NOT EXISTS tax_preferences (
+    id bigserial PRIMARY KEY,
+    created_at timestamptz NULL,
+    updated_at timestamptz NULL
+);
+
+CREATE TABLE IF NOT EXISTS tax_preference_journal_items (
+    id bigserial PRIMARY KEY,
+    created_at timestamptz NULL,
+    updated_at timestamptz NULL,
+    tax_preferences_id bigint NOT NULL
+        REFERENCES tax_preferences(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    journal_id bigint NOT NULL
+        REFERENCES journals(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    account_id bigint NOT NULL
+        REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    formula text NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tax_preference_journal_items_prefs_id
+    ON tax_preference_journal_items (tax_preferences_id);
+CREATE INDEX IF NOT EXISTS idx_tax_preference_journal_items_journal_id
+    ON tax_preference_journal_items (journal_id);
+CREATE INDEX IF NOT EXISTS idx_tax_preference_journal_items_account_id
+    ON tax_preference_journal_items (account_id);
+
 DO $$
 DECLARE
     v_journal_id bigint;
@@ -145,12 +172,41 @@ BEGIN
            )
          ORDER BY t.id, line.ord;
     END IF;
+
+    IF v_tax_payable_id IS NOT NULL THEN
+        INSERT INTO tax_preferences (id, created_at, updated_at)
+        VALUES (1, NOW(), NOW())
+        ON CONFLICT (id) DO NOTHING;
+
+        IF pg_get_serial_sequence('tax_preferences', 'id') IS NOT NULL THEN
+            PERFORM setval(
+                pg_get_serial_sequence('tax_preferences', 'id'),
+                GREATEST(COALESCE((SELECT MAX(id) FROM tax_preferences), 1), 1),
+                TRUE
+            );
+        END IF;
+
+        IF NOT EXISTS (
+            SELECT 1
+              FROM tax_preference_journal_items
+             WHERE tax_preferences_id = 1
+        ) THEN
+            INSERT INTO tax_preference_journal_items
+                (created_at, updated_at, tax_preferences_id, journal_id, account_id, formula)
+            VALUES
+                (NOW(), NOW(), 1, v_journal_id, v_receivable_id, 'base * percentage / 100'),
+                (NOW(), NOW(), 1, v_journal_id, v_tax_payable_id, '-base * percentage / 100');
+        END IF;
+    END IF;
 END $$;
 
 ALTER TABLE taxes DROP COLUMN IF EXISTS account_id;
 "#;
 
 const DOWN: &str = r#"
+DROP TABLE IF EXISTS tax_preference_journal_items;
+DROP TABLE IF EXISTS tax_preferences;
+
 ALTER TABLE taxes
     ADD COLUMN IF NOT EXISTS account_id bigint NULL;
 

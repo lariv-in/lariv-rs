@@ -267,8 +267,11 @@ pub async fn create_get(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
 ) -> maud::Markup {
-    let (journal_id, journal_display) =
-        lariv_plugin_finance_accounts::scope::load_default_journal_form(&state.db).await;
+    let defaults = crate::purchase_services::journal_template::preference_form_fields(
+        &state.db,
+        "template-line",
+    )
+    .await;
     let default_tax_ids = load_default_service_tax_ids(&state.db).await;
     let tax_items = tax_items_from_ids(&state.db, &default_tax_ids).await;
     let page = ServiceCreateModalPage {
@@ -281,9 +284,9 @@ pub async fn create_get(
         variables: Vec::new(),
         base_price_formula: String::new(),
         sales_price_formula: String::new(),
-        journal_id,
-        journal_display,
-        journal_lines: crate::purchase_services::journal_template::empty_lines_json(),
+        journal_id: defaults.journal_id,
+        journal_display: defaults.journal_display,
+        journal_lines: defaults.journal_lines,
         sac_code: 0,
         tax_items,
         error: String::new(),

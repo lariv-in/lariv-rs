@@ -4,7 +4,9 @@
 //! line's pre-tax amount and credited `account_payable_id` for the same amount,
 //! on `journal_id`. Tax was posted separately through `account_input_tax_id`.
 //! The template lines are `pre_tax` and `-pre_tax`, so they balance the way
-//! that pre-tax pair did.
+//! that pre-tax pair did. The same pair is stored on purchase product
+//! preferences and purchase service preferences so a new catalog row opens
+//! with that default.
 //!
 //! Registered before the column drop. A blank preference falls back to the
 //! accounts stamped on the latest posted purchase. Databases that already
@@ -17,6 +19,44 @@ use sea_orm_migration::prelude::*;
 pub struct Migration;
 
 const UP: &str = r#"
+CREATE TABLE IF NOT EXISTS purchase_product_preference_journal_items (
+    id bigserial PRIMARY KEY,
+    created_at timestamptz NULL,
+    updated_at timestamptz NULL,
+    product_preferences_id bigint NOT NULL
+        REFERENCES purchase_product_preferences(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    journal_id bigint NOT NULL
+        REFERENCES journals(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    account_id bigint NOT NULL
+        REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    formula text NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_purchase_product_pref_journal_items_prefs_id
+    ON purchase_product_preference_journal_items (product_preferences_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_product_pref_journal_items_journal_id
+    ON purchase_product_preference_journal_items (journal_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_product_pref_journal_items_account_id
+    ON purchase_product_preference_journal_items (account_id);
+
+CREATE TABLE IF NOT EXISTS purchase_service_preference_journal_items (
+    id bigserial PRIMARY KEY,
+    created_at timestamptz NULL,
+    updated_at timestamptz NULL,
+    service_preferences_id bigint NOT NULL
+        REFERENCES purchase_service_preferences(id) ON UPDATE CASCADE ON DELETE CASCADE,
+    journal_id bigint NOT NULL
+        REFERENCES journals(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    account_id bigint NOT NULL
+        REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    formula text NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_purchase_service_pref_journal_items_prefs_id
+    ON purchase_service_preference_journal_items (service_preferences_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_service_pref_journal_items_journal_id
+    ON purchase_service_preference_journal_items (journal_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_service_pref_journal_items_account_id
+    ON purchase_service_preference_journal_items (account_id);
+
 DO $$
 DECLARE
     v_journal_id bigint;
@@ -163,6 +203,52 @@ BEGIN
           WHERE existing.service_id = s.id
      )
      ORDER BY s.id, line.ord;
+
+    INSERT INTO purchase_product_preferences (id, created_at, updated_at)
+    VALUES (1, NOW(), NOW())
+    ON CONFLICT (id) DO NOTHING;
+    INSERT INTO purchase_service_preferences (id, created_at, updated_at)
+    VALUES (1, NOW(), NOW())
+    ON CONFLICT (id) DO NOTHING;
+
+    IF pg_get_serial_sequence('purchase_product_preferences', 'id') IS NOT NULL THEN
+        PERFORM setval(
+            pg_get_serial_sequence('purchase_product_preferences', 'id'),
+            GREATEST(COALESCE((SELECT MAX(id) FROM purchase_product_preferences), 1), 1),
+            TRUE
+        );
+    END IF;
+    IF pg_get_serial_sequence('purchase_service_preferences', 'id') IS NOT NULL THEN
+        PERFORM setval(
+            pg_get_serial_sequence('purchase_service_preferences', 'id'),
+            GREATEST(COALESCE((SELECT MAX(id) FROM purchase_service_preferences), 1), 1),
+            TRUE
+        );
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+          FROM purchase_product_preference_journal_items
+         WHERE product_preferences_id = 1
+    ) THEN
+        INSERT INTO purchase_product_preference_journal_items
+            (created_at, updated_at, product_preferences_id, journal_id, account_id, formula)
+        VALUES
+            (NOW(), NOW(), 1, v_journal_id, v_expense_id, 'pre_tax'),
+            (NOW(), NOW(), 1, v_journal_id, v_payable_id, '-pre_tax');
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+          FROM purchase_service_preference_journal_items
+         WHERE service_preferences_id = 1
+    ) THEN
+        INSERT INTO purchase_service_preference_journal_items
+            (created_at, updated_at, service_preferences_id, journal_id, account_id, formula)
+        VALUES
+            (NOW(), NOW(), 1, v_journal_id, v_expense_id, 'pre_tax'),
+            (NOW(), NOW(), 1, v_journal_id, v_payable_id, '-pre_tax');
+    END IF;
 END $$;
 "#;
 
@@ -173,7 +259,16 @@ impl MigrationTrait for Migration {
         Ok(())
     }
 
-    async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        let conn = manager.get_connection();
+        conn.execute_unprepared(
+            "DROP TABLE IF EXISTS purchase_product_preference_journal_items",
+        )
+        .await?;
+        conn.execute_unprepared(
+            "DROP TABLE IF EXISTS purchase_service_preference_journal_items",
+        )
+        .await?;
         Ok(())
     }
 }

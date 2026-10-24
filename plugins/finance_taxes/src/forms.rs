@@ -70,6 +70,28 @@ pub struct TaxForm {
     pub journal_lines: String,
 }
 
+#[html_form]
+pub struct TaxJournalPreferencesForm {
+    #[form(
+        label = "Journal",
+        name = "TaxJournalId",
+        widget = ForeignKey,
+        route = JournalSelectRouteTag,
+        swap_key = "pref-tax-journal",
+        display = "journal",
+        placeholder = "Select journal…"
+    )]
+    pub journal_id: String,
+
+    #[form(
+        label = "Journal entry template",
+        name = "TaxJournalLines",
+        widget = JournalTemplateLines,
+        hint = FORMULA_VARIABLES_HINT
+    )]
+    pub journal_lines: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
