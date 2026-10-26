@@ -192,7 +192,7 @@ pub fn current_auth() -> Option<AuthContext> {
     CURRENT_AUTH.try_with(|auth| auth.clone()).ok()
 }
 
-/// Logged-in user for this request. The top-bar user selector is the only reader.
+/// Logged-in user for this request. The avatar-menu user selector is the only reader.
 pub fn actual_auth() -> Option<AuthContext> {
     ACTUAL_AUTH.try_with(|auth| auth.clone()).ok()
 }
@@ -238,7 +238,7 @@ pub fn effective_roles_id(
 /// Scope the request's effective user and role registry for handlers and `authorized_role`.
 ///
 /// Extensions and [`current_auth`] carry the effective user. [`actual_auth`] carries
-/// the logged-in user so the top-bar selector can decide whether to render.
+/// the logged-in user so the avatar-menu selector can decide whether to render.
 pub async fn continue_with_auth_scope(mut req: Request, next: Next) -> Response {
     let registry = req
         .extensions()

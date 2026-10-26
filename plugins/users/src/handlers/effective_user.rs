@@ -1,5 +1,5 @@
-//! Top-bar effective-user selector. Authorization uses the logged-in user, not the
-//! effective user, so a superuser can switch back after acting as someone else.
+//! Effective-user selector in the avatar menu. Authorization uses the logged-in user,
+//! not the effective user, so a superuser can switch back after acting as someone else.
 
 use axum::extract::Query;
 use axum::http::{HeaderMap, StatusCode, Uri};
@@ -27,7 +27,7 @@ fn require_actual_superuser() -> Result<crate::state::AuthContext, StatusCode> {
     }
 }
 
-/// HTTP handler: user picker for the top-bar foreign-key control.
+/// HTTP handler: user picker for the avatar-menu foreign-key control.
 ///
 /// "Me" is the logged-in user, so a superuser who is acting as someone else can
 /// switch back. The route is not role-gated on the effective user.

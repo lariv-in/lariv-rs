@@ -112,16 +112,17 @@ impl RenderSlot for UsersUserDropdown {
         let user_ok = ctx.name.is_some();
         html! {
             (PreEscaped(
-                r##"<details class="dropdown dropdown-end" @click.outside="$el.removeAttribute('open')">"##,
+                r##"<details class="dropdown dropdown-end" @click.outside="if(!$event.target.closest('.fk-picker-panel, .fk-modal-container')) $el.removeAttribute('open')">"##,
             ))
             summary class="btn btn-sm btn-circle avatar placeholder" {
                 div class="rounded-full w-10" {
                     span class="text-xl" { (avatar) }
                 }
             }
-            div class="card w-64 my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-50 bg-base-100 p-4" {
+            div class="card w-80 my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-50 bg-base-100 p-4" {
                 div class="flex flex-col gap-1" {
                     div class="font-bold text-lg" { (name) }
+                    (EffectiveUserSelector.render_slot(ctx))
                 }
                 @if user_ok {
                     div class="flex flex-col gap-1 mt-2 pt-2 border-t border-base-300" {
@@ -145,7 +146,7 @@ impl RenderSlot for UsersUserDropdown {
     }
 }
 
-/// Top-bar control that lets a superuser choose who the request acts as.
+/// User-menu control that lets a superuser choose who the request acts as.
 #[derive(Default)]
 pub struct EffectiveUserSelector;
 
@@ -174,7 +175,7 @@ impl RenderSlot for EffectiveUserSelector {
         let on_select = "const d=$event.detail; if(!d||String(d.name)!=='effective_user') return; const form=$el.closest('form'); if(!form) return; $nextTick(()=>{ if(window.htmx) window.htmx.trigger(form,'submit'); else form.requestSubmit(); })";
         html! {
             (PreEscaped(format!(
-                r##"<form class="effective-user-selector"{}>"##,
+                r##"<form class="effective-user-selector w-full"{}>"##,
                 attrs.as_string()
             )))
             (csrf_hidden_field(&CsrfToken::current()))
@@ -186,7 +187,7 @@ impl RenderSlot for EffectiveUserSelector {
                     placeholder: "Switch user",
                     url: &UsersEffectiveUserGetRouteTag.path(),
                     uid: "effective-user",
-                    classes: "max-w-56",
+                    classes: "w-full",
                     ..Default::default()
                 }))
             }
@@ -1415,7 +1416,6 @@ define_register_items! {
     hook: SlotsHook;
     items: [
         UserDropdownIdx: UsersUserDropdownTag, TopbarItemsSlotTag => UsersUserDropdown,
-        EffectiveUserIdx: EffectiveUserSelectorTag, TopbarItemsSlotTag => EffectiveUserSelector,
     ]
 }
 
@@ -1492,7 +1492,7 @@ mod tests {
     fn effective_user_selector_follows_the_actual_user() {
         use chrono::Utc;
 
-        use super::EffectiveUserSelector;
+        use super::{EffectiveUserSelector, UsersUserDropdown};
         use crate::entities::user::Model as User;
         use crate::role_authorization::{RoleAuthorizationRegistry, with_principal};
         use crate::roles::Superuser;
@@ -1542,5 +1542,30 @@ mod tests {
         assert!(shown.contains("/dashboard/users/effective-user"), "{shown}");
         assert!(shown.contains("effective_user"), "{shown}");
         assert!(!shown.contains("Loading"), "{shown}");
+
+        let menu = with_principal(
+            auth(Superuser::NAME),
+            RoleAuthorizationRegistry::new(),
+            || UsersUserDropdown.render_slot(&ctx).into_string(),
+        );
+        let summary_at = menu.find("<summary").expect("avatar summary");
+        let selector_at = menu
+            .find("effective-user-selector")
+            .expect("selector in the user menu");
+        let details_end = menu.rfind("</details>").expect("menu close");
+        assert!(
+            summary_at < selector_at && selector_at < details_end,
+            "{menu}"
+        );
+        assert_eq!(menu.matches("effective-user-selector").count(), 1, "{menu}");
+
+        let employee_menu =
+            with_principal(auth("employee"), RoleAuthorizationRegistry::new(), || {
+                UsersUserDropdown.render_slot(&ctx).into_string()
+            });
+        assert!(
+            !employee_menu.contains("effective-user-selector"),
+            "{employee_menu}"
+        );
     }
 }
