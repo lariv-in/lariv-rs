@@ -1,4 +1,15 @@
+use lariv_core::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
+
+const UP_POSTGRES: &str = r#"
+DO $$
+BEGIN
+    IF to_regclass('public.crm_tasks') IS NULL THEN
+        RETURN;
+    END IF;
+    ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS completed_at timestamptz;
+END $$;
+"#;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -12,6 +23,10 @@ enum CrmTasks {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        if manager.get_connection().get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            return exec_sql(manager, UP_POSTGRES).await;
+        }
+
         manager
             .alter_table(
                 Table::alter()

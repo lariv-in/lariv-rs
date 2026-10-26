@@ -1,3 +1,4 @@
+use lariv_core::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -12,6 +13,14 @@ enum CrmContacts {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        if manager.get_connection().get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            return exec_sql(
+                manager,
+                "ALTER TABLE crm_contacts DROP COLUMN IF EXISTS title",
+            )
+            .await;
+        }
+
         manager
             .alter_table(
                 Table::alter()

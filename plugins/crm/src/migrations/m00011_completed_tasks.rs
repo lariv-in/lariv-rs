@@ -70,6 +70,38 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        if manager.get_connection().get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            return exec_sql(
+                manager,
+                r#"
+                DO $$
+                BEGIN
+                    IF to_regclass('public.crm_tasks') IS NULL THEN
+                        RETURN;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'crm_tasks'
+                          AND column_name = 'completed_at'
+                    ) THEN
+                        RETURN;
+                    END IF;
+                    INSERT INTO crm_completed_tasks (created_at, task_id, completed_at)
+                    SELECT completed_at, id, completed_at
+                    FROM crm_tasks
+                    WHERE completed_at IS NOT NULL
+                      AND NOT EXISTS (
+                          SELECT 1 FROM crm_completed_tasks AS existing
+                          WHERE existing.task_id = crm_tasks.id
+                      );
+                    ALTER TABLE crm_tasks DROP COLUMN completed_at;
+                END $$;
+                "#,
+            )
+            .await;
+        }
+
         exec_sql(
             manager,
             r#"

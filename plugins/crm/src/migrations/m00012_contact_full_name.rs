@@ -15,6 +15,41 @@ enum CrmContacts {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        if manager.get_connection().get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            return exec_sql(
+                manager,
+                r#"
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'crm_contacts'
+                          AND column_name = 'first_name'
+                    ) AND NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'crm_contacts'
+                          AND column_name = 'name'
+                    ) THEN
+                        UPDATE crm_contacts
+                        SET first_name = TRIM(first_name || ' ' || COALESCE(last_name, ''));
+                        ALTER TABLE crm_contacts RENAME COLUMN first_name TO name;
+                    END IF;
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'crm_contacts'
+                          AND column_name = 'last_name'
+                    ) THEN
+                        ALTER TABLE crm_contacts DROP COLUMN last_name;
+                    END IF;
+                END $$;
+                "#,
+            )
+            .await;
+        }
+
         exec_sql(
             manager,
             r#"

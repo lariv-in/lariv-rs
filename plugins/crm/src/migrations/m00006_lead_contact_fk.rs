@@ -1,5 +1,45 @@
+use lariv_core::db::migration_sql::exec_sql;
 use sea_orm::Statement;
 use sea_orm_migration::prelude::*;
+
+/// Databases that already store `contact_id` keep their leads. A fresh column
+/// still clears the old denormalized rows, which have no contact to point at.
+const UP_POSTGRES: &str = r#"
+DO $$
+BEGIN
+    IF to_regclass('public.crm_leads') IS NULL THEN
+        RETURN;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'crm_leads' AND column_name = 'contact_id'
+    ) THEN
+        IF to_regclass('public.crm_converted_leads') IS NOT NULL THEN
+            DELETE FROM crm_converted_leads;
+        END IF;
+        IF to_regclass('public.crm_failed_leads') IS NOT NULL THEN
+            DELETE FROM crm_failed_leads;
+        END IF;
+        DELETE FROM crm_leads;
+        ALTER TABLE crm_leads ADD COLUMN contact_id bigint;
+        ALTER TABLE crm_leads ALTER COLUMN contact_id SET NOT NULL;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_crm_leads_contact_id') THEN
+        ALTER TABLE crm_leads
+            ADD CONSTRAINT fk_crm_leads_contact_id
+            FOREIGN KEY (contact_id) REFERENCES crm_contacts(id)
+            ON DELETE RESTRICT ON UPDATE CASCADE;
+    END IF;
+
+    ALTER TABLE crm_leads DROP COLUMN IF EXISTS company_name;
+    ALTER TABLE crm_leads DROP COLUMN IF EXISTS first_name;
+    ALTER TABLE crm_leads DROP COLUMN IF EXISTS last_name;
+    ALTER TABLE crm_leads DROP COLUMN IF EXISTS email;
+    ALTER TABLE crm_leads DROP COLUMN IF EXISTS phone;
+END $$;
+"#;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -55,6 +95,10 @@ async fn clear_leads(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        if manager.get_connection().get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            return exec_sql(manager, UP_POSTGRES).await;
+        }
+
         clear_leads(manager).await?;
 
         manager

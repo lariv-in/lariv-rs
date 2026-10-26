@@ -1,4 +1,25 @@
+use lariv_core::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
+
+const UP_POSTGRES: &str = r#"
+DO $$
+BEGIN
+    IF to_regclass('public.crm_leads') IS NULL THEN
+        RETURN;
+    END IF;
+    ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS assigned_to_id bigint;
+    ALTER TABLE crm_leads ADD COLUMN IF NOT EXISTS order_expected_date date;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_crm_leads_assigned_to_id'
+    ) THEN
+        ALTER TABLE crm_leads
+            ADD CONSTRAINT fk_crm_leads_assigned_to_id
+            FOREIGN KEY (assigned_to_id) REFERENCES users(id)
+            ON DELETE SET NULL ON UPDATE CASCADE;
+    END IF;
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_assigned_to_id ON crm_leads (assigned_to_id);
+END $$;
+"#;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -19,6 +40,10 @@ enum Users {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        if manager.get_connection().get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            return exec_sql(manager, UP_POSTGRES).await;
+        }
+
         manager
             .alter_table(
                 Table::alter()
