@@ -1,5 +1,9 @@
 //! Service catalog, default taxes, and a copy of service-typed products.
 
+use lariv_core::db::migration_sql::{
+    self, FK_SERVICE_PREFERENCE_TAX, FK_SERVICE_PREFERENCES_COST_ACCOUNT,
+    FK_SERVICE_PREFERENCES_CREDIT_ACCOUNT, FK_SERVICE_TAX,
+};
 use lariv_core::db::trigram;
 use sea_orm_migration::prelude::*;
 
@@ -33,7 +37,7 @@ impl MigrationTrait for Migration {
         conn.execute_unprepared(
             r#"CREATE TABLE IF NOT EXISTS service_taxes (
                 service_id bigint NOT NULL REFERENCES services(id) ON UPDATE CASCADE ON DELETE CASCADE,
-                tax_id bigint NOT NULL REFERENCES taxes(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+                tax_id bigint NOT NULL,
                 PRIMARY KEY (service_id, tax_id)
             )"#,
         )
@@ -43,17 +47,27 @@ impl MigrationTrait for Migration {
                 id bigserial PRIMARY KEY,
                 created_at timestamptz NULL,
                 updated_at timestamptz NULL,
-                cost_of_sales_account_id bigint NULL REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
-                cost_credit_account_id bigint NULL REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT
+                cost_of_sales_account_id bigint NULL,
+                cost_credit_account_id bigint NULL
             )"#,
         )
         .await?;
         conn.execute_unprepared(
             r#"CREATE TABLE IF NOT EXISTS service_preferences_taxes (
                 service_preferences_id bigint NOT NULL REFERENCES service_preferences(id) ON UPDATE CASCADE ON DELETE CASCADE,
-                tax_id bigint NOT NULL REFERENCES taxes(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+                tax_id bigint NOT NULL,
                 PRIMARY KEY (service_preferences_id, tax_id)
             )"#,
+        )
+        .await?;
+        migration_sql::ensure_schema_foreign_keys(
+            manager,
+            &[
+                FK_SERVICE_TAX,
+                FK_SERVICE_PREFERENCE_TAX,
+                FK_SERVICE_PREFERENCES_COST_ACCOUNT,
+                FK_SERVICE_PREFERENCES_CREDIT_ACCOUNT,
+            ],
         )
         .await?;
         conn.execute_unprepared(

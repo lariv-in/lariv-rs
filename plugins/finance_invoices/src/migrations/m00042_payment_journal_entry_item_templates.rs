@@ -10,6 +10,9 @@
 //! `journal_id` can still be read. When a preference is blank, the latest
 //! posted invoice or payment supplies the same account.
 
+use lariv_core::db::migration_sql::{
+    self, FK_PAYMENT_JOURNAL_ITEM_ACCOUNT, FK_PAYMENT_JOURNAL_ITEM_JOURNAL,
+};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -181,10 +184,8 @@ impl MigrationTrait for Migration {
                 updated_at timestamptz NULL,
                 payment_preferences_id bigint NOT NULL
                     REFERENCES payment_preferences(id) ON UPDATE CASCADE ON DELETE CASCADE,
-                journal_id bigint NOT NULL
-                    REFERENCES journals(id) ON UPDATE CASCADE ON DELETE RESTRICT,
-                account_id bigint NOT NULL
-                    REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+                journal_id bigint NOT NULL,
+                account_id bigint NOT NULL,
                 formula text NOT NULL,
                 receivable boolean NOT NULL DEFAULT false
             )"#,
@@ -200,6 +201,14 @@ impl MigrationTrait for Migration {
         .await?;
         conn.execute_unprepared(
             "CREATE INDEX IF NOT EXISTS idx_payment_journal_entry_item_templates_account_id ON payment_journal_entry_item_templates (account_id)",
+        )
+        .await?;
+        migration_sql::ensure_schema_foreign_keys(
+            manager,
+            &[
+                FK_PAYMENT_JOURNAL_ITEM_JOURNAL,
+                FK_PAYMENT_JOURNAL_ITEM_ACCOUNT,
+            ],
         )
         .await?;
         conn.execute_unprepared(SEED).await?;

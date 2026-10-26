@@ -23,9 +23,10 @@ use crate::hub_sort::{
 use crate::logic::InvoiceListMetrics;
 use lariv_core::datetime::{DatetimeLocalInput, parse_date};
 use lariv_core::db::trigram::{WORD_SIMILARITY_THRESHOLD, like_contains_pattern};
+use lariv_core::html_form::UrlencodedFields;
 use lariv_core::list_filters::{
-    CmpOp, FilterClause, FilterField, FilterWidget, custom, date_column, datetime_column,
-    text_column,
+    CmpOp, FilterClause, FilterField, FilterWidget, JoinOp, custom, date_column, datetime_column,
+    parse_list_filters, text_column,
 };
 use lariv_plugin_finance_products::routes::ProductFkSelectRouteTag;
 
@@ -52,6 +53,29 @@ impl HubFilterKind {
             _ => Self::Draft,
         }
     }
+}
+
+/// Picker typeahead submits `Number`. Indexed `filter.*` clauses win when present.
+pub fn invoice_picker_clauses(query: &str) -> Vec<FilterClause> {
+    let mut clauses = parse_list_filters(query);
+    if !clauses.is_empty() {
+        return clauses;
+    }
+    let Some(number) = UrlencodedFields::parse(query.as_bytes())
+        .ok()
+        .and_then(|fields| fields.get_first("Number").map(str::to_string))
+        .filter(|number| !number.trim().is_empty())
+    else {
+        return clauses;
+    };
+    clauses.push(FilterClause {
+        index: 0,
+        join: JoinOp::And,
+        field: "number".into(),
+        op: CmpOp::Eq,
+        values: vec![number.trim().to_string()],
+    });
+    clauses
 }
 
 /// Catalog for one request. `FilterField` is not `Clone`; build this once.
@@ -568,5 +592,27 @@ mod tests {
         assert!(applied.post.is_empty());
         let rendered = sql(applied.condition);
         assert!(rendered.contains('>'), "{rendered}");
+    }
+
+    #[test]
+    fn picker_typeahead_filters_number_and_keeps_indexed_filters() {
+        let typed = invoice_picker_clauses("Number=INV-12&target_input=PostedInvoiceID");
+        assert!(
+            typed
+                .first()
+                .is_some_and(|clause| clause.field == "number" && clause.value() == "INV-12"),
+            "{typed:?}"
+        );
+        assert_eq!(typed.len(), 1);
+
+        let indexed =
+            invoice_picker_clauses("filter.0.field=customer&filter.0.value=Acme&Number=INV-12");
+        assert!(
+            indexed
+                .first()
+                .is_some_and(|clause| clause.field == "customer"),
+            "{indexed:?}"
+        );
+        assert_eq!(indexed.len(), 1);
     }
 }

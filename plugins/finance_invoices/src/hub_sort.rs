@@ -125,6 +125,17 @@ pub fn expr_settlement_payment_datetime(settlement_table: &str) -> SimpleExpr {
     ))
 }
 
+/// Posted invoice date for a paid or partial row.
+///
+/// The fiscal year filter uses this, as it does for drafts, posted, and
+/// cancelled. The hub Date column on these tabs still shows the payment date.
+pub fn expr_settlement_posted_datetime(settlement_table: &str) -> SimpleExpr {
+    Expr::cust(format!(
+        "(SELECT datetime FROM posted_invoices \
+          WHERE posted_invoices.id = {settlement_table}.posted_invoice_id)"
+    ))
+}
+
 pub fn expr_settlement_posted_delivery(settlement_table: &str) -> SimpleExpr {
     Expr::cust(format!(
         "(SELECT delivery_date FROM posted_invoices \

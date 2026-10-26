@@ -7,6 +7,15 @@
 //! receivable and credits revenue, and the purchase seed writes the payable
 //! pair instead.
 
+use lariv_core::db::migration_sql::{
+    self, FK_CANCELLED_PURCHASE_GOODS_LINE_PRODUCT, FK_CANCELLED_PURCHASE_SERVICE_LINE_SERVICE,
+    FK_DRAFT_PURCHASE_GOODS_LINE_PRODUCT, FK_DRAFT_PURCHASE_SERVICE_LINE_SERVICE,
+    FK_POSTED_PURCHASE_GOODS_LINE_PRODUCT, FK_POSTED_PURCHASE_SERVICE_LINE_SERVICE,
+    FK_PURCHASE_PRODUCT_JOURNAL_ACCOUNT, FK_PURCHASE_PRODUCT_JOURNAL_JOURNAL,
+    FK_PURCHASE_PRODUCT_PREFERENCE_TAX, FK_PURCHASE_PRODUCT_TAX, FK_PURCHASE_PRODUCTS_STOCK,
+    FK_PURCHASE_SERVICE_JOURNAL_ACCOUNT, FK_PURCHASE_SERVICE_JOURNAL_JOURNAL,
+    FK_PURCHASE_SERVICE_PREFERENCE_TAX, FK_PURCHASE_SERVICE_TAX,
+};
 use lariv_core::db::trigram;
 use sea_orm_migration::prelude::*;
 
@@ -18,7 +27,7 @@ CREATE TABLE IF NOT EXISTS purchase_products (
     id bigserial PRIMARY KEY,
     created_at timestamptz NULL,
     updated_at timestamptz NULL,
-    stock_id bigint NOT NULL REFERENCES inventory_stocks(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    stock_id bigint NOT NULL,
     reference text NULL,
     remarks text NULL,
     name text NOT NULL,
@@ -32,7 +41,7 @@ CREATE INDEX IF NOT EXISTS idx_purchase_products_stock_id ON purchase_products (
 
 CREATE TABLE IF NOT EXISTS purchase_product_taxes (
     product_id bigint NOT NULL REFERENCES purchase_products(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    tax_id bigint NOT NULL REFERENCES taxes(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    tax_id bigint NOT NULL,
     PRIMARY KEY (product_id, tax_id)
 );
 
@@ -44,7 +53,7 @@ CREATE TABLE IF NOT EXISTS purchase_product_preferences (
 
 CREATE TABLE IF NOT EXISTS purchase_product_preferences_taxes (
     product_preferences_id bigint NOT NULL REFERENCES purchase_product_preferences(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    tax_id bigint NOT NULL REFERENCES taxes(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    tax_id bigint NOT NULL,
     PRIMARY KEY (product_preferences_id, tax_id)
 );
 
@@ -53,8 +62,8 @@ CREATE TABLE IF NOT EXISTS purchase_product_journal_entry_item_templates (
     created_at timestamptz NULL,
     updated_at timestamptz NULL,
     product_id bigint NOT NULL REFERENCES purchase_products(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    journal_id bigint NOT NULL REFERENCES journals(id) ON UPDATE CASCADE ON DELETE RESTRICT,
-    account_id bigint NOT NULL REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    journal_id bigint NOT NULL,
+    account_id bigint NOT NULL,
     formula text NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_purchase_product_journal_entry_item_templates_product_id
@@ -80,7 +89,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_purchase_services_reference ON purchase_ser
 
 CREATE TABLE IF NOT EXISTS purchase_service_taxes (
     service_id bigint NOT NULL REFERENCES purchase_services(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    tax_id bigint NOT NULL REFERENCES taxes(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    tax_id bigint NOT NULL,
     PRIMARY KEY (service_id, tax_id)
 );
 
@@ -92,7 +101,7 @@ CREATE TABLE IF NOT EXISTS purchase_service_preferences (
 
 CREATE TABLE IF NOT EXISTS purchase_service_preferences_taxes (
     service_preferences_id bigint NOT NULL REFERENCES purchase_service_preferences(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    tax_id bigint NOT NULL REFERENCES taxes(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    tax_id bigint NOT NULL,
     PRIMARY KEY (service_preferences_id, tax_id)
 );
 
@@ -101,8 +110,8 @@ CREATE TABLE IF NOT EXISTS purchase_service_journal_entry_item_templates (
     created_at timestamptz NULL,
     updated_at timestamptz NULL,
     service_id bigint NOT NULL REFERENCES purchase_services(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    journal_id bigint NOT NULL REFERENCES journals(id) ON UPDATE CASCADE ON DELETE RESTRICT,
-    account_id bigint NOT NULL REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    journal_id bigint NOT NULL,
+    account_id bigint NOT NULL,
     formula text NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_purchase_service_journal_entry_item_templates_service_id
@@ -311,32 +320,9 @@ ALTER TABLE posted_purchase_service_lines
     DROP CONSTRAINT IF EXISTS posted_purchase_service_lines_purchase_service_id_fkey;
 ALTER TABLE cancelled_purchase_service_lines
     DROP CONSTRAINT IF EXISTS cancelled_purchase_service_lines_purchase_service_id_fkey;
+"#;
 
-ALTER TABLE draft_purchase_goods_lines
-    ADD CONSTRAINT draft_purchase_goods_lines_product_id_fkey
-    FOREIGN KEY (product_id) REFERENCES products(id)
-    ON UPDATE CASCADE ON DELETE RESTRICT;
-ALTER TABLE posted_purchase_goods_lines
-    ADD CONSTRAINT posted_purchase_goods_lines_product_id_fkey
-    FOREIGN KEY (product_id) REFERENCES products(id)
-    ON UPDATE CASCADE ON DELETE RESTRICT;
-ALTER TABLE cancelled_purchase_goods_lines
-    ADD CONSTRAINT cancelled_purchase_goods_lines_product_id_fkey
-    FOREIGN KEY (product_id) REFERENCES products(id)
-    ON UPDATE CASCADE ON DELETE RESTRICT;
-ALTER TABLE draft_purchase_service_lines
-    ADD CONSTRAINT draft_purchase_service_lines_service_id_fkey
-    FOREIGN KEY (service_id) REFERENCES services(id)
-    ON UPDATE CASCADE ON DELETE RESTRICT;
-ALTER TABLE posted_purchase_service_lines
-    ADD CONSTRAINT posted_purchase_service_lines_service_id_fkey
-    FOREIGN KEY (service_id) REFERENCES services(id)
-    ON UPDATE CASCADE ON DELETE RESTRICT;
-ALTER TABLE cancelled_purchase_service_lines
-    ADD CONSTRAINT cancelled_purchase_service_lines_service_id_fkey
-    FOREIGN KEY (service_id) REFERENCES services(id)
-    ON UPDATE CASCADE ON DELETE RESTRICT;
-
+const DOWN_DROP: &str = r#"
 DROP TABLE IF EXISTS purchase_product_journal_entry_item_templates;
 DROP TABLE IF EXISTS purchase_product_preferences_taxes;
 DROP TABLE IF EXISTS purchase_product_preferences;
@@ -354,6 +340,21 @@ impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let conn = manager.get_connection();
         conn.execute_unprepared(UP).await?;
+        migration_sql::ensure_schema_foreign_keys(
+            manager,
+            &[
+                FK_PURCHASE_PRODUCTS_STOCK,
+                FK_PURCHASE_PRODUCT_TAX,
+                FK_PURCHASE_PRODUCT_PREFERENCE_TAX,
+                FK_PURCHASE_PRODUCT_JOURNAL_JOURNAL,
+                FK_PURCHASE_PRODUCT_JOURNAL_ACCOUNT,
+                FK_PURCHASE_SERVICE_TAX,
+                FK_PURCHASE_SERVICE_PREFERENCE_TAX,
+                FK_PURCHASE_SERVICE_JOURNAL_JOURNAL,
+                FK_PURCHASE_SERVICE_JOURNAL_ACCOUNT,
+            ],
+        )
+        .await?;
         let backend = manager.get_database_backend();
         trigram::create_gin_index(
             conn,
@@ -391,7 +392,21 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.get_connection().execute_unprepared(DOWN).await?;
+        let conn = manager.get_connection();
+        conn.execute_unprepared(DOWN).await?;
+        migration_sql::ensure_schema_foreign_keys(
+            manager,
+            &[
+                FK_DRAFT_PURCHASE_GOODS_LINE_PRODUCT,
+                FK_POSTED_PURCHASE_GOODS_LINE_PRODUCT,
+                FK_CANCELLED_PURCHASE_GOODS_LINE_PRODUCT,
+                FK_DRAFT_PURCHASE_SERVICE_LINE_SERVICE,
+                FK_POSTED_PURCHASE_SERVICE_LINE_SERVICE,
+                FK_CANCELLED_PURCHASE_SERVICE_LINE_SERVICE,
+            ],
+        )
+        .await?;
+        conn.execute_unprepared(DOWN_DROP).await?;
         Ok(())
     }
 }

@@ -4,12 +4,14 @@ use axum::{
     extract::Query,
     http::{HeaderMap, Uri},
 };
-use sea_orm::sea_query::SimpleExpr;
+use sea_orm::sea_query::{Expr, ExprTrait, SimpleExpr};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Select};
 
 use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::http::Cap;
-use lariv_core::list_filters::{AppliedFilters, apply_filters, parse_list_filters};
+use lariv_core::list_filters::{
+    AppliedFilters, FilterClause, FilterRowError, apply_filters, parse_list_filters,
+};
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{Htmx, QueryPage, QueryPageSize, html_built_page_with_slots};
 use lariv_plugin_users::middleware::RequireAuth;
@@ -38,9 +40,10 @@ use crate::{
         HubSortKey, expr_ar_amount, expr_customer, expr_line_product_count, expr_line_untaxed,
         expr_open_balance, expr_posted_final_due, expr_settlement_ar_amount,
         expr_settlement_final_due, expr_settlement_payment_datetime,
-        expr_settlement_posted_delivery, expr_settlement_posted_number,
-        expr_settlement_product_count, expr_settlement_tax_levied_approx, expr_settlement_untaxed,
-        expr_tax_levied_approx, parse_hub_sort, sort_order,
+        expr_settlement_posted_datetime, expr_settlement_posted_delivery,
+        expr_settlement_posted_number, expr_settlement_product_count,
+        expr_settlement_tax_levied_approx, expr_settlement_untaxed, expr_tax_levied_approx,
+        parse_hub_sort, sort_order,
     },
     hub_table_addon::enrich_hub_rows,
     keys::InvoiceHubTableKey,
@@ -98,6 +101,20 @@ pub struct HubQuery {
     pub sort: Option<String>,
 }
 
+pub(crate) async fn filter_clause_views(
+    db: &sea_orm::DatabaseConnection,
+    clauses: &[FilterClause],
+    errors: &[FilterRowError],
+) -> Vec<FilterClauseView> {
+    let mut filters = FilterClauseView::from_clauses(clauses, errors);
+    for row in &mut filters {
+        if row.clause.field == "product" {
+            row.fk_display = hub_product_display(db, row.clause.value()).await;
+        }
+    }
+    filters
+}
+
 async fn hub_product_display(db: &sea_orm::DatabaseConnection, raw: &str) -> String {
     let Some(id) = raw.trim().parse::<i64>().ok().filter(|id| *id > 0) else {
         return String::new();
@@ -125,7 +142,7 @@ fn cookie_header(headers: &HeaderMap) -> Option<&str> {
 }
 
 fn apply_fiscal_year_datetime_filter<C, E>(
-    mut query: Select<E>,
+    query: Select<E>,
     env: &LarivEnvironment,
     column: C,
 ) -> Select<E>
@@ -133,9 +150,23 @@ where
     C: ColumnTrait,
     E: EntityTrait,
 {
+    apply_fiscal_year_expr_filter(query, env, Expr::col(column))
+}
+
+fn apply_fiscal_year_expr_filter<E>(
+    mut query: Select<E>,
+    env: &LarivEnvironment,
+    datetime: impl Into<SimpleExpr>,
+) -> Select<E>
+where
+    E: EntityTrait,
+{
     if let Some(fy) = resolve_list_fiscal_year(env) {
+        let datetime = datetime.into();
         let (start, end) = fy.datetime_range();
-        query = query.filter(column.gte(start)).filter(column.lt(end));
+        query = query
+            .filter(datetime.clone().gte(start))
+            .filter(datetime.lt(end));
     }
     query
 }
@@ -849,6 +880,7 @@ async fn query_paid_rows(
     db: &sea_orm::DatabaseConnection,
     q: &HubQuery,
     params: &HubQueryParams<'_>,
+    env: &LarivEnvironment,
     tz: &str,
     dates: &InvoiceDateFormats,
     applied: &AppliedFilters,
@@ -862,6 +894,8 @@ async fn query_paid_rows(
         params,
         &draft_invoice_id_sql_via_posted("paid_invoices"),
     );
+    query =
+        apply_fiscal_year_expr_filter(query, env, expr_settlement_posted_datetime("paid_invoices"));
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match parse_hub_sort(sort) {
         Some((HubSortKey::Id, true)) => query.order_by_desc(paid_invoice::Column::Id),
@@ -955,6 +989,7 @@ async fn query_partial_rows(
     db: &sea_orm::DatabaseConnection,
     q: &HubQuery,
     params: &HubQueryParams<'_>,
+    env: &LarivEnvironment,
     tz: &str,
     dates: &InvoiceDateFormats,
     applied: &AppliedFilters,
@@ -968,6 +1003,11 @@ async fn query_partial_rows(
         query,
         params,
         &draft_invoice_id_sql_via_posted("partially_paid_invoices"),
+    );
+    query = apply_fiscal_year_expr_filter(
+        query,
+        env,
+        expr_settlement_posted_datetime("partially_paid_invoices"),
     );
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match parse_hub_sort(sort) {
@@ -1100,9 +1140,29 @@ pub async fn hub(
             )
             .await
         }
-        "paid" => query_paid_rows(&state.db, &q, &params, &ctx.timezone, &dates, &applied).await,
+        "paid" => {
+            query_paid_rows(
+                &state.db,
+                &q,
+                &params,
+                &env,
+                &ctx.timezone,
+                &dates,
+                &applied,
+            )
+            .await
+        }
         "partial" => {
-            query_partial_rows(&state.db, &q, &params, &ctx.timezone, &dates, &applied).await
+            query_partial_rows(
+                &state.db,
+                &q,
+                &params,
+                &env,
+                &ctx.timezone,
+                &dates,
+                &applied,
+            )
+            .await
         }
         _ => {
             query_draft_rows(
@@ -1125,12 +1185,7 @@ pub async fn hub(
     let selected_fiscal_year_start = selected_fiscal_year_start_for_ui(&env);
 
     let extra_columns = enrich_hub_rows(&state.db, &mut rows).await;
-    let mut filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
-    for row in &mut filters {
-        if row.clause.field == "product" {
-            row.fk_display = hub_product_display(&state.db, row.clause.value()).await;
-        }
-    }
+    let filters = filter_clause_views(&state.db, &clauses, &applied.errors).await;
     let extra_filters = render_extra_filter_inputs(&state.db, &params)
         .await
         .into_string();
@@ -1165,4 +1220,65 @@ pub async fn hub(
         return page.render_pane().into();
     }
     html_built_page_with_slots(&page, &chrome, &slot_ctx)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sea_orm::QueryTrait;
+
+    fn env_for_year(year: &str) -> LarivEnvironment {
+        let mut env = LarivEnvironment::default();
+        env.fiscal_year = Some(year.to_string());
+        env
+    }
+
+    #[test]
+    fn paid_and_partial_lists_use_posted_invoice_datetime_for_fiscal_year() {
+        let env = env_for_year("2024");
+        let paid = apply_fiscal_year_expr_filter(
+            PaidInvoiceEntity::find(),
+            &env,
+            expr_settlement_posted_datetime("paid_invoices"),
+        )
+        .build(sea_orm::DatabaseBackend::Postgres);
+        assert!(
+            paid.sql.contains("posted_invoices")
+                && paid.sql.contains("paid_invoices.posted_invoice_id"),
+            "{sql}",
+            sql = paid.sql
+        );
+        let paid_values = format!("{:?}", paid.values);
+        assert!(paid_values.contains("2024-04-01"), "{paid_values}");
+        assert!(paid_values.contains("2025-04-01"), "{paid_values}");
+
+        let partial = apply_fiscal_year_expr_filter(
+            PartiallyPaidInvoiceEntity::find(),
+            &env,
+            expr_settlement_posted_datetime("partially_paid_invoices"),
+        )
+        .build(sea_orm::DatabaseBackend::Postgres);
+        assert!(
+            partial
+                .sql
+                .contains("partially_paid_invoices.posted_invoice_id"),
+            "{sql}",
+            sql = partial.sql
+        );
+    }
+
+    #[test]
+    fn blank_fiscal_year_leaves_settlement_queries_unbounded() {
+        let query = apply_fiscal_year_expr_filter(
+            PaidInvoiceEntity::find(),
+            &env_for_year(""),
+            expr_settlement_posted_datetime("paid_invoices"),
+        )
+        .build(sea_orm::DatabaseBackend::Postgres);
+        assert!(
+            !query.sql.contains("posted_invoices"),
+            "{sql}",
+            sql = query.sql
+        );
+    }
 }

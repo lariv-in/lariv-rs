@@ -8,7 +8,9 @@ use axum::{
 };
 use chrono::Utc;
 use maud::Markup;
-use sea_orm::{DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder};
+use sea_orm::{DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+
+use lariv_core::list_filters::apply_filters;
 
 use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::html_form::{CsrfToken, HtmlFormBody, UrlencodedFields};
@@ -36,6 +38,8 @@ use crate::{
     },
     entities::draft_invoice::{self, Entity as DraftInvoiceEntity},
     forms::{DraftInvoiceBulkEditForm, DraftInvoiceForm},
+    hub_filter::{HubFilterKind, hub_filter_fields, invoice_picker_clauses, matches_in_memory},
+    hub_filter_addon::{HubQueryParams, apply_extra_sql_filters, render_extra_filter_inputs},
     keys::{
         DraftInvoiceBulkDeleteModalKey, DraftInvoiceBulkEditModalKey, DraftInvoiceBulkPostModalKey,
         DraftInvoiceCreateModalKey, DraftInvoiceDeleteModalKey, DraftInvoiceEditModalKey,
@@ -51,11 +55,12 @@ use crate::{
     logic::tax_assoc::load_draft_invoice_tax_ids,
     logic::{
         CreateDraftInput, PatchDraftInput, UpdateDraftInput, create_draft_invoice,
-        default_payment_term_lines_json, delete_draft, format_delivery_date, format_invoice_date,
-        load_invoice_date_formats, load_invoice_preferences, optional_display,
-        optional_trimmed_text, parse_delivery_date, parse_invoice_datetime, parse_lines_json,
-        parse_payment_term_lines_json, parse_service_lines_json, patch_draft_invoice,
-        payment_term_lines_form_json, update_draft_invoice,
+        default_payment_term_lines_json, delete_draft, draft_invoice_list_metrics,
+        format_delivery_date, format_invoice_date, load_invoice_date_formats,
+        load_invoice_preferences, optional_display, optional_trimmed_text, parse_delivery_date,
+        parse_invoice_datetime, parse_lines_json, parse_payment_term_lines_json,
+        parse_service_lines_json, patch_draft_invoice, payment_term_lines_form_json,
+        update_draft_invoice,
     },
     routes::{
         DraftInvoiceBulkPostRouteTag, DraftInvoiceDetailRouteTag, DraftInvoicePostRouteTag,
@@ -1281,6 +1286,33 @@ pub async fn bulk_post(
     htmx.redirect(&hub_tab_url("posted"))
 }
 
+async fn draft_select_post_filtered(
+    db: &DatabaseConnection,
+    query: sea_orm::Select<draft_invoice::Entity>,
+    page_num: u32,
+    page_size: u32,
+    tz: &str,
+    post: &[lariv_core::list_filters::FilterClause],
+) -> (Vec<draft_invoice::Model>, u64) {
+    let mut kept = Vec::new();
+    for model in query.all(db).await.unwrap_or_default() {
+        let metrics = draft_invoice_list_metrics(db, model.id, tz).await;
+        if matches_in_memory(post, &metrics) {
+            kept.push(model);
+        }
+    }
+    let total = kept.len() as u64;
+    let start = (page_num as usize)
+        .saturating_sub(1)
+        .saturating_mul(page_size as usize);
+    let models = kept
+        .into_iter()
+        .skip(start)
+        .take(page_size as usize)
+        .collect();
+    (models, total)
+}
+
 pub async fn multi_select(
     Cap(state): Cap<InvoicesState>,
     RequireAuth(ctx): RequireAuth,
@@ -1290,7 +1322,15 @@ pub async fn multi_select(
 ) -> maud::Markup {
     let dates = load_invoice_date_formats(&state.db).await;
     let page_num = q.page.get();
+    let page_size = q.page_size.get();
+    let query_string = uri.query().unwrap_or("");
+    let clauses = invoice_picker_clauses(query_string);
+    let fields = hub_filter_fields(HubFilterKind::Draft, &ctx.timezone);
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let params = HubQueryParams::new(query_string);
     let mut query = DraftInvoiceEntity::find();
+    query = query.filter(applied.condition.clone());
+    query = apply_extra_sql_filters(query, &params, "draft_invoices.id");
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("ID DESC") => query.order_by_desc(draft_invoice::Column::Id),
@@ -1311,12 +1351,25 @@ pub async fn multi_select(
         }
         _ => query.order_by_desc(draft_invoice::Column::Id),
     };
-    let paginator = query.paginate(&state.db, q.page_size.get() as u64);
-    let total = paginator.num_items().await.unwrap_or(0);
-    let models = paginator
-        .fetch_page((page_num as u64).saturating_sub(1))
+    let (models, total) = if applied.post.is_empty() {
+        let paginator = query.paginate(&state.db, page_size as u64);
+        let total = paginator.num_items().await.unwrap_or(0);
+        let models = paginator
+            .fetch_page((page_num as u64).saturating_sub(1))
+            .await
+            .unwrap_or_default();
+        (models, total)
+    } else {
+        draft_select_post_filtered(
+            &state.db,
+            query,
+            page_num,
+            page_size,
+            &ctx.timezone,
+            &applied.post,
+        )
         .await
-        .unwrap_or_default();
+    };
     let customer_ids: Vec<i64> = models.iter().map(|d| d.customer_id).collect();
     let parties = bill_to::parties_in_order(&state.db, &customer_ids).await;
     let customers = PartyLabels::load(&state.db, &parties).await;
@@ -1330,13 +1383,21 @@ pub async fn multi_select(
             customer_name: customers.name(party),
         })
         .collect();
-    let invoices = ObjectList::from_page(rows, page_num, q.page_size.get(), total);
+    let invoices = ObjectList::from_page(rows, page_num, page_size, total);
+    let filters = super::hub::filter_clause_views(&state.db, &clauses, &applied.errors).await;
+    let extra_filters = render_extra_filter_inputs(&state.db, &params)
+        .await
+        .into_string();
     let page = DraftInvoiceSelectPage {
         invoices,
+        fields,
+        filters,
+        filter_errors: applied.errors,
+        extra_filters,
         target_input: q.target_input.unwrap_or_else(|| "Invoices".into()),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
-        page_size: q.page_size.get(),
+        page_size,
     };
     respond_picker_select::<DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey, _>(&htmx, &page)
 }

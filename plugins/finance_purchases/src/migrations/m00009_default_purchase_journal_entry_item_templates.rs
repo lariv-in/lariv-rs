@@ -12,6 +12,11 @@
 //! dropped those columns fall back to chart accounts 50101 (Merchandise,
 //! Material, Parts And Supplies) and 20101 (Trade Payables).
 
+use lariv_core::db::migration_sql::{
+    self, FK_PURCHASE_PRODUCT_PREFERENCE_JOURNAL_ACCOUNT,
+    FK_PURCHASE_PRODUCT_PREFERENCE_JOURNAL_JOURNAL, FK_PURCHASE_SERVICE_PREFERENCE_JOURNAL_ACCOUNT,
+    FK_PURCHASE_SERVICE_PREFERENCE_JOURNAL_JOURNAL,
+};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -24,10 +29,8 @@ CREATE TABLE IF NOT EXISTS purchase_product_preference_journal_items (
     updated_at timestamptz NULL,
     product_preferences_id bigint NOT NULL
         REFERENCES purchase_product_preferences(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    journal_id bigint NOT NULL
-        REFERENCES journals(id) ON UPDATE CASCADE ON DELETE RESTRICT,
-    account_id bigint NOT NULL
-        REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    journal_id bigint NOT NULL,
+    account_id bigint NOT NULL,
     formula text NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_purchase_product_pref_journal_items_prefs_id
@@ -43,10 +46,8 @@ CREATE TABLE IF NOT EXISTS purchase_service_preference_journal_items (
     updated_at timestamptz NULL,
     service_preferences_id bigint NOT NULL
         REFERENCES purchase_service_preferences(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    journal_id bigint NOT NULL
-        REFERENCES journals(id) ON UPDATE CASCADE ON DELETE RESTRICT,
-    account_id bigint NOT NULL
-        REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    journal_id bigint NOT NULL,
+    account_id bigint NOT NULL,
     formula text NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_purchase_service_pref_journal_items_prefs_id
@@ -255,6 +256,16 @@ END $$;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager.get_connection().execute_unprepared(UP).await?;
+        migration_sql::ensure_schema_foreign_keys(
+            manager,
+            &[
+                FK_PURCHASE_PRODUCT_PREFERENCE_JOURNAL_JOURNAL,
+                FK_PURCHASE_PRODUCT_PREFERENCE_JOURNAL_ACCOUNT,
+                FK_PURCHASE_SERVICE_PREFERENCE_JOURNAL_JOURNAL,
+                FK_PURCHASE_SERVICE_PREFERENCE_JOURNAL_ACCOUNT,
+            ],
+        )
+        .await?;
         Ok(())
     }
 

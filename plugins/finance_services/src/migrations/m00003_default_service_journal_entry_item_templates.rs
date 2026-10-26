@@ -8,6 +8,10 @@
 //! constants are wrapped in `decimal(...)` when a formula is evaluated, so a
 //! credit line is just `-unit_rate`.
 
+use lariv_core::db::migration_sql::{
+    self, FK_SERVICE_PREFERENCE_JOURNAL_ACCOUNT, FK_SERVICE_PREFERENCE_JOURNAL_JOURNAL,
+    FK_SERVICE_PREFERENCES_COST_ACCOUNT, FK_SERVICE_PREFERENCES_CREDIT_ACCOUNT,
+};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -20,10 +24,8 @@ CREATE TABLE IF NOT EXISTS service_preference_journal_items (
     updated_at timestamptz NULL,
     service_preferences_id bigint NOT NULL
         REFERENCES service_preferences(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    journal_id bigint NOT NULL
-        REFERENCES journals(id) ON UPDATE CASCADE ON DELETE RESTRICT,
-    account_id bigint NOT NULL
-        REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    journal_id bigint NOT NULL,
+    account_id bigint NOT NULL,
     formula text NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_service_preference_journal_items_prefs_id
@@ -145,26 +147,36 @@ ALTER TABLE service_preferences
 
 ALTER TABLE service_preferences
     DROP CONSTRAINT IF EXISTS service_preferences_cost_of_sales_account_id_fkey,
-    DROP CONSTRAINT IF EXISTS service_preferences_cost_credit_account_id_fkey;
-
-ALTER TABLE service_preferences
-    ADD CONSTRAINT service_preferences_cost_of_sales_account_id_fkey
-        FOREIGN KEY (cost_of_sales_account_id) REFERENCES accounts(id)
-        ON UPDATE CASCADE ON DELETE RESTRICT,
-    ADD CONSTRAINT service_preferences_cost_credit_account_id_fkey
-        FOREIGN KEY (cost_credit_account_id) REFERENCES accounts(id)
-        ON UPDATE CASCADE ON DELETE RESTRICT;
+    DROP CONSTRAINT IF EXISTS service_preferences_cost_credit_account_id_fkey,
+    DROP CONSTRAINT IF EXISTS fk_service_preferences_cost_of_sales_account_id,
+    DROP CONSTRAINT IF EXISTS fk_service_preferences_cost_credit_account_id;
 "#;
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager.get_connection().execute_unprepared(UP).await?;
+        migration_sql::ensure_schema_foreign_keys(
+            manager,
+            &[
+                FK_SERVICE_PREFERENCE_JOURNAL_JOURNAL,
+                FK_SERVICE_PREFERENCE_JOURNAL_ACCOUNT,
+            ],
+        )
+        .await?;
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager.get_connection().execute_unprepared(DOWN).await?;
+        migration_sql::ensure_schema_foreign_keys(
+            manager,
+            &[
+                FK_SERVICE_PREFERENCES_COST_ACCOUNT,
+                FK_SERVICE_PREFERENCES_CREDIT_ACCOUNT,
+            ],
+        )
+        .await?;
         Ok(())
     }
 }

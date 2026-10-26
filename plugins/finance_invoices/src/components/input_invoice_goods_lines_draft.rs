@@ -473,6 +473,8 @@ pub struct InputInvoiceGoodsLinesDraft<'a> {
     pub preview: &'a str,
     pub product_pick_url: &'a str,
     pub tax_pick_url: &'a str,
+    /// Formula price endpoint. Empty uses the invoice goods-line price route.
+    pub price_url: &'a str,
     pub classes: &'a str,
 }
 
@@ -484,6 +486,7 @@ impl Default for InputInvoiceGoodsLinesDraft<'_> {
             preview: "{}",
             product_pick_url: "",
             tax_pick_url: "",
+            price_url: "",
             classes: "w-full",
         }
     }
@@ -535,8 +538,13 @@ pub fn input_invoice_goods_lines_draft(opts: InputInvoiceGoodsLinesDraft<'_>) ->
         serde_json::to_string(product_pick_url).unwrap_or_else(|_| "\"\"".into());
     let tax_pick_base = serde_json::to_string(tax_pick_url).unwrap_or_else(|_| "\"\"".into());
 
-    let price_url = serde_json::to_string(&crate::routes::InvoiceGoodsLinePriceRouteTag.url())
-        .unwrap_or_else(|_| "\"\"".into());
+    let price_fallback = crate::routes::InvoiceGoodsLinePriceRouteTag.url();
+    let price_source = if opts.price_url.is_empty() {
+        price_fallback.as_str()
+    } else {
+        opts.price_url
+    };
+    let price_url = serde_json::to_string(price_source).unwrap_or_else(|_| "\"\"".into());
     let alpine_data = format!(
         "{{ lines: {defaults}, products: {products_json}, tax_pct_by_id: {tax_pct_json}, tax_kind_by_id: {tax_kind_json}, all_taxes: {all_taxes_json}, product_pick_base: {product_pick_base}, tax_pick_base: {tax_pick_base}, price_url: {price_url}, {methods} }}",
         methods = INVOICE_LINES_DRAFT_ALPINE_METHODS.trim_end_matches(',')

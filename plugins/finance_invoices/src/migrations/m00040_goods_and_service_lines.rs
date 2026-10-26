@@ -1,5 +1,12 @@
 //! Rename invoice lines to goods lines and add service lines.
 
+use lariv_core::db::migration_sql::{
+    self, FK_CANCELLED_INVOICE_SERVICE_LINE_JOURNAL_ITEM,
+    FK_CANCELLED_INVOICE_SERVICE_LINE_SERVICE, FK_CANCELLED_INVOICE_SERVICE_LINE_TAX,
+    FK_DRAFT_INVOICE_SERVICE_LINE_SERVICE, FK_DRAFT_INVOICE_SERVICE_LINE_TAX,
+    FK_POSTED_INVOICE_SERVICE_LINE_JOURNAL_ITEM, FK_POSTED_INVOICE_SERVICE_LINE_SERVICE,
+    FK_POSTED_INVOICE_SERVICE_LINE_TAX,
+};
 use lariv_plugin_finance_products::migrations::product_catalog_cleanup::CLEANUP_PRODUCT_CATALOG;
 use sea_orm_migration::prelude::*;
 
@@ -62,7 +69,7 @@ CREATE TABLE IF NOT EXISTS draft_invoice_service_lines (
     created_at timestamptz NULL,
     updated_at timestamptz NULL,
     draft_invoice_id bigint NOT NULL REFERENCES draft_invoices(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    service_id bigint NOT NULL REFERENCES services(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    service_id bigint NOT NULL,
     rate numeric(19, 6) NOT NULL,
     quantity numeric(19, 6) NOT NULL,
     variable_values text NOT NULL DEFAULT '{}',
@@ -74,40 +81,40 @@ CREATE TABLE IF NOT EXISTS posted_invoice_service_lines (
     created_at timestamptz NULL,
     updated_at timestamptz NULL,
     posted_invoice_id bigint NOT NULL REFERENCES posted_invoices(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    service_id bigint NOT NULL REFERENCES services(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    service_id bigint NOT NULL,
     rate numeric(19, 6) NOT NULL,
     quantity numeric(19, 6) NOT NULL,
     variable_values text NOT NULL DEFAULT '{}',
     pre_tax_amount numeric(19, 6) NOT NULL DEFAULT 0,
     remarks text NULL,
-    journal_entry_item_id bigint NOT NULL REFERENCES journal_entry_items(id) ON UPDATE CASCADE ON DELETE RESTRICT
+    journal_entry_item_id bigint NOT NULL
 );
 CREATE TABLE IF NOT EXISTS cancelled_invoice_service_lines (
     id bigserial PRIMARY KEY,
     created_at timestamptz NULL,
     updated_at timestamptz NULL,
     cancelled_invoice_id bigint NOT NULL REFERENCES cancelled_invoices(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    service_id bigint NOT NULL REFERENCES services(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    service_id bigint NOT NULL,
     rate numeric(19, 6) NOT NULL,
     quantity numeric(19, 6) NOT NULL,
     variable_values text NOT NULL DEFAULT '{}',
     pre_tax_amount numeric(19, 6) NOT NULL DEFAULT 0,
     remarks text NULL,
-    journal_entry_item_id bigint NOT NULL REFERENCES journal_entry_items(id) ON UPDATE CASCADE ON DELETE RESTRICT
+    journal_entry_item_id bigint NOT NULL
 );
 CREATE TABLE IF NOT EXISTS draft_invoice_service_line_taxes (
     draft_invoice_service_line_id bigint NOT NULL REFERENCES draft_invoice_service_lines(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    tax_id bigint NOT NULL REFERENCES taxes(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    tax_id bigint NOT NULL,
     PRIMARY KEY (draft_invoice_service_line_id, tax_id)
 );
 CREATE TABLE IF NOT EXISTS posted_invoice_service_line_taxes (
     posted_invoice_service_line_id bigint NOT NULL REFERENCES posted_invoice_service_lines(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    tax_id bigint NOT NULL REFERENCES taxes(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    tax_id bigint NOT NULL,
     PRIMARY KEY (posted_invoice_service_line_id, tax_id)
 );
 CREATE TABLE IF NOT EXISTS cancelled_invoice_service_line_taxes (
     cancelled_invoice_service_line_id bigint NOT NULL REFERENCES cancelled_invoice_service_lines(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    tax_id bigint NOT NULL REFERENCES taxes(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    tax_id bigint NOT NULL,
     PRIMARY KEY (cancelled_invoice_service_line_id, tax_id)
 );
 
@@ -217,6 +224,20 @@ impl MigrationTrait for Migration {
         let conn = manager.get_connection();
         conn.execute_unprepared(UP).await?;
         conn.execute_unprepared(CLEANUP_PRODUCT_CATALOG).await?;
+        migration_sql::ensure_schema_foreign_keys(
+            manager,
+            &[
+                FK_DRAFT_INVOICE_SERVICE_LINE_SERVICE,
+                FK_POSTED_INVOICE_SERVICE_LINE_SERVICE,
+                FK_CANCELLED_INVOICE_SERVICE_LINE_SERVICE,
+                FK_POSTED_INVOICE_SERVICE_LINE_JOURNAL_ITEM,
+                FK_CANCELLED_INVOICE_SERVICE_LINE_JOURNAL_ITEM,
+                FK_DRAFT_INVOICE_SERVICE_LINE_TAX,
+                FK_POSTED_INVOICE_SERVICE_LINE_TAX,
+                FK_CANCELLED_INVOICE_SERVICE_LINE_TAX,
+            ],
+        )
+        .await?;
         Ok(())
     }
 

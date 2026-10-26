@@ -1,5 +1,8 @@
 //! Per-product journal entry templates.
 
+use lariv_core::db::migration_sql::{
+    self, FK_PRODUCT_JOURNAL_ENTRY_TEMPLATES_JOURNAL, FK_PRODUCT_JOURNAL_ITEM_ACCOUNT,
+};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -17,7 +20,6 @@ impl MigrationTrait for Migration {
                 product_id bigint NOT NULL UNIQUE
                     REFERENCES products(id) ON UPDATE CASCADE ON DELETE CASCADE,
                 journal_id bigint NOT NULL
-                    REFERENCES journals(id) ON UPDATE CASCADE ON DELETE RESTRICT
             )"#,
         )
         .await?;
@@ -32,8 +34,7 @@ impl MigrationTrait for Migration {
                 updated_at timestamptz NULL,
                 product_journal_entry_template_id bigint NOT NULL
                     REFERENCES product_journal_entry_templates(id) ON UPDATE CASCADE ON DELETE CASCADE,
-                account_id bigint NOT NULL
-                    REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+                account_id bigint NOT NULL,
                 formula text NOT NULL,
                 receivable boolean NOT NULL DEFAULT false
             )"#,
@@ -45,6 +46,14 @@ impl MigrationTrait for Migration {
         .await?;
         conn.execute_unprepared(
             "CREATE INDEX IF NOT EXISTS idx_product_journal_entry_item_templates_account_id ON product_journal_entry_item_templates (account_id)",
+        )
+        .await?;
+        migration_sql::ensure_schema_foreign_keys(
+            manager,
+            &[
+                FK_PRODUCT_JOURNAL_ENTRY_TEMPLATES_JOURNAL,
+                FK_PRODUCT_JOURNAL_ITEM_ACCOUNT,
+            ],
         )
         .await?;
         Ok(())

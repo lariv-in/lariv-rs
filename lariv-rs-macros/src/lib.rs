@@ -21,6 +21,7 @@ use proc_macro::TokenStream;
 /// - `required` — non-empty validation
 /// - `name = "..."` — override HTML `name` attribute
 /// - `row = "..."` — group fields in the same form row
+/// - `search_key = "..."` — foreign-key typeahead query parameter (default `Name`)
 ///
 /// Macro args (on the attribute itself): `default`, `no_debug`, `tag = "..."`.
 ///

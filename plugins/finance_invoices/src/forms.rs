@@ -213,7 +213,8 @@ pub struct PaymentForm {
         route = PostedInvoiceFkSelectRouteTag,
         swap_key = "posted-invoice-select",
         display = "posted_invoice",
-        placeholder = "Select posted invoice…"
+        placeholder = "Select posted invoice…",
+        search_key = "Number"
     )]
     pub posted_invoice_id: i64,
 
@@ -241,17 +242,10 @@ pub struct PaymentJournalLines;
 
 impl FormWidget for PaymentJournalLines {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
-        let url = crate::routes::PaymentJournalLinesRouteTag.path();
         html! {
-            div id="payment-journal-lines" {
-                (input_journal_lines(field.name, field.label, field.value))
-            }
-            (PreEscaped(format!(
-                r##"<button type="button" class="btn btn-outline btn-sm" hx-post="{}" hx-target="#payment-journal-lines" hx-swap="innerHTML" hx-include="closest form">Fill from template</button>"##,
-                escape_attr(&url),
-            )))
+            (input_journal_lines(field.name, field.label, field.value))
             p class="text-sm text-base-content/70 mt-2" {
-                "Saved lines are whatever is in this editor. Fill from template replaces them from the payment preferences for the settlement amount and withholding taxes above."
+                "Saved lines are whatever is in this editor."
             }
         }
     }
@@ -435,6 +429,28 @@ mod tests {
         assert!(
             !alpine_js_leaked_as_text(&html),
             "Alpine JS rendered as text on the draft invoice form: {html}"
+        );
+    }
+
+    #[test]
+    fn posted_invoice_picker_searches_by_number() {
+        let html = PaymentForm::render_inputs(&FormCtx::form::<PaymentForm>(CsrfToken::current()))
+            .into_string();
+        let picker = html
+            .split_once(r#"id="posted-invoice-select""#)
+            .map(|(_, rest)| {
+                rest.split_once("Settlement amount")
+                    .map(|(head, _)| head)
+                    .unwrap_or(rest)
+            })
+            .unwrap_or("");
+        assert!(
+            picker.contains(r#"name="Number""#),
+            "posted invoice picker should typeahead on Number: {picker}"
+        );
+        assert!(
+            !picker.contains(r#"name="Name""#),
+            "posted invoice picker still typeaheads on Name: {picker}"
         );
     }
 

@@ -314,6 +314,7 @@ pub fn button_delete(route: impl RouteUrl + BoostPost, label: &str, confirm: &st
 pub struct ButtonDownload<'a> {
     pub label: &'a str,
     pub href: &'a str,
+    pub icon_name: Option<&'a str>,
     pub classes: &'a str,
     pub attrs: HtmlAttrs,
 }
@@ -323,6 +324,7 @@ impl Default for ButtonDownload<'_> {
         Self {
             label: "Download",
             href: "#",
+            icon_name: None,
             classes: "",
             attrs: HtmlAttrs::new(),
         }
@@ -331,14 +333,21 @@ impl Default for ButtonDownload<'_> {
 
 /// Render a download link styled as a button.
 pub fn button_download(opts: ButtonDownload<'_>) -> Markup {
+    let mut class = format!("btn {}", opts.classes);
+    if opts.icon_name.is_some() && !opts.label.is_empty() {
+        class.push_str(" inline-flex items-center gap-2");
+    }
     let attrs = opts.attrs.clone().set("hx-boost", "false");
     html! {
         (PreEscaped(format!(
             r#"<a href="{}" download class="{}"{}>"#,
             escape_attr(opts.href),
-            escape_attr(&format!("btn {}", opts.classes)),
+            escape_attr(&class),
             attrs.as_string()
         )))
+        @if let Some(name) = opts.icon_name {
+            (icon(name, ""))
+        }
         (opts.label)
         (PreEscaped("</a>"))
     }

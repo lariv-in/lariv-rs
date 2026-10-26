@@ -1,5 +1,8 @@
 //! Per-service journal entry templates.
 
+use lariv_core::db::migration_sql::{
+    self, FK_SERVICE_JOURNAL_ITEM_ACCOUNT, FK_SERVICE_JOURNAL_ITEM_JOURNAL,
+};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -16,10 +19,8 @@ impl MigrationTrait for Migration {
                 updated_at timestamptz NULL,
                 service_id bigint NOT NULL
                     REFERENCES services(id) ON UPDATE CASCADE ON DELETE CASCADE,
-                journal_id bigint NOT NULL
-                    REFERENCES journals(id) ON UPDATE CASCADE ON DELETE RESTRICT,
-                account_id bigint NOT NULL
-                    REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+                journal_id bigint NOT NULL,
+                account_id bigint NOT NULL,
                 formula text NOT NULL
             )"#,
         )
@@ -34,6 +35,14 @@ impl MigrationTrait for Migration {
         .await?;
         conn.execute_unprepared(
             "CREATE INDEX IF NOT EXISTS idx_service_journal_entry_item_templates_account_id ON service_journal_entry_item_templates (account_id)",
+        )
+        .await?;
+        migration_sql::ensure_schema_foreign_keys(
+            manager,
+            &[
+                FK_SERVICE_JOURNAL_ITEM_JOURNAL,
+                FK_SERVICE_JOURNAL_ITEM_ACCOUNT,
+            ],
         )
         .await?;
         Ok(())

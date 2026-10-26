@@ -16,6 +16,9 @@
 //! tax-payable account) so a new tax opens with that default. Once the lines
 //! are copied, `taxes.account_id` is retired.
 
+use lariv_core::db::migration_sql::{
+    self, FK_TAX_PREFERENCE_JOURNAL_ACCOUNT, FK_TAX_PREFERENCE_JOURNAL_JOURNAL, FK_TAXES_ACCOUNT,
+};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -34,10 +37,8 @@ CREATE TABLE IF NOT EXISTS tax_preference_journal_items (
     updated_at timestamptz NULL,
     tax_preferences_id bigint NOT NULL
         REFERENCES tax_preferences(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    journal_id bigint NOT NULL
-        REFERENCES journals(id) ON UPDATE CASCADE ON DELETE RESTRICT,
-    account_id bigint NOT NULL
-        REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    journal_id bigint NOT NULL,
+    account_id bigint NOT NULL,
     formula text NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_tax_preference_journal_items_prefs_id
@@ -211,12 +212,8 @@ ALTER TABLE taxes
     ADD COLUMN IF NOT EXISTS account_id bigint NULL;
 
 ALTER TABLE taxes
-    DROP CONSTRAINT IF EXISTS fk_taxes_account_id;
-
-ALTER TABLE taxes
-    ADD CONSTRAINT fk_taxes_account_id
-        FOREIGN KEY (account_id) REFERENCES accounts(id)
-        ON UPDATE CASCADE ON DELETE RESTRICT;
+    DROP CONSTRAINT IF EXISTS fk_taxes_account_id,
+    DROP CONSTRAINT IF EXISTS taxes_account_id_fkey;
 
 CREATE INDEX IF NOT EXISTS idx_taxes_account_id ON taxes (account_id);
 "#;
@@ -225,11 +222,20 @@ CREATE INDEX IF NOT EXISTS idx_taxes_account_id ON taxes (account_id);
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager.get_connection().execute_unprepared(UP).await?;
+        migration_sql::ensure_schema_foreign_keys(
+            manager,
+            &[
+                FK_TAX_PREFERENCE_JOURNAL_JOURNAL,
+                FK_TAX_PREFERENCE_JOURNAL_ACCOUNT,
+            ],
+        )
+        .await?;
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager.get_connection().execute_unprepared(DOWN).await?;
+        migration_sql::ensure_schema_foreign_keys(manager, &[FK_TAXES_ACCOUNT]).await?;
         Ok(())
     }
 }

@@ -29,7 +29,8 @@ use crate::{
     permissions::{AccessActor, NodePermissions},
     routes::{
         FilesystemRootPermissionsGetRouteTag, VNodeBrowseRouteTag, VNodeDetailRouteTag,
-        VNodeFileSelectRouteTag, VNodeListRouteTag, VNodeMoveSelectRouteTag, VNodeSelectRouteTag,
+        VNodeFileSelectRouteTag, VNodeListRouteTag, VNodeMoveSelectRouteTag,
+        VNodeNodeSelectRouteTag, VNodeSelectRouteTag,
     },
     state::FilesystemState,
     storage::DynFilestore,
@@ -2060,6 +2061,7 @@ async fn render_select(
     browse_base: &str,
     default_target_input: &str,
     only_directories: bool,
+    select_any: bool,
 ) -> Response {
     let parent = match parent_id {
         Some(id) => {
@@ -2127,6 +2129,7 @@ async fn render_select(
         current_path,
         exclude_id: q.exclude_id.or_zero(),
         only_directories,
+        select_any,
         multi: q.multi.unwrap_or(false),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
@@ -2155,6 +2158,7 @@ pub async fn select(
         &VNodeSelectRouteTag.path(),
         "ParentID",
         true,
+        false,
     )
     .await
 }
@@ -2179,6 +2183,7 @@ pub async fn select_in(
         &VNodeSelectRouteTag.path(),
         "ParentID",
         true,
+        false,
     )
     .await
 }
@@ -2202,6 +2207,7 @@ pub async fn move_select(
         &VNodeMoveSelectRouteTag.path(),
         "DestinationID",
         true,
+        false,
     )
     .await
 }
@@ -2226,6 +2232,7 @@ pub async fn move_select_in(
         &VNodeMoveSelectRouteTag.path(),
         "DestinationID",
         true,
+        false,
     )
     .await
 }
@@ -2248,6 +2255,7 @@ pub async fn file_select(
         None,
         &VNodeFileSelectRouteTag.path(),
         "PageID",
+        false,
         false,
     )
     .await
@@ -2273,6 +2281,56 @@ pub async fn file_select_in(
         &VNodeFileSelectRouteTag.path(),
         "PageID",
         false,
+        false,
+    )
+    .await
+}
+
+/// HTTP handler: `node_select`. Files and folders are both selectable.
+pub async fn node_select(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<VNodeSelectQuery>,
+) -> Response {
+    render_select(
+        state,
+        ctx,
+        htmx,
+        uri,
+        q,
+        None,
+        &VNodeNodeSelectRouteTag.path(),
+        "FolderVnodeID",
+        false,
+        true,
+    )
+    .await
+}
+
+/// HTTP handler: `node_select_in`.
+pub async fn node_select_in(
+    Cap(state): Cap<FilesystemState>,
+    Cap(_chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    uri: Uri,
+    Query(q): Query<VNodeSelectQuery>,
+    Path(parent_id): Path<i64>,
+) -> Response {
+    render_select(
+        state,
+        ctx,
+        htmx,
+        uri,
+        q,
+        Some(parent_id),
+        &VNodeNodeSelectRouteTag.path(),
+        "FolderVnodeID",
+        false,
+        true,
     )
     .await
 }

@@ -6,12 +6,12 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
-use maud::{Markup, html};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{CsrfToken, HtmlFormBody};
 use lariv_core::http::Cap;
+use lariv_core::list_filters::apply_filters;
 use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
@@ -20,7 +20,6 @@ use lariv_core::web::{
 };
 use lariv_plugin_users::middleware::RequireAuth;
 
-use lariv_plugin_finance_accounts::journal_lines_editor::input_journal_lines;
 use lariv_plugin_finance_accounts::logic::custom_source_doc::{
     ensure_posting_accounts, parse_submitted_journal_lines,
 };
@@ -37,6 +36,8 @@ use crate::{
     },
     forms::PaymentForm,
     handlers::ModalNameQuery,
+    hub_filter::{HubFilterKind, hub_filter_fields, invoice_picker_clauses},
+    hub_filter_addon::{HubQueryParams, apply_extra_sql_filters, render_extra_filter_inputs},
     keys::{
         PaymentCreateModalKey, PaymentTableKey, PostedInvoiceSelectModalKey,
         PostedInvoiceSelectTableKey,
@@ -465,27 +466,6 @@ pub async fn create_post(
     }
 }
 
-pub async fn fill_journal_lines(
-    Cap(state): Cap<InvoicesState>,
-    RequireAuth(_ctx): RequireAuth,
-    HtmlFormBody(form): HtmlFormBody<PaymentForm>,
-) -> Markup {
-    let suggested = match parse_payment_amount(&form.amount) {
-        Ok(amount) if form.posted_invoice_id > 0 => {
-            suggest_payment_lines_json(&state.db, form.posted_invoice_id, amount, &form.taxes).await
-        }
-        Ok(_) => Err("Select a posted invoice and enter a settlement amount.".into()),
-        Err(error) => Err(error),
-    };
-    match suggested {
-        Ok(lines) => input_journal_lines("JournalLines", "Journal lines", &lines),
-        Err(error) => html! {
-            p class="text-error mb-2" { (error) }
-            (input_journal_lines("JournalLines", "Journal lines", &form.journal_lines))
-        },
-    }
-}
-
 pub async fn detail(
     Cap(state): Cap<InvoicesState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -550,9 +530,16 @@ pub async fn posted_fk_select(
 ) -> maud::Markup {
     let dates = load_invoice_date_formats(&state.db).await;
     let page_num = q.page.get();
+    let query_string = uri.query().unwrap_or("");
+    let clauses = invoice_picker_clauses(query_string);
+    let fields = hub_filter_fields(HubFilterKind::Posted, &ctx.timezone);
+    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
+    let params = HubQueryParams::new(query_string);
     let mut query = PostedInvoiceEntity::find()
         .filter(crate::scope::sql_posted_not_fully_paid())
         .filter(sql_posted_not_cancelled());
+    query = query.filter(applied.condition.clone());
+    query = apply_extra_sql_filters(query, &params, "posted_invoices.draft_invoice_id");
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("ID DESC") => query.order_by_desc(posted_invoice::Column::Id),
@@ -588,8 +575,16 @@ pub async fn posted_fk_select(
         })
         .collect();
     let invoices = ObjectList::from_page(rows, page_num, q.page_size.get(), total);
+    let filters = super::hub::filter_clause_views(&state.db, &clauses, &applied.errors).await;
+    let extra_filters = render_extra_filter_inputs(&state.db, &params)
+        .await
+        .into_string();
     let page = PostedInvoiceSelectPage {
         invoices,
+        fields,
+        filters,
+        filter_errors: applied.errors,
+        extra_filters,
         target_input: q.target_input.unwrap_or_else(|| "PostedInvoiceID".into()),
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),

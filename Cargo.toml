@@ -161,9 +161,10 @@ plugin-finance-products = ["plugin-finance-accounts", "plugin-finance-taxes", "p
 plugin-finance-services = ["plugin-finance-accounts", "plugin-finance-taxes", "dep:lariv-plugin-finance-services"]
 plugin-finance-creditnotes = ["plugin-finance-accounts", "dep:lariv-plugin-finance-creditnotes"]
 plugin-finance-invoices = ["plugin-finance-accounts", "plugin-crm", "plugin-customer", "plugin-finance-products", "plugin-finance-services", "plugin-finance-taxes", "plugin-finance-creditnotes", "plugin-filesystem", "typst", "dep:lariv-plugin-finance-invoices"]
+plugin-finance-quotations = ["plugin-finance-invoices", "dep:lariv-plugin-finance-quotations"]
 plugin-finance-purchases = ["plugin-finance-accounts", "plugin-crm", "plugin-customer", "plugin-finance-products", "plugin-finance-services", "plugin-finance-taxes", "plugin-filesystem", "typst", "dep:lariv-plugin-finance-purchases"]
 plugin-finance-indian = ["plugin-finance-accounts", "dep:lariv-plugin-finance-indian"]
-plugin-finance = ["plugin-finance-invoices", "plugin-finance-purchases", "plugin-finance-indian"]
+plugin-finance = ["plugin-finance-invoices", "plugin-finance-purchases", "plugin-finance-indian", "plugin-finance-quotations"]
 
 [[bin]]
 name = "lariv"
@@ -190,6 +191,7 @@ lariv-plugin-finance-common = { path = "plugins/finance_common", optional = true
 lariv-plugin-finance-creditnotes = { path = "plugins/finance_creditnotes", optional = true }
 lariv-plugin-finance-indian = { path = "plugins/finance_indian", optional = true }
 lariv-plugin-finance-invoices = { path = "plugins/finance_invoices", optional = true }
+lariv-plugin-finance-quotations = { path = "plugins/finance_quotations", optional = true }
 lariv-plugin-finance-purchases = { path = "plugins/finance_purchases", optional = true }
 lariv-plugin-finance-products = { path = "plugins/finance_products", optional = true }
 lariv-plugin-finance-services = { path = "plugins/finance_services", optional = true }

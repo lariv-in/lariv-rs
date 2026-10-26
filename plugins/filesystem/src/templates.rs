@@ -50,11 +50,12 @@ use super::routes::{
     VNodeDeletePostRouteTag, VNodeDetailRouteTag, VNodeDownloadRootRouteTag, VNodeDownloadRouteTag,
     VNodeEditGetRouteTag, VNodeEditPostRouteTag, VNodeFileSelectInRouteTag,
     VNodeFileSelectRouteTag, VNodeListRouteTag, VNodeMoveGetRouteTag, VNodeMovePostRouteTag,
-    VNodeMoveSelectInRouteTag, VNodeMoveSelectRouteTag, VNodePdfModalRouteTag,
-    VNodePermissionsGetRouteTag, VNodePermissionsPostRouteTag, VNodeSelectInRouteTag,
-    VNodeSelectRouteTag, VNodeUploadGetInRouteTag, VNodeUploadGetRouteTag,
-    VNodeUploadPostInRouteTag, VNodeUploadPostRouteTag, VNodeZipUploadGetInRouteTag,
-    VNodeZipUploadGetRouteTag, VNodeZipUploadPostInRouteTag, VNodeZipUploadPostRouteTag,
+    VNodeMoveSelectInRouteTag, VNodeMoveSelectRouteTag, VNodeNodeSelectInRouteTag,
+    VNodeNodeSelectRouteTag, VNodePdfModalRouteTag, VNodePermissionsGetRouteTag,
+    VNodePermissionsPostRouteTag, VNodeSelectInRouteTag, VNodeSelectRouteTag,
+    VNodeUploadGetInRouteTag, VNodeUploadGetRouteTag, VNodeUploadPostInRouteTag,
+    VNodeUploadPostRouteTag, VNodeZipUploadGetInRouteTag, VNodeZipUploadGetRouteTag,
+    VNodeZipUploadPostInRouteTag, VNodeZipUploadPostRouteTag,
 };
 
 define_register_items! {
@@ -1611,6 +1612,8 @@ pub struct VNodeSelectPage {
     pub current_path: String,
     pub exclude_id: i64,
     pub only_directories: bool,
+    /// Files and folders can both be chosen. Folders still have an Open button.
+    pub select_any: bool,
     /// Many-to-many mode: toggle selection without closing the modal.
     pub multi: bool,
     pub sort: String,
@@ -1659,7 +1662,9 @@ impl VNodeSelectPage {
     }
 
     fn title(&self) -> &'static str {
-        if self.only_directories {
+        if self.select_any {
+            "Select a file or folder"
+        } else if self.only_directories {
             "Select a Folder"
         } else {
             "Select a File"
@@ -1670,6 +1675,23 @@ impl VNodeSelectPage {
         let target = (!self.target_input.is_empty()).then_some(self.target_input.as_str());
         let exclude = (self.exclude_id != 0).then_some(self.exclude_id);
         let multi = self.multi.then_some(1u8);
+        if self.select_any {
+            return if parent_id == 0 {
+                VNodeNodeSelectRouteTag
+                    .with_query()
+                    .query_opt("target_input", target)
+                    .query_opt("exclude_id", exclude)
+                    .query_opt("multi", multi)
+                    .build()
+            } else {
+                VNodeNodeSelectInRouteTag::new(parent_id)
+                    .with_query()
+                    .query_opt("target_input", target)
+                    .query_opt("exclude_id", exclude)
+                    .query_opt("multi", multi)
+                    .build()
+            };
+        }
         match (self.is_move_select(), self.is_file_select(), parent_id) {
             (true, _, 0) => VNodeMoveSelectRouteTag
                 .with_query()
@@ -1757,7 +1779,7 @@ impl RenderPickerSelect<VNodeSelectTableKey, VNodeSelectModalKey> for VNodeSelec
             .iter()
             .filter(|n| n.id != self.exclude_id)
             .map(|n| {
-                let selectable = self.only_directories || !n.is_directory;
+                let selectable = self.select_any || self.only_directories || !n.is_directory;
                 let attrs = if selectable {
                     if self.multi {
                         row_attr_select_multi(target, &n.id.to_string(), &n.name)
@@ -1841,6 +1863,19 @@ impl RenderPickerSelect<VNodeSelectTableKey, VNodeSelectModalKey> for VNodeSelec
                             root_select.as_string()
                         )))
                         (use_here_label)
+                        (maud::PreEscaped("</div>"))
+                    }
+                    @if self.select_any {
+                        (maud::PreEscaped(format!(
+                            r#"<div class="btn btn-sm btn-outline"{}>"#,
+                            row_attr_select(
+                                target,
+                                &self.parent_id.to_string(),
+                                &self.current_path
+                            )
+                            .as_string()
+                        )))
+                        "Select this folder"
                         (maud::PreEscaped("</div>"))
                     }
                 }
@@ -2180,6 +2215,7 @@ mod vnode_form_page_tests {
             },
             exclude_id: 0,
             only_directories,
+            select_any: false,
             multi: false,
             sort: String::new(),
             path_and_query: browse_base.into(),

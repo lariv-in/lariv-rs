@@ -413,6 +413,8 @@ pub struct FieldSpec {
     pub error_key: Option<&'static str>,
     pub choices_key: Option<&'static str>,
     pub placeholder: Option<&'static str>,
+    /// Typeahead query parameter for [`widgets::ForeignKey`]. Default in the widget is `Name`.
+    pub search_key: Option<&'static str>,
     /// Tooltip copy shown beside the field label (see [`crate::components::label_hint`]).
     pub hint: Option<&'static str>,
     pub rows: Option<u32>,

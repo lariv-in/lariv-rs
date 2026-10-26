@@ -205,7 +205,10 @@ where
         COMPOSITE_MIGRATIONS.with(|cell| {
             *cell.borrow_mut() = Some(migrations);
         });
-        CompositeMigrator::up(db, None).await
+        CompositeMigrator::up(db, None).await?;
+        // Peer plugins may have been installed in either order. Attach foreign keys
+        // that were skipped while the referenced table was still absent.
+        crate::db::migration_sql::ensure_cross_plugin_foreign_keys(db).await
     }
 }
 

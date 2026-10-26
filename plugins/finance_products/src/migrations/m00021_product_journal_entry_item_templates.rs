@@ -1,5 +1,8 @@
 //! Journal template lines point at the product. The header table goes away.
 
+use lariv_core::db::migration_sql::{
+    self, FK_PRODUCT_JOURNAL_ENTRY_TEMPLATES_JOURNAL, FK_PRODUCT_JOURNAL_ITEM_JOURNAL,
+};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -59,12 +62,11 @@ impl MigrationTrait for Migration {
             r#"ALTER TABLE product_journal_entry_item_templates
                 ADD CONSTRAINT fk_product_journal_entry_item_templates_product_id
                     FOREIGN KEY (product_id) REFERENCES products(id)
-                    ON UPDATE CASCADE ON DELETE CASCADE,
-                ADD CONSTRAINT fk_product_journal_entry_item_templates_journal_id
-                    FOREIGN KEY (journal_id) REFERENCES journals(id)
-                    ON UPDATE CASCADE ON DELETE RESTRICT"#,
+                    ON UPDATE CASCADE ON DELETE CASCADE"#,
         )
         .await?;
+        migration_sql::ensure_schema_foreign_keys(manager, &[FK_PRODUCT_JOURNAL_ITEM_JOURNAL])
+            .await?;
         conn.execute_unprepared(
             "CREATE INDEX IF NOT EXISTS idx_product_journal_entry_item_templates_product_id ON product_journal_entry_item_templates (product_id)",
         )
@@ -88,7 +90,6 @@ impl MigrationTrait for Migration {
                 product_id bigint NOT NULL UNIQUE
                     REFERENCES products(id) ON UPDATE CASCADE ON DELETE CASCADE,
                 journal_id bigint NOT NULL
-                    REFERENCES journals(id) ON UPDATE CASCADE ON DELETE RESTRICT
             )"#,
         )
         .await?;
@@ -135,6 +136,11 @@ impl MigrationTrait for Migration {
                     FOREIGN KEY (product_journal_entry_template_id)
                     REFERENCES product_journal_entry_templates(id)
                     ON UPDATE CASCADE ON DELETE CASCADE"#,
+        )
+        .await?;
+        migration_sql::ensure_schema_foreign_keys(
+            manager,
+            &[FK_PRODUCT_JOURNAL_ENTRY_TEMPLATES_JOURNAL],
         )
         .await?;
         Ok(())

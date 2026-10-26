@@ -5,22 +5,22 @@ use lariv_plugin_contacts::routes::{CompanyDetailRouteTag, ContactDetailRouteTag
 use lariv_plugin_finance_accounts::routes::JournalEntryDetailRouteTag;
 
 use lariv_core::components::{
-    ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay, DeleteConfirmation,
-    DetailHeader, FieldLink, FieldText, FieldTextarea, FieldTitle, FilterClauseView, FormOpts,
-    ListFilterBuilder, ManyToManyItem, ObjectList, PaginationPage, ShellChrome, SlotCapability,
-    SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TableListContent,
-    TablePagination, TableRow, breadcrumbs, button_download_route, button_modal_form,
-    button_modal_route, button_submit, column_sort_url, container_column, container_row,
-    data_table, data_table_list_refresh, delete_confirmation, detail, detail_header, field_link,
-    field_text, field_textarea, field_title, filter_error_banner, form, form_hx_get_route,
-    form_hx_post_main_url, form_hx_post_selector, form_hx_post_url, label, list_filter_builder,
-    modal, modal_keyed, page_size_only_filter_form_with_extras, pagination_pages,
-    row_attr_navigate, row_attr_select, row_attr_select_multi, sort_indicator,
-    table_button_bulk_actions, table_button_columns, table_button_filter, table_list_content,
-    table_pagination,
+    ButtonDownload, ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay,
+    DeleteConfirmation, DetailHeader, FieldLink, FieldText, FieldTextarea, FieldTitle,
+    FilterClauseView, FormOpts, HtmlAttrs, ListFilterBuilder, ManyToManyItem, ObjectList,
+    PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
+    TableColumnHeader, TableListContent, TablePagination, TableRow, breadcrumbs, button_download,
+    button_modal_form, button_modal_route, button_submit, column_sort_url, container_column,
+    container_row, data_table, data_table_list_refresh, delete_confirmation, detail, detail_header,
+    field_link, field_text, field_textarea, field_title, filter_error_banner, form,
+    form_hx_get_picker_route, form_hx_get_route, form_hx_post_main_url, form_hx_post_selector,
+    form_hx_post_url, label, list_filter_builder, modal, modal_keyed,
+    page_size_only_filter_form_with_extras, pagination_pages, row_attr_navigate, row_attr_select,
+    row_attr_select_multi, sort_indicator, table_button_bulk_actions, table_button_columns,
+    table_button_filter, table_list_content, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm, csrf_hidden_field};
-use lariv_core::http::ProvideRequestCaps;
+use lariv_core::http::{FkSelectGet, ProvideRequestCaps, RouteUrl};
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
@@ -31,8 +31,9 @@ use lariv_plugin_finance_accounts::accounting_detail_menu::{
     DetailMenuNavItem, detail_sidebar_menu,
 };
 use lariv_plugin_finance_accounts::templates::{
-    app_scaffold, app_scaffold_with_sidebar, layout_main_with_crumbs,
-    layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
+    app_scaffold, app_scaffold_with_sidebar, data_table_with_filter_errors,
+    layout_main_with_crumbs, layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
+    render_picker_pagination,
 };
 
 use crate::components::{
@@ -62,17 +63,17 @@ use super::routes::{
     DraftInvoiceBulkEditGetRouteTag, DraftInvoiceBulkEditPostRouteTag,
     DraftInvoiceBulkPostRouteTag, DraftInvoiceCreateGetRouteTag, DraftInvoiceCreatePostRouteTag,
     DraftInvoiceDeleteGetRouteTag, DraftInvoiceDeletePostRouteTag, DraftInvoiceDetailRouteTag,
-    DraftInvoiceEditGetRouteTag, DraftInvoiceEditPostRouteTag, DraftInvoicePdfModalRouteTag,
-    DraftInvoicePostGetRouteTag, InvoiceBulkPdfsRouteTag, InvoiceDefaultRouteTag,
-    InvoiceExcelExportRouteTag, InvoicePreferencesRouteTag, PaidInvoiceDetailRouteTag,
-    PaidInvoicePdfModalRouteTag, PartiallyPaidInvoiceDetailRouteTag,
+    DraftInvoiceEditGetRouteTag, DraftInvoiceEditPostRouteTag, DraftInvoiceMultiSelectRouteTag,
+    DraftInvoicePdfModalRouteTag, DraftInvoicePostGetRouteTag, InvoiceBulkPdfsRouteTag,
+    InvoiceDefaultRouteTag, InvoiceExcelExportRouteTag, InvoicePreferencesRouteTag,
+    PaidInvoiceDetailRouteTag, PaidInvoicePdfModalRouteTag, PartiallyPaidInvoiceDetailRouteTag,
     PartiallyPaidInvoicePdfModalRouteTag, PaymentBatchCreateGetRouteTag,
     PaymentBatchCreatePostRouteTag, PaymentBatchDetailRouteTag, PaymentCreateGetRouteTag,
     PaymentCreatePostRouteTag, PaymentDetailRouteTag, PaymentListRouteTag,
     PaymentPreferencesPostRouteTag, PaymentPreferencesRouteTag, PostedInvoiceBulkCancelGetRouteTag,
     PostedInvoiceBulkCancelPostRouteTag, PostedInvoiceBulkNewDraftRouteTag,
     PostedInvoiceCancelGetRouteTag, PostedInvoiceCancelRouteTag, PostedInvoiceDetailRouteTag,
-    PostedInvoiceNewDraftGetRouteTag, PostedInvoicePdfModalRouteTag,
+    PostedInvoiceFkSelectRouteTag, PostedInvoiceNewDraftGetRouteTag, PostedInvoicePdfModalRouteTag,
 };
 use lariv_core::list_filters::{FilterField, FilterRowError};
 
@@ -267,6 +268,34 @@ fn tab_href(tab: &str) -> String {
     lariv_core::http::RouteQueryBuilder::new(InvoiceDefaultRouteTag)
         .query("tab", tab)
         .build()
+}
+
+fn invoice_select_filter_form<K, M, R>(
+    fields: &[FilterField],
+    rows: &[FilterClauseView],
+    page_size: u32,
+    sort: &str,
+    route: R,
+    target_input: &str,
+    extra_filters: &str,
+) -> Markup
+where
+    K: SwapKey,
+    M: SwapKey,
+    R: RouteUrl + FkSelectGet<K, M>,
+{
+    list_filter_builder(ListFilterBuilder {
+        fields,
+        rows,
+        page_size,
+        sort,
+        attrs: form_hx_get_picker_route::<K, M, R>(route),
+        apply_label: "Apply Filters",
+        extra: html! {
+            input type="hidden" name="target_input" value=(target_input);
+            (PreEscaped(extra_filters))
+        },
+    })
 }
 
 fn invoice_hub_filter_form(page: &InvoiceHubPage) -> Markup {
@@ -990,13 +1019,18 @@ impl InvoiceHubPage {
             panel: invoice_hub_filter_form(self),
             ..Default::default()
         });
+        let excel_export = InvoiceExcelExportRouteTag.path();
         let actions = html! {
             (page_size_filter)
-            (button_download_route(
-                InvoiceExcelExportRouteTag,
-                "Export Excel",
-                "btn-outline btn-sm",
-            ))
+            (button_download(ButtonDownload {
+                label: "",
+                href: &excel_export,
+                icon_name: Some("arrow-down-tray"),
+                classes: "btn-square btn-outline btn-sm",
+                attrs: HtmlAttrs::new()
+                    .set("aria-label", "Export Excel")
+                    .set("title", "Export Excel"),
+            }))
             (draft_create)
             (bulk_actions)
         };
@@ -2516,6 +2550,11 @@ pub struct PostedInvoiceSelectRow {
 #[derive(Generic)]
 pub struct PostedInvoiceSelectPage {
     pub invoices: ObjectList<PostedInvoiceSelectRow>,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
+    /// Pre-rendered addon filter fields, matching the invoice hub.
+    pub extra_filters: String,
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
@@ -2583,18 +2622,37 @@ impl RenderPickerSelect<PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey
                 }
             })
             .collect();
-        let pagination = render_pagination::<PostedInvoiceSelectTableKey>(
+        let actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: invoice_select_filter_form::<
+                    PostedInvoiceSelectTableKey,
+                    PostedInvoiceSelectModalKey,
+                    PostedInvoiceFkSelectRouteTag,
+                >(
+                    &self.fields,
+                    &self.filters,
+                    self.page_size,
+                    &self.sort,
+                    PostedInvoiceFkSelectRouteTag,
+                    &self.target_input,
+                    &self.extra_filters,
+                ),
+                ..Default::default()
+            }))
+        };
+        let pagination = render_picker_pagination::<PostedInvoiceSelectModalKey>(
             &self.path_and_query,
             self.invoices.number,
             self.invoices.num_pages,
         );
-        data_table_list_refresh::<PostedInvoiceSelectTableKey>(
+        data_table_with_filter_errors::<PostedInvoiceSelectTableKey>(
             "Select Posted Invoice",
-            html! {},
+            actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }
@@ -2616,6 +2674,11 @@ pub struct DraftInvoiceSelectRow {
 #[derive(Generic)]
 pub struct DraftInvoiceSelectPage {
     pub invoices: ObjectList<DraftInvoiceSelectRow>,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
+    /// Pre-rendered addon filter fields, matching the invoice hub.
+    pub extra_filters: String,
     pub target_input: String,
     pub sort: String,
     pub path_and_query: String,
@@ -2691,18 +2754,37 @@ impl RenderPickerSelect<DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey>
                 children: Vec::new(),
             })
             .collect();
-        let pagination = render_pagination::<DraftInvoiceSelectTableKey>(
+        let actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: invoice_select_filter_form::<
+                    DraftInvoiceSelectTableKey,
+                    DraftInvoiceSelectModalKey,
+                    DraftInvoiceMultiSelectRouteTag,
+                >(
+                    &self.fields,
+                    &self.filters,
+                    self.page_size,
+                    &self.sort,
+                    DraftInvoiceMultiSelectRouteTag,
+                    &self.target_input,
+                    &self.extra_filters,
+                ),
+                ..Default::default()
+            }))
+        };
+        let pagination = render_picker_pagination::<DraftInvoiceSelectModalKey>(
             &self.path_and_query,
             self.invoices.number,
             self.invoices.num_pages,
         );
-        data_table_list_refresh::<DraftInvoiceSelectTableKey>(
+        data_table_with_filter_errors::<DraftInvoiceSelectTableKey>(
             "Select invoices",
-            html! {},
+            actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 }

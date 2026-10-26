@@ -374,6 +374,7 @@ impl FormWidget for ForeignKey {
                 placeholder: ph,
                 url: ctx.url_of(field.spec),
                 uid: field.spec.swap_key.unwrap_or(""),
+                search_key: field.spec.search_key.unwrap_or("Name"),
                 required: field.required,
                 ..Default::default()
             }),
@@ -543,6 +544,7 @@ mod tests {
             error_key: None,
             choices_key: None,
             placeholder: Some("Select a role..."),
+            search_key: None,
             hint: None,
             rows: None,
             multiple: false,

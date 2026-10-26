@@ -10,6 +10,10 @@
 //! Formulas are stored plainly: numeric constants are wrapped in `decimal(...)`
 //! when a formula is evaluated, so a credit line is just `-unit_rate`.
 
+use lariv_core::db::migration_sql::{
+    self, FK_PRODUCT_PREFERENCE_JOURNAL_ACCOUNT, FK_PRODUCT_PREFERENCE_JOURNAL_JOURNAL,
+    FK_PRODUCT_PREFERENCES_COST_ACCOUNT, FK_PRODUCT_PREFERENCES_INVENTORY_ACCOUNT,
+};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -22,10 +26,8 @@ CREATE TABLE IF NOT EXISTS product_preference_journal_items (
     updated_at timestamptz NULL,
     product_preferences_id bigint NOT NULL
         REFERENCES product_preferences(id) ON UPDATE CASCADE ON DELETE CASCADE,
-    journal_id bigint NOT NULL
-        REFERENCES journals(id) ON UPDATE CASCADE ON DELETE RESTRICT,
-    account_id bigint NOT NULL
-        REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    journal_id bigint NOT NULL,
+    account_id bigint NOT NULL,
     formula text NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_product_preference_journal_items_prefs_id
@@ -149,14 +151,6 @@ ALTER TABLE product_preferences
     DROP CONSTRAINT IF EXISTS fk_product_preferences_inventory_account_id,
     DROP CONSTRAINT IF EXISTS fk_product_preferences_cost_of_sales_account_id;
 
-ALTER TABLE product_preferences
-    ADD CONSTRAINT fk_product_preferences_inventory_account_id
-        FOREIGN KEY (inventory_account_id) REFERENCES accounts(id)
-        ON UPDATE CASCADE ON DELETE RESTRICT,
-    ADD CONSTRAINT fk_product_preferences_cost_of_sales_account_id
-        FOREIGN KEY (cost_of_sales_account_id) REFERENCES accounts(id)
-        ON UPDATE CASCADE ON DELETE RESTRICT;
-
 CREATE INDEX IF NOT EXISTS idx_product_preferences_inventory_account_id
     ON product_preferences (inventory_account_id);
 CREATE INDEX IF NOT EXISTS idx_product_preferences_cost_of_sales_account_id
@@ -167,11 +161,27 @@ CREATE INDEX IF NOT EXISTS idx_product_preferences_cost_of_sales_account_id
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager.get_connection().execute_unprepared(UP).await?;
+        migration_sql::ensure_schema_foreign_keys(
+            manager,
+            &[
+                FK_PRODUCT_PREFERENCE_JOURNAL_JOURNAL,
+                FK_PRODUCT_PREFERENCE_JOURNAL_ACCOUNT,
+            ],
+        )
+        .await?;
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager.get_connection().execute_unprepared(DOWN).await?;
+        migration_sql::ensure_schema_foreign_keys(
+            manager,
+            &[
+                FK_PRODUCT_PREFERENCES_INVENTORY_ACCOUNT,
+                FK_PRODUCT_PREFERENCES_COST_ACCOUNT,
+            ],
+        )
+        .await?;
         Ok(())
     }
 }

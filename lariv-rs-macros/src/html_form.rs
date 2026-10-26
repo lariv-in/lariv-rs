@@ -180,6 +180,11 @@ fn field_spec_tokens(f: &PreparedField) -> proc_macro2::TokenStream {
     let show = opts_str(f.form.show.as_deref());
     let disabled = opts_str(f.form.disabled.as_deref());
     let placeholder = opts_str(f.form.placeholder.as_deref());
+    let search_key = match f.form.search_key.as_deref() {
+        Some(key) => quote! { search_key: #key, },
+        None => quote! {},
+    };
+    let search_key_opt = opts_str(f.form.search_key.as_deref());
     let accept = opts_str(f.form.accept.as_deref());
     let language = opts_str(f.form.language.as_deref());
     let row = opts_str(f.form.row.as_deref());
@@ -216,6 +221,7 @@ fn field_spec_tokens(f: &PreparedField) -> proc_macro2::TokenStream {
                             placeholder: ph,
                             url,
                             uid: field.spec.swap_key.unwrap_or(""),
+                            #search_key
                             required: field.required,
                             ..Default::default()
                         },
@@ -271,6 +277,7 @@ fn field_spec_tokens(f: &PreparedField) -> proc_macro2::TokenStream {
             error_key: #error,
             choices_key: #choices,
             placeholder: #placeholder,
+            search_key: #search_key_opt,
             hint: #hint,
             rows: #rows,
             multiple: #multiple,
@@ -919,6 +926,7 @@ fn expand_enum(input: &DeriveInput, args: &HtmlFormArgs) -> Result<proc_macro2::
                         error_key: None,
                         choices_key: None,
                         placeholder: None,
+                        search_key: None,
                         hint: None,
                         rows: None,
                         multiple: false,
@@ -1239,6 +1247,7 @@ struct FormAttrs {
     show: Option<String>,
     disabled: Option<String>,
     placeholder: Option<String>,
+    search_key: Option<String>,
     accept: Option<String>,
     language: Option<String>,
     row: Option<String>,
@@ -1329,6 +1338,10 @@ fn parse_form_attr_list(attrs: &[syn::Attribute]) -> Result<FormAttrs> {
             }
             if meta.path.is_ident("placeholder") {
                 out.placeholder = Some(parse_str(&meta)?);
+                return Ok(());
+            }
+            if meta.path.is_ident("search_key") {
+                out.search_key = Some(parse_str(&meta)?);
                 return Ok(());
             }
             if meta.path.is_ident("accept") {
