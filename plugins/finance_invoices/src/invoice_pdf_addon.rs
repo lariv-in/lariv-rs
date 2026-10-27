@@ -9,6 +9,8 @@ use async_trait::async_trait;
 use sea_orm::DatabaseConnection;
 use serde_json::{Map, Value};
 
+use crate::invoice_addon_key::InvoiceAddonKey;
+
 static ADDONS: OnceLock<Mutex<Vec<&'static dyn InvoicePdfContextAddon>>> = OnceLock::new();
 
 fn addon_list() -> &'static Mutex<Vec<&'static dyn InvoicePdfContextAddon>> {
@@ -23,7 +25,7 @@ pub trait InvoicePdfContextAddon: Send + Sync {
     async fn extra_context(
         &self,
         db: &DatabaseConnection,
-        draft_invoice_id: i64,
+        key: InvoiceAddonKey,
     ) -> Result<Value, String>;
 
     fn sample_extra_context(&self) -> Value;
@@ -53,14 +55,14 @@ fn merge_objects(into: &mut Map<String, Value>, extra: Value) {
     }
 }
 
-/// Merge live extras from all registered addons for `draft_invoice_id`.
+/// Merge live extras from all registered addons for `key`.
 pub async fn collect_invoice_pdf_extras(
     db: &DatabaseConnection,
-    draft_invoice_id: i64,
+    key: InvoiceAddonKey,
 ) -> Result<Value, String> {
     let mut out = Map::new();
     for addon in addons() {
-        merge_objects(&mut out, addon.extra_context(db, draft_invoice_id).await?);
+        merge_objects(&mut out, addon.extra_context(db, key).await?);
     }
     Ok(Value::Object(out))
 }

@@ -9,6 +9,8 @@ use std::sync::{Mutex, OnceLock};
 use async_trait::async_trait;
 use sea_orm::DatabaseConnection;
 
+use crate::invoice_addon_key::InvoiceAddonKey;
+
 static ADDONS: OnceLock<Mutex<Vec<&'static dyn InvoiceHubTableAddon>>> = OnceLock::new();
 
 fn addon_list() -> &'static Mutex<Vec<&'static dyn InvoiceHubTableAddon>> {
@@ -26,12 +28,12 @@ pub trait InvoiceHubTableAddon: Send + Sync {
     /// Header label shown in the table.
     fn column_label(&self) -> &'static str;
 
-    /// Cell text keyed by draft invoice id. Missing keys render empty.
+    /// Cell text keyed by [`InvoiceAddonKey`]. Missing keys render empty.
     async fn cell_values(
         &self,
         db: &DatabaseConnection,
-        draft_invoice_ids: &[i64],
-    ) -> HashMap<i64, String>;
+        keys: &[InvoiceAddonKey],
+    ) -> HashMap<InvoiceAddonKey, String>;
 }
 
 /// Register a hub-table column addon (idempotent by [`InvoiceHubTableAddon::id`]).
@@ -80,21 +82,21 @@ pub async fn enrich_hub_rows(
         return columns;
     }
 
-    let mut draft_ids: Vec<i64> = rows.iter().filter_map(|r| r.draft_invoice_id).collect();
-    draft_ids.sort_unstable();
-    draft_ids.dedup();
+    let mut keys: Vec<InvoiceAddonKey> = rows.iter().filter_map(|r| r.addon_key).collect();
+    keys.sort_by_key(|k| (k.is_posted(), k.id()));
+    keys.dedup();
 
     let mut maps = Vec::with_capacity(registered.len());
     for addon in &registered {
-        maps.push(addon.cell_values(db, &draft_ids).await);
+        maps.push(addon.cell_values(db, &keys).await);
     }
 
     for row in rows.iter_mut() {
         row.extra_cells = maps
             .iter()
             .map(|m| {
-                row.draft_invoice_id
-                    .and_then(|id| m.get(&id).cloned())
+                row.addon_key
+                    .and_then(|key| m.get(&key).cloned())
                     .unwrap_or_default()
             })
             .collect();

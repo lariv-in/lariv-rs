@@ -21,217 +21,33 @@ use crate::{
         CustomSourceDocIndexCreateFormField,
     },
     keys::{
-        CustomSourceDocCreateModalKey, CustomSourceDocDeleteModalKey,
-        CustomSourceDocIndexCreateModalKey, CustomSourceDocIndexTableKey, CustomSourceDocTableKey,
+        CustomSourceDocDeleteModalKey, CustomSourceDocIndexCreateModalKey,
+        CustomSourceDocIndexTableKey, CustomSourceDocTableKey,
     },
     routes::{
-        CustomSourceDocCreateGetRouteTag, CustomSourceDocCreatePostRouteTag,
         CustomSourceDocDeleteGetRouteTag, CustomSourceDocDeletePostRouteTag,
         CustomSourceDocDetailRouteTag, CustomSourceDocEditGetRouteTag,
         CustomSourceDocIndexCreateGetRouteTag, CustomSourceDocIndexCreatePostRouteTag,
-        CustomSourceDocIndexRouteTag, JournalCustomSourceDocsRouteTag, JournalDetailRouteTag,
-        JournalEntryDetailRouteTag, JournalListRouteTag,
+        CustomSourceDocIndexRouteTag, JournalDetailRouteTag, JournalEntryDetailRouteTag,
     },
 };
 
 use super::common::{
-    app_scaffold, app_scaffold_with_sidebar, layout_main_with_crumbs,
-    layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs, render_pagination,
+    app_scaffold, layout_main_with_crumbs, layout_with_sidebar_crumbs, render_pagination,
 };
-use super::journals::journal_detail_menu;
 
-fn custom_source_doc_crumbs(
-    journal_id: i64,
-    journal_name: &str,
-    current: &str,
-    current_is_list: bool,
-) -> Markup {
-    let list_url = JournalListRouteTag.url();
-    let journal_url = JournalDetailRouteTag::new(journal_id).url();
-    let docs_url = JournalCustomSourceDocsRouteTag::new(journal_id).url();
-    if current_is_list {
-        breadcrumbs(&[
-            Crumb {
-                label: "Journals",
-                href: Some(&list_url),
-            },
-            Crumb {
-                label: journal_name,
-                href: Some(&journal_url),
-            },
-            Crumb {
-                label: current,
-                href: None,
-            },
-        ])
-    } else {
-        breadcrumbs(&[
-            Crumb {
-                label: "Journals",
-                href: Some(&list_url),
-            },
-            Crumb {
-                label: journal_name,
-                href: Some(&journal_url),
-            },
-            Crumb {
-                label: "Custom source docs",
-                href: Some(&docs_url),
-            },
-            Crumb {
-                label: current,
-                href: None,
-            },
-        ])
-    }
-}
-
-#[derive(Clone, Generic)]
-pub struct CustomSourceDocRow {
-    pub id: i64,
-    pub title: String,
-    pub created_by: String,
-    pub created_at: String,
-    pub journal_entry_id: i64,
-}
-
-#[derive(Generic)]
-pub struct CustomSourceDocListPage {
-    pub journal_id: i64,
-    pub journal_name: String,
-    pub rows: Vec<CustomSourceDocRow>,
-    pub can_create: bool,
-}
-
-impl CustomSourceDocListPage {
-    fn menu(&self) -> Markup {
-        journal_detail_menu(self.journal_id, &self.journal_name, "custom-source-docs")
-    }
-
-    fn table(&self) -> Markup {
-        let headers = [
-            TableColumnHeader {
-                key: "Title",
-                label: "Title",
-                sort_url: None,
-                push_url: false,
-            },
-            TableColumnHeader {
-                key: "CreatedBy",
-                label: "Created by",
-                sort_url: None,
-                push_url: false,
-            },
-            TableColumnHeader {
-                key: "CreatedAt",
-                label: "Created at",
-                sort_url: None,
-                push_url: false,
-            },
-            TableColumnHeader {
-                key: "JournalEntry",
-                label: "Journal entry",
-                sort_url: None,
-                push_url: false,
-            },
-        ];
-        let rows: Vec<TableRow> = self
-            .rows
-            .iter()
-            .map(|row| {
-                let entry_href = JournalEntryDetailRouteTag::new(row.journal_entry_id).url();
-                let entry_label = format!("#{}", row.journal_entry_id);
-                TableRow {
-                    attrs: lariv_core::components::row_attr_navigate_route(
-                        CustomSourceDocDetailRouteTag::new(row.id),
-                    ),
-                    cells: vec![
-                        field_text(FieldText {
-                            value: &row.title,
-                            classes: "",
-                        }),
-                        field_text(FieldText {
-                            value: &row.created_by,
-                            classes: "",
-                        }),
-                        field_text(FieldText {
-                            value: &row.created_at,
-                            classes: "",
-                        }),
-                        field_link(FieldLink {
-                            href: &entry_href,
-                            label: &entry_label,
-                            classes: "",
-                        }),
-                    ],
-                    key: String::new(),
-                    children: Vec::new(),
-                }
-            })
-            .collect();
-        let actions = if self.can_create {
-            let create_url = CustomSourceDocCreateGetRouteTag::new(self.journal_id).url();
-            let create_post = CustomSourceDocCreatePostRouteTag::new(self.journal_id).path();
-            button_modal_form(ButtonModalForm {
-                name: "p_finance_accounts.CustomSourceDocForm",
-                href: &create_url,
-                form_post_url: &create_post,
-                modal_uid: CustomSourceDocCreateModalKey::ID,
-                icon_name: Some("plus"),
-                classes: "btn-square btn-outline btn-sm",
-                ..Default::default()
-            })
-        } else {
-            html! {}
-        };
-        data_table_list::<CustomSourceDocTableKey>(
-            "Custom source docs",
-            actions,
-            &headers,
-            &rows,
-            html! {},
-        )
-    }
-
-    fn body(&self) -> Markup {
-        html! {
-            (detail(html! {
-                (container_column("", html! {
-                    (self.table())
-                }))
-            }))
-        }
-    }
-
-    fn crumbs(&self) -> Markup {
-        custom_source_doc_crumbs(
-            self.journal_id,
-            &self.journal_name,
-            "Custom source docs",
-            true,
-        )
-    }
-}
-
-impl RenderAppPane for CustomSourceDocListPage {
-    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
-        layout_with_entity_sidebar_crumbs(self.menu(), self.crumbs(), self.body())
-    }
-    fn render_main(&self) -> lariv_core::components::MainContentHtml {
-        layout_main_with_crumbs(self.crumbs(), self.body())
-    }
-}
-
-impl RenderTemplate for CustomSourceDocListPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar(
-            "Custom source docs",
-            chrome,
-            self.menu(),
-            self.crumbs(),
-            self.body(),
-        )
-    }
+fn custom_source_doc_crumbs(current: &str) -> Markup {
+    let index_url = CustomSourceDocIndexRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Transactions",
+            href: Some(&index_url),
+        },
+        Crumb {
+            label: current,
+            href: None,
+        },
+    ])
 }
 
 #[derive(Clone, Generic)]
@@ -245,8 +61,6 @@ pub struct CustomSourceDocLineRow {
 #[derive(Generic)]
 pub struct CustomSourceDocDetailPage {
     pub id: i64,
-    pub journal_id: i64,
-    pub journal_name: String,
     pub title: String,
     pub content: String,
     pub created_by: String,
@@ -257,10 +71,6 @@ pub struct CustomSourceDocDetailPage {
 }
 
 impl CustomSourceDocDetailPage {
-    fn menu(&self) -> Markup {
-        journal_detail_menu(self.journal_id, &self.journal_name, "custom-source-docs")
-    }
-
     fn lines_table(&self) -> Markup {
         let headers = [
             TableColumnHeader {
@@ -365,13 +175,17 @@ impl CustomSourceDocDetailPage {
     }
 
     fn crumbs(&self) -> Markup {
-        custom_source_doc_crumbs(self.journal_id, &self.journal_name, &self.title, false)
+        custom_source_doc_crumbs(&self.title)
+    }
+
+    fn path(&self) -> String {
+        CustomSourceDocDetailRouteTag::new(self.id).url()
     }
 }
 
 impl RenderAppPane for CustomSourceDocDetailPage {
     fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
-        layout_with_entity_sidebar_crumbs(self.menu(), self.crumbs(), self.body())
+        layout_with_sidebar_crumbs(&self.path(), self.crumbs(), self.body())
     }
     fn render_main(&self) -> lariv_core::components::MainContentHtml {
         layout_main_with_crumbs(self.crumbs(), self.body())
@@ -380,19 +194,13 @@ impl RenderAppPane for CustomSourceDocDetailPage {
 
 impl RenderTemplate for CustomSourceDocDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar(
-            "Custom source doc",
-            chrome,
-            self.menu(),
-            self.crumbs(),
-            self.body(),
-        )
+        app_scaffold("Transaction", chrome, self.crumbs(), self.body(), &self.path())
     }
 }
 
 #[derive(Generic)]
 pub struct CustomSourceDocFormPage {
-    pub journal_id: i64,
+    pub id: i64,
     pub journal_name: String,
     pub heading: String,
     pub post_path: String,
@@ -404,10 +212,6 @@ pub struct CustomSourceDocFormPage {
 }
 
 impl CustomSourceDocFormPage {
-    fn menu(&self) -> Markup {
-        journal_detail_menu(self.journal_id, &self.journal_name, "custom-source-docs")
-    }
-
     fn body(&self) -> Markup {
         let inputs = CustomSourceDocForm::render_inputs(
             &FormCtx::form::<CustomSourceDocForm>(CsrfToken::current())
@@ -451,13 +255,17 @@ impl CustomSourceDocFormPage {
     }
 
     fn crumbs(&self) -> Markup {
-        custom_source_doc_crumbs(self.journal_id, &self.journal_name, &self.heading, false)
+        custom_source_doc_crumbs(&self.heading)
+    }
+
+    fn path(&self) -> String {
+        CustomSourceDocEditGetRouteTag::new(self.id).url()
     }
 }
 
 impl RenderAppPane for CustomSourceDocFormPage {
     fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
-        layout_with_entity_sidebar_crumbs(self.menu(), self.crumbs(), self.body())
+        layout_with_sidebar_crumbs(&self.path(), self.crumbs(), self.body())
     }
     fn render_main(&self) -> lariv_core::components::MainContentHtml {
         layout_main_with_crumbs(self.crumbs(), self.body())
@@ -466,13 +274,7 @@ impl RenderAppPane for CustomSourceDocFormPage {
 
 impl RenderTemplate for CustomSourceDocFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar(
-            "Custom source doc",
-            chrome,
-            self.menu(),
-            self.crumbs(),
-            self.body(),
-        )
+        app_scaffold("Transaction", chrome, self.crumbs(), self.body(), &self.path())
     }
 }
 
@@ -522,7 +324,7 @@ impl RenderTemplate for CustomSourceDocDeleteModalPage {
             form(
                 &CsrfToken::current(),
                 lariv_core::components::FormOpts {
-                    title: "Delete custom source doc",
+                    title: "Delete transaction",
                     subtitle: "This cannot be undone.",
                     attrs: form_hx_post_route::<CustomSourceDocDeleteModalKey, _>(
                         CustomSourceDocDeletePostRouteTag::new(self.id),
@@ -559,7 +361,7 @@ pub struct CustomSourceDocIndexRow {
 
 fn custom_source_doc_index_crumbs() -> Markup {
     breadcrumbs(&[Crumb {
-        label: "Custom source docs",
+        label: "Transactions",
         href: None,
     }])
 }
@@ -705,7 +507,7 @@ impl CustomSourceDocIndexPage {
             self.docs.num_pages,
         );
         super::data_table_with_filter_errors::<CustomSourceDocIndexTableKey>(
-            "Custom source docs",
+            "Transactions",
             actions,
             &headers,
             &rows,
@@ -736,80 +538,12 @@ impl RenderAppPane for CustomSourceDocIndexPage {
 impl RenderTemplate for CustomSourceDocIndexPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
         app_scaffold(
-            "Custom source docs",
+            "Transactions",
             chrome,
             custom_source_doc_index_crumbs(),
             self.body(),
             &self.path_and_query,
         )
-    }
-}
-
-#[derive(Generic)]
-pub struct CustomSourceDocCreateModalPage {
-    pub form_name: String,
-    pub refresh_table: String,
-    pub journal_id: i64,
-    pub journal_name: String,
-    pub title: String,
-    pub content: String,
-    pub lines: String,
-    pub error: String,
-    pub can_save: bool,
-}
-
-impl RenderTemplate for CustomSourceDocCreateModalPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let form_name = if self.form_name.is_empty() {
-            "p_finance_accounts.CustomSourceDocForm"
-        } else {
-            self.form_name.as_str()
-        };
-        let body = if self.can_save {
-            let inputs = CustomSourceDocForm::render_inputs(
-                &FormCtx::form::<CustomSourceDocForm>(CsrfToken::current())
-                    .value(CustomSourceDocFormField::Title, &self.title)
-                    .value(CustomSourceDocFormField::Content, &self.content)
-                    .value(CustomSourceDocFormField::Lines, &self.lines),
-            );
-            form(
-                &CsrfToken::current(),
-                lariv_core::components::FormOpts {
-                    title: "New custom source doc",
-                    subtitle: &self.journal_name,
-                    attrs: form_hx_post_url::<CustomSourceDocCreateModalKey>(
-                        &modal_create_post_url(
-                            CustomSourceDocCreatePostRouteTag::new(self.journal_id),
-                            form_name,
-                            &self.refresh_table,
-                        ),
-                    ),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs,
-                    actions: html! {
-                        (container_row("flex justify-end gap-2 mt-2", html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Save",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
-                        }))
-                    },
-                    ..Default::default()
-                },
-            )
-        } else {
-            let err = if self.error.is_empty() {
-                "This journal is immutable."
-            } else {
-                self.error.as_str()
-            };
-            html! {
-                h3 class="font-bold text-lg" { "New custom source doc" }
-                div class="alert alert-warning my-2 text-sm" { (err) }
-            }
-        };
-        modal_keyed::<CustomSourceDocCreateModalKey>("", body)
     }
 }
 
@@ -851,7 +585,7 @@ impl RenderTemplate for CustomSourceDocIndexCreateModalPage {
             form(
                 &CsrfToken::current(),
                 lariv_core::components::FormOpts {
-                    title: "New custom source doc",
+                    title: "New transaction",
                     subtitle: "",
                     attrs: form_hx_post_url::<CustomSourceDocIndexCreateModalKey>(
                         &modal_create_post_url(

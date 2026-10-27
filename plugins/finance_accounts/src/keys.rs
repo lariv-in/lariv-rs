@@ -40,10 +40,6 @@ lariv_core::swap_key!(
     "finance-journal-entry-delete-modal"
 );
 lariv_core::swap_key!(
-    CustomSourceDocCreateModalKey,
-    "finance-custom-source-doc-create-modal"
-);
-lariv_core::swap_key!(
     CustomSourceDocIndexCreateModalKey,
     "finance-custom-source-doc-index-create-modal"
 );

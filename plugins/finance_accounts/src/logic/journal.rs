@@ -532,12 +532,12 @@ pub async fn cascade_delete_preview(
                 .await?
                 .unwrap_or_default();
         let label = if title.trim().is_empty() {
-            format!("Custom source doc #{id}")
+            format!("Transaction #{id}")
         } else {
             title
         };
         items.push(CascadeDeleteItem {
-            kind: "Custom source doc".into(),
+            kind: "Transaction".into(),
             label,
             url: registry
                 .type_detail_url("p_finance_accounts.CustomSourceDoc", id)

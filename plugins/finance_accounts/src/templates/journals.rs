@@ -109,18 +109,11 @@ fn journal_entry_crumbs(journal_id: i64, journal_label: &str, entry_label: &str)
 
 pub(crate) fn journal_detail_menu(id: i64, name: &str, active: &str) -> Markup {
     let menu_title = format!("Journal: {name}");
-    let nav = vec![
-        DetailMenuNavItem {
-            title: "Journal Detail",
-            url: JournalDetailRouteTag::new(id).url(),
-            active: active == "detail",
-        },
-        DetailMenuNavItem {
-            title: "Custom Source Docs",
-            url: crate::routes::JournalCustomSourceDocsRouteTag::new(id).url(),
-            active: active == "custom-source-docs",
-        },
-    ];
+    let nav = vec![DetailMenuNavItem {
+        title: "Journal Detail",
+        url: JournalDetailRouteTag::new(id).url(),
+        active: active == "detail",
+    }];
     detail_sidebar_menu(menu_title, &nav, None, html! {})
 }
 

@@ -16,6 +16,7 @@ pub mod hub_filter;
 pub mod hub_filter_addon;
 pub mod hub_sort;
 pub mod hub_table_addon;
+pub mod invoice_addon_key;
 pub mod invoice_pdf_addon;
 pub mod invoice_pdf_assets;
 pub mod invoice_pdf_template;
@@ -33,6 +34,7 @@ pub mod state;
 pub mod templates;
 pub mod xlsx;
 
+pub use invoice_addon_key::InvoiceAddonKey;
 pub use invoice_pdf_assets::VnodeImageContext;
 pub use invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE;
 pub use payment_term_kind::{PaymentTermAmountKind, PaymentTermDateKind};

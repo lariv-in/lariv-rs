@@ -353,7 +353,7 @@ impl AccountingSidebarRegistrar for BaseHook {
         ))
         .push(link::<CustomSourceDocIndexRouteTag>(
             "custom-source-docs",
-            "Custom source docs",
+            "Transactions",
             35,
             Some("clipboard-document-list"),
         ))
@@ -488,16 +488,6 @@ mod tests {
         assert_eq!(
             active_section_for_path(links, &format!("{}/9", CustomSourceDocIndexRouteTag::PATH)),
             Some("custom-source-docs")
-        );
-        assert_eq!(
-            active_section_for_path(
-                links,
-                &format!(
-                    "{}/1/custom-source-docs",
-                    route_dir(crate::routes::JournalDetailRouteTag::PATH)
-                )
-            ),
-            Some("journals")
         );
     }
 

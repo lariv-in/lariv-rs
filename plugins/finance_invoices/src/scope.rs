@@ -149,12 +149,6 @@ pub fn sql_settlement_posted_not_cancelled(table: &str) -> sea_orm::sea_query::S
     ))
 }
 
-pub fn sql_draft_not_posted() -> sea_orm::sea_query::SimpleExpr {
-    Expr::cust(
-        "NOT EXISTS (SELECT 1 FROM posted_invoices p WHERE p.draft_invoice_id = draft_invoices.id)",
-    )
-}
-
 /// Hub list URL for a tab (`drafts`, `posted`, `paid`, `partial`, `cancelled`).
 pub fn hub_tab_url(tab: &str) -> String {
     lariv_core::http::RouteQueryBuilder::new(crate::routes::InvoiceDefaultRouteTag)
@@ -169,15 +163,9 @@ pub fn payments_tab_url(tab: &str) -> String {
         .build()
 }
 
-/// Draft still listed under the drafts hub tab (not deleted, not posted).
+/// Draft still listed under the drafts hub tab.
 pub async fn find_active_draft(db: &DatabaseConnection, id: i64) -> Option<draft_invoice::Model> {
-    lariv_core::web::opt_or_log(
-        DraftInvoiceEntity::find_by_id(id)
-            .filter(sql_draft_not_posted())
-            .one(db)
-            .await,
-        "find by id",
-    )
+    lariv_core::web::opt_or_log(DraftInvoiceEntity::find_by_id(id).one(db).await, "find by id")
 }
 
 /// Posted invoice still listed under the posted hub tab.

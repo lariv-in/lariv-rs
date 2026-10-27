@@ -11,17 +11,23 @@ pub struct Model {
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub draft_invoice_id: i64,
-    pub service_id: i64,
+    /// Null after the service is deleted (`ON DELETE SET NULL`).
+    pub service_id: Option<i64>,
+    pub service_name: String,
+    pub service_reference: Option<String>,
+    pub service_remarks: Option<String>,
+    pub sac_code: i64,
+    /// Service variable schema JSON (name → type).
+    pub variable_types: String,
+    pub base_price_formula: String,
+    pub sales_price_formula: String,
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
     pub rate: Decimal,
-    /// Number of products. Multiplies `rate`, the price of one product.
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
     pub quantity: Decimal,
-    /// Raw variable values typed on the line, as a JSON object.
     pub variable_values: String,
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
     pub pre_tax_amount: Decimal,
-    /// Optional note shown with this service line.
     pub remarks: Option<String>,
 }
 

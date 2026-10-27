@@ -221,28 +221,6 @@ pub async fn ensure_posting_accounts(
     Ok(())
 }
 
-pub async fn list_for_journal(
-    db: &DatabaseConnection,
-    journal_id: i64,
-) -> Result<Vec<custom_source_doc::Model>, String> {
-    let entries = JournalEntryEntity::find()
-        .filter(journal_entry::Column::JournalId.eq(journal_id))
-        .all(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    let ids: Vec<i64> = entries.iter().map(|entry| entry.id).collect();
-    if ids.is_empty() {
-        return Ok(Vec::new());
-    }
-    CustomSourceDocEntity::find()
-        .filter(custom_source_doc::Column::JournalEntryId.is_in(ids))
-        .order_by_desc(custom_source_doc::Column::CreatedAt)
-        .order_by_desc(custom_source_doc::Column::Id)
-        .all(db)
-        .await
-        .map_err(|e| e.to_string())
-}
-
 pub async fn lines_form_value(
     db: &DatabaseConnection,
     journal_entry_id: i64,
@@ -342,7 +320,7 @@ pub async fn update_custom_source_doc(
         .one(db)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Custom source document not found".to_string())?;
+        .ok_or_else(|| "Transaction not found".to_string())?;
     let entry = JournalEntryEntity::find_by_id(model.journal_entry_id)
         .one(db)
         .await
@@ -376,7 +354,7 @@ pub async fn delete_custom_source_doc(db: &DatabaseConnection, id: i64) -> Resul
         .one(db)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Custom source document not found".to_string())?;
+        .ok_or_else(|| "Transaction not found".to_string())?;
     let entry = JournalEntryEntity::find_by_id(model.journal_entry_id)
         .one(db)
         .await

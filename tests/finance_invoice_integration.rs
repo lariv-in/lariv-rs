@@ -271,7 +271,8 @@ async fn create_draft_invoice_via_http() {
         .await
         .expect("lines");
     assert_eq!(lines.len(), 1);
-    assert_eq!(lines[0].product_id, prod.id);
+    assert_eq!(lines[0].product_id, Some(prod.id));
+    assert_eq!(lines[0].product_name, prod.name);
     assert_eq!(lines[0].quantity, Decimal::from(2));
     assert_eq!(lines[0].rate, Decimal::from(50));
     assert_eq!(lines[0].pre_tax_amount, Decimal::from(100));
@@ -459,7 +460,8 @@ async fn create_draft_invoice_via_rune_env() {
         .expect("lines");
     assert_eq!(lines.len(), 1);
     let line = lines.first().expect("invoice line");
-    assert_eq!(line.product_id, prod.id);
+    assert_eq!(line.product_id, Some(prod.id));
+    assert_eq!(line.product_name, prod.name);
     assert_eq!(line.quantity, Decimal::from(2));
     assert_eq!(line.rate, Decimal::from(50));
     assert_eq!(line.pre_tax_amount, Decimal::from(100));
@@ -880,7 +882,14 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
         .expect("service draft");
     draft_invoice_service_line::ActiveModel {
         draft_invoice_id: Set(service_draft.id),
-        service_id: Set(service.id),
+        service_id: Set(Some(service.id)),
+        service_name: Set(service.name.clone()),
+        service_reference: Set(service.reference.clone()),
+        service_remarks: Set(service.remarks.clone()),
+        sac_code: Set(service.sac_code),
+        variable_types: Set(service.variables.clone()),
+        base_price_formula: Set(service.base_price_formula.clone()),
+        sales_price_formula: Set(service.sales_price_formula.clone()),
         rate: Set(Decimal::ONE),
         quantity: Set(Decimal::ONE),
         variable_values: Set("{}".into()),

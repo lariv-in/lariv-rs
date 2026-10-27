@@ -45,7 +45,7 @@ impl SourceDocInstance for CustomSourceDocInstance {
 
     fn display_name(&self) -> String {
         if self.title.trim().is_empty() {
-            format!("Custom source doc #{}", self.id)
+            format!("Transaction #{}", self.id)
         } else {
             self.title.clone()
         }
@@ -67,7 +67,7 @@ impl SourceDocType for CustomSourceDocType {
     }
 
     fn display_name(&self) -> &str {
-        "Custom Source Doc"
+        "Transaction"
     }
 
     fn detail_url(&self, id: i64) -> String {

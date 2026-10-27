@@ -224,24 +224,15 @@ pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> St
 
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {
-        let product = lariv_core::web::opt_or_log(
-            ProductEntity::find_by_id(ln.product_id).one(db).await,
-            "find by id",
-        );
-        let has_formula = product
-            .as_ref()
-            .is_some_and(|p| pricing::has_variable_pricing(&p.variables));
-        let variable_rows = product
-            .as_ref()
-            .map(|p| variable_rows_for_line(&p.variables, has_formula, &ln.variable_values))
-            .unwrap_or_default();
-        let product_label = product.map(|p| p.name).unwrap_or_default();
+        let has_formula = pricing::has_variable_pricing(&ln.variable_types);
+        let variable_rows =
+            variable_rows_for_line(&ln.variable_types, has_formula, &ln.variable_values);
         let tax_ids = load_draft_line_tax_ids(db, ln.id).await.unwrap_or_default();
         rows.push(DraftLineFormRow {
-            product_id: ln.product_id,
+            product_id: ln.product_id.unwrap_or(0),
             quantity: decimal::decimal_display(ln.quantity),
             rate: decimal::decimal_display(ln.rate),
-            product_label,
+            product_label: ln.product_name,
             fk_slot: format!("InvoiceLineProduct_{draft_id}_{}", ln.id),
             tax_ids,
             has_formula,
@@ -296,7 +287,8 @@ pub async fn invoice_header_tax_labels(db: &DatabaseConnection, tax_ids: &[i64])
 
 async fn build_line_display_row(
     db: &DatabaseConnection,
-    product_id: i64,
+    product_name: &str,
+    variable_types: &str,
     quantity: Decimal,
     rate: Decimal,
     variable_values: &str,
@@ -305,19 +297,12 @@ async fn build_line_display_row(
     tax_ids: &[i64],
     currency: &CurrencyFormat,
 ) -> InvoiceGoodsLineDisplayRow {
-    let product = lariv_core::web::opt_or_log(
-        ProductEntity::find_by_id(product_id).one(db).await,
-        "find by id",
-    );
-    let product_name = product
-        .as_ref()
-        .map(|p| p.name.clone())
-        .unwrap_or_else(|| format!("#{product_id}"));
-    let inputs = product
-        .as_ref()
-        .filter(|p| pricing::has_variable_pricing(&p.variables))
-        .and_then(|p| pricing::format_variable_inputs(&p.variables, variable_values))
-        .unwrap_or_else(|| pricing::inputs_display(variable_values, quantity, rate));
+    let inputs = if pricing::has_variable_pricing(variable_types) {
+        pricing::format_variable_inputs(variable_types, variable_values)
+            .unwrap_or_else(|| pricing::inputs_display(variable_values, quantity, rate))
+    } else {
+        pricing::inputs_display(variable_values, quantity, rate)
+    };
     let taxes = load_taxes_by_ids(db, tax_ids).await.unwrap_or_default();
     let line_taxes = if taxes.is_empty() {
         "—".to_string()
@@ -327,7 +312,7 @@ async fn build_line_display_row(
     let (untaxed, levied, withholding, net) =
         crate::logic::tax_calculations::invoice_line_amounts(pre_tax, &taxes);
     InvoiceGoodsLineDisplayRow {
-        product: product_name,
+        product: product_name.to_string(),
         remarks: crate::logic::draft::optional_display(remarks),
         inputs,
         quantity: decimal::decimal_display(quantity),
@@ -356,13 +341,15 @@ pub async fn draft_invoice_goods_line_display_rows(
     let mut journal_id = None;
     let mut mixed_journals = false;
     for ln in &lines {
-        if let Ok(Some(template)) =
-            lariv_plugin_finance_products::journal_template::load_template(db, ln.product_id).await
-        {
-            match journal_id {
-                Some(existing) if existing != template.journal_id => mixed_journals = true,
-                None => journal_id = Some(template.journal_id),
-                _ => {}
+        if let Some(product_id) = ln.product_id {
+            if let Ok(Some(template)) =
+                lariv_plugin_finance_products::journal_template::load_template(db, product_id).await
+            {
+                match journal_id {
+                    Some(existing) if existing != template.journal_id => mixed_journals = true,
+                    None => journal_id = Some(template.journal_id),
+                    _ => {}
+                }
             }
         }
     }
@@ -378,7 +365,8 @@ pub async fn draft_invoice_goods_line_display_rows(
         rows.push(
             build_line_display_row(
                 db,
-                ln.product_id,
+                &ln.product_name,
+                &ln.variable_types,
                 ln.quantity,
                 ln.rate,
                 &ln.variable_values,
@@ -417,7 +405,8 @@ pub async fn posted_invoice_goods_line_display_rows(
         rows.push(
             build_line_display_row(
                 db,
-                ln.product_id,
+                &ln.product_name,
+                &ln.variable_types,
                 ln.quantity,
                 ln.rate,
                 &ln.variable_values,
@@ -434,7 +423,8 @@ pub async fn posted_invoice_goods_line_display_rows(
 
 struct CancelledLineRow {
     id: i64,
-    product_id: i64,
+    product_name: String,
+    variable_types: String,
     rate: Decimal,
     quantity: Decimal,
     variable_values: String,
@@ -449,7 +439,8 @@ async fn load_cancelled_invoice_goods_lines(
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
-            "SELECT id, product_id, rate, quantity, variable_values, pre_tax_amount, remarks \
+            "SELECT id, product_name, variable_types, rate, quantity, variable_values, \
+             pre_tax_amount, remarks \
              FROM cancelled_invoice_goods_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
@@ -461,7 +452,8 @@ async fn load_cancelled_invoice_goods_lines(
         .filter_map(|r| {
             Some(CancelledLineRow {
                 id: r.try_get("", "id").ok()?,
-                product_id: r.try_get("", "product_id").ok()?,
+                product_name: r.try_get("", "product_name").ok()?,
+                variable_types: r.try_get("", "variable_types").ok()?,
                 rate: r.try_get("", "rate").ok()?,
                 quantity: r.try_get("", "quantity").ok()?,
                 variable_values: r.try_get("", "variable_values").ok()?,
@@ -493,7 +485,8 @@ pub async fn cancelled_invoice_goods_line_display_rows(
         rows.push(
             build_line_display_row(
                 db,
-                ln.product_id,
+                &ln.product_name,
+                &ln.variable_types,
                 ln.quantity,
                 ln.rate,
                 &ln.variable_values,

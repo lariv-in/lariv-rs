@@ -16,7 +16,6 @@ use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_format,
 };
 use lariv_plugin_finance_common::{decimal::decimal_display_currency, typst};
-use lariv_plugin_finance_products::entities::product::Entity as ProductEntity;
 use lariv_plugin_finance_products::pricing;
 use lariv_plugin_finance_taxes::entities::tax::{self, TaxKind};
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
@@ -40,6 +39,7 @@ use crate::entities::{
     draft_invoice_goods_line, draft_invoice_service_line, payment, posted_invoice,
     posted_invoice_goods_line,
 };
+use crate::invoice_addon_key::InvoiceAddonKey;
 use crate::invoice_pdf_addon::{collect_invoice_pdf_extras, collect_invoice_pdf_sample_extras};
 use crate::invoice_pdf_assets::VnodeImageContext;
 use crate::invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE;
@@ -430,57 +430,35 @@ async fn load_posted_payment_term_pdf(
     })
 }
 
-async fn load_service_pdf(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Result<(PdfProduct, String), InvoicePdfError> {
-    use lariv_plugin_finance_services::entities::service::Entity as ServiceEntity;
-    let p = ServiceEntity::find_by_id(id)
-        .one(db)
-        .await
-        .map_err(|e| InvoicePdfError::msg(e.to_string()))?
-        .ok_or(InvoicePdfError::NotFound)?;
-    let schema = p.variables.clone();
-    Ok((
+fn pdf_product_from_line_snapshot(
+    catalog_id: Option<i64>,
+    name: String,
+    is_service: bool,
+    hsn_or_sac: i64,
+    reference: Option<String>,
+    remarks: Option<String>,
+    variable_types: &str,
+    base_price_formula: String,
+    sales_price_formula: String,
+) -> (PdfProduct, String) {
+    (
         PdfProduct {
-            id: p.id,
-            name: p.name,
-            product_type: "Services".to_string(),
-            hsn_code: p.sac_code,
-            reference: p.reference.unwrap_or_default(),
-            remarks: p.remarks.unwrap_or_default(),
-            variable_types: json_object(&p.variables),
-            base_price_formula: p.base_price_formula,
-            sales_price_formula: p.sales_price_formula,
+            id: catalog_id.unwrap_or(0),
+            name,
+            product_type: if is_service {
+                "Services".to_string()
+            } else {
+                "Goods".to_string()
+            },
+            hsn_code: hsn_or_sac,
+            reference: reference.unwrap_or_default(),
+            remarks: remarks.unwrap_or_default(),
+            variable_types: json_object(variable_types),
+            base_price_formula,
+            sales_price_formula,
         },
-        schema,
-    ))
-}
-
-async fn load_product_pdf(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Result<(PdfProduct, String), InvoicePdfError> {
-    let p = ProductEntity::find_by_id(id)
-        .one(db)
-        .await
-        .map_err(|e| InvoicePdfError::msg(e.to_string()))?
-        .ok_or(InvoicePdfError::NotFound)?;
-    let schema = p.variables.clone();
-    Ok((
-        PdfProduct {
-            id: p.id,
-            name: p.name,
-            product_type: "Goods".to_string(),
-            hsn_code: p.hsn_code,
-            reference: p.reference.unwrap_or_default(),
-            remarks: p.remarks.unwrap_or_default(),
-            variable_types: json_object(&p.variables),
-            base_price_formula: p.base_price_formula,
-            sales_price_formula: p.sales_price_formula,
-        },
-        schema,
-    ))
+        variable_types.to_string(),
+    )
 }
 
 async fn load_payments_for_posted(
@@ -512,8 +490,15 @@ async fn load_payments_for_posted(
 
 struct LineRow {
     id: i64,
-    product_id: i64,
+    product_id: Option<i64>,
     is_service: bool,
+    catalog_name: String,
+    catalog_reference: Option<String>,
+    catalog_remarks: Option<String>,
+    hsn_or_sac: i64,
+    variable_types: String,
+    base_price_formula: String,
+    sales_price_formula: String,
     quantity: Decimal,
     rate: Decimal,
     pre_tax: Decimal,
@@ -567,6 +552,13 @@ async fn load_draft_lines(
             id: l.id,
             product_id: l.product_id,
             is_service: false,
+            catalog_name: l.product_name,
+            catalog_reference: l.product_reference,
+            catalog_remarks: l.product_remarks,
+            hsn_or_sac: l.hsn_code,
+            variable_types: l.variable_types,
+            base_price_formula: l.base_price_formula,
+            sales_price_formula: l.sales_price_formula,
             quantity: l.quantity,
             rate: l.rate,
             pre_tax: l.pre_tax_amount,
@@ -583,6 +575,13 @@ async fn load_draft_lines(
         id: l.id,
         product_id: l.service_id,
         is_service: true,
+        catalog_name: l.service_name,
+        catalog_reference: l.service_reference,
+        catalog_remarks: l.service_remarks,
+        hsn_or_sac: l.sac_code,
+        variable_types: l.variable_types,
+        base_price_formula: l.base_price_formula,
+        sales_price_formula: l.sales_price_formula,
         quantity: l.quantity,
         rate: l.rate,
         pre_tax: l.pre_tax_amount,
@@ -607,6 +606,13 @@ async fn load_posted_lines(
             id: l.id,
             product_id: l.product_id,
             is_service: false,
+            catalog_name: l.product_name,
+            catalog_reference: l.product_reference,
+            catalog_remarks: l.product_remarks,
+            hsn_or_sac: l.hsn_code,
+            variable_types: l.variable_types,
+            base_price_formula: l.base_price_formula,
+            sales_price_formula: l.sales_price_formula,
             quantity: l.quantity,
             rate: l.rate,
             pre_tax: l.pre_tax_amount,
@@ -623,6 +629,13 @@ async fn load_posted_lines(
         id: l.id,
         product_id: l.service_id,
         is_service: true,
+        catalog_name: l.service_name,
+        catalog_reference: l.service_reference,
+        catalog_remarks: l.service_remarks,
+        hsn_or_sac: l.sac_code,
+        variable_types: l.variable_types,
+        base_price_formula: l.base_price_formula,
+        sales_price_formula: l.sales_price_formula,
         quantity: l.quantity,
         rate: l.rate,
         pre_tax: l.pre_tax_amount,
@@ -639,7 +652,9 @@ async fn load_cancelled_lines(
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT id, product_id, rate, quantity, pre_tax_amount, remarks, variable_values \
+            "SELECT id, product_id, product_name, product_reference, product_remarks, hsn_code, \
+             variable_types, base_price_formula, sales_price_formula, rate, quantity, \
+             pre_tax_amount, remarks, variable_values \
              FROM cancelled_invoice_goods_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
@@ -648,42 +663,58 @@ async fn load_cancelled_lines(
         .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
     let mut out = Vec::new();
     for r in rows {
-        let id: i64 = r
-            .try_get("", "id")
-            .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
-        let product_id: i64 = r
-            .try_get("", "product_id")
-            .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
-        let rate: Decimal = r
-            .try_get("", "rate")
-            .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
-        let quantity: Decimal = r
-            .try_get("", "quantity")
-            .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
-        let pre_tax: Decimal = r
-            .try_get("", "pre_tax_amount")
-            .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
-        let remarks: Option<String> = r
-            .try_get("", "remarks")
-            .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
-        let variable_values: String = r
-            .try_get("", "variable_values")
-            .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
         out.push(LineRow {
-            id,
-            product_id,
+            id: r
+                .try_get("", "id")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            product_id: r
+                .try_get("", "product_id")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
             is_service: false,
-            quantity,
-            rate,
-            pre_tax,
-            remarks,
-            variable_values,
+            catalog_name: r
+                .try_get("", "product_name")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            catalog_reference: r
+                .try_get("", "product_reference")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            catalog_remarks: r
+                .try_get("", "product_remarks")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            hsn_or_sac: r
+                .try_get("", "hsn_code")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            variable_types: r
+                .try_get("", "variable_types")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            base_price_formula: r
+                .try_get("", "base_price_formula")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            sales_price_formula: r
+                .try_get("", "sales_price_formula")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            quantity: r
+                .try_get("", "quantity")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            rate: r
+                .try_get("", "rate")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            pre_tax: r
+                .try_get("", "pre_tax_amount")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            remarks: r
+                .try_get("", "remarks")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            variable_values: r
+                .try_get("", "variable_values")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
         });
     }
     let service_rows = db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT id, service_id, rate, quantity, pre_tax_amount, remarks, variable_values \
+            "SELECT id, service_id, service_name, service_reference, service_remarks, sac_code, \
+             variable_types, base_price_formula, sales_price_formula, rate, quantity, \
+             pre_tax_amount, remarks, variable_values \
              FROM cancelled_invoice_service_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
@@ -699,6 +730,27 @@ async fn load_cancelled_lines(
                 .try_get("", "service_id")
                 .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
             is_service: true,
+            catalog_name: r
+                .try_get("", "service_name")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            catalog_reference: r
+                .try_get("", "service_reference")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            catalog_remarks: r
+                .try_get("", "service_remarks")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            hsn_or_sac: r
+                .try_get("", "sac_code")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            variable_types: r
+                .try_get("", "variable_types")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            base_price_formula: r
+                .try_get("", "base_price_formula")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            sales_price_formula: r
+                .try_get("", "sales_price_formula")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
             quantity: r
                 .try_get("", "quantity")
                 .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
@@ -734,15 +786,21 @@ async fn build_pdf_lines(
             .into_iter()
             .map(|t| tax_to_pdf(&t))
             .collect();
-        let (product, schema) = if row.is_service {
-            load_service_pdf(db, row.product_id).await?
-        } else {
-            load_product_pdf(db, row.product_id).await?
-        };
+        let (product, schema) = pdf_product_from_line_snapshot(
+            row.product_id,
+            row.catalog_name.clone(),
+            row.is_service,
+            row.hsn_or_sac,
+            row.catalog_reference.clone(),
+            row.catalog_remarks.clone(),
+            &row.variable_types,
+            row.base_price_formula.clone(),
+            row.sales_price_formula.clone(),
+        );
         let variable_lines = pricing::format_variable_lines(&schema, &row.variable_values);
         lines.push(PdfLine {
             id: row.id,
-            product_id: row.product_id,
+            product_id: row.product_id.unwrap_or(0),
             product,
             quantity: dec_str(row.quantity),
             rate: money_str(row.rate, currency),
@@ -889,19 +947,21 @@ async fn draft_invoice_currency(db: &DatabaseConnection, draft_id: i64) -> Curre
         _ => {}
     };
     for line in lines {
-        if let Ok(Some(template)) =
-            lariv_plugin_finance_products::journal_template::load_template(db, line.product_id)
-                .await
-        {
-            consider(template.journal_id);
+        if let Some(product_id) = line.product_id {
+            if let Ok(Some(template)) =
+                lariv_plugin_finance_products::journal_template::load_template(db, product_id).await
+            {
+                consider(template.journal_id);
+            }
         }
     }
     for line in service_lines {
-        if let Ok(Some(template)) =
-            lariv_plugin_finance_services::journal_template::load_template(db, line.service_id)
-                .await
-        {
-            consider(template.journal_id);
+        if let Some(service_id) = line.service_id {
+            if let Ok(Some(template)) =
+                lariv_plugin_finance_services::journal_template::load_template(db, service_id).await
+            {
+                consider(template.journal_id);
+            }
         }
     }
     if mixed {
@@ -960,7 +1020,7 @@ pub async fn render_draft_invoice_pdf(
         draft.number.as_deref(),
         &format!("draft-invoice-{}", draft.id),
     );
-    render_pdf_from_prefs(fs, &root, &base, Some(draft.id)).await
+    render_pdf_from_prefs(fs, &root, &base, Some(InvoiceAddonKey::Draft(draft.id))).await
 }
 
 pub async fn render_posted_invoice_pdf(
@@ -1013,7 +1073,7 @@ async fn render_posted_invoice_pdf_as(
     )
     .await?;
     let base = pdf_filename_base(Some(&posted.number), &format!("invoice-{}", posted.id));
-    render_pdf_from_prefs(fs, &root, &base, Some(posted.draft_invoice_id)).await
+    render_pdf_from_prefs(fs, &root, &base, Some(InvoiceAddonKey::Posted(posted.id))).await
 }
 
 pub async fn render_cancelled_invoice_pdf(
@@ -1062,13 +1122,14 @@ pub async fn render_cancelled_invoice_pdf(
         &prefs,
     )
     .await?;
-    let draft_invoice_id = PostedInvoiceEntity::find_by_id(inv.posted_invoice_id)
-        .one(db)
-        .await
-        .map_err(|e| InvoicePdfError::msg(e.to_string()))?
-        .map(|p| p.draft_invoice_id);
     let base = pdf_filename_base(Some(&inv.number), &format!("cancelled-invoice-{}", inv.id));
-    render_pdf_from_prefs(fs, &root, &base, draft_invoice_id).await
+    render_pdf_from_prefs(
+        fs,
+        &root,
+        &base,
+        Some(InvoiceAddonKey::Posted(inv.posted_invoice_id)),
+    )
+    .await
 }
 
 pub async fn render_paid_invoice_pdf(
@@ -1271,7 +1332,7 @@ async fn render_pdf_from_prefs(
     fs: &FilesystemState,
     root: &PdfRoot,
     filename_base: &str,
-    draft_invoice_id: Option<i64>,
+    addon_key: Option<InvoiceAddonKey>,
 ) -> Result<InvoicePdfResult, InvoicePdfError> {
     let prefs = load_invoice_preferences(&fs.db).await;
     // Blank saved template → shipped example. Render/compile errors are returned as-is
@@ -1282,8 +1343,8 @@ async fn render_pdf_from_prefs(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .unwrap_or(DEFAULT_INVOICE_PDF_TEMPLATE);
-    let extras = match draft_invoice_id {
-        Some(id) => collect_invoice_pdf_extras(&fs.db, id)
+    let extras = match addon_key {
+        Some(key) => collect_invoice_pdf_extras(&fs.db, key)
             .await
             .map_err(InvoicePdfError::msg)?,
         None => serde_json::json!({}),

@@ -4,7 +4,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    EntityTrait, PaginatorTrait, QueryFilter, TransactionTrait,
+    EntityTrait, QueryFilter, TransactionTrait,
 };
 use serde::Deserialize;
 
@@ -19,9 +19,8 @@ use lariv_plugin_finance_services::{
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
 use crate::entities::{
-    DraftPaymentTermEntity, cancelled_invoice, draft_invoice, draft_invoice_goods_line,
-    draft_invoice_service_line, paid_invoice, partially_paid_invoice, posted_invoice,
-    posted_invoice::Entity as PostedInvoiceEntity,
+    DraftInvoiceEntity, DraftPaymentTermEntity, draft_invoice, draft_invoice_goods_line,
+    draft_invoice_service_line,
 };
 use crate::logic::draft_payment_term::{DraftPaymentTermLineInput, upsert_draft_payment_term};
 use crate::logic::tax_assoc::{
@@ -102,7 +101,7 @@ pub fn parse_delivery_date(s: &str) -> Result<Option<NaiveDate>, String> {
         .ok_or_else(|| "invalid delivery date".to_string())
 }
 
-/// Hub lifecycle of a draft invoice row (`draft_invoices` remains after posting).
+/// Hub lifecycle label for invoice PDFs and UI.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InvoiceState {
     Draft,
@@ -124,58 +123,20 @@ impl InvoiceState {
     }
 }
 
-/// Current hub state for `draft_id` (draft / posted / partially paid / paid / cancelled).
+/// Draft rows are deleted on post, so any remaining draft is editable.
 pub async fn draft_invoice_state(
     db: &DatabaseConnection,
     draft_id: i64,
 ) -> Result<InvoiceState, String> {
-    let posted = PostedInvoiceEntity::find()
-        .filter(posted_invoice::Column::DraftInvoiceId.eq(draft_id))
+    let exists = DraftInvoiceEntity::find_by_id(draft_id)
         .one(db)
         .await
-        .map_err(|e| e.to_string())?;
-    let Some(posted) = posted else {
-        return Ok(InvoiceState::Draft);
-    };
-
-    let cancelled = cancelled_invoice::Entity::find()
-        .filter(cancelled_invoice::Column::PostedInvoiceId.eq(posted.id))
-        .count(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    if cancelled > 0 {
-        return Ok(InvoiceState::Cancelled);
-    }
-
-    let paid = paid_invoice::Entity::find()
-        .filter(paid_invoice::Column::PostedInvoiceId.eq(posted.id))
-        .count(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    if paid > 0 {
-        return Ok(InvoiceState::Paid);
-    }
-
-    let partial = partially_paid_invoice::Entity::find()
-        .filter(partially_paid_invoice::Column::PostedInvoiceId.eq(posted.id))
-        .count(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    if partial > 0 {
-        return Ok(InvoiceState::PartiallyPaid);
-    }
-
-    Ok(InvoiceState::Posted)
-}
-
-fn err_if_not_draft_state(state: InvoiceState) -> Result<(), String> {
-    if state == InvoiceState::Draft {
-        Ok(())
+        .map_err(|e| e.to_string())?
+        .is_some();
+    if exists {
+        Ok(InvoiceState::Draft)
     } else {
-        Err(format!(
-            "invoice is {} and cannot be changed",
-            state.as_str()
-        ))
+        Err("draft invoice not found".to_string())
     }
 }
 
@@ -183,7 +144,8 @@ pub async fn err_if_draft_sealed(db: &DatabaseConnection, draft_id: i64) -> Resu
     if draft_id == 0 {
         return Ok(());
     }
-    err_if_not_draft_state(draft_invoice_state(db, draft_id).await?)
+    draft_invoice_state(db, draft_id).await?;
+    Ok(())
 }
 
 fn default_line_quantity() -> String {
@@ -272,7 +234,14 @@ async fn build_line<C: ConnectionTrait>(
     let remarks = resolved_line_remarks(&row.remarks, prod.remarks.as_deref());
     let line = draft_invoice_goods_line::ActiveModel {
         draft_invoice_id: Set(draft_id),
-        product_id: Set(row.product_id),
+        product_id: Set(Some(row.product_id)),
+        product_name: Set(prod.name.clone()),
+        product_reference: Set(prod.reference.clone()),
+        product_remarks: Set(prod.remarks.clone()),
+        hsn_code: Set(prod.hsn_code),
+        variable_types: Set(prod.variables.clone()),
+        base_price_formula: Set(prod.base_price_formula.clone()),
+        sales_price_formula: Set(prod.sales_price_formula.clone()),
         rate: Set(priced.rate),
         quantity: Set(priced.quantity),
         variable_values: Set(priced.variable_values),
@@ -772,7 +741,14 @@ async fn build_service_line<C: ConnectionTrait>(
     let remarks = resolved_line_remarks(&row.remarks, service.remarks.as_deref());
     let line = draft_invoice_service_line::ActiveModel {
         draft_invoice_id: Set(draft_id),
-        service_id: Set(row.service_id),
+        service_id: Set(Some(row.service_id)),
+        service_name: Set(service.name.clone()),
+        service_reference: Set(service.reference.clone()),
+        service_remarks: Set(service.remarks.clone()),
+        sac_code: Set(service.sac_code),
+        variable_types: Set(service.variables.clone()),
+        base_price_formula: Set(service.base_price_formula.clone()),
+        sales_price_formula: Set(service.sales_price_formula.clone()),
         rate: Set(priced.rate),
         quantity: Set(priced.quantity),
         variable_values: Set(priced.variable_values),
@@ -847,30 +823,5 @@ mod tests {
         assert_eq!(InvoiceState::PartiallyPaid.as_str(), "partially paid");
         assert_eq!(InvoiceState::Paid.as_str(), "paid");
         assert_eq!(InvoiceState::Cancelled.as_str(), "cancelled");
-    }
-
-    #[test]
-    fn err_if_not_draft_state_ok_for_draft() {
-        assert_eq!(err_if_not_draft_state(InvoiceState::Draft), Ok(()));
-    }
-
-    #[test]
-    fn err_if_not_draft_state_names_current_state() {
-        assert_eq!(
-            err_if_not_draft_state(InvoiceState::Posted).unwrap_err(),
-            "invoice is posted and cannot be changed"
-        );
-        assert_eq!(
-            err_if_not_draft_state(InvoiceState::Cancelled).unwrap_err(),
-            "invoice is cancelled and cannot be changed"
-        );
-        assert_eq!(
-            err_if_not_draft_state(InvoiceState::Paid).unwrap_err(),
-            "invoice is paid and cannot be changed"
-        );
-        assert_eq!(
-            err_if_not_draft_state(InvoiceState::PartiallyPaid).unwrap_err(),
-            "invoice is partially paid and cannot be changed"
-        );
     }
 }

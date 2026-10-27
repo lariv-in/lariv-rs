@@ -539,7 +539,7 @@ pub async fn posted_fk_select(
         .filter(crate::scope::sql_posted_not_fully_paid())
         .filter(sql_posted_not_cancelled());
     query = query.filter(applied.condition.clone());
-    query = apply_extra_sql_filters(query, &params, "posted_invoices.draft_invoice_id");
+    query = apply_extra_sql_filters(query, &params, "posted_invoices.id");
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
         s if s.eq_ignore_ascii_case("ID DESC") => query.order_by_desc(posted_invoice::Column::Id),

@@ -46,6 +46,8 @@ mod m00040_goods_and_service_lines;
 mod m00041_drop_invoice_gl_preferences;
 mod m00042_payment_journal_entry_item_templates;
 mod m00043_drop_receivable_account;
+mod m00044_drop_posted_draft_invoice_id;
+mod m00045_invoice_line_catalog_snapshot;
 
 use super::FinanceInvoicesTag;
 
@@ -103,6 +105,8 @@ impl MigratorTrait for Migrator {
             Box::new(m00042_payment_journal_entry_item_templates::Migration),
             Box::new(m00041_drop_invoice_gl_preferences::Migration),
             Box::new(m00043_drop_receivable_account::Migration),
+            Box::new(m00044_drop_posted_draft_invoice_id::Migration),
+            Box::new(m00045_invoice_line_catalog_snapshot::Migration),
         ]
     }
 }

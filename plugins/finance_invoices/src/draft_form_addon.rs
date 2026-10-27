@@ -12,7 +12,7 @@ use axum::{
     http::{StatusCode, header},
 };
 use maud::Markup;
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, DatabaseTransaction};
 
 use lariv_core::html_form::{FormError, UrlencodedFields, csrf::csrf_rejection, verify_form_csrf};
 
@@ -50,6 +50,28 @@ pub trait DraftInvoiceFormAddon: Send + Sync {
     /// Default is `false` so empty bulk forms do not clear existing addon data.
     fn bulk_has_values(&self, _fields: &UrlencodedFields) -> bool {
         false
+    }
+
+    /// Rebind deployment data from the draft onto the new posted invoice.
+    ///
+    /// Called inside the posting transaction **before** the draft row is deleted.
+    async fn on_posted(
+        &self,
+        _db: &DatabaseTransaction,
+        _draft_id: i64,
+        _posted_id: i64,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    /// Copy posted addon data onto a draft created from a posted or cancelled invoice.
+    async fn on_new_draft_from_posted(
+        &self,
+        _db: &DatabaseTransaction,
+        _posted_id: i64,
+        _new_draft_id: i64,
+    ) -> Result<(), String> {
+        Ok(())
     }
 }
 
@@ -124,6 +146,32 @@ pub async fn save_draft_invoice_form_extras_bulk(
 /// True when any registered addon has bulk values to apply.
 pub fn addons_bulk_has_values(fields: &UrlencodedFields) -> bool {
     addons().iter().any(|addon| addon.bulk_has_values(fields))
+}
+
+/// Run [`DraftInvoiceFormAddon::on_posted`] for every registered addon.
+pub async fn run_draft_invoice_on_posted(
+    db: &DatabaseTransaction,
+    draft_id: i64,
+    posted_id: i64,
+) -> Result<(), String> {
+    for addon in addons() {
+        addon.on_posted(db, draft_id, posted_id).await?;
+    }
+    Ok(())
+}
+
+/// Run [`DraftInvoiceFormAddon::on_new_draft_from_posted`] for every registered addon.
+pub async fn run_draft_invoice_on_new_draft_from_posted(
+    db: &DatabaseTransaction,
+    posted_id: i64,
+    new_draft_id: i64,
+) -> Result<(), String> {
+    for addon in addons() {
+        addon
+            .on_new_draft_from_posted(db, posted_id, new_draft_id)
+            .await?;
+    }
+    Ok(())
 }
 
 /// Typed draft invoice POST plus raw fields for addons.

@@ -32,10 +32,8 @@ use crate::{
         posted_invoice::{self, Entity as PostedInvoiceEntity},
     },
     hub_filter::{HubFilterKind, hub_filter_fields, matches_in_memory},
-    hub_filter_addon::{
-        HubQueryParams, apply_extra_sql_filters, draft_invoice_id_sql_via_posted,
-        render_extra_filter_inputs,
-    },
+    hub_filter_addon::{HubQueryParams, apply_extra_sql_filters, render_extra_filter_inputs},
+    invoice_addon_key::InvoiceAddonKey,
     hub_sort::{
         HubSortKey, expr_ar_amount, expr_customer, expr_line_product_count, expr_line_untaxed,
         expr_open_balance, expr_posted_final_due, expr_settlement_ar_amount,
@@ -58,7 +56,7 @@ use crate::{
     },
     scope::{
         LarivEnvironment, list_fiscal_year_options, resolve_list_fiscal_year,
-        selected_fiscal_year_start_for_ui, sql_draft_not_posted, sql_posted_not_cancelled,
+        selected_fiscal_year_start_for_ui, sql_posted_not_cancelled,
         sql_posted_not_fully_paid, sql_posted_not_partially_paid,
         sql_settlement_posted_not_cancelled,
     },
@@ -486,7 +484,7 @@ async fn query_draft_rows(
     applied: &AppliedFilters,
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.get();
-    let mut query = DraftInvoiceEntity::find().filter(sql_draft_not_posted());
+    let mut query = DraftInvoiceEntity::find();
     query = query.filter(applied.condition.clone());
     query = apply_extra_sql_filters(query, params, "draft_invoices.id");
     query = apply_fiscal_year_datetime_filter(query, env, draft_invoice::Column::Datetime);
@@ -583,7 +581,7 @@ async fn draft_models_to_rows(
             format_metrics(&metrics, &currency, dates);
         rows.push(InvoiceRow {
             id: d.id,
-            draft_invoice_id: Some(d.id),
+            addon_key: Some(InvoiceAddonKey::Draft(d.id)),
             number: d.number.clone().unwrap_or_else(|| "—".to_string()),
             datetime: dates.datetime(d.datetime, tz),
             delivery_date: format_hub_delivery_date(d.delivery_date, dates),
@@ -617,7 +615,7 @@ async fn query_posted_rows(
         .filter(sql_posted_not_fully_paid())
         .filter(sql_posted_not_partially_paid());
     query = query.filter(applied.condition.clone());
-    query = apply_extra_sql_filters(query, params, "posted_invoices.draft_invoice_id");
+    query = apply_extra_sql_filters(query, params, "posted_invoices.id");
     query = apply_fiscal_year_datetime_filter(query, env, posted_invoice::Column::Datetime);
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match parse_hub_sort(sort) {
@@ -647,7 +645,7 @@ async fn query_posted_rows(
             format_metrics(&metrics, fmt, dates);
         rows.push(InvoiceRow {
             id: p.id,
-            draft_invoice_id: Some(p.draft_invoice_id),
+            addon_key: Some(InvoiceAddonKey::Posted(p.id)),
             number: p.number,
             datetime: dates.datetime(p.datetime, tz),
             delivery_date: format_hub_delivery_date(p.delivery_date, dates),
@@ -678,11 +676,7 @@ async fn query_cancelled_rows(
     let page_num = q.page.get();
     let mut query = CancelledInvoiceEntity::find();
     query = query.filter(applied.condition.clone());
-    query = apply_extra_sql_filters(
-        query,
-        params,
-        &draft_invoice_id_sql_via_posted("cancelled_invoices"),
-    );
+    query = apply_extra_sql_filters(query, params, "cancelled_invoices.posted_invoice_id");
     query = apply_fiscal_year_datetime_filter(query, env, cancelled_invoice::Column::Datetime);
     let sort = q.sort.as_deref().unwrap_or("").trim();
     let parsed_sort = parse_hub_sort(sort);
@@ -771,8 +765,6 @@ async fn cancelled_models_to_rows(
     let journal_ids: Vec<i64> = models.iter().map(|c| c.journal_id).collect();
     let currency_fmts = load_journal_currency_formats(db, &journal_ids).await;
     let fallback = CurrencyFormat::fallback();
-    let posted_ids: Vec<i64> = models.iter().map(|c| c.posted_invoice_id).collect();
-    let draft_by_posted = load_posted_draft_invoice_ids(db, &posted_ids).await;
     let mut rows = Vec::with_capacity(models.len());
     for c in models {
         let (customer_name, open_balance, _) = hub_row_extras_none();
@@ -782,7 +774,7 @@ async fn cancelled_models_to_rows(
             format_metrics(&metrics, fmt, dates);
         rows.push(InvoiceRow {
             id: c.id,
-            draft_invoice_id: draft_by_posted.get(&c.posted_invoice_id).copied(),
+            addon_key: Some(InvoiceAddonKey::Posted(c.posted_invoice_id)),
             number: c.number.clone(),
             datetime: dates.datetime(c.datetime, tz),
             delivery_date: format_hub_delivery_date(c.delivery_date, dates),
@@ -799,23 +791,6 @@ async fn cancelled_models_to_rows(
         });
     }
     rows
-}
-
-async fn load_posted_draft_invoice_ids(
-    db: &sea_orm::DatabaseConnection,
-    posted_ids: &[i64],
-) -> HashMap<i64, i64> {
-    if posted_ids.is_empty() {
-        return HashMap::new();
-    }
-    PostedInvoiceEntity::find()
-        .filter(posted_invoice::Column::Id.is_in(posted_ids.to_vec()))
-        .all(db)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|inv| (inv.id, inv.draft_invoice_id))
-        .collect()
 }
 
 async fn load_posted_invoice_delivery_dates(
@@ -889,11 +864,7 @@ async fn query_paid_rows(
     let mut query =
         PaidInvoiceEntity::find().filter(sql_settlement_posted_not_cancelled("paid_invoices"));
     query = query.filter(applied.condition.clone());
-    query = apply_extra_sql_filters(
-        query,
-        params,
-        &draft_invoice_id_sql_via_posted("paid_invoices"),
-    );
+    query = apply_extra_sql_filters(query, params, "paid_invoices.posted_invoice_id");
     query =
         apply_fiscal_year_expr_filter(query, env, expr_settlement_posted_datetime("paid_invoices"));
     let sort = q.sort.as_deref().unwrap_or("").trim();
@@ -929,7 +900,6 @@ async fn query_paid_rows(
     let fallback = CurrencyFormat::fallback();
     let invoice_labels = load_posted_invoice_labels(db, &posted_ids).await;
     let metrics_map = posted_invoice_list_metrics_map(db, &posted_ids).await;
-    let draft_by_posted = load_posted_draft_invoice_ids(db, &posted_ids).await;
     let delivery_by_posted = load_posted_invoice_delivery_dates(db, &posted_ids).await;
     let mut rows = Vec::with_capacity(models.len());
     for paid in models {
@@ -960,7 +930,7 @@ async fn query_paid_rows(
             format_metrics(&metrics, fmt, dates);
         rows.push(InvoiceRow {
             id: paid.id,
-            draft_invoice_id: draft_by_posted.get(&paid.posted_invoice_id).copied(),
+            addon_key: Some(InvoiceAddonKey::Posted(paid.posted_invoice_id)),
             number: inv_label,
             datetime,
             delivery_date: format_hub_delivery_date(
@@ -999,11 +969,7 @@ async fn query_partial_rows(
         "partially_paid_invoices",
     ));
     query = query.filter(applied.condition.clone());
-    query = apply_extra_sql_filters(
-        query,
-        params,
-        &draft_invoice_id_sql_via_posted("partially_paid_invoices"),
-    );
+    query = apply_extra_sql_filters(query, params, "partially_paid_invoices.posted_invoice_id");
     query = apply_fiscal_year_expr_filter(
         query,
         env,
@@ -1042,7 +1008,6 @@ async fn query_partial_rows(
     let fallback = CurrencyFormat::fallback();
     let invoice_labels = load_posted_invoice_labels(db, &posted_ids).await;
     let metrics_map = posted_invoice_list_metrics_map(db, &posted_ids).await;
-    let draft_by_posted = load_posted_draft_invoice_ids(db, &posted_ids).await;
     let delivery_by_posted = load_posted_invoice_delivery_dates(db, &posted_ids).await;
     let mut rows = Vec::with_capacity(models.len());
     for partial in models {
@@ -1073,7 +1038,7 @@ async fn query_partial_rows(
             format_metrics(&metrics, fmt, dates);
         rows.push(InvoiceRow {
             id: partial.id,
-            draft_invoice_id: draft_by_posted.get(&partial.posted_invoice_id).copied(),
+            addon_key: Some(InvoiceAddonKey::Posted(partial.posted_invoice_id)),
             number: inv_label,
             datetime,
             delivery_date: format_hub_delivery_date(

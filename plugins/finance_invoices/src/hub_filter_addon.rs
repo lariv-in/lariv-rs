@@ -2,8 +2,8 @@
 //!
 //! Deployments can filter on related data such as sites without the core
 //! invoice plugin knowing those entities. Extra inputs are appended after the
-//! core filter fields. SQL is applied to every hub tab through the draft
-//! invoice id of the row.
+//! core filter fields. SQL is applied to every hub tab through the invoice
+//! header id of the row (draft id on the drafts tab, posted id elsewhere).
 
 use std::sync::{Mutex, OnceLock};
 
@@ -53,15 +53,14 @@ pub trait InvoiceHubFilterAddon: Send + Sync {
 
     /// Predicate restricting rows, or `None` when this addon is inactive.
     ///
-    /// `draft_invoice_id_sql` is a trusted SQL expression for the row's draft
-    /// invoice id:
-    /// - `draft_invoices.id`
-    /// - `posted_invoices.draft_invoice_id`
-    /// - [`draft_invoice_id_sql_via_posted`] for cancelled, paid, and partial rows
+    /// `invoice_id_sql` is a trusted SQL expression for the row's addon key id:
+    /// - `draft_invoices.id` (drafts tab)
+    /// - `posted_invoices.id` (posted tab)
+    /// - `{table}.posted_invoice_id` for cancelled, paid, and partial rows
     fn sql_predicate(
         &self,
         params: &HubQueryParams<'_>,
-        draft_invoice_id_sql: &str,
+        invoice_id_sql: &str,
     ) -> Option<SimpleExpr>;
 }
 
@@ -78,17 +77,6 @@ fn addons() -> Vec<&'static dyn InvoiceHubFilterAddon> {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clone()
-}
-
-/// Draft invoice id on a table that stores `posted_invoice_id`.
-pub fn draft_invoice_id_sql_via_posted(table: &str) -> String {
-    assert!(
-        !table.is_empty() && table.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
-        "posted child table name must be a sql identifier"
-    );
-    format!(
-        "(SELECT pi.draft_invoice_id FROM posted_invoices pi WHERE pi.id = {table}.posted_invoice_id)"
-    )
 }
 
 /// Markup for every registered extra filter, in registration order.
@@ -108,10 +96,10 @@ pub async fn render_extra_filter_inputs(
 pub fn apply_extra_sql_filters<E: EntityTrait>(
     mut query: Select<E>,
     params: &HubQueryParams<'_>,
-    draft_invoice_id_sql: &str,
+    invoice_id_sql: &str,
 ) -> Select<E> {
     for addon in addons() {
-        if let Some(expr) = addon.sql_predicate(params, draft_invoice_id_sql) {
+        if let Some(expr) = addon.sql_predicate(params, invoice_id_sql) {
             query = query.filter(expr);
         }
     }

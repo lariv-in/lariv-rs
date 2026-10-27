@@ -33,7 +33,7 @@ fn register(rune_env: &mut RuneEnvCapability) {
     );
     rune_env.register_contextual(
         "search_invoices",
-        "search_invoices(#{ query: string, limit?: int }) -> #{ drafts: [#{ id: int, number: string|null, reference: string|null, customer_id: int, datetime: string }], posted: [#{ id: int, draft_invoice_id: int, number: string, reference: string|null, customer_id: int, datetime: string }] }",
+        "search_invoices(#{ query: string, limit?: int }) -> #{ drafts: [#{ id: int, number: string|null, reference: string|null, customer_id: int, datetime: string }], posted: [#{ id: int, number: string, reference: string|null, customer_id: int, datetime: string }] }",
         |_ctx| NativeBinding::Function(Arc::new(search_invoices)),
     );
 }
@@ -139,7 +139,6 @@ fn search_invoices(
         "posted": posted.into_iter().map(|p| {
             json!({
                 "id": p.id,
-                "draft_invoice_id": p.draft_invoice_id,
                 "number": p.number,
                 "reference": p.reference,
                 "customer_id": p.customer_id,

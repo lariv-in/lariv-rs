@@ -56,9 +56,6 @@ lariv_core::define_plugin_routes! {
         get JournalDeleteGetRouteTag, "/finance/journals/{id}/delete", handlers::journals::delete_get, modal, authorize(FinanceAccountsMutate, []);
         post JournalDeletePostRouteTag, "/finance/journals/{id}/delete", bare handlers::journals::delete_post, fragment(JournalDeleteModalKey), authorize(FinanceAccountsMutate, []);
 
-        get JournalCustomSourceDocsRouteTag, "/finance/journals/{journal_id}/custom-source-docs", handlers::custom_source_docs::list, param journal_id: i64, authorize(FinanceAccountsView, []);
-        get CustomSourceDocCreateGetRouteTag, "/finance/journals/{journal_id}/custom-source-docs/create", handlers::custom_source_docs::create_get, param journal_id: i64, modal, authorize(FinanceAccountsMutate, []);
-        post CustomSourceDocCreatePostRouteTag, "/finance/journals/{journal_id}/custom-source-docs/create", handlers::custom_source_docs::create_post, param journal_id: i64, authorize(FinanceAccountsMutate, []);
         get CustomSourceDocIndexRouteTag, "/finance/custom-source-docs", handlers::custom_source_docs::index, fragment(CustomSourceDocIndexTableKey), authorize(FinanceAccountsView, []);
         get CustomSourceDocIndexCreateGetRouteTag, "/finance/custom-source-docs/create", handlers::custom_source_docs::index_create_get, modal, authorize(FinanceAccountsMutate, []);
         post CustomSourceDocIndexCreatePostRouteTag, "/finance/custom-source-docs/create", handlers::custom_source_docs::index_create_post, authorize(FinanceAccountsMutate, []);

@@ -497,8 +497,8 @@ fn payment_batch_detail_menu(id: i64) -> Markup {
 #[derive(Clone)]
 pub struct InvoiceRow {
     pub id: i64,
-    /// Draft invoice id when the row can be linked to site (and other) addons.
-    pub draft_invoice_id: Option<i64>,
+    /// Addon lookup key (draft id on drafts tab, posted id elsewhere).
+    pub addon_key: Option<crate::invoice_addon_key::InvoiceAddonKey>,
     pub number: String,
     pub datetime: String,
     pub delivery_date: String,

@@ -225,26 +225,17 @@ pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> St
 
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {
-        let product = lariv_core::web::opt_or_log(
-            ServiceEntity::find_by_id(ln.service_id).one(db).await,
-            "find by id",
-        );
-        let has_formula = product
-            .as_ref()
-            .is_some_and(|p| pricing::has_variable_pricing(&p.variables));
-        let variable_rows = product
-            .as_ref()
-            .map(|p| variable_rows_for_line(&p.variables, has_formula, &ln.variable_values))
-            .unwrap_or_default();
-        let service_label = product.map(|p| p.name).unwrap_or_default();
+        let has_formula = pricing::has_variable_pricing(&ln.variable_types);
+        let variable_rows =
+            variable_rows_for_line(&ln.variable_types, has_formula, &ln.variable_values);
         let tax_ids = load_draft_service_line_tax_ids(db, ln.id)
             .await
             .unwrap_or_default();
         rows.push(DraftLineFormRow {
-            service_id: ln.service_id,
+            service_id: ln.service_id.unwrap_or(0),
             quantity: decimal::decimal_display(ln.quantity),
             rate: decimal::decimal_display(ln.rate),
-            service_label,
+            service_label: ln.service_name,
             fk_slot: format!("InvoiceLineService_{draft_id}_{}", ln.id),
             tax_ids,
             has_formula,
@@ -299,7 +290,8 @@ pub async fn invoice_header_tax_labels(db: &DatabaseConnection, tax_ids: &[i64])
 
 async fn build_line_display_row(
     db: &DatabaseConnection,
-    service_id: i64,
+    service_name: &str,
+    variable_types: &str,
     quantity: Decimal,
     rate: Decimal,
     variable_values: &str,
@@ -308,19 +300,12 @@ async fn build_line_display_row(
     tax_ids: &[i64],
     currency: &CurrencyFormat,
 ) -> InvoiceServiceLineDisplayRow {
-    let product = lariv_core::web::opt_or_log(
-        ServiceEntity::find_by_id(service_id).one(db).await,
-        "find by id",
-    );
-    let product_name = product
-        .as_ref()
-        .map(|p| p.name.clone())
-        .unwrap_or_else(|| format!("#{service_id}"));
-    let inputs = product
-        .as_ref()
-        .filter(|p| pricing::has_variable_pricing(&p.variables))
-        .and_then(|p| pricing::format_variable_inputs(&p.variables, variable_values))
-        .unwrap_or_else(|| pricing::inputs_display(variable_values, quantity, rate));
+    let inputs = if pricing::has_variable_pricing(variable_types) {
+        pricing::format_variable_inputs(variable_types, variable_values)
+            .unwrap_or_else(|| pricing::inputs_display(variable_values, quantity, rate))
+    } else {
+        pricing::inputs_display(variable_values, quantity, rate)
+    };
     let taxes = load_taxes_by_ids(db, tax_ids).await.unwrap_or_default();
     let line_taxes = if taxes.is_empty() {
         "—".to_string()
@@ -330,7 +315,7 @@ async fn build_line_display_row(
     let (untaxed, levied, withholding, net) =
         crate::logic::tax_calculations::invoice_line_amounts(pre_tax, &taxes);
     InvoiceServiceLineDisplayRow {
-        service: product_name,
+        service: service_name.to_string(),
         remarks: crate::logic::draft::optional_display(remarks),
         inputs,
         quantity: decimal::decimal_display(quantity),
@@ -359,13 +344,15 @@ pub async fn draft_invoice_service_line_display_rows(
     let mut journal_id = None;
     let mut mixed_journals = false;
     for ln in &lines {
-        if let Ok(Some(template)) =
-            lariv_plugin_finance_services::journal_template::load_template(db, ln.service_id).await
-        {
-            match journal_id {
-                Some(existing) if existing != template.journal_id => mixed_journals = true,
-                None => journal_id = Some(template.journal_id),
-                _ => {}
+        if let Some(service_id) = ln.service_id {
+            if let Ok(Some(template)) =
+                lariv_plugin_finance_services::journal_template::load_template(db, service_id).await
+            {
+                match journal_id {
+                    Some(existing) if existing != template.journal_id => mixed_journals = true,
+                    None => journal_id = Some(template.journal_id),
+                    _ => {}
+                }
             }
         }
     }
@@ -383,7 +370,8 @@ pub async fn draft_invoice_service_line_display_rows(
         rows.push(
             build_line_display_row(
                 db,
-                ln.service_id,
+                &ln.service_name,
+                &ln.variable_types,
                 ln.quantity,
                 ln.rate,
                 &ln.variable_values,
@@ -422,7 +410,8 @@ pub async fn posted_invoice_service_line_display_rows(
         rows.push(
             build_line_display_row(
                 db,
-                ln.service_id,
+                &ln.service_name,
+                &ln.variable_types,
                 ln.quantity,
                 ln.rate,
                 &ln.variable_values,
@@ -439,7 +428,8 @@ pub async fn posted_invoice_service_line_display_rows(
 
 struct CancelledLineRow {
     id: i64,
-    service_id: i64,
+    service_name: String,
+    variable_types: String,
     rate: Decimal,
     quantity: Decimal,
     variable_values: String,
@@ -454,7 +444,8 @@ async fn load_cancelled_invoice_service_lines(
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
-            "SELECT id, service_id, rate, quantity, variable_values, pre_tax_amount, remarks \
+            "SELECT id, service_name, variable_types, rate, quantity, variable_values, \
+             pre_tax_amount, remarks \
              FROM cancelled_invoice_service_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
@@ -466,7 +457,8 @@ async fn load_cancelled_invoice_service_lines(
         .filter_map(|r| {
             Some(CancelledLineRow {
                 id: r.try_get("", "id").ok()?,
-                service_id: r.try_get("", "service_id").ok()?,
+                service_name: r.try_get("", "service_name").ok()?,
+                variable_types: r.try_get("", "variable_types").ok()?,
                 rate: r.try_get("", "rate").ok()?,
                 quantity: r.try_get("", "quantity").ok()?,
                 variable_values: r.try_get("", "variable_values").ok()?,
@@ -498,7 +490,8 @@ pub async fn cancelled_invoice_service_line_display_rows(
         rows.push(
             build_line_display_row(
                 db,
-                ln.service_id,
+                &ln.service_name,
+                &ln.variable_types,
                 ln.quantity,
                 ln.rate,
                 &ln.variable_values,
