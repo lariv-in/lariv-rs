@@ -2,6 +2,7 @@
 //! HR plugin — applicant lifecycle through employment.
 
 pub mod apps;
+pub use apps::HR_APP_KEY;
 pub mod blood_group;
 pub mod countries;
 pub mod create_modals;
