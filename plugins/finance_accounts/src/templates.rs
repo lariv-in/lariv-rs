@@ -1,7 +1,9 @@
 mod accounts;
 mod common;
 mod currencies;
+mod custom_source_doc_templates;
 mod custom_source_docs;
+mod customers;
 mod journals;
 mod preferences;
 mod register;
@@ -14,7 +16,9 @@ pub use common::{
     layout_with_sidebar, layout_with_sidebar_crumbs, render_pagination, render_picker_pagination,
 };
 pub use currencies::*;
+pub use custom_source_doc_templates::*;
 pub use custom_source_docs::*;
+pub use customers::*;
 pub use journals::*;
 pub use preferences::*;
 pub use register::{Hook, SlotsHook};

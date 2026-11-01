@@ -35,6 +35,9 @@ pub struct EmployeeProfile {
     pub emergency_contact_name: Option<String>,
     pub emergency_contact_relation: Option<String>,
     pub emergency_contact_mobile: Option<String>,
+    pub pf_number: Option<String>,
+    pub aadhar_number: Option<String>,
+    pub pan_number: Option<String>,
     pub aadhar_vnode_id: Option<i64>,
     pub pan_vnode_id: Option<i64>,
     pub passport_vnode_id: Option<i64>,
@@ -73,6 +76,9 @@ impl EmployeeProfile {
             emergency_contact_name: None,
             emergency_contact_relation: None,
             emergency_contact_mobile: None,
+            pf_number: None,
+            aadhar_number: None,
+            pan_number: None,
             aadhar_vnode_id: None,
             pan_vnode_id: None,
             passport_vnode_id: None,
@@ -111,6 +117,9 @@ pub fn apply_profile(am: &mut EmployeeActive, profile: &EmployeeProfile) {
     am.emergency_contact_name = Set(profile.emergency_contact_name.clone());
     am.emergency_contact_relation = Set(profile.emergency_contact_relation.clone());
     am.emergency_contact_mobile = Set(profile.emergency_contact_mobile.clone());
+    am.pf_number = Set(profile.pf_number.clone());
+    am.aadhar_number = Set(profile.aadhar_number.clone());
+    am.pan_number = Set(profile.pan_number.clone());
     am.aadhar_vnode_id = Set(profile.aadhar_vnode_id);
     am.pan_vnode_id = Set(profile.pan_vnode_id);
     am.passport_vnode_id = Set(profile.passport_vnode_id);
@@ -195,6 +204,12 @@ pub fn employee_profile_gaps(employee: &employee::Model) -> Vec<&'static str> {
     }
     if text_missing(&employee.emergency_contact_mobile) {
         gaps.push("emergency contact mobile");
+    }
+    if text_missing(&employee.aadhar_number) {
+        gaps.push("Aadhaar Number");
+    }
+    if text_missing(&employee.pan_number) {
+        gaps.push("PAN Number");
     }
     if employee.aadhar_vnode_id.is_none() {
         gaps.push("Aadhar");
@@ -306,6 +321,9 @@ pub async fn profile_from_submit(
         &submit.emergency_contact_name,
         &submit.emergency_contact_relation,
         &submit.emergency_contact_mobile,
+        &submit.pf_number,
+        &submit.aadhar_number,
+        &submit.pan_number,
         &submit.account_holder_name,
         &submit.account_number,
         &submit.account_ifsc_code,
@@ -374,6 +392,9 @@ pub async fn profile_from_form(
         &form.emergency_contact_name,
         &form.emergency_contact_relation,
         &form.emergency_contact_mobile,
+        &form.pf_number,
+        &form.aadhar_number,
+        &form.pan_number,
         &form.account_holder_name,
         &form.account_number,
         &form.account_ifsc_code,
@@ -412,6 +433,9 @@ fn parse_profile_fields(
     emergency_contact_name: &str,
     emergency_contact_relation: &str,
     emergency_contact_mobile: &str,
+    pf_number: &str,
+    aadhar_number: &str,
+    pan_number: &str,
     account_holder_name: &str,
     account_number: &str,
     account_ifsc_code: &str,
@@ -474,6 +498,9 @@ fn parse_profile_fields(
         emergency_contact_name: optional_text(emergency_contact_name),
         emergency_contact_relation: optional_text(emergency_contact_relation),
         emergency_contact_mobile: optional_text(emergency_contact_mobile),
+        pf_number: optional_text(pf_number),
+        aadhar_number: optional_text(aadhar_number),
+        pan_number: optional_text(pan_number),
         aadhar_vnode_id: None,
         pan_vnode_id: None,
         passport_vnode_id: None,
@@ -572,6 +599,9 @@ pub struct EmployeeProfileView {
     pub emergency_contact_name: String,
     pub emergency_contact_relation: String,
     pub emergency_contact_mobile: String,
+    pub pf_number: String,
+    pub aadhar_number: String,
+    pub pan_number: String,
     pub aadhar_href: String,
     pub aadhar_label: String,
     pub pan_href: String,
@@ -630,6 +660,9 @@ pub async fn profile_view(
         emergency_contact_name: show_text(&employee.emergency_contact_name),
         emergency_contact_relation: show_text(&employee.emergency_contact_relation),
         emergency_contact_mobile: show_text(&employee.emergency_contact_mobile),
+        pf_number: show_text(&employee.pf_number),
+        aadhar_number: show_text(&employee.aadhar_number),
+        pan_number: show_text(&employee.pan_number),
         aadhar_href,
         aadhar_label,
         pan_href,

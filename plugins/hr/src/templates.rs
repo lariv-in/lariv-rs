@@ -5,16 +5,15 @@ use lariv_core::components::table::table_grid_content;
 use lariv_core::components::{
     ButtonModalForm, ButtonSubmit, DataTable, DataTableDisplay, DeleteConfirmation, DetailHeader,
     FieldText, FilterClauseView, FormOpts, LayoutMain, LayoutSidebar, ListFilterBuilder,
-    ObjectList, PaginationPage, ShellChrome, ShellScaffold, ShellTopbar, SidebarMenu,
-    SidebarMenuItem, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-    TableListContent, TablePagination, TableRow, app_layout_pane, button_modal_form,
-    button_modal_route, button_submit, column_sort_url, container_column, data_table,
-    delete_confirmation, detail, detail_header, field_text, filter_error_banner, form,
-    form_hx_get_route, form_hx_post_multipart_url, form_hx_post_selector, form_hx_post_url,
-    form_post_multipart, label, layout_main, layout_sidebar, list_filter_builder, modal,
-    modal_keyed, pagination_pages, row_attr_navigate, shell_scaffold, shell_topbar, sidebar_menu,
-    sidebar_menu_item_pane, sort_indicator, table_button_columns, table_button_filter,
-    table_list_content, table_pagination,
+    ObjectList, PaginationPage, ShellChrome, ShellScaffold, ShellTopbar, SlotCapability,
+    SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TableListContent,
+    TablePagination, TableRow, app_layout_pane, button_modal_form, button_modal_route,
+    button_submit, column_sort_url, container_column, data_table, delete_confirmation, detail,
+    detail_header, field_text, filter_error_banner, form, form_hx_get_route,
+    form_hx_post_multipart_url, form_hx_post_selector, form_hx_post_url, form_post_multipart,
+    label, layout_main, layout_sidebar, list_filter_builder, modal, modal_keyed, pagination_pages,
+    row_attr_navigate, shell_scaffold, shell_topbar, sort_indicator, table_button_columns,
+    table_button_filter, table_list_content, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, FormFieldKey, HtmlForm, render_field_specs};
 use lariv_core::http::ProvideRequestCaps;
@@ -24,31 +23,26 @@ use lariv_core::template::{
 };
 use lariv_core::web::modal_create_post_url;
 
-use super::crumbs::{applicant_crumbs, employee_crumbs, ex_employee_crumbs, hub_crumbs};
-use super::detail_menu::{applicant_detail_menu, employee_detail_menu, ex_employee_detail_menu};
+use super::crumbs::{employee_crumbs, ex_employee_crumbs, hub_crumbs};
+use super::detail_menu::{employee_detail_menu, ex_employee_detail_menu};
 use super::forms::{
     ApplicantForm, ApplicantFormField, EmployeeForm, EmployeeFormField, EmployeeFormFlag,
-    HireApplicantForm, PersonForm, PersonFormField, TerminateEmployeeForm,
+    PersonForm, PersonFormField, TerminateEmployeeForm,
 };
 use super::keys::{
-    ApplicantCreateModalKey, ApplicantDeleteModalKey, ApplicantEditModalKey, ApplicantHubTableKey,
-    EmployeeCreateModalKey, EmployeeDeleteModalKey, ExEmployeeCreateModalKey,
-    HireApplicantModalKey, TerminateEmployeeModalKey,
+    ApplicantEditModalKey, ApplicantHubTableKey, EmployeeCreateModalKey, EmployeeDeleteModalKey,
+    ExEmployeeCreateModalKey, TerminateEmployeeModalKey,
 };
 use super::logic::dashboard::MissingHrProfile;
 use super::logic::profile::EmployeeProfileView;
 use super::routes::{
-    ApplicantCreateGetRouteTag, ApplicantCreatePostRouteTag, ApplicantDeleteGetRouteTag,
-    ApplicantEditGetRouteTag, ApplicantEditPostRouteTag, ApplicantHubRouteTag,
-    AttendanceListRouteTag, EmployeeCreateGetRouteTag, EmployeeCreatePostRouteTag,
-    EmployeeDeleteGetRouteTag, EmployeeEditGetRouteTag, EmployeeEditPostRouteTag,
-    EmployeeIdCardModalRouteTag, ExEmployeeCreateGetRouteTag, ExEmployeeCreatePostRouteTag,
-    HireApplicantGetRouteTag, HireApplicantPostRouteTag, HolidayListRouteTag,
-    HrDashboardPostRouteTag, HrLeavePrefsGetRouteTag, HrPrefsAdmin, JobFormListRouteTag,
-    LeaveListRouteTag, TerminateEmployeeGetRouteTag, TerminateEmployeePostRouteTag,
+    EmployeeCreateGetRouteTag, EmployeeCreatePostRouteTag, EmployeeDeleteGetRouteTag,
+    EmployeeEditGetRouteTag, EmployeeEditPostRouteTag, EmployeeIdCardModalRouteTag,
+    ExEmployeeCreateGetRouteTag, ExEmployeeCreatePostRouteTag, HrDashboardPostRouteTag,
+    PeopleHubRouteTag, TerminateEmployeeGetRouteTag, TerminateEmployeePostRouteTag,
 };
 
-pub(crate) fn app_scaffold(
+pub fn app_scaffold(
     title: &str,
     chrome: &ShellChrome,
     sidebar: Option<Markup>,
@@ -83,7 +77,7 @@ pub(crate) fn app_scaffold(
     }
 }
 
-pub(crate) fn scaffold_pane(
+pub fn scaffold_pane(
     sidebar: Option<Markup>,
     crumbs: Markup,
     body: Markup,
@@ -101,137 +95,19 @@ pub(crate) fn scaffold_pane(
     }
 }
 
-pub(crate) fn scaffold_main(
-    crumbs: Markup,
-    body: Markup,
-) -> lariv_core::components::MainContentHtml {
+pub fn scaffold_main(crumbs: Markup, body: Markup) -> lariv_core::components::MainContentHtml {
     layout_main(LayoutMain {
         breadcrumbs: crumbs,
         content: body,
     })
 }
 
-/// HR sidebar. Each item follows that section's view allowlist.
+/// HR sidebar, rendered from the shared registry.
 pub fn hr_menu(active: &str) -> Option<Markup> {
-    use lariv_core::components::authorized_role;
-    use lariv_plugin_users::role_authorization::roles_for;
-
-    use lariv_plugin_users::role_authorization::current_auth;
-    use lariv_plugin_users::roles::Superuser;
-
-    use super::routes::{
-        AttendanceView, HolidayView, HrPeopleView, JobFormView, LeaveApplicationsRouteTag,
-        LeaveApprovalsRouteTag, LeaveView, OvertimeApplicationsRouteTag, OvertimeApprovalsRouteTag,
-        OvertimeListRouteTag, OvertimeView,
-    };
-
-    let self_service = current_auth().is_some_and(|auth| !Superuser::matches(&auth.role));
-
-    let children = html! {
-        (authorized_role(&roles_for::<HrPeopleView>(), html! {
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "People",
-                url: &ApplicantHubRouteTag.url(),
-                active: active == "people",
-                ..Default::default()
-            }))
-        }))
-        (authorized_role(&roles_for::<JobFormView>(), html! {
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Job postings",
-                url: &JobFormListRouteTag.url(),
-                active: active == "job-forms",
-                ..Default::default()
-            }))
-        }))
-        (authorized_role(&roles_for::<HolidayView>(), html! {
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Holidays",
-                url: &HolidayListRouteTag.url(),
-                active: active == "holidays",
-                ..Default::default()
-            }))
-        }))
-        (authorized_role(&roles_for::<AttendanceView>(), html! {
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Attendance",
-                url: &AttendanceListRouteTag.url(),
-                active: active == "attendance",
-                ..Default::default()
-            }))
-        }))
-        @if self_service {
-            (authorized_role(&roles_for::<LeaveView>(), html! {
-                (sidebar_menu_item_pane(SidebarMenuItem {
-                    title: "Leaves",
-                    url: &LeaveApplicationsRouteTag.url(),
-                    active: active == "leaves",
-                    ..Default::default()
-                }))
-                @if crate::nav::leave_approvals_visible() {
-                    (sidebar_menu_item_pane(SidebarMenuItem {
-                        title: "Approve leaves",
-                        url: &LeaveApprovalsRouteTag.url(),
-                        active: active == "leave-queue",
-                        ..Default::default()
-                    }))
-                }
-            }))
-            (authorized_role(&roles_for::<OvertimeView>(), html! {
-                (sidebar_menu_item_pane(SidebarMenuItem {
-                    title: "Overtime",
-                    url: &OvertimeApplicationsRouteTag.url(),
-                    active: active == "overtime",
-                    ..Default::default()
-                }))
-                @if crate::nav::leave_approvals_visible() {
-                    (sidebar_menu_item_pane(SidebarMenuItem {
-                        title: "Approve overtime",
-                        url: &OvertimeApprovalsRouteTag.url(),
-                        active: active == "overtime-queue",
-                        ..Default::default()
-                    }))
-                }
-            }))
-        } @else {
-            (authorized_role(&roles_for::<LeaveView>(), html! {
-                (sidebar_menu_item_pane(SidebarMenuItem {
-                    title: "Leaves",
-                    url: &LeaveListRouteTag.url(),
-                    active: active == "leaves",
-                    ..Default::default()
-                }))
-            }))
-            (authorized_role(&roles_for::<HrPrefsAdmin>(), html! {
-                (sidebar_menu_item_pane(SidebarMenuItem {
-                    title: "Preferences",
-                    url: &HrLeavePrefsGetRouteTag.url(),
-                    active: active == "preferences",
-                    ..Default::default()
-                }))
-            }))
-            (authorized_role(&roles_for::<OvertimeView>(), html! {
-                (sidebar_menu_item_pane(SidebarMenuItem {
-                    title: "Overtime",
-                    url: &OvertimeListRouteTag.url(),
-                    active: active == "overtime",
-                    ..Default::default()
-                }))
-            }))
-        }
-    };
-    let raw = children.into_string();
-    if raw.trim().is_empty() {
-        None
-    } else {
-        Some(sidebar_menu(SidebarMenu {
-            title: "HR",
-            children: maud::PreEscaped(raw),
-        }))
-    }
+    super::hr_sidebar::hr_menu_for_active(active)
 }
 
-fn detail_sidebar(menu: Markup, roles: &[String]) -> Option<Markup> {
+pub fn detail_sidebar(menu: Markup, roles: &[String]) -> Option<Markup> {
     let gated = lariv_core::components::authorized_role(roles, menu);
     let raw = gated.into_string();
     if raw.trim().is_empty() {
@@ -241,20 +117,15 @@ fn detail_sidebar(menu: Markup, roles: &[String]) -> Option<Markup> {
     }
 }
 
-pub mod attendances;
-pub mod holidays;
-pub mod job_forms;
-pub mod leaves;
-pub mod overtime;
 pub mod preferences;
 
 fn tab_href(tab: &str) -> String {
-    lariv_core::http::RouteQueryBuilder::new(ApplicantHubRouteTag)
+    lariv_core::http::RouteQueryBuilder::new(PeopleHubRouteTag)
         .query("tab", tab)
         .build()
 }
 
-fn tab_nav_link(href: &str, active: bool, label: &str) -> Markup {
+pub fn tab_nav_link(href: &str, active: bool, label: &str) -> Markup {
     use lariv_core::components::attrs::escape_attr;
     use maud::PreEscaped;
 
@@ -295,6 +166,9 @@ pub struct EmployeeFormValues {
     pub emergency_contact_name: String,
     pub emergency_contact_relation: String,
     pub emergency_contact_mobile: String,
+    pub pf_number: String,
+    pub aadhar_number: String,
+    pub pan_number: String,
     pub aadhar_display: String,
     pub pan_display: String,
     pub passport_display: String,
@@ -396,6 +270,9 @@ fn employee_form_inputs(values: &EmployeeFormValues, include_admin_dates: bool) 
             EmployeeFormField::EmergencyContactMobile,
             &values.emergency_contact_mobile,
         )
+        .value(EmployeeFormField::PfNumber, &values.pf_number)
+        .value(EmployeeFormField::AadharNumber, &values.aadhar_number)
+        .value(EmployeeFormField::PanNumber, &values.pan_number)
         .value(
             EmployeeFormField::AccountHolderName,
             &values.account_holder_name,
@@ -560,6 +437,9 @@ fn employee_profile_fields(profile: &EmployeeProfileView) -> Markup {
         (label("Emergency contact name", field_text(FieldText { value: &profile.emergency_contact_name, classes: "" })))
         (label("Emergency contact relation", field_text(FieldText { value: &profile.emergency_contact_relation, classes: "" })))
         (label("Emergency contact mobile", field_text(FieldText { value: &profile.emergency_contact_mobile, classes: "" })))
+        (label("PF Number", field_text(FieldText { value: &profile.pf_number, classes: "" })))
+        (label("Aadhaar Number", field_text(FieldText { value: &profile.aadhar_number, classes: "" })))
+        (label("PAN Number", field_text(FieldText { value: &profile.pan_number, classes: "" })))
         (label("Aadhar", linked_value(&profile.aadhar_href, &profile.aadhar_label)))
         (label("PAN", linked_value(&profile.pan_href, &profile.pan_label)))
         (label("Passport", linked_value(&profile.passport_href, &profile.passport_label)))
@@ -655,7 +535,7 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
     })
 }
 
-pub(crate) fn data_table_with_filter_errors<K: SwapKey>(
+pub fn data_table_with_filter_errors<K: SwapKey>(
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -822,57 +702,11 @@ lariv_core::define_register_items! {
     bounds: [Clone, ProvideRequestCaps, Send, Sync];
     hook: Hook;
     items: [
-        ApplicantHubIdx: ApplicantHubPageTag => ApplicantHubPage,
-        ApplicantDetailIdx: ApplicantDetailPageTag => ApplicantDetailPage,
-        ApplicantCreateModalIdx: ApplicantCreateModalPageTag => ApplicantCreateModalPage,
-        ApplicantEditModalIdx: ApplicantEditModalPageTag => ApplicantEditModalPage,
-        PersonCreateModalIdx: PersonCreateModalPageTag => PersonCreateModalPage,
+        ApplicantHubIdx: ApplicantHubPageTag => ApplicantHubPage,        PersonCreateModalIdx: PersonCreateModalPageTag => PersonCreateModalPage,
         PersonEditModalIdx: PersonEditModalPageTag => PersonEditModalPage,
-        HireApplicantModalIdx: HireApplicantModalPageTag => HireApplicantModalPage,
         TerminateEmployeeModalIdx: TerminateEmployeeModalPageTag => TerminateEmployeeModalPage,
-        EmployeeDetailIdx: EmployeeDetailPageTag => EmployeeDetailPage,
-        EmployeeLeaveJournalIdx: EmployeeLeaveJournalPageTag => leaves::EmployeeLeaveJournalPage,
-        GiveLeaveModalIdx: GiveLeaveModalPageTag => leaves::GiveLeaveModalPage,
-        ExEmployeeDetailIdx: ExEmployeeDetailPageTag => ExEmployeeDetailPage,
-        ConfirmDeleteIdx: HrConfirmDeletePageTag => ConfirmDeletePage,
-        JobFormListIdx: JobFormListPageTag => job_forms::JobFormListPage,
-        JobFormSelectIdx: JobFormSelectPageTag => job_forms::JobFormSelectPage,
-        JobFormDetailIdx: JobFormDetailPageTag => job_forms::JobFormDetailPage,
-        JobFormCreateModalIdx: JobFormCreateModalPageTag => job_forms::JobFormCreateModalPage,
-        JobFormEditModalIdx: JobFormEditModalPageTag => job_forms::JobFormEditModalPage,
-        JobFormDeleteModalIdx: JobFormDeleteModalPageTag => job_forms::JobFormDeleteModalPage,
-        HolidayListIdx: HolidayListPageTag => holidays::HolidayListPage,
-        HolidayDetailIdx: HolidayDetailPageTag => holidays::HolidayDetailPage,
-        HolidayCreateModalIdx: HolidayCreateModalPageTag => holidays::HolidayCreateModalPage,
-        HolidayEditModalIdx: HolidayEditModalPageTag => holidays::HolidayEditModalPage,
-        HolidayDeleteModalIdx: HolidayDeleteModalPageTag => holidays::HolidayDeleteModalPage,
-        AttendanceListIdx: AttendanceListPageTag => attendances::AttendanceListPage,
-        AttendanceDetailIdx: AttendanceDetailPageTag => attendances::AttendanceDetailPage,
-        AttendanceCreateModalIdx: AttendanceCreateModalPageTag => attendances::AttendanceCreateModalPage,
-        AttendanceEditModalIdx: AttendanceEditModalPageTag => attendances::AttendanceEditModalPage,
-        AttendanceDeleteModalIdx: AttendanceDeleteModalPageTag => attendances::AttendanceDeleteModalPage,
-        LeaveListIdx: LeaveListPageTag => leaves::LeaveListPage,
-        LeaveDetailIdx: LeaveDetailPageTag => leaves::LeaveDetailPage,
-        LeaveCreateModalIdx: LeaveCreateModalPageTag => leaves::LeaveCreateModalPage,
-        LeaveEditModalIdx: LeaveEditModalPageTag => leaves::LeaveEditModalPage,
-        LeaveDeleteModalIdx: LeaveDeleteModalPageTag => leaves::LeaveDeleteModalPage,
-        LeaveApproveModalIdx: LeaveApproveModalPageTag => leaves::LeaveApproveModalPage,
-        LeaveRejectModalIdx: LeaveRejectModalPageTag => leaves::LeaveRejectModalPage,
-        LeaveRevokeApprovalModalIdx: LeaveRevokeApprovalModalPageTag => leaves::LeaveRevokeApprovalModalPage,
-        LeaveRevokeRejectionModalIdx: LeaveRevokeRejectionModalPageTag => leaves::LeaveRevokeRejectionModalPage,
-        LeaveCalcPreferencesIdx: LeaveCalcPreferencesPageTag => preferences::LeaveCalcPreferencesPage,
-        OvertimeListIdx: OvertimeListPageTag => overtime::OvertimeListPage,
-        ApprovedOvertimeListIdx: ApprovedOvertimeListPageTag => overtime::ApprovedOvertimeListPage,
-        ApprovedOvertimeCreateModalIdx: ApprovedOvertimeCreateModalPageTag => overtime::ApprovedOvertimeCreateModalPage,
-        OvertimeDetailIdx: OvertimeDetailPageTag => overtime::OvertimeDetailPage,
-        OvertimeCreateModalIdx: OvertimeCreateModalPageTag => overtime::OvertimeCreateModalPage,
-        OvertimeEditModalIdx: OvertimeEditModalPageTag => overtime::OvertimeEditModalPage,
-        OvertimeDeleteModalIdx: OvertimeDeleteModalPageTag => overtime::OvertimeDeleteModalPage,
-        OvertimeApproveModalIdx: OvertimeApproveModalPageTag => overtime::OvertimeApproveModalPage,
-        OvertimeRejectModalIdx: OvertimeRejectModalPageTag => overtime::OvertimeRejectModalPage,
-        OvertimeRevokeApprovalModalIdx: OvertimeRevokeApprovalModalPageTag => overtime::OvertimeRevokeApprovalModalPage,
-        OvertimeRevokeRejectionModalIdx: OvertimeRevokeRejectionModalPageTag => overtime::OvertimeRevokeRejectionModalPage,
-        HrDashboardGateIdx: HrDashboardGatePageTag => HrDashboardGatePage,
+        EmployeeDetailIdx: EmployeeDetailPageTag => EmployeeDetailPage,        ExEmployeeDetailIdx: ExEmployeeDetailPageTag => ExEmployeeDetailPage,
+        ConfirmDeleteIdx: HrConfirmDeletePageTag => ConfirmDeletePage,        HrDashboardGateIdx: HrDashboardGatePageTag => HrDashboardGatePage,
         HrDashboardSuccessIdx: HrDashboardSuccessPageTag => HrDashboardSuccessPage,
     ]
 }
@@ -923,8 +757,8 @@ impl ApplicantHubPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<ApplicantHubTableKey, ApplicantHubRouteTag>(
-                        ApplicantHubRouteTag,
+                    attrs: form_hx_get_route::<ApplicantHubTableKey, PeopleHubRouteTag>(
+                        PeopleHubRouteTag,
                     ),
                     apply_label: "Apply",
                     extra: html! {
@@ -935,18 +769,9 @@ impl ApplicantHubPage {
             }))
         };
         if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<super::routes::ApplicantMutate>(),
+            &lariv_plugin_users::role_authorization::roles_for::<super::routes::EmployeeMutate>(),
         ) {
             let create_button = match self.tab.as_str() {
-                "employees" => button_modal_form(ButtonModalForm {
-                    name: "p_hr.EmployeeCreateForm",
-                    href: &EmployeeCreateGetRouteTag.url(),
-                    form_post_url: &EmployeeCreateGetRouteTag.path(),
-                    modal_uid: EmployeeCreateModalKey::ID,
-                    icon_name: Some("plus"),
-                    classes: "btn-square btn-outline btn-sm",
-                    ..Default::default()
-                }),
                 "ex_employees" => button_modal_form(ButtonModalForm {
                     name: "p_hr.ExEmployeeCreateForm",
                     href: &ExEmployeeCreateGetRouteTag.url(),
@@ -957,10 +782,10 @@ impl ApplicantHubPage {
                     ..Default::default()
                 }),
                 _ => button_modal_form(ButtonModalForm {
-                    name: "p_hr.ApplicantCreateForm",
-                    href: &ApplicantCreateGetRouteTag.url(),
-                    form_post_url: &ApplicantCreateGetRouteTag.path(),
-                    modal_uid: ApplicantCreateModalKey::ID,
+                    name: "p_hr.EmployeeCreateForm",
+                    href: &EmployeeCreateGetRouteTag.url(),
+                    form_post_url: &EmployeeCreateGetRouteTag.path(),
+                    modal_uid: EmployeeCreateModalKey::ID,
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
@@ -984,7 +809,6 @@ impl ApplicantHubPage {
     fn body(&self) -> Markup {
         html! {
             div class="tabs tabs-boxed mb-4" {
-                (self.tab_link("applicants", "Applicants"))
                 (self.tab_link("employees", "Employees"))
                 (self.tab_link("ex_employees", "Ex-employees"))
             }
@@ -1009,144 +833,6 @@ impl RenderTemplate for ApplicantHubPage {
             chrome,
             hr_menu("people"),
             hub_crumbs(),
-            self.body(),
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct ApplicantDetailPage {
-    pub id: i64,
-    pub display_name: String,
-    pub values: ApplicantFormValues,
-    pub job_form_href: String,
-    pub answers: Vec<crate::questions::RenderedAnswer>,
-    pub resume_href: String,
-}
-
-impl ApplicantDetailPage {
-    fn body(&self) -> Markup {
-        let actions = if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<super::routes::ApplicantMutate>(),
-        ) {
-            html! {
-                (button_modal_form(ButtonModalForm {
-                    name: "p_hr.HireApplicantForm",
-                    href: &HireApplicantGetRouteTag::new(self.id).url(),
-                    form_post_url: &HireApplicantGetRouteTag::new(self.id).path(),
-                    modal_uid: HireApplicantModalKey::ID,
-                    label: "Hire as employee",
-                    classes: "btn-primary",
-                    ..Default::default()
-                }))
-                (button_modal_form(ButtonModalForm {
-                    name: "p_hr.ApplicantEditForm",
-                    href: &ApplicantEditGetRouteTag::new(self.id).url(),
-                    form_post_url: &ApplicantEditPostRouteTag::new(self.id).path(),
-                    modal_uid: ApplicantEditModalKey::ID,
-                    label: "Edit",
-                    classes: "btn-outline",
-                    ..Default::default()
-                }))
-            }
-        } else {
-            html! {}
-        };
-        let gender_label = crate::gender::ApplicantGender::parse(&self.values.gender)
-            .map(|g| g.label().to_string())
-            .unwrap_or_else(|| self.values.gender.clone());
-        html! {
-            (detail(html! {
-                (container_column("", html! {
-                    (detail_header(DetailHeader {
-                        title: &self.display_name,
-                        actions,
-                    }))
-                    (person_fields(&self.values.name, &self.values.mobile, &self.values.email))
-                    @if !self.values.date_of_birth.is_empty() {
-                        (label("Date of birth", field_text(FieldText { value: &self.values.date_of_birth, classes: "" })))
-                    }
-                    @if !self.values.gender.is_empty() {
-                        (label("Gender", field_text(FieldText { value: &gender_label, classes: "" })))
-                    }
-                    @if !self.values.address.is_empty() {
-                        (label("Address", field_text(FieldText { value: &self.values.address, classes: "" })))
-                    }
-                    @if !self.values.remarks.is_empty() {
-                        (label("Remarks", field_text(FieldText { value: &self.values.remarks, classes: "" })))
-                    }
-                    @if !self.values.job_form_display.is_empty() {
-                        (label("Job posting", html! {
-                            @if self.job_form_href.is_empty() {
-                                (field_text(FieldText { value: &self.values.job_form_display, classes: "" }))
-                            } @else {
-                                a class="link link-primary" href=(self.job_form_href) {
-                                    (self.values.job_form_display)
-                                }
-                            }
-                        }))
-                    }
-                    @if !self.answers.is_empty() {
-                        (label("Application answers", html! {
-                            dl class="grid gap-3" {
-                                @for answer in &self.answers {
-                                    div {
-                                        dt class="font-medium" { (answer.display_text) }
-                                        @if !answer.description.is_empty() {
-                                            dd class="text-sm opacity-70" { (answer.description) }
-                                        }
-                                        dd class="text-sm opacity-70" { (answer.type_label) }
-                                        dd { (answer.answer) }
-                                    }
-                                }
-                            }
-                        }))
-                    }
-                    @if !self.values.resume_display.is_empty() {
-                        (label("Resume", html! {
-                            @if self.resume_href.is_empty() {
-                                (field_text(FieldText { value: &self.values.resume_display, classes: "" }))
-                            } @else {
-                                a class="link link-primary" href=(self.resume_href) {
-                                    (self.values.resume_display)
-                                }
-                            }
-                        }))
-                    }
-                }))
-            }))
-        }
-    }
-}
-
-impl RenderAppPane for ApplicantDetailPage {
-    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
-        scaffold_pane(
-            detail_sidebar(
-                applicant_detail_menu(&self.display_name, self.id, "detail"),
-                &lariv_plugin_users::role_authorization::roles_for::<super::routes::ApplicantMutate>(
-                ),
-            ),
-            applicant_crumbs(&self.display_name),
-            self.body(),
-        )
-    }
-    fn render_main(&self) -> lariv_core::components::MainContentHtml {
-        scaffold_main(applicant_crumbs(&self.display_name), self.body())
-    }
-}
-
-impl RenderTemplate for ApplicantDetailPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Applicant — Lariv",
-            chrome,
-            detail_sidebar(
-                applicant_detail_menu(&self.display_name, self.id, "detail"),
-                &lariv_plugin_users::role_authorization::roles_for::<super::routes::ApplicantMutate>(
-                ),
-            ),
-            applicant_crumbs(&self.display_name),
             self.body(),
         )
     }
@@ -1461,78 +1147,7 @@ impl RenderTemplate for PersonCreateModalPage {
 }
 
 #[derive(Generic)]
-pub struct ApplicantCreateModalPage {
-    pub form_name: String,
-    pub refresh_table: String,
-    pub values: ApplicantFormValues,
-    pub error: String,
-}
 
-impl RenderTemplate for ApplicantCreateModalPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<ApplicantCreateModalKey>(
-            &self.form_name,
-            html! {
-                h3 class="font-bold text-lg mb-4" { "New applicant" }
-                (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<ApplicantCreateModalKey>(&modal_create_post_url(
-                        ApplicantCreatePostRouteTag,
-                        &self.form_name,
-                        &self.refresh_table,
-                    )),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: applicant_form_inputs(&self.values),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Create applicant", ..Default::default() }))
-                    },
-                    ..Default::default()
-                }))
-            },
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct ApplicantEditModalPage {
-    pub id: i64,
-    pub form_name: String,
-    pub post_url: String,
-    pub values: ApplicantFormValues,
-    pub error: String,
-}
-
-impl RenderTemplate for ApplicantEditModalPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let delete_url = ApplicantDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<ApplicantEditModalKey>(
-            &self.form_name,
-            html! {
-                h3 class="font-bold text-lg mb-4" { "Edit applicant" }
-                (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<ApplicantEditModalKey>(&self.post_url),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: applicant_form_inputs(&self.values),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_modal_form(ButtonModalForm {
-                            label: "Delete",
-                            icon_name: Some("trash"),
-                            name: "p_hr.ApplicantDeleteForm",
-                            href: &delete_url,
-                            form_post_url: &delete_url,
-                            modal_uid: ApplicantDeleteModalKey::ID,
-                            classes: "btn-error",
-                            ..Default::default()
-                        }))
-                    },
-                    ..Default::default()
-                }))
-            },
-        )
-    }
-}
-
-#[derive(Generic)]
 pub struct PersonEditModalPage {
     pub id: i64,
     pub form_name: String,
@@ -1573,43 +1188,6 @@ impl RenderTemplate for PersonEditModalPage {
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: employee_form_inputs(&self.values, true),
                     actions,
-                    ..Default::default()
-                }))
-            },
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct HireApplicantModalPage {
-    pub applicant_id: i64,
-    pub form_name: String,
-    pub refresh_table: String,
-    pub error: String,
-}
-
-impl RenderTemplate for HireApplicantModalPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<HireApplicantModalKey>(
-            &self.form_name,
-            html! {
-                h3 class="font-bold text-lg mb-4" { "Hire applicant" }
-                p class="mb-4 text-sm opacity-80" {
-                    "Move this applicant into employees?"
-                }
-                (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<HireApplicantModalKey>(&modal_create_post_url(
-                        HireApplicantPostRouteTag::new(self.applicant_id),
-                        &self.form_name,
-                        &self.refresh_table,
-                    )),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: HireApplicantForm::render_inputs(
-                        &FormCtx::form::<HireApplicantForm>(CsrfToken::current()),
-                    ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Hire", ..Default::default() }))
-                    },
                     ..Default::default()
                 }))
             },
@@ -1885,26 +1463,20 @@ impl RenderTemplate for HrDashboardSuccessPage {
 }
 
 #[cfg(test)]
-mod menu_tests {
-    use chrono::Utc;
-
+mod tests {
     use super::hr_menu;
-    use crate::routes::{LeaveView, OvertimeView};
-    use lariv_plugin_users::entities::user::Model as User;
+    use crate::routes::{HrPeopleView, JobFormView, LeaveView};
     use lariv_plugin_users::role_authorization::{RoleAuthorizationRegistry, with_principal};
     use lariv_plugin_users::roles::{Superuser, Unassigned};
-    use lariv_plugin_users::state::AuthContext;
+    use lariv_plugin_users::state::{AuthContext, AuthUser};
 
     fn auth(role: &str) -> AuthContext {
         AuthContext {
-            user: User {
+            user: AuthUser {
                 id: 1,
-                created_at: Some(Utc::now()),
-                updated_at: Some(Utc::now()),
-                name: "Ada".into(),
-                email: "ada@example.com".into(),
-                phone: "1".into(),
-                role: role.into(),
+                name: "Test".into(),
+                email: "t@example.com".into(),
+                phone: "+10000000000".into(),
                 password_hash: Some(vec![]),
                 password_salt: Some(vec![]),
                 timezone: "UTC".into(),
@@ -1919,32 +1491,16 @@ mod menu_tests {
     fn granted_role_sees_leaves_in_the_hr_sidebar() {
         lariv_plugin_users::role_authorization::register_core_auth_hooks();
         let registry = RoleAuthorizationRegistry::new()
-            .allow::<LeaveView>(vec![Unassigned::NAME.into()])
-            .allow::<OvertimeView>(vec![Unassigned::NAME.into()]);
+            .allow::<HrPeopleView>(vec![Unassigned::NAME.into()])
+            .allow::<JobFormView>(vec![Unassigned::NAME.into()])
+            .allow::<LeaveView>(vec![Unassigned::NAME.into()]);
         let html = with_principal(auth(Unassigned::NAME), registry.clone(), || {
             hr_menu("people").expect("sidebar").into_string()
         });
         assert!(html.contains("Leaves"));
-        assert!(html.contains("/hr/leaves/applications"));
-        assert!(!html.contains("Leave applications"));
-        assert!(!html.contains("Leave approvals"));
-        assert!(!html.contains("Leave rejections"));
-        assert!(!html.contains("/hr/leaves/approved"));
-        assert!(!html.contains("/hr/leaves/rejected"));
-        assert!(!html.contains("Approve leaves"));
-        assert!(html.contains("Overtime"));
-        assert!(html.contains("/hr/overtime/applications"));
-        assert!(!html.contains("Approve overtime"));
-
         let html = with_principal(auth(Superuser::NAME), registry, || {
             hr_menu("people").expect("sidebar").into_string()
         });
-        assert!(html.contains("Leaves"));
         assert!(html.contains("/hr/leaves"));
-        assert!(!html.contains("Leave applications"));
-        assert!(html.contains("Overtime"));
-        assert!(html.contains("/hr/overtime"));
-        assert!(!html.contains("/hr/overtime/applications"));
-        assert!(!html.contains("Approve overtime"));
     }
 }

@@ -12,18 +12,18 @@ use lariv_rs::db::DbTag;
 use lariv_rs::http::into_axum_router;
 use lariv_rs::plugins::contacts::entities::{company as company_entity, contact as contact_entity};
 use lariv_rs::plugins::finance_invoices::entities::{
-    DraftInvoiceEntity, DraftInvoiceGoodsLineEntity, DraftPaymentTermEntity,
-    DraftPaymentTermLineEntity, draft_invoice_goods_line, draft_payment_term_line,
+    DraftInvoiceEntity, DraftInvoiceLineEntity, DraftPaymentTermEntity,
+    DraftPaymentTermLineEntity, draft_invoice_line, draft_payment_term_line,
 };
 use lariv_rs::plugins::finance_invoices::logic::tax_assoc::load_draft_line_tax_ids;
 use lariv_rs::plugins::finance_products::entities::product;
 use lariv_rs::plugins::finance_products::preferences::set_product_tax_ids;
+use lariv_rs::plugins::finance_products::ProductKind;
 use lariv_rs::plugins::finance_taxes::entities::tax::{self, TaxKind};
 use lariv_rs::plugins::users::{self, UsersTag, auth, entities::user::Entity as UserEntity};
 use lariv_rs::plugins::{
     contacts, crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes,
-    finance_indian, finance_invoices, finance_products, finance_services, finance_taxes, inventory,
-    llm_assistant, otp, pwa,
+    finance_indian, finance_invoices, finance_products, finance_taxes, llm_assistant, otp, pwa,
 };
 use rust_decimal::Decimal;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
@@ -62,13 +62,11 @@ async fn create_draft_invoice_via_http() {
     let app = llm_assistant::install(app);
     let app = finance_accounts::install(app);
     let app = contacts::install(app);
-    let app = crm::install(app);
     let app = customer::install(app);
+    let app = crm::install(app);
     let app = finance_creditnotes::install(app);
     let app = finance_taxes::install(app);
-    let app = inventory::install(app);
     let app = finance_products::install(app);
-    let app = finance_services::install(app);
     let app = finance_invoices::install(app);
     let app = finance_indian::install(app);
     let app = otp::install(app);
@@ -105,7 +103,7 @@ async fn create_draft_invoice_via_http() {
     .insert(&db)
     .await
     .expect("contact");
-    let company_customer_row = lariv_rs::plugins::crm::entities::customer::ActiveModel {
+    let company_customer_row = lariv_rs::plugins::customer::entities::customer::ActiveModel {
         is_individual: Set(false),
         company_id: Set(Some(company.id)),
         individual_id: Set(None),
@@ -116,7 +114,7 @@ async fn create_draft_invoice_via_http() {
     .insert(&db)
     .await
     .expect("company customer");
-    let individual_customer_row = lariv_rs::plugins::crm::entities::customer::ActiveModel {
+    let individual_customer_row = lariv_rs::plugins::customer::entities::customer::ActiveModel {
         is_individual: Set(true),
         company_id: Set(None),
         individual_id: Set(Some(contact.id)),
@@ -140,24 +138,13 @@ async fn create_draft_invoice_via_http() {
     .await
     .expect("tax");
 
-    let stock = lariv_rs::plugins::inventory::entities::stock::ActiveModel {
-        name: Set("Main".into()),
-        qty_type: Set("quantity".into()),
-        qty_unit: Set(String::new()),
-        created_at: Set(Some(Utc::now())),
-        updated_at: Set(Some(Utc::now())),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .expect("stock");
     let prod = product::ActiveModel {
         name: Set("Test Product".into()),
-        stock_id: Set(stock.id),
-        reference: Set(Some("REF-001".into())),
-        base_price_formula: Set(r#"decimal("40")"#.into()),
+        product_kind: Set(ProductKind::Goods),
         sales_price_formula: Set(r#"decimal("100")"#.into()),
-        hsn_code: Set(1234),
+        hsn_code: Set(Some(1234)),
+        sac_code: Set(None),
+        variables: Set("{}".into()),
         created_at: Set(Some(Utc::now())),
         updated_at: Set(Some(Utc::now())),
         ..Default::default()
@@ -187,7 +174,7 @@ async fn create_draft_invoice_via_http() {
     );
     let csrf = lariv_rs::html_form::generate_csrf_token();
     let body = format!(
-        "csrf_token={csrf}&number=&datetime=2025-06-01T12:00&CustomerID={}&PaymentTermLinesJSON={}&InvoiceGoodsLinesJSON={}",
+        "csrf_token={csrf}&number=&datetime=2025-06-01T12:00&CustomerID={}&PaymentTermLinesJSON={}&InvoiceLinesJSON={}",
         company_customer_row.id,
         payment_term_lines_json,
         urlencoding::encode(&lines_json),
@@ -214,7 +201,7 @@ async fn create_draft_invoice_via_http() {
     assert_eq!(drafts[0].customer_id, company_customer_row.id);
 
     let individual_body = format!(
-        "csrf_token={csrf}&number=&datetime=2025-06-02T12:00&CustomerID={}&PaymentTermLinesJSON={}&InvoiceGoodsLinesJSON={}",
+        "csrf_token={csrf}&number=&datetime=2025-06-02T12:00&CustomerID={}&PaymentTermLinesJSON={}&InvoiceLinesJSON={}",
         individual_customer_row.id,
         payment_term_lines_json,
         urlencoding::encode(&lines_json),
@@ -265,13 +252,13 @@ async fn create_draft_invoice_via_http() {
     );
     assert_eq!(pt_lines[0].amount_percentage, Some(Decimal::from(100)));
 
-    let lines = DraftInvoiceGoodsLineEntity::find()
-        .filter(draft_invoice_goods_line::Column::DraftInvoiceId.eq(drafts[0].id))
+    let lines = DraftInvoiceLineEntity::find()
+        .filter(draft_invoice_line::Column::DraftInvoiceId.eq(drafts[0].id))
         .all(&db)
         .await
         .expect("lines");
     assert_eq!(lines.len(), 1);
-    assert_eq!(lines[0].product_id, Some(prod.id));
+    assert_eq!(lines[0].product_id, prod.id);
     assert_eq!(lines[0].product_name, prod.name);
     assert_eq!(lines[0].quantity, Decimal::from(2));
     assert_eq!(lines[0].rate, Decimal::from(50));
@@ -301,13 +288,11 @@ async fn create_draft_invoice_via_rune_env() {
     let app = llm_assistant::install(app);
     let app = finance_accounts::install(app);
     let app = contacts::install(app);
-    let app = crm::install(app);
     let app = customer::install(app);
+    let app = crm::install(app);
     let app = finance_creditnotes::install(app);
     let app = finance_taxes::install(app);
-    let app = inventory::install(app);
     let app = finance_products::install(app);
-    let app = finance_services::install(app);
     let app = finance_invoices::install(app);
     let app = finance_indian::install(app);
     let app = otp::install(app);
@@ -338,7 +323,7 @@ async fn create_draft_invoice_via_rune_env() {
     .await
     .expect("contact");
 
-    let customer = lariv_rs::plugins::crm::entities::customer::ActiveModel {
+    let customer = lariv_rs::plugins::customer::entities::customer::ActiveModel {
         is_individual: Set(true),
         company_id: Set(None),
         individual_id: Set(Some(contact.id)),
@@ -362,24 +347,13 @@ async fn create_draft_invoice_via_rune_env() {
     .await
     .expect("tax");
 
-    let stock = lariv_rs::plugins::inventory::entities::stock::ActiveModel {
-        name: Set("Main".into()),
-        qty_type: Set("quantity".into()),
-        qty_unit: Set(String::new()),
-        created_at: Set(Some(Utc::now())),
-        updated_at: Set(Some(Utc::now())),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .expect("stock");
     let prod = product::ActiveModel {
         name: Set("Rune Product".into()),
-        stock_id: Set(stock.id),
-        reference: Set(Some("RUNE-001".into())),
-        base_price_formula: Set(r#"decimal("40")"#.into()),
+        product_kind: Set(ProductKind::Goods),
         sales_price_formula: Set(r#"decimal("100")"#.into()),
-        hsn_code: Set(1234),
+        hsn_code: Set(Some(1234)),
+        sac_code: Set(None),
+        variables: Set("{}".into()),
         created_at: Set(Some(Utc::now())),
         updated_at: Set(Some(Utc::now())),
         ..Default::default()
@@ -453,14 +427,14 @@ async fn create_draft_invoice_via_rune_env() {
     );
     assert_eq!(pt_line.amount_percentage, Some(Decimal::from(100)));
 
-    let lines = DraftInvoiceGoodsLineEntity::find()
-        .filter(draft_invoice_goods_line::Column::DraftInvoiceId.eq(draft.id))
+    let lines = DraftInvoiceLineEntity::find()
+        .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft.id))
         .all(&db)
         .await
         .expect("lines");
     assert_eq!(lines.len(), 1);
     let line = lines.first().expect("invoice line");
-    assert_eq!(line.product_id, Some(prod.id));
+    assert_eq!(line.product_id, prod.id);
     assert_eq!(line.product_name, prod.name);
     assert_eq!(line.quantity, Decimal::from(2));
     assert_eq!(line.rate, Decimal::from(50));
@@ -479,13 +453,11 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
     use lariv_rs::plugins::finance_accounts::entities::{
         account, currency, journal, journal_entry_item,
     };
-    use lariv_rs::plugins::finance_invoices::entities::draft_invoice_service_line;
     use lariv_rs::plugins::finance_invoices::logic::{
         CreatePaymentInput, create_payment, draft_new_posted,
     };
     use lariv_rs::plugins::finance_invoices::payment_journal_template::save_payment_template;
     use lariv_rs::plugins::finance_products::journal_template::save_product_template;
-    use lariv_rs::plugins::finance_services::entities::service;
     use sea_orm::QueryOrder;
 
     let database_url =
@@ -497,13 +469,11 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
     let app = llm_assistant::install(app);
     let app = finance_accounts::install(app);
     let app = contacts::install(app);
-    let app = crm::install(app);
     let app = customer::install(app);
+    let app = crm::install(app);
     let app = finance_creditnotes::install(app);
     let app = finance_taxes::install(app);
-    let app = inventory::install(app);
     let app = finance_products::install(app);
-    let app = finance_services::install(app);
     let app = finance_invoices::install(app);
     let app = finance_indian::install(app);
     let app = otp::install(app);
@@ -587,25 +557,15 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
     .to_string();
     let schema = lariv_rs::plugins::finance_products::pricing::load_schema("{}").expect("schema");
 
-    let stock = lariv_rs::plugins::inventory::entities::stock::ActiveModel {
-        name: Set("Main".into()),
-        qty_type: Set("quantity".into()),
-        qty_unit: Set(String::new()),
-        created_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .expect("stock");
     let mut product_ids = Vec::new();
     for name in ["Widget", "Gadget"] {
         let prod = product::ActiveModel {
             name: Set(name.into()),
-            stock_id: Set(stock.id),
-            base_price_formula: Set(r#"decimal("40")"#.into()),
+            product_kind: Set(ProductKind::Goods),
             sales_price_formula: Set(r#"decimal("100")"#.into()),
-            hsn_code: Set(1),
+            hsn_code: Set(Some(1)),
+            sac_code: Set(None),
+            variables: Set("{}".into()),
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
             ..Default::default()
@@ -626,10 +586,11 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
     }
     let mismatched = product::ActiveModel {
         name: Set("Mismatch".into()),
-        stock_id: Set(stock.id),
-        base_price_formula: Set(r#"decimal("40")"#.into()),
+        product_kind: Set(ProductKind::Goods),
         sales_price_formula: Set(r#"decimal("100")"#.into()),
-        hsn_code: Set(1),
+        hsn_code: Set(Some(1)),
+        sac_code: Set(None),
+        variables: Set("{}".into()),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -685,7 +646,7 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
     .insert(&db)
     .await
     .expect("company");
-    let customer = lariv_rs::plugins::crm::entities::customer::ActiveModel {
+    let customer = lariv_rs::plugins::customer::entities::customer::ActiveModel {
         is_individual: Set(false),
         company_id: Set(Some(company.id)),
         individual_id: Set(None),
@@ -715,7 +676,7 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
         product_ids[0], product_ids[1]
     );
     let body = format!(
-        "csrf_token={csrf}&number=&datetime=2025-06-01T12:00&CustomerID={}&PaymentTermLinesJSON={}&InvoiceGoodsLinesJSON={}",
+        "csrf_token={csrf}&number=&datetime=2025-06-01T12:00&CustomerID={}&PaymentTermLinesJSON={}&InvoiceLinesJSON={}",
         customer.id,
         payment_term_lines_json,
         urlencoding::encode(&lines_json),
@@ -801,11 +762,12 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
         Ok(_) => panic!("payment above the template receivable should be rejected"),
     }
 
-    let service = service::ActiveModel {
+    let service = product::ActiveModel {
         name: Set("Install".into()),
-        sac_code: Set(1),
+        product_kind: Set(ProductKind::Services),
+        sac_code: Set(Some(1)),
+        hsn_code: Set(None),
         variables: Set("{}".into()),
-        base_price_formula: Set(r#"decimal("1")"#.into()),
         sales_price_formula: Set(r#"decimal("1")"#.into()),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
@@ -819,7 +781,7 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
         product_ids[0], mismatched.id
     );
     let reject_body = format!(
-        "csrf_token={csrf}&number=&datetime=2025-06-03T12:00&CustomerID={}&PaymentTermLinesJSON={}&InvoiceGoodsLinesJSON={}",
+        "csrf_token={csrf}&number=&datetime=2025-06-03T12:00&CustomerID={}&PaymentTermLinesJSON={}&InvoiceLinesJSON={}",
         customer.id,
         payment_term_lines_json,
         urlencoding::encode(&reject_lines),
@@ -851,11 +813,11 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
         .expect_err("mismatched journals");
     assert!(mismatch_err.contains("same journal"), "{mismatch_err}");
     let service_lines = format!(
-        r#"[{{"product_id":{},"quantity":"1","rate":"10"}}]"#,
-        product_ids[0]
+        r#"[{{"product_id":{},"quantity":"1","rate":"1"}}]"#,
+        service.id
     );
     let service_body = format!(
-        "csrf_token={csrf}&number=&datetime=2025-06-04T12:00&CustomerID={}&PaymentTermLinesJSON={}&InvoiceGoodsLinesJSON={}",
+        "csrf_token={csrf}&number=&datetime=2025-06-04T12:00&CustomerID={}&PaymentTermLinesJSON={}&InvoiceLinesJSON={}",
         customer.id,
         payment_term_lines_json,
         urlencoding::encode(&service_lines),
@@ -880,27 +842,6 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
         .await
         .expect("query service draft")
         .expect("service draft");
-    draft_invoice_service_line::ActiveModel {
-        draft_invoice_id: Set(service_draft.id),
-        service_id: Set(Some(service.id)),
-        service_name: Set(service.name.clone()),
-        service_reference: Set(service.reference.clone()),
-        service_remarks: Set(service.remarks.clone()),
-        sac_code: Set(service.sac_code),
-        variable_types: Set(service.variables.clone()),
-        base_price_formula: Set(service.base_price_formula.clone()),
-        sales_price_formula: Set(service.sales_price_formula.clone()),
-        rate: Set(Decimal::ONE),
-        quantity: Set(Decimal::ONE),
-        variable_values: Set("{}".into()),
-        pre_tax_amount: Set(Decimal::ONE),
-        created_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        ..Default::default()
-    }
-    .insert(&db)
-    .await
-    .expect("service line");
     let service_err = draft_new_posted(&db, service_draft.id, Utc::now(), "UTC")
         .await
         .expect_err("service without a journal template");
@@ -908,14 +849,12 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
         service_err.contains("no journal entry template"),
         "{service_err}"
     );
-    let service_schema =
-        lariv_rs::plugins::finance_services::pricing::load_schema("{}").expect("service schema");
-    lariv_rs::plugins::finance_services::journal_template::save_service_template(
+    save_product_template(
         &db,
         service.id,
         &journal.id.to_string(),
         &template_lines,
-        &service_schema,
+        &schema,
     )
     .await
     .expect("service template");
@@ -924,9 +863,9 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
         .expect("post service draft");
     assert_eq!(service_posted.journal_id, journal.id);
     let posted_service_lines =
-        lariv_rs::plugins::finance_invoices::entities::posted_invoice_service_line::Entity::find()
+        lariv_rs::plugins::finance_invoices::entities::PostedInvoiceLineEntity::find()
             .filter(
-                lariv_rs::plugins::finance_invoices::entities::posted_invoice_service_line::Column::PostedInvoiceId
+                lariv_rs::plugins::finance_invoices::entities::posted_invoice_line::Column::PostedInvoiceId
                     .eq(service_posted.id),
             )
             .all(&db)
@@ -966,7 +905,7 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
     .await
     .expect("other tax template");
     let tax_body = format!(
-        "csrf_token={csrf}&number=&datetime=2025-06-05T12:00&CustomerID={}&PaymentTermLinesJSON={}&InvoiceGoodsLinesJSON={}",
+        "csrf_token={csrf}&number=&datetime=2025-06-05T12:00&CustomerID={}&PaymentTermLinesJSON={}&InvoiceLinesJSON={}",
         customer.id,
         payment_term_lines_json,
         urlencoding::encode(&format!(

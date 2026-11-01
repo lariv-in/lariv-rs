@@ -91,7 +91,7 @@ async fn hub_product_display(db: &sea_orm::DatabaseConnection, raw: &str) -> Str
         return String::new();
     };
     lariv_core::web::opt_or_log(
-        crate::purchase_products::entities::product::Entity::find_by_id(id)
+        lariv_plugin_finance_products::entities::product::Entity::find_by_id(id)
             .one(db)
             .await,
         "find product for purchase hub filter",
@@ -227,7 +227,7 @@ fn apply_draft_sql_sort(
         HubSortKey::UntaxedAmount => order_by_expr(
             query,
             expr_line_untaxed(
-                "draft_purchase_goods_lines",
+                "draft_purchase_lines",
                 "draft_purchase_id",
                 "draft_purchases",
             ),
@@ -236,7 +236,7 @@ fn apply_draft_sql_sort(
         HubSortKey::ProductCount => order_by_expr(
             query,
             expr_line_product_count(
-                "draft_purchase_goods_lines",
+                "draft_purchase_lines",
                 "draft_purchase_id",
                 "draft_purchases",
             ),
@@ -294,7 +294,7 @@ fn apply_posted_sql_sort(
         HubSortKey::UntaxedAmount => order_by_expr(
             query,
             expr_line_untaxed(
-                "posted_purchase_goods_lines",
+                "posted_purchase_lines",
                 "posted_purchase_id",
                 "posted_purchases",
             ),
@@ -305,7 +305,7 @@ fn apply_posted_sql_sort(
             query,
             expr_tax_levied_approx(
                 "posted_purchases",
-                "posted_purchase_goods_lines",
+                "posted_purchase_lines",
                 "posted_purchase_id",
             ),
             desc,
@@ -313,7 +313,7 @@ fn apply_posted_sql_sort(
         HubSortKey::ProductCount => order_by_expr(
             query,
             expr_line_product_count(
-                "posted_purchase_goods_lines",
+                "posted_purchase_lines",
                 "posted_purchase_id",
                 "posted_purchases",
             ),
@@ -362,7 +362,7 @@ fn apply_cancelled_sql_sort(
         HubSortKey::UntaxedAmount => order_by_expr(
             query,
             expr_line_untaxed(
-                "cancelled_purchase_goods_lines",
+                "cancelled_purchase_lines",
                 "cancelled_purchase_id",
                 "cancelled_purchases",
             ),
@@ -371,7 +371,7 @@ fn apply_cancelled_sql_sort(
         HubSortKey::ProductCount => order_by_expr(
             query,
             expr_line_product_count(
-                "cancelled_purchase_goods_lines",
+                "cancelled_purchase_lines",
                 "cancelled_purchase_id",
                 "cancelled_purchases",
             ),

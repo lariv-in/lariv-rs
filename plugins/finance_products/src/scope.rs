@@ -7,13 +7,9 @@ use crate::entities::product::{self, Entity as ProductEntity};
 pub fn apply_product_filters(
     mut query: Select<ProductEntity>,
     name: Option<&str>,
-    reference: Option<&str>,
 ) -> Select<ProductEntity> {
     if let Some(n) = name.filter(|s| !s.is_empty()) {
         query = query.filter(ci_contains(product::Column::Name, n));
-    }
-    if let Some(r) = reference.filter(|s| !s.is_empty()) {
-        query = query.filter(ci_contains(product::Column::Reference, r));
     }
     query
 }

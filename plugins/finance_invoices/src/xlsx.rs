@@ -225,9 +225,9 @@ const OMITTED_SHEETS: &[&str] = &[
     "draft_invoice_taxes",
     "posted_invoice_taxes",
     "cancelled_invoice_taxes",
-    "draft_invoice_goods_line_taxes",
-    "posted_invoice_goods_line_taxes",
-    "cancelled_invoice_goods_line_taxes",
+    "draft_invoice_line_taxes",
+    "posted_invoice_line_taxes",
+    "cancelled_invoice_line_taxes",
     "draft_payment_terms",
     "posted_payment_terms",
 ];
@@ -249,56 +249,29 @@ fn append_relation_links(prepared: &mut [Prepared]) {
         RelArray {
             parent: "draft_invoices",
             parent_key: "id",
-            child: "draft_invoice_goods_lines",
+            child: "draft_invoice_lines",
             child_key: "draft_invoice_id",
             prefix: "line",
             link_column: None,
-            link_table: "draft_invoice_goods_lines",
-        },
-        RelArray {
-            parent: "draft_invoices",
-            parent_key: "id",
-            child: "draft_invoice_service_lines",
-            child_key: "draft_invoice_id",
-            prefix: "service_line",
-            link_column: None,
-            link_table: "draft_invoice_service_lines",
+            link_table: "draft_invoice_lines",
         },
         RelArray {
             parent: "posted_invoices",
             parent_key: "id",
-            child: "posted_invoice_service_lines",
+            child: "posted_invoice_lines",
             child_key: "posted_invoice_id",
-            prefix: "service_line",
+            prefix: "line",
             link_column: None,
-            link_table: "posted_invoice_service_lines",
+            link_table: "posted_invoice_lines",
         },
         RelArray {
             parent: "cancelled_invoices",
             parent_key: "id",
-            child: "cancelled_invoice_service_lines",
-            child_key: "cancelled_invoice_id",
-            prefix: "service_line",
-            link_column: None,
-            link_table: "cancelled_invoice_service_lines",
-        },
-        RelArray {
-            parent: "posted_invoices",
-            parent_key: "id",
-            child: "posted_invoice_goods_lines",
-            child_key: "posted_invoice_id",
-            prefix: "line",
-            link_column: None,
-            link_table: "posted_invoice_goods_lines",
-        },
-        RelArray {
-            parent: "cancelled_invoices",
-            parent_key: "id",
-            child: "cancelled_invoice_goods_lines",
+            child: "cancelled_invoice_lines",
             child_key: "cancelled_invoice_id",
             prefix: "line",
             link_column: None,
-            link_table: "cancelled_invoice_goods_lines",
+            link_table: "cancelled_invoice_lines",
         },
         RelArray {
             parent: "draft_invoices",
@@ -355,28 +328,28 @@ fn append_relation_links(prepared: &mut [Prepared]) {
             link_table: "taxes",
         },
         RelArray {
-            parent: "draft_invoice_goods_lines",
+            parent: "draft_invoice_lines",
             parent_key: "id",
-            child: "draft_invoice_goods_line_taxes",
-            child_key: "draft_invoice_goods_line_id",
+            child: "draft_invoice_line_taxes",
+            child_key: "draft_invoice_line_id",
             prefix: "tax",
             link_column: Some("tax_id"),
             link_table: "taxes",
         },
         RelArray {
-            parent: "posted_invoice_goods_lines",
+            parent: "posted_invoice_lines",
             parent_key: "id",
-            child: "posted_invoice_goods_line_taxes",
-            child_key: "posted_invoice_goods_line_id",
+            child: "posted_invoice_line_taxes",
+            child_key: "posted_invoice_line_id",
             prefix: "tax",
             link_column: Some("tax_id"),
             link_table: "taxes",
         },
         RelArray {
-            parent: "cancelled_invoice_goods_lines",
+            parent: "cancelled_invoice_lines",
             parent_key: "id",
-            child: "cancelled_invoice_goods_line_taxes",
-            child_key: "cancelled_invoice_goods_line_id",
+            child: "cancelled_invoice_line_taxes",
+            child_key: "cancelled_invoice_line_id",
             prefix: "tax",
             link_column: Some("tax_id"),
             link_table: "taxes",
@@ -626,7 +599,7 @@ fn fk_label(
             field(sheets, index, table, id, "name"),
             company_name(sheets, index, field(sheets, index, table, id, "company_id")),
         ),
-        "crm_customers" => customer_label(sheets, index, id),
+        "customers" => customer_label(sheets, index, id),
         "products" | "taxes" | "journals" | "currencies" => {
             field(sheets, index, table, id, "name").to_string()
         }
@@ -659,23 +632,13 @@ fn fk_label(
             );
             join_parts(&[account.as_str(), field(sheets, index, table, id, "amount")])
         }
-        "draft_invoice_goods_lines"
-        | "posted_invoice_goods_lines"
-        | "cancelled_invoice_goods_lines" => field(
+        "draft_invoice_lines"
+        | "posted_invoice_lines"
+        | "cancelled_invoice_lines" => field(
             sheets,
             index,
             "products",
             field(sheets, index, table, id, "product_id"),
-            "name",
-        )
-        .to_string(),
-        "draft_invoice_service_lines"
-        | "posted_invoice_service_lines"
-        | "cancelled_invoice_service_lines" => field(
-            sheets,
-            index,
-            "services",
-            field(sheets, index, table, id, "service_id"),
             "name",
         )
         .to_string(),
@@ -710,8 +673,8 @@ fn customer_label(
     index: &HashMap<&'static str, HashMap<String, usize>>,
     id: &str,
 ) -> String {
-    if is_truthy(field(sheets, index, "crm_customers", id, "is_individual")) {
-        let contact_id = field(sheets, index, "crm_customers", id, "individual_id");
+    if is_truthy(field(sheets, index, "customers", id, "is_individual")) {
+        let contact_id = field(sheets, index, "customers", id, "individual_id");
         combine_names(
             field(sheets, index, "crm_contacts", contact_id, "name"),
             company_name(
@@ -724,7 +687,7 @@ fn customer_label(
         company_name(
             sheets,
             index,
-            field(sheets, index, "crm_customers", id, "company_id"),
+            field(sheets, index, "customers", id, "company_id"),
         )
         .to_string()
     }
@@ -998,7 +961,7 @@ const SHEETS: &[SheetDef] = &[
         fks: &[
             Fk {
                 column: "customer_id",
-                target: "crm_customers",
+                target: "customers",
             },
             Fk {
                 column: "draft_payment_term_id",
@@ -1035,7 +998,7 @@ const SHEETS: &[SheetDef] = &[
             },
             Fk {
                 column: "customer_id",
-                target: "crm_customers",
+                target: "customers",
             },
             Fk {
                 column: "journal_entry_id",
@@ -1082,7 +1045,7 @@ const SHEETS: &[SheetDef] = &[
             },
             Fk {
                 column: "customer_id",
-                target: "crm_customers",
+                target: "customers",
             },
             Fk {
                 column: "credit_note_id",
@@ -1149,7 +1112,7 @@ const SHEETS: &[SheetDef] = &[
         ],
     },
     SheetDef {
-        table: "draft_invoice_goods_lines",
+        table: "draft_invoice_lines",
         columns: &[
             "id",
             "created_at",
@@ -1157,11 +1120,10 @@ const SHEETS: &[SheetDef] = &[
             "draft_invoice_id",
             "product_id",
             "product_name",
-            "product_reference",
             "product_remarks",
             "hsn_code",
+            "sac_code",
             "variable_types",
-            "base_price_formula",
             "sales_price_formula",
             "rate",
             "quantity",
@@ -1179,40 +1141,6 @@ const SHEETS: &[SheetDef] = &[
             Fk {
                 column: "product_id",
                 target: "products",
-            },
-        ],
-    },
-    SheetDef {
-        table: "draft_invoice_service_lines",
-        columns: &[
-            "id",
-            "created_at",
-            "updated_at",
-            "draft_invoice_id",
-            "service_id",
-            "service_name",
-            "service_reference",
-            "service_remarks",
-            "sac_code",
-            "variable_types",
-            "base_price_formula",
-            "sales_price_formula",
-            "rate",
-            "quantity",
-            "variable_values",
-            "pre_tax_amount",
-            "remarks",
-        ],
-        root: false,
-        parent: Some(("draft_invoice_id", "draft_invoices")),
-        fks: &[
-            Fk {
-                column: "draft_invoice_id",
-                target: "draft_invoices",
-            },
-            Fk {
-                column: "service_id",
-                target: "services",
             },
         ],
     },
@@ -1233,14 +1161,14 @@ const SHEETS: &[SheetDef] = &[
         ],
     },
     SheetDef {
-        table: "draft_invoice_goods_line_taxes",
-        columns: &["draft_invoice_goods_line_id", "tax_id"],
+        table: "draft_invoice_line_taxes",
+        columns: &["draft_invoice_line_id", "tax_id"],
         root: false,
-        parent: Some(("draft_invoice_goods_line_id", "draft_invoice_goods_lines")),
+        parent: Some(("draft_invoice_line_id", "draft_invoice_lines")),
         fks: &[
             Fk {
-                column: "draft_invoice_goods_line_id",
-                target: "draft_invoice_goods_lines",
+                column: "draft_invoice_line_id",
+                target: "draft_invoice_lines",
             },
             Fk {
                 column: "tax_id",
@@ -1249,7 +1177,7 @@ const SHEETS: &[SheetDef] = &[
         ],
     },
     SheetDef {
-        table: "posted_invoice_goods_lines",
+        table: "posted_invoice_lines",
         columns: &[
             "id",
             "created_at",
@@ -1257,11 +1185,10 @@ const SHEETS: &[SheetDef] = &[
             "posted_invoice_id",
             "product_id",
             "product_name",
-            "product_reference",
             "product_remarks",
             "hsn_code",
+            "sac_code",
             "variable_types",
-            "base_price_formula",
             "sales_price_formula",
             "rate",
             "quantity",
@@ -1280,45 +1207,6 @@ const SHEETS: &[SheetDef] = &[
             Fk {
                 column: "product_id",
                 target: "products",
-            },
-            Fk {
-                column: "journal_entry_item_id",
-                target: "journal_entry_items",
-            },
-        ],
-    },
-    SheetDef {
-        table: "posted_invoice_service_lines",
-        columns: &[
-            "id",
-            "created_at",
-            "updated_at",
-            "posted_invoice_id",
-            "service_id",
-            "service_name",
-            "service_reference",
-            "service_remarks",
-            "sac_code",
-            "variable_types",
-            "base_price_formula",
-            "sales_price_formula",
-            "rate",
-            "quantity",
-            "variable_values",
-            "pre_tax_amount",
-            "remarks",
-            "journal_entry_item_id",
-        ],
-        root: false,
-        parent: Some(("posted_invoice_id", "posted_invoices")),
-        fks: &[
-            Fk {
-                column: "posted_invoice_id",
-                target: "posted_invoices",
-            },
-            Fk {
-                column: "service_id",
-                target: "services",
             },
             Fk {
                 column: "journal_entry_item_id",
@@ -1343,14 +1231,14 @@ const SHEETS: &[SheetDef] = &[
         ],
     },
     SheetDef {
-        table: "posted_invoice_goods_line_taxes",
-        columns: &["posted_invoice_goods_line_id", "tax_id"],
+        table: "posted_invoice_line_taxes",
+        columns: &["posted_invoice_line_id", "tax_id"],
         root: false,
-        parent: Some(("posted_invoice_goods_line_id", "posted_invoice_goods_lines")),
+        parent: Some(("posted_invoice_line_id", "posted_invoice_lines")),
         fks: &[
             Fk {
-                column: "posted_invoice_goods_line_id",
-                target: "posted_invoice_goods_lines",
+                column: "posted_invoice_line_id",
+                target: "posted_invoice_lines",
             },
             Fk {
                 column: "tax_id",
@@ -1359,7 +1247,7 @@ const SHEETS: &[SheetDef] = &[
         ],
     },
     SheetDef {
-        table: "cancelled_invoice_goods_lines",
+        table: "cancelled_invoice_lines",
         columns: &[
             "id",
             "created_at",
@@ -1367,11 +1255,10 @@ const SHEETS: &[SheetDef] = &[
             "cancelled_invoice_id",
             "product_id",
             "product_name",
-            "product_reference",
             "product_remarks",
             "hsn_code",
+            "sac_code",
             "variable_types",
-            "base_price_formula",
             "sales_price_formula",
             "rate",
             "quantity",
@@ -1398,45 +1285,6 @@ const SHEETS: &[SheetDef] = &[
         ],
     },
     SheetDef {
-        table: "cancelled_invoice_service_lines",
-        columns: &[
-            "id",
-            "created_at",
-            "updated_at",
-            "cancelled_invoice_id",
-            "service_id",
-            "service_name",
-            "service_reference",
-            "service_remarks",
-            "sac_code",
-            "variable_types",
-            "base_price_formula",
-            "sales_price_formula",
-            "rate",
-            "quantity",
-            "variable_values",
-            "pre_tax_amount",
-            "remarks",
-            "journal_entry_item_id",
-        ],
-        root: false,
-        parent: Some(("cancelled_invoice_id", "cancelled_invoices")),
-        fks: &[
-            Fk {
-                column: "cancelled_invoice_id",
-                target: "cancelled_invoices",
-            },
-            Fk {
-                column: "service_id",
-                target: "services",
-            },
-            Fk {
-                column: "journal_entry_item_id",
-                target: "journal_entry_items",
-            },
-        ],
-    },
-    SheetDef {
         table: "cancelled_invoice_taxes",
         columns: &["cancelled_invoice_id", "tax_id"],
         root: false,
@@ -1453,17 +1301,14 @@ const SHEETS: &[SheetDef] = &[
         ],
     },
     SheetDef {
-        table: "cancelled_invoice_goods_line_taxes",
-        columns: &["cancelled_invoice_goods_line_id", "tax_id"],
+        table: "cancelled_invoice_line_taxes",
+        columns: &["cancelled_invoice_line_id", "tax_id"],
         root: false,
-        parent: Some((
-            "cancelled_invoice_goods_line_id",
-            "cancelled_invoice_goods_lines",
-        )),
+        parent: Some(("cancelled_invoice_line_id", "cancelled_invoice_lines")),
         fks: &[
             Fk {
-                column: "cancelled_invoice_goods_line_id",
-                target: "cancelled_invoice_goods_lines",
+                column: "cancelled_invoice_line_id",
+                target: "cancelled_invoice_lines",
             },
             Fk {
                 column: "tax_id",
@@ -1526,7 +1371,7 @@ const SHEETS: &[SheetDef] = &[
         }],
     },
     SheetDef {
-        table: "crm_customers",
+        table: "customers",
         columns: &[
             "id",
             "created_at",
@@ -1602,7 +1447,6 @@ const SHEETS: &[SheetDef] = &[
             "name",
             "hsn_code",
             "variables",
-            "base_price_formula",
             "sales_price_formula",
         ],
         root: false,
@@ -1620,7 +1464,6 @@ const SHEETS: &[SheetDef] = &[
             "name",
             "sac_code",
             "variables",
-            "base_price_formula",
             "sales_price_formula",
         ],
         root: false,
@@ -1867,13 +1710,13 @@ mod tests {
         .expect("insert contact");
         db.execute_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
-            "INSERT INTO crm_customers (id, is_individual, individual_id) VALUES ('7', '1', '9')",
+            "INSERT INTO customers (id, is_individual, individual_id) VALUES ('7', '1', '9')",
         ))
         .await
         .expect("insert individual customer");
         db.execute_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
-            "INSERT INTO crm_customers (id, is_individual, company_id) VALUES ('8', '0', '3')",
+            "INSERT INTO customers (id, is_individual, company_id) VALUES ('8', '0', '3')",
         ))
         .await
         .expect("insert company customer");
@@ -1912,7 +1755,7 @@ mod tests {
         .expect("insert draft");
         db.execute_raw(Statement::from_string(
             DatabaseBackend::Sqlite,
-            "INSERT INTO posted_invoice_goods_lines (id, posted_invoice_id, product_id, quantity) \
+            "INSERT INTO posted_invoice_lines (id, posted_invoice_id, product_id, quantity) \
              VALUES ('10', '1', '4', '2')",
         ))
         .await
@@ -1932,11 +1775,11 @@ mod tests {
             "posted invoices sheet missing"
         );
         assert!(
-            xml.contains("name=\"crm_customers\""),
+            xml.contains("name=\"customers\""),
             "customer sheet missing"
         );
         assert!(
-            xml.contains("name=\"posted_invoice_goods_lines\""),
+            xml.contains("name=\"posted_invoice_lines\""),
             "invoice lines stay on their own sheet"
         );
         assert!(
@@ -1949,16 +1792,16 @@ mod tests {
             "payment term should be a workbook link with a readable duration"
         );
         assert!(
-            xml.contains("location=\"posted_invoice_goods_lines!A2\"")
+            xml.contains("location=\"posted_invoice_lines!A2\"")
                 && xml.contains("display=\"Widget\""),
             "invoice line should be a workbook link on the single invoice row"
         );
         assert!(
-            xml.contains("location=\"crm_customers!A2\"") && xml.contains("display=\"Ada, Acme\""),
+            xml.contains("location=\"customers!A2\"") && xml.contains("display=\"Ada, Acme\""),
             "individual customer link should show the contact and company names"
         );
         assert!(
-            xml.contains("location=\"crm_customers!A3\"") && xml.contains("display=\"Acme\""),
+            xml.contains("location=\"customers!A3\"") && xml.contains("display=\"Acme\""),
             "company customer link should show the company name"
         );
         assert!(

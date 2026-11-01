@@ -9,22 +9,20 @@ use thiserror::Error;
 
 use crate::entities::{
     quotation::{self, Entity as QuotationEntity},
-    quotation_goods_line::{self, Entity as GoodsLineEntity},
-    quotation_service_line::{self, Entity as ServiceLineEntity},
+    quotation_line::{self, Entity as LineEntity},
 };
 use crate::logic::editor::quotation_grand_total;
 use crate::logic::prefs::load_preferences;
-use crate::logic::tax::{load_goods_line_tax_ids, load_service_line_tax_ids};
+use crate::logic::tax::load_quotation_line_tax_ids;
 use lariv_plugin_contacts::entities::{
     company::Entity as CompanyEntity, contact::Entity as ContactEntity,
 };
-use lariv_plugin_crm::entities::customer::Entity as CustomerEntity;
+use lariv_plugin_customer::entities::customer::Entity as CustomerEntity;
 use lariv_plugin_filesystem::state::FilesystemState;
 use lariv_plugin_finance_common::{decimal::decimal_display, typst};
 use lariv_plugin_finance_invoices::VnodeImageContext;
 use lariv_plugin_finance_invoices::logic::tax_calculations::invoice_line_amounts;
 use lariv_plugin_finance_products::entities::product::Entity as ProductEntity;
-use lariv_plugin_finance_services::entities::service::Entity as ServiceEntity;
 use lariv_plugin_finance_taxes::{
     entities::tax::TaxKind,
     scope::{load_taxes_by_ids, tax_label},
@@ -124,10 +122,8 @@ struct PdfRoot {
     date: String,
     #[serde(rename = "Customer")]
     customer: PdfCustomer,
-    #[serde(rename = "GoodsLines")]
-    goods_lines: Vec<PdfLine>,
-    #[serde(rename = "ServiceLines")]
-    service_lines: Vec<PdfLine>,
+    #[serde(rename = "Lines")]
+    lines: Vec<PdfLine>,
     #[serde(rename = "GrandTotal")]
     grand_total: String,
     #[serde(rename = "Remarks")]
@@ -163,8 +159,7 @@ pub async fn render_quotation_pdf_parts(
         .map_err(|err| PdfError::Message(err.to_string()))?
         .ok_or(PdfError::NotFound)?;
     let prefs = load_preferences(db).await;
-    let goods = goods_pdf_lines(db, quotation.id).await?;
-    let services = service_pdf_lines(db, quotation.id).await?;
+    let lines = quotation_pdf_lines(db, quotation.id).await?;
     let grand = quotation_grand_total(db, quotation.id).await;
     let customer = load_customer(db, quotation.customer_id).await?;
     let root = PdfRoot {
@@ -174,8 +169,7 @@ pub async fn render_quotation_pdf_parts(
         customer_id: quotation.customer_id,
         date: lariv_core::datetime::format_date(quotation.date),
         customer,
-        goods_lines: goods,
-        service_lines: services,
+        lines,
         grand_total: decimal_display(grand),
         remarks: quotation.remarks.clone(),
         bank_account: quotation.bank_account.clone().unwrap_or_default(),
@@ -222,13 +216,13 @@ fn pdf_filename(quotation: &quotation::Model) -> String {
         .collect()
 }
 
-async fn goods_pdf_lines(
+async fn quotation_pdf_lines(
     db: &DatabaseConnection,
     quotation_id: i64,
 ) -> Result<Vec<PdfLine>, PdfError> {
-    let lines = GoodsLineEntity::find()
-        .filter(quotation_goods_line::Column::QuotationId.eq(quotation_id))
-        .order_by_asc(quotation_goods_line::Column::Id)
+    let lines = LineEntity::find()
+        .filter(quotation_line::Column::QuotationId.eq(quotation_id))
+        .order_by_asc(quotation_line::Column::Id)
         .all(db)
         .await
         .map_err(|err| PdfError::Message(err.to_string()))?;
@@ -241,46 +235,7 @@ async fn goods_pdf_lines(
             .flatten()
             .map(|row| row.name)
             .unwrap_or_else(|| format!("Product #{}", line.product_id));
-        let tax_ids = load_goods_line_tax_ids(db, line.id)
-            .await
-            .unwrap_or_default();
-        out.push(
-            pdf_line(
-                db,
-                line.id,
-                name,
-                line.quantity,
-                line.rate,
-                line.pre_tax_amount,
-                line.remarks.as_deref().unwrap_or(""),
-                &tax_ids,
-            )
-            .await,
-        );
-    }
-    Ok(out)
-}
-
-async fn service_pdf_lines(
-    db: &DatabaseConnection,
-    quotation_id: i64,
-) -> Result<Vec<PdfLine>, PdfError> {
-    let lines = ServiceLineEntity::find()
-        .filter(quotation_service_line::Column::QuotationId.eq(quotation_id))
-        .order_by_asc(quotation_service_line::Column::Id)
-        .all(db)
-        .await
-        .map_err(|err| PdfError::Message(err.to_string()))?;
-    let mut out = Vec::with_capacity(lines.len());
-    for line in lines {
-        let name = ServiceEntity::find_by_id(line.service_id)
-            .one(db)
-            .await
-            .ok()
-            .flatten()
-            .map(|row| row.name)
-            .unwrap_or_else(|| format!("Service #{}", line.service_id));
-        let tax_ids = load_service_line_tax_ids(db, line.id)
+        let tax_ids = load_quotation_line_tax_ids(db, line.id)
             .await
             .unwrap_or_default();
         out.push(

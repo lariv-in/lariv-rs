@@ -5,16 +5,16 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Customer records listed on the dashboard"
+description = "Customer records support addon (create modal + reusable table)"
 
 [dependencies]
 lariv_core = { package = "lariv-core", path = "../../lariv-core" }
 lariv-rs-macros = { workspace = true }
 lariv-plugin-contacts = { path = "../contacts" }
-lariv-plugin-crm = { path = "../crm" }
 lariv-plugin-users = { path = "../users" }
 async-trait = { workspace = true }
 axum = { workspace = true }
+chrono = { workspace = true }
 frunk = { workspace = true }
 frunk_core = { workspace = true }
 maud = { workspace = true }

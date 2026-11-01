@@ -15,7 +15,7 @@ use super::entities::{
 use super::logic::person::person_display_name;
 use super::logic::user::HR_ROLES;
 
-fn scope_by_user<T, C>(query: Select<T>, auth: &AuthContext, user_id: C) -> Select<T>
+pub fn scope_by_user<T, C>(query: Select<T>, auth: &AuthContext, user_id: C) -> Select<T>
 where
     T: sea_orm::EntityTrait,
     C: ColumnTrait,

@@ -12,8 +12,7 @@ lariv_core::define_plugin_routes! {
     prefix: "/dashboard";
     routes: [
         get QuotationDefaultRouteTag, "/finance-quotations", handlers::quotations::list, fragment(QuotationTableKey), authorize(FinanceQuotationsView, []);
-        get QuotationGoodsLinePriceRouteTag, "/finance-quotations/goods-line-price", handlers::quotations::goods_line_price, authorize(FinanceQuotationsView, []);
-        get QuotationServiceLinePriceRouteTag, "/finance-quotations/service-line-price", handlers::quotations::service_line_price, authorize(FinanceQuotationsView, []);
+        get QuotationLinePriceRouteTag, "/finance-quotations/line-price", handlers::quotations::line_price, authorize(FinanceQuotationsView, []);
         get QuotationCreateGetRouteTag, "/finance-quotations/create", handlers::quotations::create_get, modal, authorize(FinanceQuotationsMutate, []);
         post QuotationCreatePostRouteTag, "/finance-quotations/create", handlers::quotations::create_post, authorize(FinanceQuotationsMutate, []);
         get QuotationDetailRouteTag, "/finance-quotations/q/{id}", handlers::quotations::detail, authorize(FinanceQuotationsView, []);

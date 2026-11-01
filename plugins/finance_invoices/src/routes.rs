@@ -16,8 +16,7 @@ lariv_core::define_plugin_routes! {
     prefix: "/dashboard";
     routes: [
         get InvoiceDefaultRouteTag, "/finance-invoices", handlers::hub::hub, fragment(InvoiceHubTableKey), authorize(FinanceInvoicesView, []);
-        get InvoiceGoodsLinePriceRouteTag, "/finance-invoices/goods-line-price", handlers::drafts::line_price, authorize(FinanceInvoicesView, []);
-        get InvoiceServiceLinePriceRouteTag, "/finance-invoices/service-line-price", handlers::drafts::service_line_price, authorize(FinanceInvoicesView, []);
+        get InvoiceLinePriceRouteTag, "/finance-invoices/line-price", handlers::drafts::line_price, authorize(FinanceInvoicesView, []);
         get DraftInvoiceCreateGetRouteTag, "/finance-invoices/create", handlers::drafts::create_get, modal, authorize(FinanceInvoicesMutate, []);
         post DraftInvoiceCreatePostRouteTag, "/finance-invoices/create", handlers::drafts::create_post, authorize(FinanceInvoicesMutate, []);
         get DraftInvoiceDetailRouteTag, "/finance-invoices/i/{id}", handlers::drafts::detail, authorize(FinanceInvoicesView, []);
@@ -64,6 +63,7 @@ lariv_core::define_plugin_routes! {
         get PaymentListRouteTag, "/finance-invoices/payments", handlers::payments::list, fragment(PaymentTableKey), authorize(FinanceInvoicesView, []);
         get PaymentCreateGetRouteTag, "/finance-invoices/payments/create", handlers::payments::create_get, modal, authorize(FinanceInvoicesMutate, []);
         post PaymentCreatePostRouteTag, "/finance-invoices/payments/create", handlers::payments::create_post, authorize(FinanceInvoicesMutate, []);
+        post PaymentJournalLinesRouteTag, "/finance-invoices/payment-journal-lines", bare handlers::payments::fill_journal_lines, raw, authorize(FinanceInvoicesMutate, []);
         get PaymentDetailRouteTag, "/finance-invoices/payments/{id}", handlers::payments::detail, authorize(FinanceInvoicesView, []);
 
         get PaymentBatchCreateGetRouteTag, "/finance-invoices/payments/batch/create", handlers::payment_batches::create_get, modal, authorize(FinanceInvoicesMutate, []);

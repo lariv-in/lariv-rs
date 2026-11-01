@@ -16,42 +16,33 @@ use lariv_core::web::{
     Htmx, ModalFormQuery, QueryPage, QueryPageSize, html_built_page_or_app_layout,
     html_built_page_with_slots, respond_create_modal_done, respond_edit_modal_done,
 };
-use lariv_plugin_crm::entities::customer::Entity as CustomerEntity;
-use lariv_plugin_crm::logic::customer::{detail_href, display_name};
+use lariv_plugin_customer::entities::customer::Entity as CustomerEntity;
+use lariv_plugin_customer::logic::{detail_href, display_name};
 use lariv_plugin_finance_accounts::scope::load_default_currency_format;
 use lariv_plugin_finance_common::decimal::decimal_display;
 use lariv_plugin_finance_invoices::logic::draft::{
-    CreateDraftInput, DraftLinePending, DraftServiceLinePending, create_draft_invoice,
+    CreateDraftInput, DraftLinePending, create_draft_invoice,
 };
 use lariv_plugin_finance_invoices::logic::draft_payment_term::{
     default_payment_term_lines_json, parse_payment_term_lines_json,
 };
-use lariv_plugin_finance_invoices::logic::invoice_goods_line_editor::invoice_goods_line_editor_preview_json;
-use lariv_plugin_finance_invoices::logic::invoice_service_line_editor::invoice_service_line_editor_preview_json;
+use lariv_plugin_finance_invoices::logic::invoice_line_editor::invoice_line_editor_preview_json;
 use lariv_plugin_finance_invoices::routes::DraftInvoiceDetailRouteTag;
 use lariv_plugin_finance_products::entities::product::Entity as ProductEntity;
 use lariv_plugin_finance_products::pricing as product_pricing;
-use lariv_plugin_finance_services::entities::service::Entity as ServiceEntity;
-use lariv_plugin_finance_services::pricing as service_pricing;
 use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::entities::quotation::{self, Entity as QuotationEntity};
-use crate::entities::{
-    quotation_goods_line::{self, Entity as GoodsLineEntity},
-    quotation_service_line::{self, Entity as ServiceLineEntity},
-};
+use crate::entities::quotation_line::{self, Entity as LineEntity};
 use crate::forms::QuotationForm;
 use crate::keys::QuotationCreateModalKey;
 use crate::logic::document::{
-    SaveQuotation, copy_quotation, create_quotation, delete_quotation, parse_goods_lines,
-    parse_quotation_date, parse_service_lines, update_quotation,
+    SaveQuotation, copy_quotation, create_quotation, delete_quotation, parse_lines,
+    parse_quotation_date, update_quotation,
 };
-use crate::logic::editor::{
-    goods_display_rows, goods_form_json, quotation_grand_total, service_display_rows,
-    service_form_json,
-};
+use crate::logic::editor::{line_display_rows, lines_form_json, quotation_grand_total};
 use crate::logic::prefs::load_preferences;
-use crate::logic::tax::{load_goods_line_tax_ids, load_service_line_tax_ids};
+use crate::logic::tax::load_quotation_line_tax_ids;
 use crate::routes::{FinanceQuotationsMutate, QuotationDefaultRouteTag, QuotationDetailRouteTag};
 use crate::state::QuotationsState;
 use crate::templates::{
@@ -70,13 +61,6 @@ pub struct ListQuery {
 #[derive(Debug, Deserialize)]
 pub struct LinePriceQuery {
     product_id: i64,
-    #[serde(default)]
-    values: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ServiceLinePriceQuery {
-    service_id: i64,
     #[serde(default)]
     values: String,
 }
@@ -134,7 +118,7 @@ pub async fn list(
     html_built_page_with_slots(&page, &chrome, &slot_ctx)
 }
 
-pub async fn goods_line_price(
+pub async fn line_price(
     Cap(state): Cap<QuotationsState>,
     RequireAuth(_ctx): RequireAuth,
     Query(q): Query<LinePriceQuery>,
@@ -156,36 +140,6 @@ pub async fn goods_line_price(
         return Json(serde_json::json!({"pre_tax": "", "error": ""}));
     }
     match product_pricing::price_line(&product.variables, &product.sales_price_formula, &raw) {
-        Ok(priced) => Json(serde_json::json!({
-            "pre_tax": decimal_display(priced.pre_tax),
-            "error": "",
-        })),
-        Err(error) => Json(serde_json::json!({"pre_tax": "", "error": error})),
-    }
-}
-
-pub async fn service_line_price(
-    Cap(state): Cap<QuotationsState>,
-    RequireAuth(_ctx): RequireAuth,
-    Query(q): Query<ServiceLinePriceQuery>,
-) -> Json<serde_json::Value> {
-    let raw = if q.values.trim().is_empty() {
-        serde_json::json!({})
-    } else {
-        serde_json::from_str(&q.values).unwrap_or_else(|_| serde_json::json!({}))
-    };
-    let Some(service) = ServiceEntity::find_by_id(q.service_id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten()
-    else {
-        return Json(serde_json::json!({"pre_tax": "", "error": "unknown service"}));
-    };
-    if !service_pricing::has_variable_pricing(&service.variables) {
-        return Json(serde_json::json!({"pre_tax": "", "error": ""}));
-    }
-    match service_pricing::price_line(&service.variables, &service.sales_price_formula, &raw) {
         Ok(priced) => Json(serde_json::json!({
             "pre_tax": decimal_display(priced.pre_tax),
             "error": "",
@@ -217,8 +171,7 @@ pub async fn detail(
         .flatten()
         .map(|row| detail_href(&row))
         .unwrap_or_default();
-    let goods = goods_display_rows(&state.db, id).await;
-    let services = service_display_rows(&state.db, id).await;
+    let lines = line_display_rows(&state.db, id).await;
     let grand = quotation_grand_total(&state.db, id).await;
     let actions = crate::detail_actions::render_quotation_detail_actions(&state.db, id).await;
     let page = QuotationDetailPage {
@@ -229,8 +182,7 @@ pub async fn detail(
         customer_href,
         bank_account: quotation.bank_account.unwrap_or_default(),
         remarks: quotation.remarks,
-        goods,
-        services,
+        lines,
         grand_total: load_default_currency_format(&state.db).await.display(grand),
         can_edit: lariv_core::components::role_permitted(
             &lariv_plugin_users::role_authorization::roles_for::<FinanceQuotationsMutate>(),
@@ -249,10 +201,8 @@ async fn empty_form_view(db: &sea_orm::DatabaseConnection) -> QuotationFormField
         customer_display: String::new(),
         bank_account: prefs.default_bank_account.unwrap_or_default(),
         remarks: String::new(),
-        goods_json: goods_form_json(db, 0).await,
-        service_json: service_form_json(db, 0).await,
-        goods_preview: invoice_goods_line_editor_preview_json(db).await,
-        service_preview: invoice_service_line_editor_preview_json(db).await,
+        lines_json: lines_form_json(db, 0).await,
+        lines_preview: invoice_line_editor_preview_json(db).await,
     }
 }
 
@@ -276,10 +226,8 @@ async fn form_view_from_form(
         customer_display,
         bank_account: form.bank_account.clone(),
         remarks: form.remarks.clone(),
-        goods_json: form.goods_lines_json.clone(),
-        service_json: form.service_lines_json.clone(),
-        goods_preview: invoice_goods_line_editor_preview_json(db).await,
-        service_preview: invoice_service_line_editor_preview_json(db).await,
+        lines_json: form.lines_json.clone(),
+        lines_preview: invoice_line_editor_preview_json(db).await,
     }
 }
 
@@ -291,8 +239,7 @@ fn save_input(form: &QuotationForm) -> Result<SaveQuotation, String> {
         customer_id: form.customer_id,
         bank_account: form.bank_account.clone(),
         remarks: form.remarks.clone(),
-        goods: parse_goods_lines(&form.goods_lines_json)?,
-        services: parse_service_lines(&form.service_lines_json)?,
+        lines: parse_lines(&form.lines_json)?,
     })
 }
 
@@ -357,10 +304,8 @@ pub async fn edit_get(
         customer_display,
         bank_account: quotation.bank_account.clone().unwrap_or_default(),
         remarks: quotation.remarks.clone(),
-        goods_json: goods_form_json(&state.db, id).await,
-        service_json: service_form_json(&state.db, id).await,
-        goods_preview: invoice_goods_line_editor_preview_json(&state.db).await,
-        service_preview: invoice_service_line_editor_preview_json(&state.db).await,
+        lines_json: lines_form_json(&state.db, id).await,
+        lines_preview: invoice_line_editor_preview_json(&state.db).await,
     };
     let page = QuotationEditModalPage {
         id,
@@ -527,39 +472,19 @@ async fn build_draft_from_quotation(
     quotation: &quotation::Model,
 ) -> Result<CreateDraftInput, String> {
     let payment_term_lines = parse_payment_term_lines_json(&default_payment_term_lines_json())?;
-    let goods_rows = GoodsLineEntity::find()
-        .filter(quotation_goods_line::Column::QuotationId.eq(quotation.id))
-        .order_by_asc(quotation_goods_line::Column::Id)
+    let rows = LineEntity::find()
+        .filter(quotation_line::Column::QuotationId.eq(quotation.id))
+        .order_by_asc(quotation_line::Column::Id)
         .all(db)
         .await
         .map_err(|err| err.to_string())?;
-    let mut lines = Vec::with_capacity(goods_rows.len());
-    for line in goods_rows {
-        let tax_ids = load_goods_line_tax_ids(db, line.id)
+    let mut lines = Vec::with_capacity(rows.len());
+    for line in rows {
+        let tax_ids = load_quotation_line_tax_ids(db, line.id)
             .await
             .unwrap_or_default();
         lines.push(DraftLinePending {
             product_id: line.product_id,
-            rate: Some(decimal_display(line.rate)),
-            quantity: decimal_display(line.quantity),
-            variables: serde_json::from_str(&line.variable_values).ok(),
-            tax_ids: Some(tax_ids),
-            remarks: line.remarks,
-        });
-    }
-    let service_rows = ServiceLineEntity::find()
-        .filter(quotation_service_line::Column::QuotationId.eq(quotation.id))
-        .order_by_asc(quotation_service_line::Column::Id)
-        .all(db)
-        .await
-        .map_err(|err| err.to_string())?;
-    let mut service_lines = Vec::with_capacity(service_rows.len());
-    for line in service_rows {
-        let tax_ids = load_service_line_tax_ids(db, line.id)
-            .await
-            .unwrap_or_default();
-        service_lines.push(DraftServiceLinePending {
-            service_id: line.service_id,
             rate: Some(decimal_display(line.rate)),
             quantity: decimal_display(line.quantity),
             variables: serde_json::from_str(&line.variable_values).ok(),
@@ -581,7 +506,6 @@ async fn build_draft_from_quotation(
         payment_term_lines,
         header_tax_ids: Vec::new(),
         lines,
-        service_lines,
     })
 }
 

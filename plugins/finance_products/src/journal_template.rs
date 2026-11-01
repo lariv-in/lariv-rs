@@ -1,11 +1,12 @@
 //! Journal template lines for one product.
 //!
 //! Item formulas are Rune expressions. They see the product's variables plus
-//! `quantity`, `unit_rate`, `pre_tax`, `base_cost`, and `sales_price` from the goods
+//! `quantity`, `unit_rate`, `pre_tax`, and `sales_price` from the goods
 //! line and product. The result is a signed journal amount: debit positive,
 //! credit negative, so a credit is written `-unit_rate`. Numeric constants need no
 //! `decimal(...)` wrapper and unary minus on a variable is expanded by the
 //! formula evaluator.
+
 
 use chrono::Utc;
 use lariv_formula::{
@@ -32,20 +33,13 @@ pub struct LoadedProductTemplate {
     pub items: Vec<product_journal_entry_item_template::Model>,
 }
 
-pub const LINE_BINDINGS: &[&str] = &[
-    "quantity",
-    "unit_rate",
-    "pre_tax",
-    "base_cost",
-    "sales_price",
-];
+pub const LINE_BINDINGS: &[&str] = &["quantity", "unit_rate", "pre_tax", "sales_price"];
 
 /// Variables a product journal line formula can read.
 pub const FORMULA_VARIABLES_HINT: &str = "\
 quantity — invoice line quantity
 unit_rate — unit rate on the invoice line
 pre_tax — quantity * unit_rate
-base_cost — base price of one product
 sales_price — sales price of one product
 Also every variable defined above.
 A positive amount is a debit and a negative amount is a credit.";
@@ -125,7 +119,6 @@ pub fn evaluate_item_formula(
     quantity: Decimal,
     rate: Decimal,
     pre_tax: Decimal,
-    base_cost: Decimal,
     sales_price: Decimal,
 ) -> Result<Decimal, String> {
     let product = load_schema(schema_json)?;
@@ -139,7 +132,6 @@ pub fn evaluate_item_formula(
     values.insert("quantity".into(), decimal_measure(quantity));
     values.insert("unit_rate".into(), decimal_measure(rate));
     values.insert("pre_tax".into(), decimal_measure(pre_tax));
-    values.insert("base_cost".into(), decimal_measure(base_cost));
     values.insert("sales_price".into(), decimal_measure(sales_price));
     let amount = eval_formula(&schema, formula, &values).map_err(|e| e.to_string())?;
     Ok(decimal::normalize(amount))
@@ -195,7 +187,6 @@ pub fn evaluate_template_lines(
     quantity: Decimal,
     rate: Decimal,
     pre_tax: Decimal,
-    base_cost: Decimal,
     sales_price: Decimal,
 ) -> Result<Vec<EvaluatedTemplateLine>, String> {
     let mut out = Vec::with_capacity(lines.len());
@@ -208,7 +199,6 @@ pub fn evaluate_template_lines(
             quantity,
             rate,
             pre_tax,
-            base_cost,
             sales_price,
         )
         .map_err(|e| format!("Line {}: {e}", idx + 1))?;
@@ -454,7 +444,9 @@ pub async fn save_preference_template(
     Ok(())
 }
 
-pub async fn delete_preference_template<C: ConnectionTrait>(db: &C) -> Result<(), String> {
+pub async fn delete_preference_template<C: ConnectionTrait>(
+    db: &C,
+) -> Result<(), String> {
     PreferenceItemEntity::delete_many()
         .filter(product_preference_journal_item::Column::ProductPreferencesId.eq(PREFERENCES_ID))
         .exec(db)
@@ -563,8 +555,6 @@ mod tests {
         validate_item_formula(&schema, "pre_tax").unwrap();
         validate_item_formula(&schema, "-pre_tax").unwrap();
         validate_item_formula(&schema, "quantity * length").unwrap();
-        validate_item_formula(&schema, "quantity * base_cost").unwrap();
-        validate_item_formula(&schema, "-quantity * base_cost").unwrap();
         validate_item_formula(&schema, "quantity * sales_price").unwrap();
         let amount = evaluate_item_formula(
             &json,
@@ -573,7 +563,6 @@ mod tests {
             Decimal::from(3),
             Decimal::from(10),
             Decimal::from(30),
-            Decimal::from(5),
             Decimal::from(10),
         )
         .unwrap();
@@ -601,7 +590,6 @@ mod tests {
             Decimal::from(2),
             Decimal::from(10),
             Decimal::from(20),
-            Decimal::from(6),
             Decimal::from(10),
         )
         .unwrap();
@@ -610,16 +598,16 @@ mod tests {
     }
 
     #[test]
-    fn negated_cost_line_uses_the_product_bindings() {
+    fn negated_sales_line_uses_the_product_bindings() {
         let schema = VariableSchema::new();
         let lines = vec![
             ParsedTemplateLine {
                 account_id: 1,
-                formula: "quantity * base_cost".into(),
+                formula: "quantity * sales_price".into(),
             },
             ParsedTemplateLine {
                 account_id: 2,
-                formula: "-quantity * base_cost".into(),
+                formula: "-quantity * sales_price".into(),
             },
         ];
         validate_parsed_lines(&schema, &lines).unwrap();
@@ -630,12 +618,11 @@ mod tests {
             Decimal::from(3),
             Decimal::from(10),
             Decimal::from(30),
-            Decimal::from(5),
             Decimal::from(10),
         )
         .unwrap();
-        assert_eq!(evaluated[0].amount, Decimal::from(15));
-        assert_eq!(evaluated[1].amount, Decimal::from(-15));
+        assert_eq!(evaluated[0].amount, Decimal::from(30));
+        assert_eq!(evaluated[1].amount, Decimal::from(-30));
     }
 
     #[test]
@@ -657,7 +644,6 @@ mod tests {
             Decimal::from(2),
             Decimal::from(50),
             Decimal::from(100),
-            Decimal::from(30),
             Decimal::from(50),
         )
         .unwrap();
@@ -668,7 +654,6 @@ mod tests {
             Decimal::from(1),
             Decimal::from(40),
             Decimal::from(40),
-            Decimal::from(25),
             Decimal::from(40),
         )
         .unwrap();

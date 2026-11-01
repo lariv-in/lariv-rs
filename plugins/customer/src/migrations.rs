@@ -9,6 +9,11 @@ mod m00004_customer_drop_deleted_at;
 mod m00005_customer_cin;
 mod m00006_customer_pg_trgm;
 mod m00007_customer_pg_trgm_lower;
+mod m00008_create_crm_customers;
+mod m00009_rename_crm_customers;
+mod consolidate_crm_customers;
+mod m00010_consolidate_customers_rename;
+mod m00011_consolidate_customers_rename;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -24,6 +29,10 @@ impl MigratorTrait for Migrator {
             Box::new(m00005_customer_cin::Migration),
             Box::new(m00006_customer_pg_trgm::Migration),
             Box::new(m00007_customer_pg_trgm_lower::Migration),
+            Box::new(m00008_create_crm_customers::Migration),
+            Box::new(m00009_rename_crm_customers::Migration),
+            Box::new(m00010_consolidate_customers_rename::Migration),
+            Box::new(m00011_consolidate_customers_rename::Migration),
         ]
     }
 }

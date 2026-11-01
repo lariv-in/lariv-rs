@@ -75,6 +75,23 @@ const fn fk_restrict(
     }
 }
 
+const fn fk_set_null(
+    constraint: &'static str,
+    table: &'static str,
+    column: &'static str,
+    ref_table: &'static str,
+) -> ForeignKey {
+    ForeignKey {
+        constraint,
+        table,
+        column,
+        ref_table,
+        ref_column: "id",
+        on_update: ReferentialAction::Cascade,
+        on_delete: ReferentialAction::SetNull,
+    }
+}
+
 pub const FK_PRODUCTS_STOCK: ForeignKey = fk_restrict(
     "fk_products_stock_id",
     "products",
@@ -128,19 +145,19 @@ pub const FK_DRAFT_INVOICE_SERVICE_LINE_SERVICE: ForeignKey = fk_restrict(
     "fk_draft_invoice_service_lines_service_id",
     "draft_invoice_service_lines",
     "service_id",
-    "services",
+    "products",
 );
 pub const FK_POSTED_INVOICE_SERVICE_LINE_SERVICE: ForeignKey = fk_restrict(
     "fk_posted_invoice_service_lines_service_id",
     "posted_invoice_service_lines",
     "service_id",
-    "services",
+    "products",
 );
 pub const FK_CANCELLED_INVOICE_SERVICE_LINE_SERVICE: ForeignKey = fk_restrict(
     "fk_cancelled_invoice_service_lines_service_id",
     "cancelled_invoice_service_lines",
     "service_id",
-    "services",
+    "products",
 );
 pub const FK_POSTED_INVOICE_SERVICE_LINE_JOURNAL_ITEM: ForeignKey = fk_restrict(
     "fk_posted_invoice_service_lines_journal_entry_item_id",
@@ -311,23 +328,60 @@ pub const FK_CANCELLED_PURCHASE_GOODS_LINE_PRODUCT: ForeignKey = fk_restrict(
     "product_id",
     "products",
 );
+/// Unified purchase lines (after m00013).
+pub const FK_DRAFT_PURCHASE_LINE_PRODUCT: ForeignKey = fk_restrict(
+    "fk_draft_purchase_lines_product_id",
+    "draft_purchase_lines",
+    "product_id",
+    "products",
+);
+pub const FK_POSTED_PURCHASE_LINE_PRODUCT: ForeignKey = fk_set_null(
+    "fk_posted_purchase_lines_product_id",
+    "posted_purchase_lines",
+    "product_id",
+    "products",
+);
+pub const FK_CANCELLED_PURCHASE_LINE_PRODUCT: ForeignKey = fk_set_null(
+    "fk_cancelled_purchase_lines_product_id",
+    "cancelled_purchase_lines",
+    "product_id",
+    "products",
+);
+pub const FK_DRAFT_INVOICE_LINE_PRODUCT: ForeignKey = fk_restrict(
+    "fk_draft_invoice_lines_product_id",
+    "draft_invoice_lines",
+    "product_id",
+    "products",
+);
+pub const FK_POSTED_INVOICE_LINE_PRODUCT: ForeignKey = fk_set_null(
+    "fk_posted_invoice_lines_product_id",
+    "posted_invoice_lines",
+    "product_id",
+    "products",
+);
+pub const FK_CANCELLED_INVOICE_LINE_PRODUCT: ForeignKey = fk_set_null(
+    "fk_cancelled_invoice_lines_product_id",
+    "cancelled_invoice_lines",
+    "product_id",
+    "products",
+);
 pub const FK_DRAFT_PURCHASE_SERVICE_LINE_SERVICE: ForeignKey = fk_restrict(
     "fk_draft_purchase_service_lines_service_id",
     "draft_purchase_service_lines",
     "service_id",
-    "services",
+    "products",
 );
 pub const FK_POSTED_PURCHASE_SERVICE_LINE_SERVICE: ForeignKey = fk_restrict(
     "fk_posted_purchase_service_lines_service_id",
     "posted_purchase_service_lines",
     "service_id",
-    "services",
+    "products",
 );
 pub const FK_CANCELLED_PURCHASE_SERVICE_LINE_SERVICE: ForeignKey = fk_restrict(
     "fk_cancelled_purchase_service_lines_service_id",
     "cancelled_purchase_service_lines",
     "service_id",
-    "services",
+    "products",
 );
 
 pub const FK_SERVICE_TAX: ForeignKey = fk_restrict(
@@ -410,7 +464,7 @@ pub const FK_QUOTATIONS_CUSTOMER: ForeignKey = fk_restrict(
     "fk_quotations_customer_id",
     "quotations",
     "customer_id",
-    "crm_customers",
+    "customers",
 );
 pub const FK_QUOTATION_GOODS_LINE_PRODUCT: ForeignKey = fk_restrict(
     "fk_quotation_goods_lines_product_id",
@@ -422,7 +476,7 @@ pub const FK_QUOTATION_SERVICE_LINE_SERVICE: ForeignKey = fk_restrict(
     "fk_quotation_service_lines_service_id",
     "quotation_service_lines",
     "service_id",
-    "services",
+    "products",
 );
 pub const FK_QUOTATION_GOODS_LINE_TAX: ForeignKey = fk_restrict(
     "fk_quotation_goods_line_taxes_tax_id",
@@ -436,10 +490,21 @@ pub const FK_QUOTATION_SERVICE_LINE_TAX: ForeignKey = fk_restrict(
     "tax_id",
     "taxes",
 );
+/// Unified quotation lines (after m00003).
+pub const FK_QUOTATION_LINE_PRODUCT: ForeignKey = fk_restrict(
+    "fk_quotation_lines_product_id",
+    "quotation_lines",
+    "product_id",
+    "products",
+);
+pub const FK_QUOTATION_LINE_TAX: ForeignKey = fk_restrict(
+    "fk_quotation_line_taxes_tax_id",
+    "quotation_line_taxes",
+    "tax_id",
+    "taxes",
+);
 
-/// Forward cross-plugin keys. Purchase goods and service lines are omitted:
-/// a later purchase migration points those columns at `purchase_products` and
-/// `purchase_services` instead of the shared catalogs.
+/// Forward cross-plugin keys. Purchase line product/service ids reference `products`.
 pub const CROSS_PLUGIN_FOREIGN_KEYS: &[ForeignKey] = &[
     FK_PRODUCTS_STOCK,
     FK_PRODUCT_JOURNAL_ENTRY_TEMPLATES_JOURNAL,
@@ -449,34 +514,14 @@ pub const CROSS_PLUGIN_FOREIGN_KEYS: &[ForeignKey] = &[
     FK_PRODUCT_PREFERENCE_JOURNAL_ACCOUNT,
     FK_PRODUCT_PREFERENCES_INVENTORY_ACCOUNT,
     FK_PRODUCT_PREFERENCES_COST_ACCOUNT,
-    FK_DRAFT_INVOICE_SERVICE_LINE_SERVICE,
-    FK_POSTED_INVOICE_SERVICE_LINE_SERVICE,
-    FK_CANCELLED_INVOICE_SERVICE_LINE_SERVICE,
-    FK_POSTED_INVOICE_SERVICE_LINE_JOURNAL_ITEM,
-    FK_CANCELLED_INVOICE_SERVICE_LINE_JOURNAL_ITEM,
-    FK_DRAFT_INVOICE_SERVICE_LINE_TAX,
-    FK_POSTED_INVOICE_SERVICE_LINE_TAX,
-    FK_CANCELLED_INVOICE_SERVICE_LINE_TAX,
+    FK_DRAFT_INVOICE_LINE_PRODUCT,
+    FK_POSTED_INVOICE_LINE_PRODUCT,
+    FK_CANCELLED_INVOICE_LINE_PRODUCT,
     FK_PAYMENT_JOURNAL_ITEM_JOURNAL,
     FK_PAYMENT_JOURNAL_ITEM_ACCOUNT,
-    FK_POSTED_PURCHASE_SERVICE_LINE_JOURNAL_ITEM,
-    FK_CANCELLED_PURCHASE_SERVICE_LINE_JOURNAL_ITEM,
-    FK_DRAFT_PURCHASE_SERVICE_LINE_TAX,
-    FK_POSTED_PURCHASE_SERVICE_LINE_TAX,
-    FK_CANCELLED_PURCHASE_SERVICE_LINE_TAX,
-    FK_PURCHASE_PRODUCTS_STOCK,
-    FK_PURCHASE_PRODUCT_TAX,
-    FK_PURCHASE_PRODUCT_PREFERENCE_TAX,
-    FK_PURCHASE_PRODUCT_JOURNAL_JOURNAL,
-    FK_PURCHASE_PRODUCT_JOURNAL_ACCOUNT,
-    FK_PURCHASE_SERVICE_TAX,
-    FK_PURCHASE_SERVICE_PREFERENCE_TAX,
-    FK_PURCHASE_SERVICE_JOURNAL_JOURNAL,
-    FK_PURCHASE_SERVICE_JOURNAL_ACCOUNT,
-    FK_PURCHASE_PRODUCT_PREFERENCE_JOURNAL_JOURNAL,
-    FK_PURCHASE_PRODUCT_PREFERENCE_JOURNAL_ACCOUNT,
-    FK_PURCHASE_SERVICE_PREFERENCE_JOURNAL_JOURNAL,
-    FK_PURCHASE_SERVICE_PREFERENCE_JOURNAL_ACCOUNT,
+    FK_DRAFT_PURCHASE_LINE_PRODUCT,
+    FK_POSTED_PURCHASE_LINE_PRODUCT,
+    FK_CANCELLED_PURCHASE_LINE_PRODUCT,
     FK_SERVICE_TAX,
     FK_SERVICE_PREFERENCE_TAX,
     FK_SERVICE_PREFERENCES_COST_ACCOUNT,
@@ -491,10 +536,8 @@ pub const CROSS_PLUGIN_FOREIGN_KEYS: &[ForeignKey] = &[
     FK_TAX_PREFERENCE_JOURNAL_ACCOUNT,
     FK_TAXES_ACCOUNT,
     FK_QUOTATIONS_CUSTOMER,
-    FK_QUOTATION_GOODS_LINE_PRODUCT,
-    FK_QUOTATION_SERVICE_LINE_SERVICE,
-    FK_QUOTATION_GOODS_LINE_TAX,
-    FK_QUOTATION_SERVICE_LINE_TAX,
+    FK_QUOTATION_LINE_PRODUCT,
+    FK_QUOTATION_LINE_TAX,
 ];
 
 /// Add `key` when both relations and the column exist and no matching foreign key does.

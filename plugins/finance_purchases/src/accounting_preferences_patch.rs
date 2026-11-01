@@ -29,8 +29,6 @@ use crate::{
         PURCHASE_PDF_TEMPLATE_HINT,
     },
     purchase_pdf_template::DEFAULT_PURCHASE_PDF_TEMPLATE,
-    purchase_products::forms::{ProductJournalPreferencesForm, ProductJournalPreferencesFormField},
-    purchase_services::forms::{ServiceJournalPreferencesForm, ServiceJournalPreferencesFormField},
 };
 use lariv_plugin_filesystem::entities::filesystem_node::Entity as VNodeEntity;
 
@@ -66,16 +64,6 @@ impl AccountingPreferencesAddon for PurchasesAccountingPreferencesAddon {
         let pdf_template = inv.purchase_pdf_template.unwrap_or_default();
         let logo_display = load_vnode_display(db, inv.purchase_logo_vnode_id).await;
         let signature_display = load_vnode_display(db, inv.purchase_signature_vnode_id).await;
-        let product_journal = crate::purchase_products::journal_template::preference_form_fields(
-            db,
-            "purchase-product-pref-line",
-        )
-        .await;
-        let service_journal = crate::purchase_services::journal_template::preference_form_fields(
-            db,
-            "purchase-service-pref-line",
-        )
-        .await;
 
         vec![
             AccountingPreferenceGroup {
@@ -194,46 +182,6 @@ impl AccountingPreferencesAddon for PurchasesAccountingPreferencesAddon {
                 ))
                 },
             },
-            AccountingPreferenceGroup {
-                title: "Purchase products",
-                inputs: html! {
-                    (ProductJournalPreferencesForm::render_inputs(
-                        &FormCtx::form::<ProductJournalPreferencesForm>(CsrfToken::current())
-                            .value(
-                                ProductJournalPreferencesFormField::JournalId,
-                                &product_journal.journal_id,
-                            )
-                            .display(
-                                ProductJournalPreferencesFormField::JournalId,
-                                &product_journal.journal_display,
-                            )
-                            .value(
-                                ProductJournalPreferencesFormField::JournalLines,
-                                &product_journal.journal_lines,
-                            ),
-                    ))
-                },
-            },
-            AccountingPreferenceGroup {
-                title: "Purchase services",
-                inputs: html! {
-                    (ServiceJournalPreferencesForm::render_inputs(
-                        &FormCtx::form::<ServiceJournalPreferencesForm>(CsrfToken::current())
-                            .value(
-                                ServiceJournalPreferencesFormField::JournalId,
-                                &service_journal.journal_id,
-                            )
-                            .display(
-                                ServiceJournalPreferencesFormField::JournalId,
-                                &service_journal.journal_display,
-                            )
-                            .value(
-                                ServiceJournalPreferencesFormField::JournalLines,
-                                &service_journal.journal_lines,
-                            ),
-                    ))
-                },
-            },
         ]
     }
 
@@ -273,25 +221,6 @@ impl AccountingPreferencesAddon for PurchasesAccountingPreferencesAddon {
         inv_am.purchase_pdf_template = Set(str_to_opt_string(&presentation.purchase_pdf_template));
         inv_am.updated_at = Set(Some(now));
         inv_am.update(db).await.map_err(|e| e.to_string())?;
-
-        let product_journal = post
-            .deserialize::<ProductJournalPreferencesForm>()
-            .map_err(|e| e.to_string())?;
-        crate::purchase_products::journal_template::save_preference_template(
-            db,
-            &product_journal.journal_id,
-            &product_journal.journal_lines,
-        )
-        .await?;
-        let service_journal = post
-            .deserialize::<ServiceJournalPreferencesForm>()
-            .map_err(|e| e.to_string())?;
-        crate::purchase_services::journal_template::save_preference_template(
-            db,
-            &service_journal.journal_id,
-            &service_journal.journal_lines,
-        )
-        .await?;
 
         Ok(())
     }

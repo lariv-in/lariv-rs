@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use axum::{
     extract::{Path, Query},
     http::Uri,
@@ -7,11 +5,10 @@ use axum::{
 };
 use chrono::Utc;
 use lariv_plugin_finance_common::decimal::{self, dec_is_zero};
-use lariv_plugin_inventory::entities::stock::{self as stock_entity, Entity as StockEntity};
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::sea_query::Condition;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseBackend, EntityTrait, PaginatorTrait,
+    ActiveModelTrait, ActiveValue::Set, DatabaseBackend, EntityTrait, PaginatorTrait,
     QueryFilter, QueryOrder,
 };
 
@@ -35,7 +32,7 @@ use lariv_plugin_users::middleware::RequireAuth;
 use lariv_plugin_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
 use crate::{
-    entities::product::{self, Entity as ProductEntity},
+    entities::product::{self, Entity as ProductEntity, ProductKind},
     forms::ProductForm,
     handlers::ModalNameQuery,
     keys::{
@@ -71,10 +68,7 @@ struct ProductListFilters {
 }
 
 fn product_list_filters(query: &str, backend: DatabaseBackend) -> ProductListFilters {
-    let fields = vec![
-        text_column("name", "Name", product::Column::Name),
-        text_column("reference", "Reference", product::Column::Reference),
-    ];
+    let fields = vec![text_column("name", "Name", product::Column::Name)];
     let clauses = parse_list_filters(query);
     let applied = apply_filters(backend, &fields, &clauses);
     let filters = FilterClauseView::from_clauses(&clauses, &applied.errors);
@@ -98,30 +92,6 @@ fn path_and_query(uri: &Uri) -> String {
     uri.path_and_query()
         .map(|pq| pq.as_str().to_string())
         .unwrap_or_else(|| uri.path().to_string())
-}
-
-async fn stock_names_by_id(db: &sea_orm::DatabaseConnection, ids: &[i64]) -> HashMap<i64, String> {
-    if ids.is_empty() {
-        return HashMap::new();
-    }
-    StockEntity::find()
-        .filter(stock_entity::Column::Id.is_in(ids.iter().copied()))
-        .all(db)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|stock| (stock.id, stock.name))
-        .collect()
-}
-
-async fn stock_display(db: &sea_orm::DatabaseConnection, stock_id: i64) -> String {
-    if stock_id <= 0 {
-        return String::new();
-    }
-    stock_names_by_id(db, &[stock_id])
-        .await
-        .remove(&stock_id)
-        .unwrap_or_default()
 }
 
 async fn tax_items_from_ids(
@@ -154,23 +124,11 @@ async fn query_products(
         s if s.eq_ignore_ascii_case("Name ASC") || s.eq_ignore_ascii_case("Name") => {
             query.order_by_asc(product::Column::Name)
         }
-        s if s.eq_ignore_ascii_case("Stock DESC") => query.order_by_desc(product::Column::StockId),
-        s if s.eq_ignore_ascii_case("Stock ASC") || s.eq_ignore_ascii_case("Stock") => {
-            query.order_by_asc(product::Column::StockId)
+        s if s.eq_ignore_ascii_case("Kind DESC") => {
+            query.order_by_desc(product::Column::ProductKind)
         }
-        s if s.eq_ignore_ascii_case("Reference DESC") => {
-            query.order_by_desc(product::Column::Reference)
-        }
-        s if s.eq_ignore_ascii_case("Reference ASC") || s.eq_ignore_ascii_case("Reference") => {
-            query.order_by_asc(product::Column::Reference)
-        }
-        s if s.eq_ignore_ascii_case("BasePriceFormula DESC") => {
-            query.order_by_desc(product::Column::BasePriceFormula)
-        }
-        s if s.eq_ignore_ascii_case("BasePriceFormula ASC")
-            || s.eq_ignore_ascii_case("BasePriceFormula") =>
-        {
-            query.order_by_asc(product::Column::BasePriceFormula)
+        s if s.eq_ignore_ascii_case("Kind ASC") || s.eq_ignore_ascii_case("Kind") => {
+            query.order_by_asc(product::Column::ProductKind)
         }
         s if s.eq_ignore_ascii_case("SalesPriceFormula DESC") => {
             query.order_by_desc(product::Column::SalesPriceFormula)
@@ -194,8 +152,6 @@ async fn query_products(
         .await
         .unwrap_or_default();
 
-    let stock_ids: Vec<i64> = models.iter().map(|p| p.stock_id).collect();
-    let stock_names = stock_names_by_id(db, &stock_ids).await;
     let mut rows = Vec::with_capacity(models.len());
     for p in models {
         let has_formula = pricing::has_variable_pricing(&p.variables);
@@ -210,13 +166,11 @@ async fn query_products(
         };
         rows.push(ProductRow {
             id: p.id,
-            stock_name: stock_names.get(&p.stock_id).cloned().unwrap_or_default(),
-            reference: p.reference.unwrap_or_default(),
+            product_kind: p.product_kind.label().to_string(),
             name: p.name,
-            base_price_formula: p.base_price_formula,
             sales_price_formula: p.sales_price_formula,
             sales_price_value,
-            hsn_code: p.hsn_code.to_string(),
+            code_label: tax_code_label(p.product_kind, p.hsn_code, p.sac_code),
             has_formula,
             variables_json: pricing::variable_input_specs_json(&p.variables),
             remarks: p.remarks.unwrap_or_default(),
@@ -283,13 +237,12 @@ pub async fn detail(
     let page = ProductDetailPage {
         id: p.id,
         name: p.name,
-        stock_name: stock_display(&state.db, p.stock_id).await,
-        reference: p.reference.unwrap_or_default(),
+        product_kind: p.product_kind.label().to_string(),
         remarks: p.remarks.unwrap_or_default(),
-        hsn_code: p.hsn_code.to_string(),
+        hsn_code: format_optional_code(p.hsn_code),
+        sac_code: format_optional_code(p.sac_code),
         taxes: tax_labels.join(", "),
         variables: pricing::schema_entries_from_stored(&p.variables).join("\n"),
-        base_price_formula: p.base_price_formula,
         sales_price_formula: p.sales_price_formula,
         journal_name: template.journal_name,
         journal_lines: template.lines_display,
@@ -312,17 +265,15 @@ pub async fn create_get(
         refresh_table: q.refresh_table(),
         target_input: q.target_input(),
         name: String::new(),
-        stock_id: 0,
-        stock_display: String::new(),
-        reference: String::new(),
+        product_kind: ProductKind::Goods.as_str().to_string(),
         remarks: String::new(),
         variables: Vec::new(),
-        base_price_formula: String::new(),
         sales_price_formula: String::new(),
         journal_id: defaults.journal_id,
         journal_display: defaults.journal_display,
         journal_lines: defaults.journal_lines,
         hsn_code: 0,
+        sac_code: 0,
         tax_items,
         error: String::new(),
     };
@@ -341,17 +292,15 @@ async fn product_edit_modal_page_from_form(
         id,
         form_name,
         name: form.name.clone(),
-        stock_id: form.stock_id,
-        stock_display: stock_display(db, form.stock_id).await,
-        reference: form.reference.clone(),
+        product_kind: form.product_kind.clone(),
         remarks: form.remarks.clone(),
         variables: form.variables.clone(),
-        base_price_formula: form.base_price_formula.clone(),
         sales_price_formula: form.sales_price_formula.clone(),
         journal_id: form.journal_id.clone(),
         journal_display: journal_display(db, &form.journal_id).await,
         journal_lines: form.journal_lines.clone(),
         hsn_code: form.hsn_code,
+        sac_code: form.sac_code,
         tax_items,
         error,
     }
@@ -371,17 +320,15 @@ async fn product_create_modal_page_from_form(
         refresh_table,
         target_input,
         name: form.name.clone(),
-        stock_id: form.stock_id,
-        stock_display: stock_display(db, form.stock_id).await,
-        reference: form.reference.clone(),
+        product_kind: form.product_kind.clone(),
         remarks: form.remarks.clone(),
         variables: form.variables.clone(),
-        base_price_formula: form.base_price_formula.clone(),
         sales_price_formula: form.sales_price_formula.clone(),
         journal_id: form.journal_id.clone(),
         journal_display: journal_display(db, &form.journal_id).await,
         journal_lines: form.journal_lines.clone(),
         hsn_code: form.hsn_code,
+        sac_code: form.sac_code,
         tax_items,
         error,
     }
@@ -477,28 +424,65 @@ fn optional_text(value: &str) -> Option<String> {
     }
 }
 
+fn optional_code(raw: i64) -> Option<i64> {
+    if raw <= 0 {
+        None
+    } else {
+        Some(raw)
+    }
+}
+
+fn format_optional_code(code: Option<i64>) -> String {
+    code.map(|value| value.to_string()).unwrap_or_default()
+}
+
+fn tax_code_label(kind: ProductKind, hsn: Option<i64>, sac: Option<i64>) -> String {
+    match kind {
+        ProductKind::Goods => format_optional_code(hsn),
+        ProductKind::Services => format_optional_code(sac),
+    }
+}
+
+fn parse_product_kind(raw: &str) -> Result<ProductKind, String> {
+    ProductKind::parse(raw).ok_or_else(|| "select Goods or Services".to_string())
+}
+
+fn validate_tax_codes(
+    kind: ProductKind,
+    hsn_code: Option<i64>,
+    sac_code: Option<i64>,
+) -> Result<(), String> {
+    match kind {
+        ProductKind::Goods => {
+            if hsn_code.is_none() {
+                return Err("HSN code is required for goods".into());
+            }
+            if sac_code.is_some() {
+                return Err("SAC code applies only to services".into());
+            }
+        }
+        ProductKind::Services => {
+            if sac_code.is_none() {
+                return Err("SAC code is required for services".into());
+            }
+        }
+    }
+    Ok(())
+}
+
 async fn save_product_from_form(
     db: &sea_orm::DatabaseConnection,
     form: &ProductForm,
     id: Option<i64>,
 ) -> Result<i64, String> {
     let (variables, schema) = pricing::store_schema(&form.variables)?;
-    let base_price_formula = form.base_price_formula.trim().to_string();
     let sales_price_formula = form.sales_price_formula.trim().to_string();
-    pricing::validate_price_formula(&schema, &base_price_formula, "base price formula")?;
     pricing::validate_price_formula(&schema, &sales_price_formula, "sales price formula")?;
     crate::journal_template::ensure_schema_allows_bindings(&schema)?;
-    if form.stock_id <= 0 {
-        return Err("select a stock".to_string());
-    }
-    if StockEntity::find_by_id(form.stock_id)
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?
-        .is_none()
-    {
-        return Err("stock not found".to_string());
-    }
+    let product_kind = parse_product_kind(&form.product_kind)?;
+    let hsn_code = optional_code(form.hsn_code);
+    let sac_code = optional_code(form.sac_code);
+    validate_tax_codes(product_kind, hsn_code, sac_code)?;
     let now = Utc::now();
     let tax_ids = &form.tax_ids;
 
@@ -510,17 +494,12 @@ async fn save_product_from_form(
             .ok_or("product not found")?
             .into();
         am.name = Set(form.name.clone());
-        am.stock_id = Set(form.stock_id);
-        am.reference = Set(if form.reference.trim().is_empty() {
-            None
-        } else {
-            Some(form.reference.trim().to_string())
-        });
+        am.product_kind = Set(product_kind);
         am.remarks = Set(optional_text(&form.remarks));
         am.variables = Set(variables);
-        am.base_price_formula = Set(base_price_formula);
         am.sales_price_formula = Set(sales_price_formula);
-        am.hsn_code = Set(form.hsn_code);
+        am.hsn_code = Set(hsn_code);
+        am.sac_code = Set(sac_code);
         am.updated_at = Set(Some(now));
         am.update(db).await.map_err(|e| e.to_string())?;
         set_product_tax_ids(db, id, &tax_ids)
@@ -538,17 +517,12 @@ async fn save_product_from_form(
     } else {
         let am = product::ActiveModel {
             name: Set(form.name.clone()),
-            stock_id: Set(form.stock_id),
-            reference: Set(if form.reference.trim().is_empty() {
-                None
-            } else {
-                Some(form.reference.trim().to_string())
-            }),
+            product_kind: Set(product_kind),
             remarks: Set(optional_text(&form.remarks)),
             variables: Set(variables),
-            base_price_formula: Set(base_price_formula),
             sales_price_formula: Set(sales_price_formula),
-            hsn_code: Set(form.hsn_code),
+            hsn_code: Set(hsn_code),
+            sac_code: Set(sac_code),
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
             ..Default::default()
@@ -638,17 +612,15 @@ pub async fn edit_get(
         id: p.id,
         form_name: q.form_name(),
         name: p.name,
-        stock_id: p.stock_id,
-        stock_display: stock_display(&state.db, p.stock_id).await,
-        reference: p.reference.unwrap_or_default(),
+        product_kind: p.product_kind.as_str().to_string(),
         remarks: p.remarks.unwrap_or_default(),
         variables: pricing::schema_entries_from_stored(&p.variables),
-        base_price_formula: p.base_price_formula,
         sales_price_formula: p.sales_price_formula,
         journal_id: template.journal_id,
         journal_display: template.journal_display,
         journal_lines: template.journal_lines,
-        hsn_code: p.hsn_code,
+        hsn_code: p.hsn_code.unwrap_or(0),
+        sac_code: p.sac_code.unwrap_or(0),
         tax_items,
         error: String::new(),
     };

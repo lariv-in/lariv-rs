@@ -1,19 +1,14 @@
 //! Purchase UI fragments.
 
 mod input_payment_term_lines_draft;
-mod input_purchase_goods_lines_draft;
-mod input_purchase_service_lines_draft;
+mod input_purchase_lines_draft;
 
 pub use input_payment_term_lines_draft::{
     InputPaymentTermLinesDraft, PURCHASE_PAYMENT_TERM_DATE_KINDS, PaymentTermDateKindOption,
     field_payment_term_lines, input_payment_term_lines_draft,
 };
-pub use input_purchase_goods_lines_draft::{
-    InputPurchaseGoodsLinesDraft, field_purchase_goods_lines, input_purchase_goods_lines_draft,
-};
-pub use input_purchase_service_lines_draft::{
-    InputPurchaseServiceLinesDraft, field_purchase_service_lines,
-    input_purchase_service_lines_draft,
+pub use input_purchase_lines_draft::{
+    InputPurchaseLinesDraft, field_purchase_lines, input_purchase_lines_draft,
 };
 
 use maud::{Markup, html};

@@ -37,13 +37,15 @@ use crate::{
     keys::{
         AccountCreateModalKey, AccountDeleteModalKey, AccountEditModalKey,
         AccountJournalEntriesTableKey, AccountJournalEntryItemsTableKey, AccountSelectModalKey,
-        AccountSelectTableKey, AccountTableKey, CurrencyDeleteModalKey, JournalDeleteModalKey,
+        AccountSelectTableKey, AccountTableKey, CurrencyDeleteModalKey,
+        CustomSourceDocTemplateDeleteModalKey, JournalDeleteModalKey,
     },
     routes::{
         AccountCreateGetRouteTag, AccountCreatePostRouteTag, AccountDeleteGetRouteTag,
         AccountDeletePostRouteTag, AccountDetailRouteTag, AccountEditGetRouteTag,
         AccountEditPostRouteTag, AccountJournalEntriesRouteTag, AccountJournalEntryItemsRouteTag,
-        AccountSelectRouteTag, CurrencyDeletePostRouteTag, FinanceDefaultRouteTag,
+        AccountSelectRouteTag, CurrencyDeletePostRouteTag,
+        CustomSourceDocTemplateDeletePostRouteTag, FinanceDefaultRouteTag,
         JournalDeletePostRouteTag, JournalEntryDetailRouteTag,
     },
 };
@@ -1274,6 +1276,8 @@ impl RenderTemplate for ConfirmDeletePage {
             CurrencyDeletePostRouteTag::new(self.id).url()
         } else if self.modal_uid == JournalDeleteModalKey::ID {
             JournalDeletePostRouteTag::new(self.id).url()
+        } else if self.modal_uid == CustomSourceDocTemplateDeleteModalKey::ID {
+            CustomSourceDocTemplateDeletePostRouteTag::new(self.id).url()
         } else {
             AccountDeletePostRouteTag::new(self.id).url()
         };

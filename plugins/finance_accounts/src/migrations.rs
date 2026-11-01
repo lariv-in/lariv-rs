@@ -20,6 +20,9 @@ mod m00017_journals_is_mutable;
 mod m00018_accounts_code_tree;
 mod m00019_journals_drop_journal_type;
 mod m00020_create_custom_source_docs;
+mod m00021_custom_source_docs_attached_vnode;
+mod m00022_create_custom_source_doc_templates;
+mod m00023_custom_source_doc_templates_attached_vnode;
 
 use super::FinanceAccountsTag;
 
@@ -50,6 +53,9 @@ impl MigratorTrait for Migrator {
             Box::new(m00018_accounts_code_tree::Migration),
             Box::new(m00019_journals_drop_journal_type::Migration),
             Box::new(m00020_create_custom_source_docs::Migration),
+            Box::new(m00021_custom_source_docs_attached_vnode::Migration),
+            Box::new(m00022_create_custom_source_doc_templates::Migration),
+            Box::new(m00023_custom_source_doc_templates_attached_vnode::Migration),
         ]
     }
 }

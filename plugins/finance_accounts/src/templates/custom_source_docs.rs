@@ -10,10 +10,12 @@ use lariv_core::components::{
     form_hx_post_route, form_hx_post_url, label, list_filter_builder, modal_keyed, sort_indicator,
     table_button_filter,
 };
-use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
+use lariv_core::components::attrs::escape_attr;
+use lariv_core::html_form::{CsrfToken, FormCtx, FormFieldKey, HtmlForm};
 use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_core::web::modal_create_post_url;
+use maud::PreEscaped;
 
 use crate::{
     forms::{
@@ -28,7 +30,8 @@ use crate::{
         CustomSourceDocDeleteGetRouteTag, CustomSourceDocDeletePostRouteTag,
         CustomSourceDocDetailRouteTag, CustomSourceDocEditGetRouteTag,
         CustomSourceDocIndexCreateGetRouteTag, CustomSourceDocIndexCreatePostRouteTag,
-        CustomSourceDocIndexRouteTag, JournalDetailRouteTag, JournalEntryDetailRouteTag,
+        CustomSourceDocIndexRouteTag, CustomSourceDocTemplateVariablesRouteTag,
+        JournalDetailRouteTag, JournalEntryDetailRouteTag,
     },
 };
 
@@ -63,6 +66,8 @@ pub struct CustomSourceDocDetailPage {
     pub id: i64,
     pub title: String,
     pub content: String,
+    pub attached_vnode_href: String,
+    pub attached_vnode_label: String,
     pub created_by: String,
     pub created_at: String,
     pub journal_entry_id: i64,
@@ -156,6 +161,21 @@ impl CustomSourceDocDetailPage {
                         },
                     }))
                     (label("Content", field_textarea(FieldTextarea { value: &self.content, classes: "" })))
+                    (label(
+                        "Attached file",
+                        if self.attached_vnode_href.is_empty() {
+                            field_text(FieldText {
+                                value: "—",
+                                classes: "",
+                            })
+                        } else {
+                            field_link(FieldLink {
+                                href: &self.attached_vnode_href,
+                                label: &self.attached_vnode_label,
+                                classes: "",
+                            })
+                        },
+                    ))
                     (label("Created by", field_text(FieldText { value: &self.created_by, classes: "" })))
                     (label("Created at", field_text(FieldText { value: &self.created_at, classes: "" })))
                     (label(
@@ -206,6 +226,8 @@ pub struct CustomSourceDocFormPage {
     pub post_path: String,
     pub title: String,
     pub content: String,
+    pub attached_vnode_id: String,
+    pub attached_vnode_display: String,
     pub lines: String,
     pub error: String,
     pub can_save: bool,
@@ -217,6 +239,14 @@ impl CustomSourceDocFormPage {
             &FormCtx::form::<CustomSourceDocForm>(CsrfToken::current())
                 .value(CustomSourceDocFormField::Title, &self.title)
                 .value(CustomSourceDocFormField::Content, &self.content)
+                .value(
+                    CustomSourceDocFormField::AttachedVnodeId,
+                    &self.attached_vnode_id,
+                )
+                .display(
+                    CustomSourceDocFormField::AttachedVnodeId,
+                    &self.attached_vnode_display,
+                )
                 .value(CustomSourceDocFormField::Lines, &self.lines),
         );
         html! {
@@ -553,8 +583,14 @@ pub struct CustomSourceDocIndexCreateModalPage {
     pub refresh_table: String,
     pub journal_id: String,
     pub journal_display: String,
+    pub template_id: String,
+    pub template_display: String,
+    pub variables_schema: String,
+    pub variable_values: String,
     pub title: String,
     pub content: String,
+    pub attached_vnode_id: String,
+    pub attached_vnode_display: String,
     pub lines: String,
     pub error: String,
 }
@@ -566,6 +602,58 @@ impl RenderTemplate for CustomSourceDocIndexCreateModalPage {
         } else {
             self.form_name.as_str()
         };
+        let template_field = CustomSourceDocIndexCreateFormField::TemplateId.html_name();
+        let title_field = CustomSourceDocIndexCreateFormField::Title.html_name();
+        let content_field = CustomSourceDocIndexCreateFormField::Content.html_name();
+        let vars_url = CustomSourceDocTemplateVariablesRouteTag.path();
+        let alpine = format!(
+            r#"{{
+	templateId: {tid},
+	variablesOk: false,
+	get canFill() {{
+		return !!String(this.templateId || '').trim() && this.variablesOk;
+	}},
+	checkVariables() {{
+		if (!String(this.templateId || '').trim()) {{
+			this.variablesOk = false;
+			return;
+		}}
+		const root = this.$el.querySelector('#transaction-template-variables');
+		if (!root) {{
+			this.variablesOk = false;
+			return;
+		}}
+		const inputs = root.querySelectorAll('[name^="vv__"]');
+		if (!inputs.length) {{
+			this.variablesOk = true;
+			return;
+		}}
+		this.variablesOk = Array.from(inputs).every((el) => String(el.value || '').trim());
+	}},
+	fillTitleContent(detail) {{
+		const form = this.$el.querySelector('form') || this.$el;
+		const titleEl = form.querySelector('[name=' + {title} + ']');
+		const contentEl = form.querySelector('[name=' + {content} + ']');
+		if (titleEl && detail.title != null) titleEl.value = String(detail.title);
+		if (contentEl && detail.content != null) contentEl.value = String(detail.content);
+	}},
+	onFkSelect(detail) {{
+		if (!detail || detail.name !== {name}) return;
+		this.templateId = detail.value ? String(detail.value) : '';
+		this.variablesOk = false;
+		if (this.templateId) this.fillTitleContent(detail);
+		const url = {vars} + '?template_id=' + encodeURIComponent(this.templateId);
+		if (window.htmx) {{
+			htmx.ajax('GET', url, {{ target: '#transaction-template-variables', swap: 'outerHTML' }});
+		}}
+	}}
+}}"#,
+            tid = serde_json::to_string(&self.template_id).unwrap_or_else(|_| "\"\"".into()),
+            name = serde_json::to_string(template_field).unwrap_or_else(|_| "\"TemplateID\"".into()),
+            vars = serde_json::to_string(&vars_url).unwrap_or_else(|_| "\"\"".into()),
+            title = serde_json::to_string(title_field).unwrap_or_else(|_| "\"Title\"".into()),
+            content = serde_json::to_string(content_field).unwrap_or_else(|_| "\"Content\"".into()),
+        );
         let inputs = CustomSourceDocIndexCreateForm::render_inputs(
             &FormCtx::form::<CustomSourceDocIndexCreateForm>(CsrfToken::current())
                 .value(
@@ -576,38 +664,69 @@ impl RenderTemplate for CustomSourceDocIndexCreateModalPage {
                     CustomSourceDocIndexCreateFormField::JournalId,
                     &self.journal_display,
                 )
+                .value(
+                    CustomSourceDocIndexCreateFormField::TemplateId,
+                    &self.template_id,
+                )
+                .display(
+                    CustomSourceDocIndexCreateFormField::TemplateId,
+                    &self.template_display,
+                )
                 .value(CustomSourceDocIndexCreateFormField::Title, &self.title)
                 .value(CustomSourceDocIndexCreateFormField::Content, &self.content)
+                .value(
+                    CustomSourceDocIndexCreateFormField::AttachedVnodeId,
+                    &self.attached_vnode_id,
+                )
+                .display(
+                    CustomSourceDocIndexCreateFormField::AttachedVnodeId,
+                    &self.attached_vnode_display,
+                )
+                .value(
+                    CustomSourceDocIndexCreateFormField::VariableValues,
+                    &self.variable_values,
+                )
+                .hint(
+                    CustomSourceDocIndexCreateFormField::VariableValues,
+                    &self.variables_schema,
+                )
                 .value(CustomSourceDocIndexCreateFormField::Lines, &self.lines),
         );
         modal_keyed::<CustomSourceDocIndexCreateModalKey>(
             "",
-            form(
-                &CsrfToken::current(),
-                lariv_core::components::FormOpts {
-                    title: "New transaction",
-                    subtitle: "",
-                    attrs: form_hx_post_url::<CustomSourceDocIndexCreateModalKey>(
-                        &modal_create_post_url(
-                            CustomSourceDocIndexCreatePostRouteTag,
-                            form_name,
-                            &self.refresh_table,
+            html! {
+                (PreEscaped(format!(
+                    r#"<div x-data="{}" x-init="checkVariables()" @fk-select.window="onFkSelect($event.detail)" @input="checkVariables()" @change="checkVariables()" @htmx:after-swap="checkVariables()">"#,
+                    escape_attr(&alpine),
+                )))
+                (form(
+                    &CsrfToken::current(),
+                    lariv_core::components::FormOpts {
+                        title: "New transaction",
+                        subtitle: "",
+                        attrs: form_hx_post_url::<CustomSourceDocIndexCreateModalKey>(
+                            &modal_create_post_url(
+                                CustomSourceDocIndexCreatePostRouteTag,
+                                form_name,
+                                &self.refresh_table,
+                            ),
                         ),
-                    ),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs,
-                    actions: html! {
-                        (container_row("flex justify-end gap-2 mt-2", html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Save",
-                                classes: "btn-primary",
-                                ..Default::default()
+                        form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                        inputs,
+                        actions: html! {
+                            (container_row("flex justify-end gap-2 mt-2", html! {
+                                (button_submit(ButtonSubmit {
+                                    label: "Save",
+                                    classes: "btn-primary",
+                                    ..Default::default()
+                                }))
                             }))
-                        }))
+                        },
+                        ..Default::default()
                     },
-                    ..Default::default()
-                },
-            ),
+                ))
+                (PreEscaped("</div>"))
+            },
         )
     }
 }

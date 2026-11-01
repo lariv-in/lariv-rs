@@ -21,6 +21,7 @@ Profile:
 • PhotographVnodeId (empty when there is no photo), BloodGroup, IdentificationMark
 • PresentAddress, PresentPinCode, PermanentAddress, PermanentPinCode
 • EmergencyContactName, EmergencyContactRelation, EmergencyContactMobile
+• PfNumber, AadharNumber, PanNumber
 • AadharVnodeId, PanVnodeId, PassportVnodeId (filesystem file ids; empty when unset)
 • AccountHolderName, AccountNumber, AccountIfscCode, AccountType and AccountTypeCode
 • Qualifications, DateOfJoining, ProbationEndDate, WorkStart, WorkEnd, BaseSalary, HourlyWage

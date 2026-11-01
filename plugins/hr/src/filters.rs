@@ -6,20 +6,19 @@ use sea_orm::{ColumnTrait, DatabaseBackend, DatabaseConnection};
 use lariv_core::components::FilterClauseView;
 use lariv_core::list_filters::{
     FilterClause, FilterField, FilterRowError, FilterWidget, apply_filters, choice_column, custom,
-    date_column, datetime_column, foreign_key_column, parse_list_filters, text_column,
+    date_column, foreign_key_column, parse_list_filters, text_column,
 };
 use lariv_plugin_users::routes::UsersSelectRouteTag;
 
 use crate::entities::{
-    applicant, attendance, employee, ex_employee, holiday, job_form,
+    applicant, employee, ex_employee, job_form,
     leaves::{approved_leave, leave_application, leave_type::LeaveType, rejected_leave},
-    overtime::{approved_overtime, overtime_application},
 };
-use crate::logic::attendance::user_display_label;
 use crate::logic::leave::{
     FILTER_APPROVED, FILTER_PENDING, FILTER_REJECTED, STATUS_APPROVED, STATUS_PENDING,
     STATUS_REJECTED,
 };
+use crate::logic::user::user_display_label;
 
 pub struct PreparedFilters {
     pub fields: Vec<FilterField>,
@@ -86,45 +85,12 @@ pub fn ex_employee_fields() -> Vec<FilterField> {
     ]
 }
 
-pub fn holiday_fields() -> Vec<FilterField> {
-    vec![
-        text_column("title", "Title", holiday::Column::Title),
-        date_column("date", "Date", holiday::Column::Date),
-    ]
-}
-
 pub fn job_form_fields() -> Vec<FilterField> {
     vec![text_column(
         "title",
         "Job title",
         job_form::Column::JobTitle,
     )]
-}
-
-pub fn attendance_fields(include_user: bool, tz: &str) -> Vec<FilterField> {
-    let mut fields = Vec::new();
-    if include_user {
-        fields.push(foreign_key_column(
-            "user_id",
-            "User",
-            attendance::sqlite::Column::UserId,
-            users_picker_url(),
-            "Any user…",
-        ));
-    }
-    fields.push(datetime_column(
-        "started_at",
-        "Start",
-        attendance::sqlite::Column::StartedAt,
-        tz,
-    ));
-    fields.push(datetime_column(
-        "ended_at",
-        "End",
-        attendance::sqlite::Column::EndedAt,
-        tz,
-    ));
-    fields
 }
 
 pub fn leave_fields(include_applicant: bool, include_status: bool) -> Vec<FilterField> {
@@ -207,61 +173,4 @@ pub fn leave_status_condition(status: &str) -> Option<Condition> {
         ),
         _ => None,
     }
-}
-
-pub fn overtime_application_fields(include_user: bool, tz: &str) -> Vec<FilterField> {
-    let mut fields = Vec::new();
-    if include_user {
-        fields.push(foreign_key_column(
-            "user_id",
-            "User",
-            overtime_application::Column::UserId,
-            users_picker_url(),
-            "Any user…",
-        ));
-    }
-    fields.push(datetime_column(
-        "start_time",
-        "Start",
-        overtime_application::Column::StartTime,
-        tz,
-    ));
-    fields.push(datetime_column(
-        "end_time",
-        "End",
-        overtime_application::Column::EndTime,
-        tz,
-    ));
-    fields.push(text_column(
-        "reason",
-        "Reason",
-        overtime_application::Column::Reason,
-    ));
-    fields
-}
-
-pub fn approved_overtime_fields(include_user: bool, tz: &str) -> Vec<FilterField> {
-    let mut fields = Vec::new();
-    if include_user {
-        fields.push(foreign_key_column(
-            "user_id",
-            "User",
-            approved_overtime::Column::UserId,
-            users_picker_url(),
-            "Any user…",
-        ));
-    }
-    fields.push(datetime_column(
-        "start_time",
-        "Start",
-        approved_overtime::Column::StartTime,
-        tz,
-    ));
-    fields.push(datetime_column(
-        "end_time",
-        "End",
-        approved_overtime::Column::EndTime,
-        tz,
-    ));
-    fields
 }

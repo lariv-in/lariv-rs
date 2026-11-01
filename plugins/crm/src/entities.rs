@@ -1,5 +1,4 @@
 pub mod converted_lead;
-pub mod customer;
 pub mod failed_lead;
 pub mod lead;
 pub mod lead_tag;
@@ -8,7 +7,6 @@ pub mod lead_timeline;
 pub mod lead_update;
 
 pub use converted_lead::Entity as ConvertedLeadEntity;
-pub use customer::Entity as CustomerEntity;
 pub use failed_lead::Entity as FailedLeadEntity;
 pub use lead::Entity as LeadEntity;
 pub use lead_tag::Entity as LeadTagEntity;

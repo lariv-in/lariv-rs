@@ -24,11 +24,6 @@ use lariv_plugin_finance_creditnotes::logic::{CreateCreditNoteInput, create_cred
 use lariv_plugin_finance_products::journal_template::{
     self, ParsedTemplateLine, evaluate_template_lines,
 };
-use lariv_plugin_finance_services::journal_template::{
-    self as service_journal_template, ParsedTemplateLine as ServiceTemplateLine,
-    evaluate_template_lines as evaluate_service_template_lines,
-};
-use lariv_plugin_finance_services::pricing as service_pricing;
 use lariv_plugin_finance_taxes::entities::tax::Model as TaxModel;
 use lariv_plugin_finance_taxes::journal_template::evaluate_tax_for_document;
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
@@ -37,26 +32,19 @@ use crate::draft_form_addon::{
     run_draft_invoice_on_new_draft_from_posted, run_draft_invoice_on_posted,
 };
 use crate::entities::{
-    CancelledInvoiceEntity, DraftInvoiceEntity, DraftInvoiceGoodsLineEntity,
-    DraftInvoiceServiceLineEntity, PostedInvoiceEntity, PostedInvoiceGoodsLineEntity,
-    PostedInvoiceServiceLineEntity,
+    CancelledInvoiceEntity, DraftInvoiceEntity, DraftInvoiceLineEntity, PostedInvoiceEntity,
+    PostedInvoiceLineEntity,
 };
-use crate::entities::{
-    cancelled_invoice, draft_invoice, draft_invoice_goods_line, draft_invoice_service_line,
-    posted_invoice, posted_invoice_goods_line, posted_invoice_service_line,
-};
+use crate::entities::{cancelled_invoice, draft_invoice, draft_invoice_line, posted_invoice, posted_invoice_line};
 use crate::logic::draft_payment_term::{
     convert_draft_to_posted_payment_term, copy_posted_payment_term, posted_payment_term_to_draft,
 };
 use crate::logic::invoice_number::posted_invoice_number;
 use crate::logic::tax_assoc::{
-    load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids,
-    load_cancelled_service_line_tax_ids, load_draft_invoice_tax_ids, load_draft_line_tax_ids,
-    load_draft_service_line_tax_ids, load_posted_invoice_tax_ids, load_posted_line_tax_ids,
-    load_posted_service_line_tax_ids, set_cancelled_invoice_taxes, set_cancelled_line_taxes,
-    set_cancelled_service_line_taxes, set_draft_invoice_taxes, set_draft_line_taxes,
-    set_draft_service_line_taxes, set_posted_invoice_taxes, set_posted_line_taxes,
-    set_posted_service_line_taxes,
+    load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids, load_draft_invoice_tax_ids,
+    load_draft_line_tax_ids, load_posted_invoice_tax_ids, load_posted_line_tax_ids,
+    set_cancelled_invoice_taxes, set_cancelled_line_taxes, set_draft_invoice_taxes,
+    set_draft_line_taxes, set_posted_invoice_taxes, set_posted_line_taxes,
 };
 use crate::logic::tax_calculations::{
     InvoiceLinesTotals, document_level_header_taxes, invoice_line_amounts,
@@ -67,14 +55,10 @@ use crate::scope::find_cancellable_posted;
 use crate::entities::posted_invoice::POSTED_INVOICE_SOURCE_DOC_TYPE;
 
 struct LineWithTaxes {
-    line: draft_invoice_goods_line::Model,
+    line: draft_invoice_line::Model,
     taxes: Vec<TaxModel>,
 }
 
-struct ServiceLineWithTaxes {
-    line: draft_invoice_service_line::Model,
-    taxes: Vec<TaxModel>,
-}
 
 /// Journal lines for one document line, expanded from its product or service template.
 struct ExpandedLineJournal {
@@ -87,7 +71,6 @@ async fn expand_product_journal(
     product_id: Option<i64>,
     product_name: &str,
     variable_types: &str,
-    base_price_formula: &str,
     sales_price_formula: &str,
     variable_values: &str,
     quantity: Decimal,
@@ -99,7 +82,8 @@ async fn expand_product_journal(
             "{product_name} was deleted; restore the product or replace the line before posting"
         )
     })?;
-    let Some(template) = journal_template::load_template(db, product_id).await? else {
+    let Some(template) = journal_template::load_template(db, product_id).await?
+    else {
         return Err(format!("{product_name} has no journal entry template"));
     };
     if template.items.is_empty() {
@@ -113,12 +97,6 @@ async fn expand_product_journal(
             formula: item.formula.clone(),
         })
         .collect();
-    let base_cost = lariv_plugin_finance_products::pricing::unit_formula_amount(
-        variable_types,
-        base_price_formula,
-        variable_values,
-    )
-    .map_err(|e| format!("{product_name} base cost: {e}"))?;
     let sales_price = lariv_plugin_finance_products::pricing::unit_formula_amount(
         variable_types,
         sales_price_formula,
@@ -132,7 +110,6 @@ async fn expand_product_journal(
         quantity,
         rate,
         pre_tax,
-        base_cost,
         sales_price,
     )
     .map_err(|e| format!("{product_name}: {e}"))?;
@@ -148,73 +125,6 @@ async fn expand_product_journal(
     })
 }
 
-async fn expand_service_journal(
-    db: &DatabaseConnection,
-    service_id: Option<i64>,
-    service_name: &str,
-    variable_types: &str,
-    base_price_formula: &str,
-    sales_price_formula: &str,
-    variable_values: &str,
-    quantity: Decimal,
-    rate: Decimal,
-    pre_tax: Decimal,
-) -> Result<ExpandedLineJournal, String> {
-    let service_id = service_id.ok_or_else(|| {
-        format!(
-            "{service_name} was deleted; restore the service or replace the line before posting"
-        )
-    })?;
-    let Some(template) = service_journal_template::load_template(db, service_id).await? else {
-        return Err(format!("{service_name} has no journal entry template"));
-    };
-    if template.items.is_empty() {
-        return Err(format!(
-            "{service_name} has no journal entry template lines"
-        ));
-    }
-    let parsed: Vec<ServiceTemplateLine> = template
-        .items
-        .iter()
-        .map(|item| ServiceTemplateLine {
-            account_id: item.account_id,
-            formula: item.formula.clone(),
-        })
-        .collect();
-    let base_cost = service_pricing::unit_formula_amount(
-        variable_types,
-        base_price_formula,
-        variable_values,
-    )
-    .map_err(|e| format!("{service_name} base cost: {e}"))?;
-    let sales_price = service_pricing::unit_formula_amount(
-        variable_types,
-        sales_price_formula,
-        variable_values,
-    )
-    .map_err(|e| format!("{service_name} sales price: {e}"))?;
-    let evaluated = evaluate_service_template_lines(
-        variable_types,
-        &parsed,
-        variable_values,
-        quantity,
-        rate,
-        pre_tax,
-        base_cost,
-        sales_price,
-    )
-    .map_err(|e| format!("{service_name}: {e}"))?;
-    Ok(ExpandedLineJournal {
-        specs: evaluated
-            .into_iter()
-            .map(|line| JournalLineSpec {
-                account_id: line.account_id,
-                amount: line.amount,
-            })
-            .collect(),
-        journal_id: template.journal_id,
-    })
-}
 
 /// Append every tax template line onto the invoice journal.
 async fn append_invoice_tax_lines(
@@ -272,26 +182,17 @@ pub async fn posted_invoice_journal_lines(
     let item_ids: Vec<i64> = stored.iter().map(|(id, _)| *id).collect();
     let specs = stored.into_iter().map(|(_, spec)| spec).collect();
 
-    let lines = PostedInvoiceGoodsLineEntity::find()
-        .filter(posted_invoice_goods_line::Column::PostedInvoiceId.eq(posted_id))
-        .order_by_asc(posted_invoice_goods_line::Column::Id)
+    let lines = PostedInvoiceLineEntity::find()
+        .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
+        .order_by_asc(posted_invoice_line::Column::Id)
         .all(db)
         .await
         .map_err(|e| e.to_string())?;
-    let service_lines = PostedInvoiceServiceLineEntity::find()
-        .filter(posted_invoice_service_line::Column::PostedInvoiceId.eq(posted_id))
-        .order_by_asc(posted_invoice_service_line::Column::Id)
-        .all(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    if lines.is_empty() && service_lines.is_empty() {
+    if lines.is_empty() {
         return Err(format!("posted invoice {posted_id} has no lines"));
     }
-    let mut indexes = Vec::with_capacity(lines.len() + service_lines.len());
+    let mut indexes = Vec::with_capacity(lines.len());
     for line in &lines {
-        indexes.push(index_of_item(&item_ids, line.journal_entry_item_id)?);
-    }
-    for line in &service_lines {
         indexes.push(index_of_item(&item_ids, line.journal_entry_item_id)?);
     }
     Ok((posted.datetime, specs, indexes))
@@ -312,23 +213,16 @@ pub async fn adopt_posted_invoice_journal_entry<C: ConnectionTrait>(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("posted invoice {posted_id} not found"))?;
     let old_entry_id = posted.journal_entry_id;
-    let lines = PostedInvoiceGoodsLineEntity::find()
-        .filter(posted_invoice_goods_line::Column::PostedInvoiceId.eq(posted_id))
-        .order_by_asc(posted_invoice_goods_line::Column::Id)
+    let lines = PostedInvoiceLineEntity::find()
+        .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
+        .order_by_asc(posted_invoice_line::Column::Id)
         .all(db)
         .await
         .map_err(|e| e.to_string())?;
-    let goods_count = lines.len();
-    let service_lines = PostedInvoiceServiceLineEntity::find()
-        .filter(posted_invoice_service_line::Column::PostedInvoiceId.eq(posted_id))
-        .order_by_asc(posted_invoice_service_line::Column::Id)
-        .all(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    if goods_count + service_lines.len() != line_item_indexes.len() {
+    if lines.len() != line_item_indexes.len() {
         return Err(format!(
             "posted invoice {posted_id} line count {} does not match {} journal item indexes",
-            goods_count + service_lines.len(),
+            lines.len(),
             line_item_indexes.len()
         ));
     }
@@ -336,19 +230,7 @@ pub async fn adopt_posted_invoice_journal_entry<C: ConnectionTrait>(
         let item_id = *item_ids.get(index).ok_or_else(|| {
             format!("posted invoice {posted_id} journal item index {index} is out of range")
         })?;
-        let mut am: posted_invoice_goods_line::ActiveModel = line.into();
-        am.journal_entry_item_id = Set(item_id);
-        am.updated_at = Set(Some(Utc::now()));
-        am.update(db).await.map_err(|e| e.to_string())?;
-    }
-    for (line, index) in service_lines
-        .into_iter()
-        .zip(line_item_indexes.iter().copied().skip(goods_count))
-    {
-        let item_id = *item_ids.get(index).ok_or_else(|| {
-            format!("posted invoice {posted_id} journal item index {index} is out of range")
-        })?;
-        let mut am: posted_invoice_service_line::ActiveModel = line.into();
+        let mut am: posted_invoice_line::ActiveModel = line.into();
         am.journal_entry_item_id = Set(item_id);
         am.updated_at = Set(Some(Utc::now()));
         am.update(db).await.map_err(|e| e.to_string())?;
@@ -415,7 +297,6 @@ struct PreparedDraftJournal {
     specs: Vec<JournalLineSpec>,
     line_item_indexes: Vec<usize>,
     lines_with_taxes: Vec<LineWithTaxes>,
-    service_lines_with_taxes: Vec<ServiceLineWithTaxes>,
     header_taxes: Vec<TaxModel>,
     total_due: Decimal,
 }
@@ -430,19 +311,13 @@ async fn prepare_draft_journal(
         .map_err(|e| e.to_string())?
         .ok_or("draft invoice required")?;
 
-    let lines = DraftInvoiceGoodsLineEntity::find()
-        .filter(draft_invoice_goods_line::Column::DraftInvoiceId.eq(draft_id))
-        .order_by_asc(draft_invoice_goods_line::Column::Id)
+    let lines = DraftInvoiceLineEntity::find()
+        .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft_id))
+        .order_by_asc(draft_invoice_line::Column::Id)
         .all(db)
         .await
         .map_err(|e| e.to_string())?;
-    let service_lines = DraftInvoiceServiceLineEntity::find()
-        .filter(draft_invoice_service_line::Column::DraftInvoiceId.eq(draft_id))
-        .order_by_asc(draft_invoice_service_line::Column::Id)
-        .all(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    if lines.is_empty() && service_lines.is_empty() {
+    if lines.is_empty() {
         return Err("draft has no lines".to_string());
     }
 
@@ -454,9 +329,8 @@ async fn prepare_draft_journal(
         .map_err(|e| e.to_string())?;
 
     let mut lines_with_taxes = Vec::with_capacity(lines.len());
-    let mut service_lines_with_taxes = Vec::with_capacity(service_lines.len());
     let mut specs = Vec::new();
-    let mut line_item_indexes = Vec::with_capacity(lines.len() + service_lines.len());
+    let mut line_item_indexes = Vec::with_capacity(lines.len());
     let mut journal_id = None;
     for line in lines {
         let tax_ids = load_draft_line_tax_ids(db, line.id)
@@ -467,10 +341,9 @@ async fn prepare_draft_journal(
             .map_err(|e| e.to_string())?;
         let expanded = expand_product_journal(
             db,
-            line.product_id,
+            Some(line.product_id),
             &line.product_name,
             &line.variable_types,
-            &line.base_price_formula,
             &line.sales_price_formula,
             &line.variable_values,
             line.quantity,
@@ -491,48 +364,10 @@ async fn prepare_draft_journal(
         specs.extend(expanded.specs);
         lines_with_taxes.push(LineWithTaxes { line, taxes });
     }
-    for line in service_lines {
-        let tax_ids = load_draft_service_line_tax_ids(db, line.id)
-            .await
-            .map_err(|e| e.to_string())?;
-        let taxes = load_taxes_by_ids(db, &tax_ids)
-            .await
-            .map_err(|e| e.to_string())?;
-        let expanded = expand_service_journal(
-            db,
-            line.service_id,
-            &line.service_name,
-            &line.variable_types,
-            &line.base_price_formula,
-            &line.sales_price_formula,
-            &line.variable_values,
-            line.quantity,
-            line.rate,
-            line.pre_tax_amount,
-        )
-        .await?;
-        if let Some(existing) = journal_id {
-            if existing != expanded.journal_id {
-                return Err(
-                    "every product and service on an invoice must use the same journal".to_string(),
-                );
-            }
-        } else {
-            journal_id = Some(expanded.journal_id);
-        }
-        line_item_indexes.push(specs.len());
-        specs.extend(expanded.specs);
-        service_lines_with_taxes.push(ServiceLineWithTaxes { line, taxes });
-    }
     let journal_id = journal_id.ok_or("draft has no lines")?;
     let tax_inputs: Vec<(Decimal, Vec<TaxModel>)> = lines_with_taxes
         .iter()
         .map(|lwt| (lwt.line.pre_tax_amount, lwt.taxes.clone()))
-        .chain(
-            service_lines_with_taxes
-                .iter()
-                .map(|lwt| (lwt.line.pre_tax_amount, lwt.taxes.clone())),
-        )
         .collect();
     append_invoice_tax_lines(db, &mut specs, &tax_inputs, &header_taxes, journal_id).await?;
     let mut totals = InvoiceLinesTotals::default();
@@ -540,11 +375,6 @@ async fn prepare_draft_journal(
     for (pre_tax_amount, taxes) in lines_with_taxes
         .iter()
         .map(|lwt| (lwt.line.pre_tax_amount, &lwt.taxes))
-        .chain(
-            service_lines_with_taxes
-                .iter()
-                .map(|lwt| (lwt.line.pre_tax_amount, &lwt.taxes)),
-        )
     {
         merge_invoice_line_tax_ids(&mut all_line_tax_ids, taxes);
         let (untaxed, levied, withholding, _) = invoice_line_amounts(pre_tax_amount, taxes);
@@ -559,7 +389,6 @@ async fn prepare_draft_journal(
         specs,
         line_item_indexes,
         lines_with_taxes,
-        service_lines_with_taxes,
         header_taxes,
         total_due,
     })
@@ -587,7 +416,6 @@ pub async fn draft_new_posted_with_lines(
         mut specs,
         mut line_item_indexes,
         lines_with_taxes,
-        service_lines_with_taxes,
         header_taxes,
         total_due,
     } = prepare_draft_journal(db, draft_id).await?;
@@ -674,15 +502,14 @@ pub async fn draft_new_posted_with_lines(
             .get(item_idx)
             .map(|it| it.id)
             .ok_or("internal error: journal item index")?;
-        let pl_am = posted_invoice_goods_line::ActiveModel {
+        let pl_am = posted_invoice_line::ActiveModel {
             posted_invoice_id: Set(posted.id),
-            product_id: Set(lwt.line.product_id),
+            product_id: Set(Some(lwt.line.product_id)),
             product_name: Set(lwt.line.product_name.clone()),
-            product_reference: Set(lwt.line.product_reference.clone()),
             product_remarks: Set(lwt.line.product_remarks.clone()),
             hsn_code: Set(lwt.line.hsn_code),
+            sac_code: Set(lwt.line.sac_code),
             variable_types: Set(lwt.line.variable_types.clone()),
-            base_price_formula: Set(lwt.line.base_price_formula.clone()),
             sales_price_formula: Set(lwt.line.sales_price_formula.clone()),
             rate: Set(lwt.line.rate),
             quantity: Set(lwt.line.quantity),
@@ -697,38 +524,6 @@ pub async fn draft_new_posted_with_lines(
         let pl = pl_am.insert(&txn).await.map_err(|e| e.to_string())?;
         let tax_ids: Vec<i64> = lwt.taxes.iter().map(|t| t.id).collect();
         set_posted_line_taxes(&txn, pl.id, &tax_ids)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-    for (i, lwt) in service_lines_with_taxes.iter().enumerate() {
-        let item_idx = line_item_indexes[lines_with_taxes.len() + i];
-        let rev_item_id = je_items
-            .get(item_idx)
-            .map(|it| it.id)
-            .ok_or("internal error: journal item index")?;
-        let pl_am = posted_invoice_service_line::ActiveModel {
-            posted_invoice_id: Set(posted.id),
-            service_id: Set(lwt.line.service_id),
-            service_name: Set(lwt.line.service_name.clone()),
-            service_reference: Set(lwt.line.service_reference.clone()),
-            service_remarks: Set(lwt.line.service_remarks.clone()),
-            sac_code: Set(lwt.line.sac_code),
-            variable_types: Set(lwt.line.variable_types.clone()),
-            base_price_formula: Set(lwt.line.base_price_formula.clone()),
-            sales_price_formula: Set(lwt.line.sales_price_formula.clone()),
-            rate: Set(lwt.line.rate),
-            quantity: Set(lwt.line.quantity),
-            variable_values: Set(lwt.line.variable_values.clone()),
-            pre_tax_amount: Set(lwt.line.pre_tax_amount),
-            remarks: Set(lwt.line.remarks.clone()),
-            journal_entry_item_id: Set(rev_item_id),
-            created_at: Set(Some(now)),
-            updated_at: Set(Some(now)),
-            ..Default::default()
-        };
-        let pl = pl_am.insert(&txn).await.map_err(|e| e.to_string())?;
-        let tax_ids: Vec<i64> = lwt.taxes.iter().map(|t| t.id).collect();
-        set_posted_service_line_taxes(&txn, pl.id, &tax_ids)
             .await
             .map_err(|e| e.to_string())?;
     }
@@ -760,9 +555,9 @@ pub async fn posted_new_cancelled(
         .await
         .ok_or("posted invoice is not cancellable")?;
 
-    let posted_lines = PostedInvoiceGoodsLineEntity::find()
-        .filter(posted_invoice_goods_line::Column::PostedInvoiceId.eq(posted_id))
-        .order_by_asc(posted_invoice_goods_line::Column::Id)
+    let posted_lines = PostedInvoiceLineEntity::find()
+        .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
+        .order_by_asc(posted_invoice_line::Column::Id)
         .all(db)
         .await
         .map_err(|e| e.to_string())?;
@@ -848,11 +643,10 @@ pub async fn posted_new_cancelled(
             cancelled.id,
             pl.product_id,
             &pl.product_name,
-            pl.product_reference.as_deref(),
             pl.product_remarks.as_deref(),
             pl.hsn_code,
+            pl.sac_code,
             &pl.variable_types,
-            &pl.base_price_formula,
             &pl.sales_price_formula,
             pl.rate,
             pl.quantity,
@@ -867,47 +661,6 @@ pub async fn posted_new_cancelled(
             .await
             .map_err(|e| e.to_string())?;
     }
-    let posted_service_lines = PostedInvoiceServiceLineEntity::find()
-        .filter(posted_invoice_service_line::Column::PostedInvoiceId.eq(posted_id))
-        .order_by_asc(posted_invoice_service_line::Column::Id)
-        .all(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    for pl in posted_service_lines {
-        let rev_id = orig_to_rev.get(&pl.journal_entry_item_id).ok_or_else(|| {
-            format!(
-                "could not map journal line for posted invoice service line {}",
-                pl.id
-            )
-        })?;
-        let line_tax_ids = load_posted_service_line_tax_ids(&txn, pl.id)
-            .await
-            .map_err(|e| e.to_string())?;
-        let cl_id = insert_cancelled_service_line(
-            &txn,
-            cancelled.id,
-            pl.service_id,
-            &pl.service_name,
-            pl.service_reference.as_deref(),
-            pl.service_remarks.as_deref(),
-            pl.sac_code,
-            &pl.variable_types,
-            &pl.base_price_formula,
-            &pl.sales_price_formula,
-            pl.rate,
-            pl.quantity,
-            &pl.variable_values,
-            pl.pre_tax_amount,
-            pl.remarks.clone(),
-            *rev_id,
-            now,
-        )
-        .await?;
-        set_cancelled_service_line_taxes(&txn, cl_id, &line_tax_ids)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-
     txn.commit().await.map_err(|e| e.to_string())?;
     Ok(cancelled)
 }
@@ -926,9 +679,9 @@ pub async fn posted_new_draft(
     let header_tax_ids = load_posted_invoice_tax_ids(db, posted_id)
         .await
         .map_err(|e| e.to_string())?;
-    let posted_lines = PostedInvoiceGoodsLineEntity::find()
-        .filter(posted_invoice_goods_line::Column::PostedInvoiceId.eq(posted_id))
-        .order_by_asc(posted_invoice_goods_line::Column::Id)
+    let posted_lines = PostedInvoiceLineEntity::find()
+        .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
+        .order_by_asc(posted_invoice_line::Column::Id)
         .all(db)
         .await
         .map_err(|e| e.to_string())?;
@@ -963,15 +716,14 @@ pub async fn posted_new_draft(
         let line_tax_ids = load_posted_line_tax_ids(&txn, pl.id)
             .await
             .map_err(|e| e.to_string())?;
-        let line = draft_invoice_goods_line::ActiveModel {
+        let line = draft_invoice_line::ActiveModel {
             draft_invoice_id: Set(draft.id),
-            product_id: Set(pl.product_id),
+            product_id: Set(pl.product_id.unwrap_or(0)),
             product_name: Set(pl.product_name.clone()),
-            product_reference: Set(pl.product_reference.clone()),
             product_remarks: Set(pl.product_remarks.clone()),
             hsn_code: Set(pl.hsn_code),
+            sac_code: Set(pl.sac_code),
             variable_types: Set(pl.variable_types.clone()),
-            base_price_formula: Set(pl.base_price_formula.clone()),
             sales_price_formula: Set(pl.sales_price_formula.clone()),
             rate: Set(pl.rate),
             quantity: Set(pl.quantity),
@@ -989,43 +741,6 @@ pub async fn posted_new_draft(
             .await
             .map_err(|e| e.to_string())?;
     }
-    let posted_service_lines = PostedInvoiceServiceLineEntity::find()
-        .filter(posted_invoice_service_line::Column::PostedInvoiceId.eq(posted_id))
-        .order_by_asc(posted_invoice_service_line::Column::Id)
-        .all(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    for pl in posted_service_lines {
-        let line_tax_ids = load_posted_service_line_tax_ids(&txn, pl.id)
-            .await
-            .map_err(|e| e.to_string())?;
-        let line = draft_invoice_service_line::ActiveModel {
-            draft_invoice_id: Set(draft.id),
-            service_id: Set(pl.service_id),
-            service_name: Set(pl.service_name.clone()),
-            service_reference: Set(pl.service_reference.clone()),
-            service_remarks: Set(pl.service_remarks.clone()),
-            sac_code: Set(pl.sac_code),
-            variable_types: Set(pl.variable_types.clone()),
-            base_price_formula: Set(pl.base_price_formula.clone()),
-            sales_price_formula: Set(pl.sales_price_formula.clone()),
-            rate: Set(pl.rate),
-            quantity: Set(pl.quantity),
-            variable_values: Set(pl.variable_values.clone()),
-            pre_tax_amount: Set(pl.pre_tax_amount),
-            remarks: Set(pl.remarks.clone()),
-            created_at: Set(Some(now)),
-            updated_at: Set(Some(now)),
-            ..Default::default()
-        }
-        .insert(&txn)
-        .await
-        .map_err(|e| e.to_string())?;
-        set_draft_service_line_taxes(&txn, line.id, &line_tax_ids)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-
     run_draft_invoice_on_new_draft_from_posted(&txn, posted_id, draft.id).await?;
 
     txn.commit().await.map_err(|e| e.to_string())?;
@@ -1046,7 +761,7 @@ pub async fn cancelled_new_draft(
     let header_tax_ids = load_cancelled_invoice_tax_ids(db, cancelled_id)
         .await
         .map_err(|e| e.to_string())?;
-    let cancelled_lines = load_cancelled_invoice_goods_lines(db, cancelled_id).await?;
+    let cancelled_lines = load_cancelled_invoice_lines(db, cancelled_id).await?;
 
     let txn = db.begin().await.map_err(|e| e.to_string())?;
     let now = Utc::now();
@@ -1078,15 +793,14 @@ pub async fn cancelled_new_draft(
         let line_tax_ids = load_cancelled_line_tax_ids(&txn, cl.id)
             .await
             .map_err(|e| e.to_string())?;
-        let line = draft_invoice_goods_line::ActiveModel {
+        let line = draft_invoice_line::ActiveModel {
             draft_invoice_id: Set(draft.id),
-            product_id: Set(cl.product_id),
+            product_id: Set(cl.product_id.unwrap_or(0)),
             product_name: Set(cl.product_name.clone()),
-            product_reference: Set(cl.product_reference.clone()),
             product_remarks: Set(cl.product_remarks.clone()),
             hsn_code: Set(cl.hsn_code),
+            sac_code: Set(cl.sac_code),
             variable_types: Set(cl.variable_types.clone()),
-            base_price_formula: Set(cl.base_price_formula.clone()),
             sales_price_formula: Set(cl.sales_price_formula.clone()),
             rate: Set(cl.rate),
             quantity: Set(cl.quantity),
@@ -1104,38 +818,6 @@ pub async fn cancelled_new_draft(
             .await
             .map_err(|e| e.to_string())?;
     }
-    let cancelled_service_lines = load_cancelled_invoice_service_lines(db, cancelled_id).await?;
-    for cl in cancelled_service_lines {
-        let line_tax_ids = load_cancelled_service_line_tax_ids(&txn, cl.id)
-            .await
-            .map_err(|e| e.to_string())?;
-        let line = draft_invoice_service_line::ActiveModel {
-            draft_invoice_id: Set(draft.id),
-            service_id: Set(cl.service_id),
-            service_name: Set(cl.service_name.clone()),
-            service_reference: Set(cl.service_reference.clone()),
-            service_remarks: Set(cl.service_remarks.clone()),
-            sac_code: Set(cl.sac_code),
-            variable_types: Set(cl.variable_types.clone()),
-            base_price_formula: Set(cl.base_price_formula.clone()),
-            sales_price_formula: Set(cl.sales_price_formula.clone()),
-            rate: Set(cl.rate),
-            quantity: Set(cl.quantity),
-            variable_values: Set(cl.variable_values.clone()),
-            pre_tax_amount: Set(cl.pre_tax_amount),
-            remarks: Set(cl.remarks.clone()),
-            created_at: Set(Some(now)),
-            updated_at: Set(Some(now)),
-            ..Default::default()
-        }
-        .insert(&txn)
-        .await
-        .map_err(|e| e.to_string())?;
-        set_draft_service_line_taxes(&txn, line.id, &line_tax_ids)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-
     run_draft_invoice_on_new_draft_from_posted(&txn, cancelled.posted_invoice_id, draft.id).await?;
 
     txn.commit().await.map_err(|e| e.to_string())?;
@@ -1146,11 +828,10 @@ struct CancelledLineSnapshot {
     id: i64,
     product_id: Option<i64>,
     product_name: String,
-    product_reference: Option<String>,
     product_remarks: Option<String>,
-    hsn_code: i64,
+    hsn_code: Option<i64>,
+    sac_code: Option<i64>,
     variable_types: String,
-    base_price_formula: String,
     sales_price_formula: String,
     rate: Decimal,
     quantity: Decimal,
@@ -1159,17 +840,17 @@ struct CancelledLineSnapshot {
     remarks: Option<String>,
 }
 
-async fn load_cancelled_invoice_goods_lines(
+async fn load_cancelled_invoice_lines(
     db: &DatabaseConnection,
     cancelled_id: i64,
 ) -> Result<Vec<CancelledLineSnapshot>, String> {
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT id, product_id, product_name, product_reference, product_remarks, hsn_code, \
-             variable_types, base_price_formula, sales_price_formula, rate, quantity, \
+            "SELECT id, product_id, product_name, product_remarks, hsn_code, \
+             variable_types, sales_price_formula, rate, quantity, \
              variable_values, pre_tax_amount, remarks \
-             FROM cancelled_invoice_goods_lines \
+             FROM cancelled_invoice_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
         ))
@@ -1181,17 +862,12 @@ async fn load_cancelled_invoice_goods_lines(
                 id: r.try_get("", "id").map_err(|e| e.to_string())?,
                 product_id: r.try_get("", "product_id").map_err(|e| e.to_string())?,
                 product_name: r.try_get("", "product_name").map_err(|e| e.to_string())?,
-                product_reference: r
-                    .try_get("", "product_reference")
-                    .map_err(|e| e.to_string())?,
                 product_remarks: r
                     .try_get("", "product_remarks")
                     .map_err(|e| e.to_string())?,
-                hsn_code: r.try_get("", "hsn_code").map_err(|e| e.to_string())?,
+                hsn_code: r.try_get("", "hsn_code").ok(),
+                sac_code: r.try_get("", "sac_code").ok(),
                 variable_types: r.try_get("", "variable_types").map_err(|e| e.to_string())?,
-                base_price_formula: r
-                    .try_get("", "base_price_formula")
-                    .map_err(|e| e.to_string())?,
                 sales_price_formula: r
                     .try_get("", "sales_price_formula")
                     .map_err(|e| e.to_string())?,
@@ -1212,11 +888,10 @@ async fn insert_cancelled_line<C: ConnectionTrait>(
     cancelled_id: i64,
     product_id: Option<i64>,
     product_name: &str,
-    product_reference: Option<&str>,
     product_remarks: Option<&str>,
-    hsn_code: i64,
+    hsn_code: Option<i64>,
+    sac_code: Option<i64>,
     variable_types: &str,
-    base_price_formula: &str,
     sales_price_formula: &str,
     rate: Decimal,
     quantity: Decimal,
@@ -1229,21 +904,20 @@ async fn insert_cancelled_line<C: ConnectionTrait>(
     let row = db
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "INSERT INTO cancelled_invoice_goods_lines \
-             (cancelled_invoice_id, product_id, product_name, product_reference, product_remarks, \
-              hsn_code, variable_types, base_price_formula, sales_price_formula, rate, quantity, \
+            "INSERT INTO cancelled_invoice_lines \
+             (cancelled_invoice_id, product_id, product_name, product_remarks, \
+              hsn_code, sac_code, variable_types, sales_price_formula, rate, quantity, \
               variable_values, pre_tax_amount, remarks, journal_entry_item_id, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15) \
              RETURNING id",
             [
                 cancelled_id.into(),
                 product_id.into(),
                 product_name.into(),
-                product_reference.into(),
                 product_remarks.into(),
                 hsn_code.into(),
+                sac_code.into(),
                 variable_types.into(),
-                base_price_formula.into(),
                 sales_price_formula.into(),
                 rate.into(),
                 quantity.into(),
@@ -1260,120 +934,3 @@ async fn insert_cancelled_line<C: ConnectionTrait>(
     row.try_get("", "id").map_err(|e| e.to_string())
 }
 
-struct CancelledServiceLineSnapshot {
-    id: i64,
-    service_id: Option<i64>,
-    service_name: String,
-    service_reference: Option<String>,
-    service_remarks: Option<String>,
-    sac_code: i64,
-    variable_types: String,
-    base_price_formula: String,
-    sales_price_formula: String,
-    rate: Decimal,
-    quantity: Decimal,
-    variable_values: String,
-    pre_tax_amount: Decimal,
-    remarks: Option<String>,
-}
-
-async fn load_cancelled_invoice_service_lines(
-    db: &DatabaseConnection,
-    cancelled_id: i64,
-) -> Result<Vec<CancelledServiceLineSnapshot>, String> {
-    let rows = db
-        .query_all_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT id, service_id, service_name, service_reference, service_remarks, sac_code, \
-             variable_types, base_price_formula, sales_price_formula, rate, quantity, \
-             variable_values, pre_tax_amount, remarks \
-             FROM cancelled_invoice_service_lines \
-             WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
-            [cancelled_id.into()],
-        ))
-        .await
-        .map_err(|e| e.to_string())?;
-    rows.into_iter()
-        .map(|r| {
-            Ok(CancelledServiceLineSnapshot {
-                id: r.try_get("", "id").map_err(|e| e.to_string())?,
-                service_id: r.try_get("", "service_id").map_err(|e| e.to_string())?,
-                service_name: r.try_get("", "service_name").map_err(|e| e.to_string())?,
-                service_reference: r
-                    .try_get("", "service_reference")
-                    .map_err(|e| e.to_string())?,
-                service_remarks: r
-                    .try_get("", "service_remarks")
-                    .map_err(|e| e.to_string())?,
-                sac_code: r.try_get("", "sac_code").map_err(|e| e.to_string())?,
-                variable_types: r.try_get("", "variable_types").map_err(|e| e.to_string())?,
-                base_price_formula: r
-                    .try_get("", "base_price_formula")
-                    .map_err(|e| e.to_string())?,
-                sales_price_formula: r
-                    .try_get("", "sales_price_formula")
-                    .map_err(|e| e.to_string())?,
-                rate: r.try_get("", "rate").map_err(|e| e.to_string())?,
-                quantity: r.try_get("", "quantity").map_err(|e| e.to_string())?,
-                variable_values: r
-                    .try_get("", "variable_values")
-                    .map_err(|e| e.to_string())?,
-                pre_tax_amount: r.try_get("", "pre_tax_amount").map_err(|e| e.to_string())?,
-                remarks: r.try_get("", "remarks").map_err(|e| e.to_string())?,
-            })
-        })
-        .collect()
-}
-
-async fn insert_cancelled_service_line<C: ConnectionTrait>(
-    db: &C,
-    cancelled_id: i64,
-    service_id: Option<i64>,
-    service_name: &str,
-    service_reference: Option<&str>,
-    service_remarks: Option<&str>,
-    sac_code: i64,
-    variable_types: &str,
-    base_price_formula: &str,
-    sales_price_formula: &str,
-    rate: Decimal,
-    quantity: Decimal,
-    variable_values: &str,
-    pre_tax_amount: Decimal,
-    remarks: Option<String>,
-    journal_entry_item_id: i64,
-    now: DateTime<Utc>,
-) -> Result<i64, String> {
-    let row = db
-        .query_one_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "INSERT INTO cancelled_invoice_service_lines \
-             (cancelled_invoice_id, service_id, service_name, service_reference, service_remarks, \
-              sac_code, variable_types, base_price_formula, sales_price_formula, rate, quantity, \
-              variable_values, pre_tax_amount, remarks, journal_entry_item_id, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16) \
-             RETURNING id",
-            [
-                cancelled_id.into(),
-                service_id.into(),
-                service_name.into(),
-                service_reference.into(),
-                service_remarks.into(),
-                sac_code.into(),
-                variable_types.into(),
-                base_price_formula.into(),
-                sales_price_formula.into(),
-                rate.into(),
-                quantity.into(),
-                variable_values.into(),
-                pre_tax_amount.into(),
-                remarks.into(),
-                journal_entry_item_id.into(),
-                now.into(),
-            ],
-        ))
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "insert cancelled service line failed".to_string())?;
-    row.try_get("", "id").map_err(|e| e.to_string())
-}

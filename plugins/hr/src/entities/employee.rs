@@ -45,6 +45,9 @@ pub struct Model {
     pub emergency_contact_name: Option<String>,
     pub emergency_contact_relation: Option<String>,
     pub emergency_contact_mobile: Option<String>,
+    pub pf_number: Option<String>,
+    pub aadhar_number: Option<String>,
+    pub pan_number: Option<String>,
     /// `filesystem_nodes.id` for Aadhar file.
     #[sea_orm(indexed)]
     pub aadhar_vnode_id: Option<i64>,

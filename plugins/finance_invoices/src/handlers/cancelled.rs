@@ -23,8 +23,8 @@ use crate::{
     logic::{
         cancelled_new_draft,
         draft_payment_term::cancelled_payment_term_display_rows,
-        invoice_goods_line_editor::{
-            cancelled_invoice_goods_line_display_rows, invoice_customer_name,
+        invoice_line_editor::{
+            cancelled_invoice_line_display_rows, invoice_customer_name,
             invoice_header_tax_labels,
         },
         load_invoice_date_formats, optional_display,
@@ -92,12 +92,7 @@ pub async fn detail(
             &dates.date,
         )
         .await;
-        let line_rows = cancelled_invoice_goods_line_display_rows(&state.db, c.id).await;
-        let service_line_rows =
-            crate::logic::invoice_service_line_editor::cancelled_invoice_service_line_display_rows(
-                &state.db, c.id,
-            )
-            .await;
+        let line_rows = cancelled_invoice_line_display_rows(&state.db, c.id).await;
 
         let (posted_invoice_label, posted_invoice_href) = if let Ok(Some(posted)) =
             PostedInvoiceEntity::find_by_id(c.posted_invoice_id)
@@ -145,7 +140,6 @@ pub async fn detail(
             payment_term_rows,
             tax_labels,
             line_rows,
-            service_line_rows,
             posted_invoice_label,
             posted_invoice_href,
             credit_note_label,
@@ -173,7 +167,6 @@ pub async fn detail(
             payment_term_rows: vec![],
             tax_labels: String::new(),
             line_rows: vec![],
-            service_line_rows: vec![],
             posted_invoice_label: String::new(),
             posted_invoice_href: None,
             credit_note_label: String::new(),

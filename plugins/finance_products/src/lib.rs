@@ -22,6 +22,9 @@ pub mod scope;
 pub mod state;
 pub mod templates;
 
+pub use entities::product::ProductKind;
+pub use migrations::PRODUCT_SERVICE_ID_MAP;
+
 use frunk::{HCons, hlist::HList};
 
 use lariv_core::app::App;

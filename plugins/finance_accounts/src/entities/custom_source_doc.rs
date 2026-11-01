@@ -17,6 +17,8 @@ pub struct Model {
     pub created_by_id: i64,
     #[sea_orm(unique)]
     pub journal_entry_id: i64,
+    /// Attached file or folder in the filesystem.
+    pub attached_vnode_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -27,6 +29,25 @@ pub enum Relation {
         to = "super::journal_entry::Column::Id"
     )]
     JournalEntry,
+    #[sea_orm(
+        belongs_to = "lariv_plugin_filesystem::entities::filesystem_node::Entity",
+        from = "Column::AttachedVnodeId",
+        to = "lariv_plugin_filesystem::entities::filesystem_node::Column::Id",
+        on_delete = "SetNull"
+    )]
+    Attached,
+}
+
+impl Related<super::journal_entry::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::JournalEntry.def()
+    }
+}
+
+impl Related<lariv_plugin_filesystem::entities::filesystem_node::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Attached.def()
+    }
 }
 
 impl ActiveModelBehavior for ActiveModel {}

@@ -19,10 +19,11 @@ use lariv_plugin_contacts::entities::{
 use lariv_plugin_users::middleware::RequireAuth;
 use sea_orm::EntityTrait;
 
+use lariv_plugin_customer::logic::{self as customer, display_name};
+
 use crate::customer_ui::{CustomerCreateModalPage, CustomerRow, CustomerSelectPage};
 use crate::forms::CustomerForm;
 use crate::keys::CustomerCreateModalKey;
-use crate::logic::customer::{self, display_name};
 use crate::state::CrmState;
 
 use super::ModalNameQuery;
@@ -144,7 +145,7 @@ fn customer_fields() -> Vec<FilterField> {
     vec![text_column(
         "name",
         "Name",
-        crate::entities::customer::Column::Id,
+        lariv_plugin_customer::entities::customer::Column::Id,
     )]
 }
 

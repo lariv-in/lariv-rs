@@ -17,11 +17,8 @@ use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
 };
 use lariv_core::web::{modal_create_post_query, modal_edit_post_url};
-use lariv_plugin_finance_invoices::components::{
-    field_invoice_goods_lines, field_invoice_service_lines,
-};
-use lariv_plugin_finance_invoices::logic::invoice_goods_line_editor::InvoiceGoodsLineDisplayRow;
-use lariv_plugin_finance_invoices::logic::invoice_service_line_editor::InvoiceServiceLineDisplayRow;
+use lariv_plugin_finance_invoices::components::field_invoice_lines;
+use lariv_plugin_finance_invoices::logic::invoice_line_editor::InvoiceLineDisplayRow;
 
 use lariv_plugin_finance_accounts::accounting_detail_menu::{
     DetailMenuNavItem, detail_sidebar_menu,
@@ -51,10 +48,8 @@ pub struct QuotationFormFields {
     pub customer_display: String,
     pub bank_account: String,
     pub remarks: String,
-    pub goods_json: String,
-    pub service_json: String,
-    pub goods_preview: String,
-    pub service_preview: String,
+    pub lines_json: String,
+    pub lines_preview: String,
 }
 
 fn quotation_inputs(fields: &QuotationFormFields) -> Markup {
@@ -66,13 +61,8 @@ fn quotation_inputs(fields: &QuotationFormFields) -> Markup {
             .display(QuotationFormField::CustomerId, &fields.customer_display)
             .value(QuotationFormField::BankAccount, &fields.bank_account)
             .value(QuotationFormField::Remarks, &fields.remarks)
-            .value(QuotationFormField::GoodsLinesJson, &fields.goods_json)
-            .display(QuotationFormField::GoodsLinesJson, &fields.goods_preview)
-            .value(QuotationFormField::ServiceLinesJson, &fields.service_json)
-            .display(
-                QuotationFormField::ServiceLinesJson,
-                &fields.service_preview,
-            ),
+            .value(QuotationFormField::LinesJson, &fields.lines_json)
+            .display(QuotationFormField::LinesJson, &fields.lines_preview),
     )
 }
 
@@ -256,8 +246,7 @@ pub struct QuotationDetailPage {
     pub customer_href: String,
     pub bank_account: String,
     pub remarks: String,
-    pub goods: Vec<InvoiceGoodsLineDisplayRow>,
-    pub services: Vec<InvoiceServiceLineDisplayRow>,
+    pub lines: Vec<InvoiceLineDisplayRow>,
     pub grand_total: String,
     pub can_edit: bool,
     pub actions_html: String,
@@ -327,10 +316,8 @@ impl QuotationDetailPage {
                     (label("Account", field_textarea(FieldTextarea { value: &self.bank_account, classes: "" })))
                     (label("Remarks", field_textarea(FieldTextarea { value: &self.remarks, classes: "" })))
                     (label("Grand total", field_text(FieldText { value: &self.grand_total, classes: "" })))
-                    h3 class="font-semibold mt-4" { "Goods" }
-                    (field_invoice_goods_lines(&self.goods))
-                    h3 class="font-semibold mt-4" { "Services" }
-                    (field_invoice_service_lines(&self.services))
+                    h3 class="font-semibold mt-4" { "Lines" }
+                    (field_invoice_lines(&self.lines))
                 }))
             }))
         }

@@ -7,7 +7,6 @@ pub mod prefs;
 pub mod tax;
 
 pub use document::{
-    GoodsLineInput, ServiceLineInput, copy_quotation, create_quotation, delete_quotation,
-    parse_goods_lines, parse_service_lines, update_quotation,
+    LineInput, copy_quotation, create_quotation, delete_quotation, parse_lines, update_quotation,
 };
 pub use number::resolve_quotation_number;

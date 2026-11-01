@@ -1,10 +1,10 @@
-//! Stock-movement customer: one `crm_customers` row.
+//! Stock-movement customer: one `customers` row.
 
 use std::collections::HashMap;
 
 use lariv_plugin_contacts::entities::contact::{self, Entity as ContactEntity};
-use lariv_plugin_crm::entities::customer::{self, Entity as CustomerEntity};
-use lariv_plugin_crm::logic::customer::{self as customers, detail_href};
+use lariv_plugin_customer::entities::customer::{self, Entity as CustomerEntity};
+use lariv_plugin_customer::logic::{self as customers, detail_href};
 use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
 pub async fn require_customer<C: ConnectionTrait>(db: &C, customer_id: i64) -> Result<i64, String> {

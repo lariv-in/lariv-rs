@@ -1,30 +1,24 @@
 use axum::{
     extract::{Multipart, Path, Query},
-    http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
-use lariv_core::html_form::{CsrfToken, HtmlForm, HtmlFormBody, UrlencodedFields};
+use lariv_core::components::{SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::html_form::{CsrfToken, HtmlForm, HtmlFormBody};
 use lariv_core::http::Cap;
 use lariv_core::web::{
-    Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-    modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
+    Htmx, html_built_page_or_app_layout, html_built_page_with_slots, modal_edit_post_url,
+    respond_create_modal_done, respond_edit_modal_done,
 };
 use lariv_plugin_filesystem::state::FilesystemState;
 use lariv_plugin_users::middleware::RequireAuth;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use crate::{
-    entities::leaves::{
-        leave_journal::{self, Entity as LeaveJournalEntity},
-        leave_type::LeaveType,
-    },
-    forms::{EmployeeForm, GiveLeaveForm, TerminateEmployeeBody},
+    forms::{EmployeeForm, TerminateEmployeeBody},
     handlers::ModalNameQuery,
     keys::{
-        ApplicantEditModalKey, EmployeeCreateModalKey, EmployeeDeleteModalKey, GiveLeaveModalKey,
-        LeaveJournalTableKey, TerminateEmployeeModalKey,
+        ApplicantEditModalKey, EmployeeCreateModalKey, EmployeeDeleteModalKey,
+        TerminateEmployeeModalKey,
     },
     logic::{
         employee::{
@@ -32,26 +26,20 @@ use crate::{
             update_employee,
         },
         ex_employee::terminate_employee,
-        leave::{
-            format_journal_amount, give_leave, leave_journal_balances, parse_give_leave_amount,
-        },
         person::PersonInput,
         profile::{self, profile_view},
         user::person_for_user,
         user::user_label,
     },
     routes::{
-        ApplicantHubRouteTag, EmployeeDeletePostRouteTag, EmployeeDetailRouteTag,
-        EmployeeEditPostRouteTag, EmployeeLeaveJournalRouteTag, ExEmployeeDetailRouteTag,
+        EmployeeDeletePostRouteTag, EmployeeDetailRouteTag, EmployeeEditPostRouteTag,
+        ExEmployeeDetailRouteTag, PeopleHubRouteTag,
     },
     scope::{employee_display_name, find_employee_scoped},
     state::HrState,
     templates::{
         ConfirmDeletePage, EmployeeDetailPage, EmployeeFormValues, PersonCreateKind,
         PersonCreateModalPage, PersonEditModalPage, TerminateEmployeeModalPage,
-        leaves::{
-            EmployeeLeaveJournalPage, GiveLeaveModalPage, LeaveJournalBalance, LeaveJournalRow,
-        },
     },
 };
 
@@ -111,6 +99,9 @@ pub(crate) async fn employee_values_from_model(
         emergency_contact_name: text(&employee.emergency_contact_name),
         emergency_contact_relation: text(&employee.emergency_contact_relation),
         emergency_contact_mobile: text(&employee.emergency_contact_mobile),
+        pf_number: text(&employee.pf_number),
+        aadhar_number: text(&employee.aadhar_number),
+        pan_number: text(&employee.pan_number),
         aadhar_display,
         pan_display,
         passport_display,
@@ -218,6 +209,9 @@ pub(crate) async fn employee_values_from_submit(
         emergency_contact_name: submit.emergency_contact_name.clone(),
         emergency_contact_relation: submit.emergency_contact_relation.clone(),
         emergency_contact_mobile: submit.emergency_contact_mobile.clone(),
+        pf_number: submit.pf_number.clone(),
+        aadhar_number: submit.aadhar_number.clone(),
+        pan_number: submit.pan_number.clone(),
         aadhar_display,
         pan_display,
         passport_display,
@@ -413,7 +407,7 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(employee) = find_employee_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
+        return Redirect::to(&PeopleHubRouteTag.url()).into_response();
     };
     let profile = profile_view(&state.db, &employee).await;
     let page = EmployeeDetailPage {
@@ -428,179 +422,6 @@ pub async fn detail(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
-#[derive(Debug, serde::Deserialize, Default)]
-struct LeaveJournalQuery {
-    #[serde(default)]
-    sort: Option<String>,
-    #[serde(default)]
-    page: QueryPage,
-    #[serde(default)]
-    page_size: QueryPageSize,
-}
-
-fn journal_path_and_query(uri: &Uri) -> String {
-    uri.path_and_query()
-        .map(|pq| pq.as_str().to_string())
-        .unwrap_or_else(|| uri.path().to_string())
-}
-
-fn journal_query_from_uri(uri: &Uri) -> LeaveJournalQuery {
-    let Some(query) = uri.query() else {
-        return LeaveJournalQuery::default();
-    };
-    UrlencodedFields::parse(query.as_bytes())
-        .ok()
-        .and_then(|fields| fields.deserialize().ok())
-        .unwrap_or_default()
-}
-
-fn journal_sort_desc(sort: &str) -> bool {
-    sort.split_whitespace()
-        .last()
-        .is_some_and(|direction| direction.eq_ignore_ascii_case("DESC"))
-}
-
-pub async fn leave_journal(
-    Cap(state): Cap<HrState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-    Path(id): Path<i64>,
-    uri: Uri,
-) -> Response {
-    let Some(employee) = find_employee_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    };
-    let q = journal_query_from_uri(&uri);
-    let page_num = q.page.get();
-    let page_size = q.page_size.get();
-    let sort = q
-        .sort
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "Datetime DESC".to_string());
-    let desc = journal_sort_desc(&sort);
-    let mut query =
-        LeaveJournalEntity::find().filter(leave_journal::Column::UserId.eq(employee.user_id));
-    query = match sort.split_whitespace().next().unwrap_or("") {
-        column if column.eq_ignore_ascii_case("LeaveType") => {
-            if desc {
-                query.order_by_desc(leave_journal::Column::LeaveType)
-            } else {
-                query.order_by_asc(leave_journal::Column::LeaveType)
-            }
-        }
-        column if column.eq_ignore_ascii_case("Amount") => {
-            if desc {
-                query.order_by_desc(leave_journal::Column::Amount)
-            } else {
-                query.order_by_asc(leave_journal::Column::Amount)
-            }
-        }
-        _ => {
-            if desc {
-                query.order_by_desc(leave_journal::Column::Datetime)
-            } else {
-                query.order_by_asc(leave_journal::Column::Datetime)
-            }
-        }
-    };
-    query = query.order_by_desc(leave_journal::Column::Id);
-    let paginator = query.paginate(&state.db, page_size as u64);
-    let total = paginator.num_items().await.unwrap_or(0);
-    let models = paginator
-        .fetch_page((page_num as u64).saturating_sub(1))
-        .await
-        .unwrap_or_default();
-    let rows = models
-        .into_iter()
-        .map(|row| LeaveJournalRow {
-            datetime: ctx.format_datetime(row.datetime).into_string(),
-            leave_type: row.leave_type.to_string(),
-            amount: format_journal_amount(row.amount),
-        })
-        .collect();
-    let totals = leave_journal_balances(&state.db, employee.user_id).await;
-    let balances = [LeaveType::Casual, LeaveType::Sick, LeaveType::Privilege]
-        .into_iter()
-        .zip(totals)
-        .map(|(kind, amount)| LeaveJournalBalance {
-            leave_type: kind.label().to_string(),
-            amount: format_journal_amount(amount),
-        })
-        .collect();
-    let page = EmployeeLeaveJournalPage {
-        employee_id: employee.id,
-        display_name: employee_display_name(&employee),
-        balances,
-        rows: ObjectList::from_page(rows, page_num, page_size, total),
-        sort,
-        path_and_query: journal_path_and_query(&uri),
-    };
-    if htmx.targets::<LeaveJournalTableKey>() {
-        return page.render_table().into_response();
-    }
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
-}
-
-pub async fn give_leave_get(
-    Cap(state): Cap<HrState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireAuth(ctx): RequireAuth,
-    Path(id): Path<i64>,
-    Query(q): Query<ModalNameQuery>,
-) -> Response {
-    if find_employee_scoped(&state.db, id, &ctx).await.is_none() {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    }
-    let page = GiveLeaveModalPage::new(id, q.form_name(), q.refresh_table());
-    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
-}
-
-pub async fn give_leave_post(
-    Cap(state): Cap<HrState>,
-    Cap(chrome): Cap<SharedChromeFolder>,
-    RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
-    Path(id): Path<i64>,
-    Query(q): Query<ModalNameQuery>,
-    HtmlFormBody(form): HtmlFormBody<GiveLeaveForm>,
-) -> Response {
-    let Some(employee) = find_employee_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
-    };
-    let error = match give_leave_from_form(&form) {
-        Ok((leave_type, amount)) => {
-            match give_leave(&state.db, employee.user_id, leave_type, amount).await {
-                Ok(()) => {
-                    return respond_create_modal_done::<GiveLeaveModalKey>(
-                        &htmx,
-                        &q.refresh_table(),
-                        &EmployeeLeaveJournalRouteTag::new(id).url(),
-                    );
-                }
-                Err(error) => error,
-            }
-        }
-        Err(error) => error,
-    };
-    let page = GiveLeaveModalPage {
-        employee_id: id,
-        form_name: q.form_name(),
-        refresh_table: q.refresh_table(),
-        leave_type: form.leave_type,
-        amount: form.amount,
-        error,
-    };
-    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
-}
-
-fn give_leave_from_form(form: &GiveLeaveForm) -> Result<(LeaveType, i64), String> {
-    let leave_type = LeaveType::parse(form.leave_type.trim())
-        .ok_or_else(|| "leave type is required".to_string())?;
-    let amount = parse_give_leave_amount(&form.amount)?;
-    Ok((leave_type, amount))
-}
-
 pub async fn edit_get(
     Cap(state): Cap<HrState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -609,7 +430,7 @@ pub async fn edit_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     let Some(employee) = find_employee_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
+        return Redirect::to(&PeopleHubRouteTag.url()).into_response();
     };
     let form_name = q.form_name();
     let values = stamp_manager_access(
@@ -642,7 +463,7 @@ pub async fn edit_post(
     multipart: Multipart,
 ) -> Response {
     let Some(existing) = find_employee_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
+        return Redirect::to(&PeopleHubRouteTag.url()).into_response();
     };
     let form_name = q.form_name();
     let post_url = modal_edit_post_url(EmployeeEditPostRouteTag::new(id), &form_name);
@@ -767,7 +588,7 @@ pub async fn delete_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if find_employee_scoped(&state.db, id, &ctx).await.is_none() {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
+        return Redirect::to(&PeopleHubRouteTag.url()).into_response();
     }
     let page = ConfirmDeletePage {
         modal_uid: EmployeeDeleteModalKey::ID.to_string(),
@@ -792,7 +613,7 @@ pub async fn delete_post(
 ) -> Response {
     match delete_employee(&state.db, id).await {
         Ok(()) => htmx.redirect(
-            &lariv_core::http::RouteQueryBuilder::new(ApplicantHubRouteTag)
+            &lariv_core::http::RouteQueryBuilder::new(PeopleHubRouteTag)
                 .query("tab", "employees")
                 .build(),
         ),
@@ -818,7 +639,7 @@ pub async fn terminate_get(
     Query(q): Query<ModalNameQuery>,
 ) -> Response {
     if find_employee_scoped(&state.db, id, &ctx).await.is_none() {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
+        return Redirect::to(&PeopleHubRouteTag.url()).into_response();
     }
     let page = TerminateEmployeeModalPage {
         employee_id: id,

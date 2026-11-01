@@ -1,29 +1,25 @@
-//! Customers list on the dashboard.
+//! Reusable customers table and create-modal markup.
 
 use maud::{Markup, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-    ButtonSubmit, Crumb, DataTable, DataTableDisplay, FieldText, FilterClauseView, FormOpts,
-    LayoutMain, LayoutSidebar, ListFilterBuilder, ObjectList, PaginationPage, ShellChrome,
-    ShellScaffold, SidebarMenu, SidebarMenuItem, SwapKey, TableButtonFilter, TableColumnHeader,
-    TableListContent, TablePagination, TableRow, breadcrumbs, button_submit, column_sort_url,
-    data_table, field_text, filter_error_banner, form, form_hx_get_route, form_hx_post_url,
-    layout_main, layout_sidebar, list_filter_builder, modal_keyed, pagination_pages,
-    row_attr_navigate, shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sort_indicator,
-    table_button_filter, table_create_button, table_list_content, table_pagination,
+    ButtonSubmit, DataTable, DataTableDisplay, FieldText, FilterClauseView, FormOpts,
+    ListFilterBuilder, ObjectList, PaginationPage, ShellChrome, SwapKey, TableButtonFilter,
+    TableColumnHeader, TableListContent, TablePagination, TableRow, button_submit,
+    column_sort_url, data_table, field_text, filter_error_banner, form, form_hx_get_route,
+    form_hx_post_url, list_filter_builder, modal_keyed, pagination_pages, row_attr_navigate,
+    sort_indicator, table_button_filter, table_create_button, table_list_content, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
-use lariv_core::http::ProvideRequestCaps;
+use lariv_core::http::{FragmentGet, ProvideRequestCaps, RouteUrl};
 use lariv_core::list_filters::{FilterField, FilterRowError};
-use lariv_core::template::{
-    RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
-};
+use lariv_core::template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
 use lariv_core::web::modal_create_post_url;
 
 use super::forms::{CustomerForm, CustomerFormField};
 use super::keys::{CustomerCreateModalKey, CustomerTableKey};
-use super::routes::{CustomerCreatePostRouteTag, CustomerDefaultRouteTag};
+use super::routes::CustomerCreatePostRouteTag;
 
 define_register_items! {
     plugin: CustomerTag;
@@ -34,63 +30,8 @@ define_register_items! {
     bounds: [Clone, ProvideRequestCaps, Send, Sync];
     hook: Hook;
     items: [
-        CustomerListIdx: CustomerListPageTag => CustomerListPage,
         CustomerCreateModalIdx: CustomerCreateModalPageTag => CustomerCreateModalPage,
     ]
-}
-
-fn app_scaffold(chrome: &ShellChrome, sidebar: Markup, crumbs: Markup, body: Markup) -> Markup {
-    shell_scaffold(ShellScaffold {
-        title: "Customers — Lariv",
-        registry_head: chrome.head.clone(),
-        topbar_items: chrome.topbar_items.clone(),
-        right_sidebar: chrome.right_sidebar.clone(),
-        sidebar,
-        breadcrumbs: crumbs,
-        body,
-        ..Default::default()
-    })
-}
-
-fn scaffold_pane(
-    sidebar: Markup,
-    crumbs: Markup,
-    body: Markup,
-) -> lariv_core::components::AppLayoutHtml {
-    layout_sidebar(LayoutSidebar {
-        sidebar,
-        breadcrumbs: crumbs,
-        content: body,
-    })
-}
-
-fn scaffold_main(crumbs: Markup, body: Markup) -> lariv_core::components::MainContentHtml {
-    layout_main(LayoutMain {
-        breadcrumbs: crumbs,
-        content: body,
-    })
-}
-
-fn list_crumbs() -> Markup {
-    breadcrumbs(&[Crumb {
-        label: "Customers",
-        href: None,
-    }])
-}
-
-fn customer_menu() -> Markup {
-    let list_url = CustomerDefaultRouteTag.url();
-    sidebar_menu(SidebarMenu {
-        title: "Customers",
-        children: html! {
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "Customers",
-                url: &list_url,
-                active: true,
-                ..Default::default()
-            }))
-        },
-    })
 }
 
 fn filtered_data_table<K: SwapKey>(
@@ -181,7 +122,11 @@ pub struct CustomerListPage {
 }
 
 impl CustomerListPage {
-    pub fn render_table(&self) -> Markup {
+    /// Render the customers data table. `R` is the host list route (filter HTMX target).
+    pub fn render_table<R>(&self) -> Markup
+    where
+        R: RouteUrl + FragmentGet<CustomerTableKey> + Default,
+    {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
         let headers = [
@@ -229,9 +174,7 @@ impl CustomerListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<CustomerTableKey, CustomerDefaultRouteTag>(
-                        CustomerDefaultRouteTag,
-                    ),
+                    attrs: form_hx_get_route::<CustomerTableKey, R>(R::default()),
                     apply_label: "Apply",
                     extra: html! {},
                 }),
@@ -262,22 +205,6 @@ impl CustomerListPage {
             &self.path_and_query,
             &self.filter_errors,
         )
-    }
-}
-
-impl RenderAppPane for CustomerListPage {
-    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
-        scaffold_pane(customer_menu(), list_crumbs(), self.render_table())
-    }
-
-    fn render_main(&self) -> lariv_core::components::MainContentHtml {
-        scaffold_main(list_crumbs(), self.render_table())
-    }
-}
-
-impl RenderTemplate for CustomerListPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(chrome, customer_menu(), list_crumbs(), self.render_table())
     }
 }
 
@@ -335,6 +262,19 @@ impl RenderTemplate for CustomerCreateModalPage {
 mod tests {
     use super::{CustomerListPage, CustomerRow};
     use lariv_core::components::ObjectList;
+    use lariv_core::http::{FragmentGet, RouteTag, RouteUrl};
+
+    #[derive(Default)]
+    struct TestListRoute;
+    impl RouteTag for TestListRoute {
+        const PATH: &'static str = "/finance/customers";
+    }
+    impl RouteUrl for TestListRoute {
+        fn path(self) -> String {
+            Self::PATH.to_string()
+        }
+    }
+    impl FragmentGet<super::super::keys::CustomerTableKey> for TestListRoute {}
 
     #[test]
     fn list_shows_each_customer() {
@@ -362,10 +302,10 @@ mod tests {
             filters: Vec::new(),
             filter_errors: Vec::new(),
             sort: "Name ASC".into(),
-            path_and_query: "/dashboard/customers/".into(),
+            path_and_query: "/finance/customers/".into(),
             page_size: 20,
         };
-        let html = page.render_table().into_string();
+        let html = page.render_table::<TestListRoute>().into_string();
         assert!(html.contains("Acme"), "{html}");
         assert!(html.contains("Ada Lovelace"), "{html}");
         assert!(html.contains("Company"), "{html}");

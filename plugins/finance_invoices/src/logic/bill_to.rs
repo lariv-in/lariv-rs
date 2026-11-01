@@ -6,7 +6,7 @@ use lariv_plugin_contacts::entities::{
     company::{self, Entity as CompanyEntity},
     contact::{self, Entity as ContactEntity},
 };
-use lariv_plugin_crm::entities::customer::{self, Entity as CustomerEntity};
+use lariv_plugin_customer::entities::customer::{self, Entity as CustomerEntity};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
     Set,
@@ -113,11 +113,11 @@ pub fn optional_bill_to(
 
 pub fn customer_name_sql(invoice_table: &str) -> String {
     format!(
-        "(SELECT CASE WHEN crm_customers.is_individual THEN \
-           (SELECT name FROM crm_contacts WHERE crm_contacts.id = crm_customers.individual_id) \
-         ELSE \
-           (SELECT name FROM crm_companies WHERE crm_companies.id = crm_customers.company_id) \
-         END FROM crm_customers WHERE crm_customers.id = {invoice_table}.customer_id)"
+        "(SELECT CASE WHEN customers.is_individual THEN \
+           (SELECT name FROM crm_contacts WHERE crm_contacts.id = customers.individual_id) \
+           ELSE \
+           (SELECT name FROM crm_companies WHERE crm_companies.id = customers.company_id) \
+         END FROM customers WHERE customers.id = {invoice_table}.customer_id)"
     )
 }
 
@@ -135,7 +135,7 @@ pub async fn require_customer_id<C: ConnectionTrait>(
     db: &C,
     customer_id: i64,
 ) -> Result<i64, String> {
-    lariv_plugin_crm::logic::customer::require_existing(db, customer_id).await
+    lariv_plugin_customer::logic::require_existing(db, customer_id).await
 }
 
 pub async fn customer_label(db: &DatabaseConnection, customer_id: i64) -> String {

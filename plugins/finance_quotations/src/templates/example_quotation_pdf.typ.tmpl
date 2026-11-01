@@ -2,8 +2,7 @@
    Context (PascalCase) for a quotation PDF:
      ID, InvoiceNumber, CustomerId, Date,
      Customer { ID, Name, Address, GSTIN, PAN, Phone, Email, Website },
-     GoodsLines [ { ID, ComponentId, Component, VariablesDisplay, Taxes, TaxItems, PreTax, FinalCost, Remarks } ],
-     ServiceLines  [ { ID, MachineId, Machine, VariablesDisplay, Taxes, TaxItems, PreTax, LineTotal, Remarks } ],
+     Lines [ { ID, Name, Details, Taxes, TaxItems, PreTax, LineTotal, FinalCost, Remarks } ],
      GrandTotal (string),
      Remarks (string; free text, may be blank),
      BankAccount (Typst markup for the quotation account; blank when unset),
@@ -50,14 +49,14 @@
   if names.len() == 0 { [—] } else { names.join(", ") }
 }
 
-#let goods-lines = (
-{% for line in GoodsLines %}
+#let doc-lines = (
+{% for line in Lines %}
   (
     desc: [{{ line.Name }}],
     details: [{{ line.Details }}{% if line.Remarks %} \
 #text(size: 8pt)[{{ line.Remarks | replace("\r", "") | replace("\n", " \\ ") }}]{% endif %}],
     pretax: float(str({{ line.PreTax or 0 }})),
-    amount: float(str({{ line.FinalCost or 0 }})),
+    amount: float(str({{ line.LineTotal or line.FinalCost or 0 }})),
     taxes: (
 {% for tax in line.TaxItems %}
       (name: "{{ tax.Name }}", pct: {{ tax.Percentage or 0 }}, kind: "{{ tax.TaxType }}"),
@@ -67,24 +66,7 @@
 {% endfor %}
 )
 
-#let service-lines = (
-{% for line in ServiceLines %}
-  (
-    desc: [{{ line.Name }}],
-    details: [{{ line.Details }}{% if line.Remarks %} \
-#text(size: 8pt)[{{ line.Remarks | replace("\r", "") | replace("\n", " \\ ") }}]{% endif %}],
-    pretax: float(str({{ line.PreTax or 0 }})),
-    amount: float(str({{ line.LineTotal or 0 }})),
-    taxes: (
-{% for tax in line.TaxItems %}
-      (name: "{{ tax.Name }}", pct: {{ tax.Percentage or 0 }}, kind: "{{ tax.TaxType }}"),
-{% endfor %}
-    ),
-  ),
-{% endfor %}
-)
-
-#let all-lines = goods-lines + service-lines
+#let all-lines = doc-lines
 #let untaxed-total = all-lines.map(line-untaxed).sum(default: 0.0)
 
 #let tax-totals = {
@@ -171,29 +153,13 @@
   ],
 )
 
-{% if GoodsLines %}
+{% if Lines %}
 #table(
   columns: (0.4fr, 2.2fr, 1.8fr, 1.2fr, 1fr),
   align: (center, left, left, center, right),
-  table.cell(colspan: 5, align: left)[*Products*],
+  table.cell(colspan: 5, align: left)[*Lines*],
   [*Sl*], [*Particulars*], [*Details*], [*Taxes*], [*Amount*],
-  ..goods-lines.enumerate().map(((i, ln)) => (
-    str(i + 1),
-    ln.desc,
-    ln.details,
-    tax-label(ln),
-    inr(line-untaxed(ln)),
-  )).flatten(),
-)
-{% endif %}
-
-{% if ServiceLines %}
-#table(
-  columns: (0.4fr, 2.2fr, 1.8fr, 1.2fr, 1fr),
-  align: (center, left, left, center, right),
-  table.cell(colspan: 5, align: left)[*Services*],
-  [*Sl*], [*Particulars*], [*Details*], [*Taxes*], [*Amount*],
-  ..service-lines.enumerate().map(((i, ln)) => (
+  ..doc-lines.enumerate().map(((i, ln)) => (
     str(i + 1),
     ln.desc,
     ln.details,

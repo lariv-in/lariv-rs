@@ -10,6 +10,34 @@ use lariv_plugin_users::{entities::user, password};
 
 use super::person::{PersonInput, normalized_person_input, validate_person_input};
 
+use lariv_plugin_users::entities::user::Entity as UserEntity;
+use sea_orm::{ColumnTrait, QueryFilter};
+use std::collections::HashMap;
+
+/// Display name for a users-table id (empty when `id` is not positive).
+pub async fn user_display_label(db: &DatabaseConnection, id: i64) -> String {
+    if id <= 0 {
+        return String::new();
+    }
+    lariv_core::web::opt_or_log(UserEntity::find_by_id(id).one(db).await, "find user by id")
+        .map(|row| row.name)
+        .unwrap_or_else(|| format!("User {id}"))
+}
+
+/// Batch lookup of display names keyed by user id.
+pub async fn user_display_labels(db: &DatabaseConnection, ids: &[i64]) -> HashMap<i64, String> {
+    let ids: Vec<i64> = ids.iter().copied().filter(|id| *id > 0).collect();
+    if ids.is_empty() {
+        return HashMap::new();
+    }
+    let users = UserEntity::find()
+        .filter(user::Column::Id.is_in(ids))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    users.into_iter().map(|row| (row.id, row.name)).collect()
+}
+
 pub fn generate_random_password(len: usize) -> String {
     const CHARSET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
     let mut rng = rand::rng();

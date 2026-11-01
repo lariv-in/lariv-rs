@@ -11,10 +11,16 @@ use super::{
         CurrencyCreateModalPage, CurrencyDetailPage, CurrencyEditModalPage, CurrencyListPage,
         CurrencySelectPage,
     },
+    custom_source_doc_templates::{
+        CustomSourceDocTemplateCreateModalPage, CustomSourceDocTemplateDetailPage,
+        CustomSourceDocTemplateEditModalPage, CustomSourceDocTemplateListPage,
+        CustomSourceDocTemplateSelectPage,
+    },
     custom_source_docs::{
         CustomSourceDocDeleteModalPage, CustomSourceDocDetailPage, CustomSourceDocFormPage,
         CustomSourceDocIndexCreateModalPage, CustomSourceDocIndexPage,
     },
+    customers::CustomersListPage,
     journals::{
         JournalCreateModalPage, JournalDetailPage, JournalEditModalPage,
         JournalEntryCreateModalPage, JournalEntryDeleteModalPage, JournalEntryDetailPage,
@@ -60,6 +66,12 @@ lariv_core::define_register_items! {
         CustomSourceDocDetailIdx: CustomSourceDocDetailPageTag => CustomSourceDocDetailPage,
         CustomSourceDocFormIdx: CustomSourceDocFormPageTag => CustomSourceDocFormPage,
         CustomSourceDocDeleteModalIdx: CustomSourceDocDeleteModalPageTag => CustomSourceDocDeleteModalPage,
+        CustomSourceDocTemplateListIdx: CustomSourceDocTemplateListPageTag => CustomSourceDocTemplateListPage,
+        CustomSourceDocTemplateDetailIdx: CustomSourceDocTemplateDetailPageTag => CustomSourceDocTemplateDetailPage,
+        CustomSourceDocTemplateSelectIdx: CustomSourceDocTemplateSelectPageTag => CustomSourceDocTemplateSelectPage,
+        CustomSourceDocTemplateCreateModalIdx: CustomSourceDocTemplateCreateModalPageTag => CustomSourceDocTemplateCreateModalPage,
+        CustomSourceDocTemplateEditModalIdx: CustomSourceDocTemplateEditModalPageTag => CustomSourceDocTemplateEditModalPage,
+        CustomersListIdx: CustomersListPageTag => CustomersListPage,
         AccountingPreferencesIdx: AccountingPreferencesPageTag => AccountingPreferencesPage,
         ConfirmDeleteIdx: FinanceAccountsConfirmDeletePageTag => ConfirmDeletePage,
     ]

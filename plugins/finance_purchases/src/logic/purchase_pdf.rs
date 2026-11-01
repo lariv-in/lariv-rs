@@ -12,8 +12,10 @@ use lariv_plugin_contacts::entities::{
 };
 
 use crate::logic::BillTo;
-use crate::purchase_products::entities::product::Entity as ProductEntity;
-use crate::purchase_products::pricing;
+use lariv_plugin_finance_products::{
+    entities::product::{Entity as ProductEntity, ProductKind},
+    journal_template, pricing,
+};
 use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_format,
 };
@@ -32,10 +34,10 @@ use sha2::{Digest, Sha256};
 
 use crate::entities::preferences;
 use crate::entities::{
-    CancelledPurchaseEntity, DraftPurchaseEntity, DraftPurchaseGoodsLineEntity,
-    PostedPurchaseEntity, PostedPurchaseGoodsLineEntity,
+    CancelledPurchaseEntity, DraftPurchaseEntity, DraftPurchaseLineEntity,
+    PostedPurchaseEntity, PostedPurchaseLineEntity,
 };
-use crate::entities::{draft_purchase_goods_line, posted_purchase, posted_purchase_goods_line};
+use crate::entities::{draft_purchase_line, posted_purchase, posted_purchase_line};
 use crate::logic::draft_payment_term::{
     draft_payment_term_line_display, load_draft_purchase_payment_term_lines,
     load_posted_payment_term_for_cancelled, load_posted_payment_term_for_posted,
@@ -421,33 +423,6 @@ async fn load_posted_payment_term_pdf(
     })
 }
 
-async fn load_service_pdf(
-    db: &DatabaseConnection,
-    id: i64,
-) -> Result<(PdfProduct, String), PurchasePdfError> {
-    use crate::purchase_services::entities::service::Entity as ServiceEntity;
-    let p = ServiceEntity::find_by_id(id)
-        .one(db)
-        .await
-        .map_err(|e| PurchasePdfError::msg(e.to_string()))?
-        .ok_or(PurchasePdfError::NotFound)?;
-    let schema = p.variables.clone();
-    Ok((
-        PdfProduct {
-            id: p.id,
-            name: p.name,
-            product_type: "Services".to_string(),
-            hsn_code: p.sac_code,
-            reference: p.reference.unwrap_or_default(),
-            remarks: p.remarks.unwrap_or_default(),
-            variable_types: json_object(&p.variables),
-            base_price_formula: p.base_price_formula,
-            sales_price_formula: p.sales_price_formula,
-        },
-        schema,
-    ))
-}
-
 async fn load_product_pdf(
     db: &DatabaseConnection,
     id: i64,
@@ -458,17 +433,21 @@ async fn load_product_pdf(
         .map_err(|e| PurchasePdfError::msg(e.to_string()))?
         .ok_or(PurchasePdfError::NotFound)?;
     let schema = p.variables.clone();
+    let (product_type, hsn_code) = match p.product_kind {
+        ProductKind::Goods => ("Goods".to_string(), p.hsn_code.unwrap_or(0)),
+        ProductKind::Services => ("Services".to_string(), p.sac_code.unwrap_or(0)),
+    };
     Ok((
         PdfProduct {
             id: p.id,
             name: p.name,
-            product_type: "Goods".to_string(),
-            hsn_code: p.hsn_code,
-            reference: p.reference.unwrap_or_default(),
+            product_type,
+            hsn_code,
+            reference: String::new(),
             remarks: p.remarks.unwrap_or_default(),
             variable_types: json_object(&p.variables),
             base_price_formula: String::new(),
-            sales_price_formula: String::new(),
+            sales_price_formula: p.sales_price_formula,
         },
         schema,
     ))
@@ -477,7 +456,6 @@ async fn load_product_pdf(
 struct LineRow {
     id: i64,
     product_id: i64,
-    is_service: bool,
     quantity: Decimal,
     rate: Decimal,
     pre_tax: Decimal,
@@ -496,21 +474,11 @@ async fn line_tax_ids(
     db: &DatabaseConnection,
     source: LineTaxSource,
     line_id: i64,
-    is_service: bool,
 ) -> Result<Vec<i64>, PurchasePdfError> {
-    let ids = match (source, is_service) {
-        (LineTaxSource::Draft, false) => load_draft_line_tax_ids(db, line_id).await,
-        (LineTaxSource::Posted, false) => load_posted_line_tax_ids(db, line_id).await,
-        (LineTaxSource::Cancelled, false) => load_cancelled_line_tax_ids(db, line_id).await,
-        (LineTaxSource::Draft, true) => {
-            crate::logic::tax_assoc::load_draft_service_line_tax_ids(db, line_id).await
-        }
-        (LineTaxSource::Posted, true) => {
-            crate::logic::tax_assoc::load_posted_service_line_tax_ids(db, line_id).await
-        }
-        (LineTaxSource::Cancelled, true) => {
-            crate::logic::tax_assoc::load_cancelled_service_line_tax_ids(db, line_id).await
-        }
+    let ids = match source {
+        LineTaxSource::Draft => load_draft_line_tax_ids(db, line_id).await,
+        LineTaxSource::Posted => load_posted_line_tax_ids(db, line_id).await,
+        LineTaxSource::Cancelled => load_cancelled_line_tax_ids(db, line_id).await,
     }
     .map_err(|e| PurchasePdfError::msg(e.to_string()))?;
     Ok(ids)
@@ -520,17 +488,16 @@ async fn load_draft_lines(
     db: &DatabaseConnection,
     draft_id: i64,
 ) -> Result<Vec<LineRow>, PurchasePdfError> {
-    let rows = DraftPurchaseGoodsLineEntity::find()
-        .filter(draft_purchase_goods_line::Column::DraftPurchaseId.eq(draft_id))
+    let rows = DraftPurchaseLineEntity::find()
+        .filter(draft_purchase_line::Column::DraftPurchaseId.eq(draft_id))
         .all(db)
         .await
         .map_err(|e| PurchasePdfError::msg(e.to_string()))?;
-    let mut out: Vec<LineRow> = rows
+    let out: Vec<LineRow> = rows
         .into_iter()
         .map(|l| LineRow {
             id: l.id,
             product_id: l.product_id,
-            is_service: false,
             quantity: l.quantity,
             rate: l.rate,
             pre_tax: l.pre_tax_amount,
@@ -538,21 +505,6 @@ async fn load_draft_lines(
             variable_values: l.variable_values,
         })
         .collect();
-    let service_rows = crate::entities::DraftPurchaseServiceLineEntity::find()
-        .filter(crate::entities::draft_purchase_service_line::Column::DraftPurchaseId.eq(draft_id))
-        .all(db)
-        .await
-        .map_err(|e| PurchasePdfError::msg(e.to_string()))?;
-    out.extend(service_rows.into_iter().map(|l| LineRow {
-        id: l.id,
-        product_id: l.service_id,
-        is_service: true,
-        quantity: l.quantity,
-        rate: l.rate,
-        pre_tax: l.pre_tax_amount,
-        remarks: l.remarks,
-        variable_values: l.variable_values,
-    }));
     Ok(out)
 }
 
@@ -560,17 +512,16 @@ async fn load_posted_lines(
     db: &DatabaseConnection,
     posted_id: i64,
 ) -> Result<Vec<LineRow>, PurchasePdfError> {
-    let rows = PostedPurchaseGoodsLineEntity::find()
-        .filter(posted_purchase_goods_line::Column::PostedPurchaseId.eq(posted_id))
+    let rows = PostedPurchaseLineEntity::find()
+        .filter(posted_purchase_line::Column::PostedPurchaseId.eq(posted_id))
         .all(db)
         .await
         .map_err(|e| PurchasePdfError::msg(e.to_string()))?;
-    let mut out: Vec<LineRow> = rows
+    let out: Vec<LineRow> = rows
         .into_iter()
         .map(|l| LineRow {
             id: l.id,
-            product_id: l.product_id,
-            is_service: false,
+            product_id: l.product_id.unwrap_or(0),
             quantity: l.quantity,
             rate: l.rate,
             pre_tax: l.pre_tax_amount,
@@ -578,23 +529,6 @@ async fn load_posted_lines(
             variable_values: l.variable_values,
         })
         .collect();
-    let service_rows = crate::entities::PostedPurchaseServiceLineEntity::find()
-        .filter(
-            crate::entities::posted_purchase_service_line::Column::PostedPurchaseId.eq(posted_id),
-        )
-        .all(db)
-        .await
-        .map_err(|e| PurchasePdfError::msg(e.to_string()))?;
-    out.extend(service_rows.into_iter().map(|l| LineRow {
-        id: l.id,
-        product_id: l.service_id,
-        is_service: true,
-        quantity: l.quantity,
-        rate: l.rate,
-        pre_tax: l.pre_tax_amount,
-        remarks: l.remarks,
-        variable_values: l.variable_values,
-    }));
     Ok(out)
 }
 
@@ -606,7 +540,7 @@ async fn load_cancelled_lines(
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id, product_id, rate, quantity, pre_tax_amount, remarks, variable_values \
-             FROM cancelled_purchase_goods_lines \
+             FROM cancelled_purchase_lines \
              WHERE cancelled_purchase_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
         ))
@@ -618,8 +552,9 @@ async fn load_cancelled_lines(
             .try_get("", "id")
             .map_err(|e| PurchasePdfError::msg(e.to_string()))?;
         let product_id: i64 = r
-            .try_get("", "product_id")
-            .map_err(|e| PurchasePdfError::msg(e.to_string()))?;
+            .try_get::<Option<i64>>("", "product_id")
+            .map_err(|e| PurchasePdfError::msg(e.to_string()))?
+            .unwrap_or(0);
         let rate: Decimal = r
             .try_get("", "rate")
             .map_err(|e| PurchasePdfError::msg(e.to_string()))?;
@@ -638,48 +573,11 @@ async fn load_cancelled_lines(
         out.push(LineRow {
             id,
             product_id,
-            is_service: false,
             quantity,
             rate,
             pre_tax,
             remarks,
             variable_values,
-        });
-    }
-    let service_rows = db
-        .query_all_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT id, service_id, rate, quantity, pre_tax_amount, remarks, variable_values \
-             FROM cancelled_purchase_service_lines \
-             WHERE cancelled_purchase_id = $1 ORDER BY id ASC",
-            [cancelled_id.into()],
-        ))
-        .await
-        .map_err(|e| PurchasePdfError::msg(e.to_string()))?;
-    for r in service_rows {
-        out.push(LineRow {
-            id: r
-                .try_get("", "id")
-                .map_err(|e| PurchasePdfError::msg(e.to_string()))?,
-            product_id: r
-                .try_get("", "service_id")
-                .map_err(|e| PurchasePdfError::msg(e.to_string()))?,
-            is_service: true,
-            quantity: r
-                .try_get("", "quantity")
-                .map_err(|e| PurchasePdfError::msg(e.to_string()))?,
-            rate: r
-                .try_get("", "rate")
-                .map_err(|e| PurchasePdfError::msg(e.to_string()))?,
-            pre_tax: r
-                .try_get("", "pre_tax_amount")
-                .map_err(|e| PurchasePdfError::msg(e.to_string()))?,
-            remarks: r
-                .try_get("", "remarks")
-                .map_err(|e| PurchasePdfError::msg(e.to_string()))?,
-            variable_values: r
-                .try_get("", "variable_values")
-                .map_err(|e| PurchasePdfError::msg(e.to_string()))?,
         });
     }
     Ok(out)
@@ -693,18 +591,14 @@ async fn build_pdf_lines(
 ) -> Result<Vec<PdfLine>, PurchasePdfError> {
     let mut lines = Vec::with_capacity(rows.len());
     for row in rows {
-        let tax_ids = line_tax_ids(db, tax_source, row.id, row.is_service).await?;
+        let tax_ids = line_tax_ids(db, tax_source, row.id).await?;
         let taxes = load_taxes_by_ids(db, &tax_ids)
             .await
             .map_err(|e| PurchasePdfError::msg(e.to_string()))?
             .into_iter()
             .map(|t| tax_to_pdf(&t))
             .collect();
-        let (product, schema) = if row.is_service {
-            load_service_pdf(db, row.product_id).await?
-        } else {
-            load_product_pdf(db, row.product_id).await?
-        };
+        let (product, schema) = load_product_pdf(db, row.product_id).await?;
         let variable_lines = pricing::format_variable_lines(&schema, &row.variable_values);
         lines.push(PdfLine {
             id: row.id,
@@ -833,13 +727,8 @@ async fn build_pdf_root(
 }
 
 async fn draft_purchase_currency(db: &DatabaseConnection, draft_id: i64) -> CurrencyFormat {
-    let lines = DraftPurchaseGoodsLineEntity::find()
-        .filter(draft_purchase_goods_line::Column::DraftPurchaseId.eq(draft_id))
-        .all(db)
-        .await
-        .unwrap_or_default();
-    let service_lines = crate::entities::DraftPurchaseServiceLineEntity::find()
-        .filter(crate::entities::draft_purchase_service_line::Column::DraftPurchaseId.eq(draft_id))
+    let lines = DraftPurchaseLineEntity::find()
+        .filter(draft_purchase_line::Column::DraftPurchaseId.eq(draft_id))
         .all(db)
         .await
         .unwrap_or_default();
@@ -851,16 +740,7 @@ async fn draft_purchase_currency(db: &DatabaseConnection, draft_id: i64) -> Curr
         _ => {}
     };
     for line in lines {
-        if let Ok(Some(template)) =
-            crate::purchase_products::journal_template::load_template(db, line.product_id).await
-        {
-            consider(template.journal_id);
-        }
-    }
-    for line in service_lines {
-        if let Ok(Some(template)) =
-            crate::purchase_services::journal_template::load_template(db, line.service_id).await
-        {
+        if let Ok(Some(template)) = journal_template::load_template(db, line.product_id).await {
             consider(template.journal_id);
         }
     }

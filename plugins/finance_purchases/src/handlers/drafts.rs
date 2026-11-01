@@ -20,7 +20,7 @@ use lariv_core::web::{
 };
 use lariv_plugin_users::middleware::RequireAuth;
 
-use crate::purchase_products::entities::product::Entity as ProductEntity;
+use lariv_plugin_finance_products::{entities::product::Entity as ProductEntity, pricing};
 use lariv_plugin_finance_accounts::journal_lines_editor::{PostJournalSection, post_journal_modal};
 use lariv_plugin_finance_accounts::logic::custom_source_doc::{
     ensure_posting_accounts, parse_submitted_journal_lines,
@@ -44,9 +44,9 @@ use crate::{
     },
     logic::bill_to::{self, PartyLabels},
     logic::draft_payment_term::draft_payment_term_display_rows,
-    logic::purchase_goods_line_editor::{
-        default_lines_json, draft_lines_form_json, draft_purchase_goods_line_display_rows,
-        purchase_goods_line_editor_preview_json, purchase_vendor_name,
+    logic::purchase_line_editor::{
+        default_lines_json, draft_lines_form_json, draft_purchase_line_display_rows,
+        purchase_line_editor_preview_json, purchase_vendor_name,
     },
     logic::tax_assoc::load_draft_purchase_tax_ids,
     logic::{
@@ -54,7 +54,7 @@ use crate::{
         default_payment_term_lines_json, delete_draft, format_delivery_date, format_purchase_date,
         load_purchase_date_formats, load_purchase_preferences, optional_display,
         optional_trimmed_text, parse_delivery_date, parse_lines_json,
-        parse_payment_term_lines_json, parse_purchase_datetime, parse_service_lines_json,
+        parse_payment_term_lines_json, parse_purchase_datetime,
         patch_draft_purchase, payment_term_lines_form_json, update_draft_purchase,
     },
     routes::{
@@ -79,47 +79,6 @@ pub struct LinePriceQuery {
     values: String,
 }
 
-#[derive(Debug, serde::Deserialize)]
-pub struct ServiceLinePriceQuery {
-    service_id: i64,
-    #[serde(default)]
-    values: String,
-}
-
-/// Evaluate a service price formula for the purchase line editor.
-pub async fn service_line_price(
-    Cap(state): Cap<PurchasesState>,
-    RequireAuth(_ctx): RequireAuth,
-    Query(q): Query<ServiceLinePriceQuery>,
-) -> Json<serde_json::Value> {
-    use crate::purchase_services::entities::service::Entity as ServiceEntity;
-    use crate::purchase_services::pricing as service_pricing;
-
-    let raw = if q.values.trim().is_empty() {
-        serde_json::json!({})
-    } else {
-        serde_json::from_str(&q.values).unwrap_or_else(|_| serde_json::json!({}))
-    };
-    let service = ServiceEntity::find_by_id(q.service_id)
-        .one(&state.db)
-        .await
-        .ok()
-        .flatten();
-    let Some(service) = service else {
-        return Json(serde_json::json!({"pre_tax": "", "error": "unknown service"}));
-    };
-    if !service_pricing::has_variable_pricing(&service.variables) {
-        return Json(serde_json::json!({"pre_tax": "", "error": ""}));
-    }
-    match service_pricing::price_line(&service.variables, &service.sales_price_formula, &raw) {
-        Ok(priced) => Json(serde_json::json!({
-            "pre_tax": decimal::decimal_display(priced.pre_tax),
-            "error": "",
-        })),
-        Err(error) => Json(serde_json::json!({"pre_tax": "", "error": error})),
-    }
-}
-
 /// Evaluate a product price formula for the purchase line editor.
 pub async fn line_price(
     Cap(state): Cap<PurchasesState>,
@@ -136,11 +95,19 @@ pub async fn line_price(
         .await
         .ok()
         .flatten();
-    if product.is_none() {
+    let Some(product) = product else {
         return Json(serde_json::json!({"pre_tax": "", "error": "unknown product"}));
+    };
+    if !pricing::has_variable_pricing(&product.variables) {
+        return Json(serde_json::json!({"pre_tax": "", "error": ""}));
     }
-    let _ = raw;
-    Json(serde_json::json!({"pre_tax": "", "error": ""}))
+    match pricing::price_line(&product.variables, &product.sales_price_formula, &raw) {
+        Ok(priced) => Json(serde_json::json!({
+            "pre_tax": decimal::decimal_display(priced.pre_tax),
+            "error": "",
+        })),
+        Err(error) => Json(serde_json::json!({"pre_tax": "", "error": error})),
+    }
 }
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -214,8 +181,7 @@ fn path_and_query(uri: &Uri) -> String {
 
 fn form_to_input(form: &DraftPurchaseForm, tz: &str) -> Result<CreateDraftInput, String> {
     let payment_term_lines = parse_payment_term_lines_json(&form.payment_term_lines_json)?;
-    let lines = parse_lines_json(&form.purchase_goods_lines_json)?;
-    let service_lines = parse_service_lines_json(&form.purchase_service_lines_json)?;
+    let lines = parse_lines_json(&form.purchase_lines_json)?;
     Ok(CreateDraftInput {
         number: Some(form.number.clone()),
         reference: optional_trimmed_text(&form.reference),
@@ -228,7 +194,6 @@ fn form_to_input(form: &DraftPurchaseForm, tz: &str) -> Result<CreateDraftInput,
         payment_term_lines,
         header_tax_ids: form.taxes.clone(),
         lines,
-        service_lines,
     })
 }
 
@@ -244,9 +209,7 @@ fn blank_bulk_edit_form() -> DraftPurchaseBulkEditForm {
         vendor_id: 0,
         payment_term_lines_json: default_payment_term_lines_json(),
         taxes: vec![],
-        purchase_goods_lines_json: default_lines_json(),
-        purchase_service_lines_json: crate::logic::purchase_service_line_editor::default_lines_json(
-        ),
+        purchase_lines_json: default_lines_json(),
         csrf: CsrfToken::default(),
     }
 }
@@ -296,7 +259,7 @@ fn bulk_form_to_patch(
         Some(form.taxes.clone())
     };
     let lines = {
-        let raw = form.purchase_goods_lines_json.trim();
+        let raw = form.purchase_lines_json.trim();
         if raw.is_empty() {
             None
         } else {
@@ -321,20 +284,6 @@ fn bulk_form_to_patch(
         payment_term_lines,
         header_tax_ids,
         lines,
-        service_lines: {
-            let raw = form.purchase_service_lines_json.trim();
-            if raw.is_empty() {
-                None
-            } else {
-                let parsed = parse_service_lines_json(raw)?;
-                let filled: Vec<_> = parsed.into_iter().filter(|l| l.service_id > 0).collect();
-                if filled.is_empty() {
-                    None
-                } else {
-                    Some(filled)
-                }
-            }
-        },
     };
     if patch.is_empty() {
         return Err("fill at least one field to update the selected drafts".to_string());
@@ -352,8 +301,7 @@ fn purchase_select_label(id: i64, number: &Option<String>) -> String {
 struct DraftFormContext {
     vendor_display: String,
     tax_items: Vec<ManyToManyItem>,
-    purchase_goods_lines_preview: String,
-    purchase_service_lines_preview: String,
+    purchase_lines_preview: String,
     extra_inputs: String,
 }
 
@@ -372,17 +320,13 @@ async fn load_draft_form_context(
         .map(|t| ManyToManyItem::new(t.id.to_string(), tax_label(t)))
         .collect();
 
-    let purchase_goods_lines_preview = purchase_goods_line_editor_preview_json(db).await;
-    let purchase_service_lines_preview =
-        crate::logic::purchase_service_line_editor::purchase_service_line_editor_preview_json(db)
-            .await;
+    let purchase_lines_preview = purchase_line_editor_preview_json(db).await;
     let extra_inputs = render_draft_purchase_form_extras(db, draft_id, posted).await;
 
     DraftFormContext {
         vendor_display,
         tax_items,
-        purchase_goods_lines_preview,
-        purchase_service_lines_preview,
+        purchase_lines_preview,
         extra_inputs,
     }
 }
@@ -401,8 +345,7 @@ async fn draft_create_modal_page(
         form,
         vendor_display: ctx_data.vendor_display,
         tax_items: ctx_data.tax_items,
-        purchase_goods_lines_preview: ctx_data.purchase_goods_lines_preview,
-        purchase_service_lines_preview: ctx_data.purchase_service_lines_preview,
+        purchase_lines_preview: ctx_data.purchase_lines_preview,
         extra_inputs: ctx_data.extra_inputs,
         error,
     }
@@ -424,8 +367,7 @@ async fn draft_edit_modal_page(
         error,
         vendor_display: ctx_data.vendor_display,
         tax_items: ctx_data.tax_items,
-        purchase_goods_lines_preview: ctx_data.purchase_goods_lines_preview,
-        purchase_service_lines_preview: ctx_data.purchase_service_lines_preview,
+        purchase_lines_preview: ctx_data.purchase_lines_preview,
         extra_inputs: ctx_data.extra_inputs,
     }
 }
@@ -449,8 +391,7 @@ async fn draft_bulk_edit_modal_page(
         form,
         vendor_display: ctx_data.vendor_display,
         tax_items: ctx_data.tax_items,
-        purchase_goods_lines_preview: ctx_data.purchase_goods_lines_preview,
-        purchase_service_lines_preview: ctx_data.purchase_service_lines_preview,
+        purchase_lines_preview: ctx_data.purchase_lines_preview,
         extra_inputs: ctx_data.extra_inputs,
         error,
         can_submit,
@@ -478,9 +419,7 @@ pub async fn create_get(
             vendor_id: 0,
             payment_term_lines_json: default_payment_term_lines_json(),
             taxes: vec![],
-            purchase_goods_lines_json: default_lines_json(),
-            purchase_service_lines_json:
-                crate::logic::purchase_service_line_editor::default_lines_json(),
+            purchase_lines_json: default_lines_json(),
             csrf: CsrfToken::current(),
         },
         String::new(),
@@ -556,12 +495,7 @@ pub async fn detail(
 
     let dates = load_purchase_date_formats(&state.db).await;
     let payment_term_rows = draft_payment_term_display_rows(&state.db, d.id, &dates.date).await;
-    let line_rows = draft_purchase_goods_line_display_rows(&state.db, d.id).await;
-    let service_line_rows =
-        crate::logic::purchase_service_line_editor::draft_purchase_service_line_display_rows(
-            &state.db, d.id,
-        )
-        .await;
+    let line_rows = draft_purchase_line_display_rows(&state.db, d.id).await;
     let extra_detail = render_draft_purchase_detail_extras(&state.db, d.id).await;
 
     let page = DraftPurchaseDetailPage {
@@ -580,7 +514,6 @@ pub async fn detail(
         tax_labels,
         extra_detail,
         line_rows,
-        service_line_rows,
         can_edit: lariv_core::components::role_permitted(
             &lariv_plugin_users::role_authorization::roles_for::<
                 crate::routes::FinancePurchasesMutate,
@@ -606,8 +539,6 @@ pub async fn edit_get(
         .await
         .unwrap_or_default();
     let lines_json = draft_lines_form_json(&state.db, d.id).await;
-    let service_lines_json =
-        crate::logic::purchase_service_line_editor::draft_lines_form_json(&state.db, d.id).await;
     let payment_term_lines_json = payment_term_lines_form_json(&state.db, d.id).await;
     let form = DraftPurchaseForm {
         number: d.number.unwrap_or_default(),
@@ -620,8 +551,7 @@ pub async fn edit_get(
         vendor_id: d.vendor_id,
         payment_term_lines_json,
         taxes: tax_ids,
-        purchase_goods_lines_json: lines_json,
-        purchase_service_lines_json: service_lines_json,
+        purchase_lines_json: lines_json,
         csrf: CsrfToken::current(),
     };
 
@@ -655,7 +585,6 @@ pub async fn edit_post(
                 payment_term_lines: input.payment_term_lines,
                 header_tax_ids: input.header_tax_ids,
                 lines: input.lines,
-                service_lines: input.service_lines,
             };
             match update_draft_purchase(&state.db, id, update, &ctx.timezone).await {
                 Ok(_) => {
@@ -743,7 +672,7 @@ pub async fn delete_post(
     }
 }
 
-const POST_INTRO: &str = "These lines are filled from the product, service, and tax templates. Change them before posting. Saved lines are whatever you submit, and debits must equal credits.";
+const POST_INTRO: &str = "These lines are filled from product and tax templates. Change them before posting. Saved lines are whatever you submit, and debits must equal credits.";
 
 fn journal_field_name(id: i64, single: bool) -> String {
     if single {

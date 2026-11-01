@@ -1,4 +1,6 @@
-//! A customer points at one company or one individual contact.
+//! Historical: create `crm_customers` (later renamed to `customers` by the
+//! customer/finance migrators). Ownership of the live schema/entity is in
+//! `lariv-plugin-customer`; both creates use `CREATE IF NOT EXISTS`.
 
 use lariv_core::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;

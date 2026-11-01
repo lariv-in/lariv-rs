@@ -13,8 +13,7 @@ use lariv_plugin_finance_taxes::journal_template_editor::input_journal_template_
 use lariv_plugin_finance_taxes::routes::TaxMultiSelectRouteTag;
 
 use crate::components::{
-    InputInvoiceGoodsLinesDraft, InputInvoiceServiceLinesDraft, InputPaymentTermLinesDraft,
-    input_invoice_goods_lines_draft, input_invoice_service_lines_draft,
+    InputInvoiceLinesDraft, InputPaymentTermLinesDraft, input_invoice_lines_draft,
     input_payment_term_lines_draft,
 };
 use crate::payment_journal_template::{FORMULA_VARIABLES_HINT, empty_lines_json};
@@ -34,27 +33,14 @@ impl FormWidget for PaymentJournalTemplateLines {
     }
 }
 
-/// Custom widget for draft invoice goods lines (Alpine editor + hidden JSON).
-pub struct InvoiceGoodsLinesDraft;
-impl FormWidget for InvoiceGoodsLinesDraft {
+/// Custom widget for draft invoice lines (Alpine editor + hidden JSON).
+pub struct InvoiceLinesDraft;
+impl FormWidget for InvoiceLinesDraft {
     fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
-        input_invoice_goods_lines_draft(InputInvoiceGoodsLinesDraft {
+        input_invoice_lines_draft(InputInvoiceLinesDraft {
             name: field.name,
             defaults: field.value,
-            preview: ctx.display_of("invoice_goods_lines_preview"),
-            ..Default::default()
-        })
-    }
-}
-
-/// Custom widget for draft invoice service lines (Alpine editor + hidden JSON).
-pub struct InvoiceServiceLinesDraft;
-impl FormWidget for InvoiceServiceLinesDraft {
-    fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
-        input_invoice_service_lines_draft(InputInvoiceServiceLinesDraft {
-            name: field.name,
-            defaults: field.value,
-            preview: ctx.display_of("invoice_service_lines_preview"),
+            preview: ctx.display_of("invoice_lines_preview"),
             ..Default::default()
         })
     }
@@ -122,20 +108,12 @@ pub struct DraftInvoiceForm {
     pub taxes: Vec<i64>,
 
     #[form(
-        label = "Goods lines",
-        widget = InvoiceGoodsLinesDraft,
-        display = "invoice_goods_lines_preview",
+        label = "Lines",
+        widget = InvoiceLinesDraft,
+        display = "invoice_lines_preview",
         hint = "Quantity multiplies the unit price of one product."
     )]
-    pub invoice_goods_lines_json: String,
-
-    #[form(
-        label = "Service lines",
-        widget = InvoiceServiceLinesDraft,
-        display = "invoice_service_lines_preview",
-        hint = "Quantity multiplies the unit price of one service."
-    )]
-    pub invoice_service_lines_json: String,
+    pub invoice_lines_json: String,
 }
 
 /// Blank bulk-edit form: only non-empty fields are applied to selected drafts.
@@ -188,20 +166,12 @@ pub struct DraftInvoiceBulkEditForm {
     pub taxes: Vec<i64>,
 
     #[form(
-        label = "Goods lines",
-        widget = InvoiceGoodsLinesDraft,
-        display = "invoice_goods_lines_preview",
-        hint = "Quantity multiplies the unit price of one product. Leave both line sections empty to keep existing lines."
+        label = "Lines",
+        widget = InvoiceLinesDraft,
+        display = "invoice_lines_preview",
+        hint = "Quantity multiplies the unit price of one product. Leave empty to keep existing lines."
     )]
-    pub invoice_goods_lines_json: String,
-
-    #[form(
-        label = "Service lines",
-        widget = InvoiceServiceLinesDraft,
-        display = "invoice_service_lines_preview",
-        hint = "Quantity multiplies the unit price of one service. Leave both line sections empty to keep existing lines."
-    )]
-    pub invoice_service_lines_json: String,
+    pub invoice_lines_json: String,
 }
 
 #[html_form]
@@ -242,10 +212,17 @@ pub struct PaymentJournalLines;
 
 impl FormWidget for PaymentJournalLines {
     fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        let url = crate::routes::PaymentJournalLinesRouteTag.path();
         html! {
-            (input_journal_lines(field.name, field.label, field.value))
+            div id="payment-journal-lines" {
+                (input_journal_lines(field.name, field.label, field.value))
+            }
+            (PreEscaped(format!(
+                r##"<button type="button" class="btn btn-outline btn-sm" hx-post="{}" hx-target="#payment-journal-lines" hx-swap="innerHTML" hx-include="closest form">Fill from template</button>"##,
+                escape_attr(&url),
+            )))
             p class="text-sm text-base-content/70 mt-2" {
-                "Saved lines are whatever is in this editor."
+                "Saved lines are whatever is in this editor. Fill from template replaces them from the payment preferences for the amount and withholding taxes above."
             }
         }
     }
@@ -416,7 +393,7 @@ mod tests {
                 .display(DraftInvoiceFormField::CustomerId, "Acme Co")
                 .value(DraftInvoiceFormField::Datetime, "2025-06-01")
                 .value(DraftInvoiceFormField::PaymentTermLinesJson, "")
-                .value(DraftInvoiceFormField::InvoiceGoodsLinesJson, ""),
+                .value(DraftInvoiceFormField::InvoiceLinesJson, ""),
         )
         .into_string();
         assert!(html.contains("Customer"));
@@ -464,5 +441,14 @@ mod tests {
         assert!(html.contains("amount — settlement on this payment"));
         assert!(html.contains("withholding — withheld tax on this payment"));
         assert!(html.contains("hintOpen"));
+    }
+
+    #[test]
+    fn payment_form_offers_fill_from_template() {
+        let html = PaymentForm::render_inputs(&FormCtx::form::<PaymentForm>(CsrfToken::current()))
+            .into_string();
+        assert!(html.contains("id=\"payment-journal-lines\""));
+        assert!(html.contains("Fill from template"));
+        assert!(html.contains("/finance-invoices/payment-journal-lines"));
     }
 }

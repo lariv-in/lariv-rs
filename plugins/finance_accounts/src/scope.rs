@@ -107,6 +107,21 @@ pub async fn find_currency_scoped(db: &DatabaseConnection, id: i64) -> Option<cu
     )
 }
 
+pub async fn find_custom_source_doc_template_scoped(
+    db: &DatabaseConnection,
+    id: i64,
+) -> Option<crate::entities::custom_source_doc_template::Model> {
+    use crate::entities::custom_source_doc_template::Entity as CustomSourceDocTemplateEntity;
+    lariv_core::web::opt_or_log(
+        scope_allowed::<super::routes::FinanceAccountsView, _>(
+            CustomSourceDocTemplateEntity::find_by_id(id),
+        )
+        .one(db)
+        .await,
+        "find custom source doc template by id",
+    )
+}
+
 pub async fn find_journal_scoped(db: &DatabaseConnection, id: i64) -> Option<journal::Model> {
     lariv_core::web::opt_or_log(
         scope_allowed::<super::routes::FinanceAccountsView, _>(JournalEntity::find_by_id(id))

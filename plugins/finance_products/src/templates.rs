@@ -226,14 +226,13 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
 #[derive(Clone)]
 pub struct ProductRow {
     pub id: i64,
-    pub stock_name: String,
-    pub reference: String,
+    pub product_kind: String,
     pub name: String,
-    pub base_price_formula: String,
     pub sales_price_formula: String,
     /// Plain unit sales price for picker → rate fill when the product has no variables.
     pub sales_price_value: String,
-    pub hsn_code: String,
+    /// HSN or SAC depending on kind.
+    pub code_label: String,
     pub has_formula: bool,
     /// JSON array of `{name, type, placeholder}` for the invoice line editor.
     pub variables_json: String,
@@ -255,24 +254,17 @@ pub struct ProductListPage {
 impl ProductListPage {
     pub fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
-        let stock_sort = column_sort_url(&self.path_and_query, "Stock", &self.sort);
-        let reference_sort = column_sort_url(&self.path_and_query, "Reference", &self.sort);
-        let base_price_sort = column_sort_url(&self.path_and_query, "BasePriceFormula", &self.sort);
+        let kind_sort = column_sort_url(&self.path_and_query, "Kind", &self.sort);
         let sales_price_sort =
             column_sort_url(&self.path_and_query, "SalesPriceFormula", &self.sort);
         let hsn_sort = column_sort_url(&self.path_and_query, "HSN", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
-        let stock_label = format!("Stock{}", sort_indicator(&self.sort, "Stock"));
-        let reference_label = format!("Reference{}", sort_indicator(&self.sort, "Reference"));
-        let base_price_label = format!(
-            "Base price of one product{}",
-            sort_indicator(&self.sort, "BasePriceFormula")
-        );
+        let kind_label = format!("Kind{}", sort_indicator(&self.sort, "Kind"));
         let sales_price_label = format!(
             "Sales price of one product{}",
             sort_indicator(&self.sort, "SalesPriceFormula")
         );
-        let hsn_label = format!("HSN{}", sort_indicator(&self.sort, "HSN"));
+        let code_label = format!("HSN/SAC{}", sort_indicator(&self.sort, "HSN"));
         let headers = [
             TableColumnHeader {
                 key: "Name",
@@ -281,21 +273,9 @@ impl ProductListPage {
                 push_url: true,
             },
             TableColumnHeader {
-                key: "Stock",
-                label: &stock_label,
-                sort_url: Some(&stock_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Reference",
-                label: &reference_label,
-                sort_url: Some(&reference_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "BasePriceFormula",
-                label: &base_price_label,
-                sort_url: Some(&base_price_sort),
+                key: "Kind",
+                label: &kind_label,
+                sort_url: Some(&kind_sort),
                 push_url: true,
             },
             TableColumnHeader {
@@ -306,7 +286,7 @@ impl ProductListPage {
             },
             TableColumnHeader {
                 key: "HSN",
-                label: &hsn_label,
+                label: &code_label,
                 sort_url: Some(&hsn_sort),
                 push_url: true,
             },
@@ -323,15 +303,7 @@ impl ProductListPage {
                         classes: "",
                     }),
                     field_text(FieldText {
-                        value: &p.stock_name,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &p.reference,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &p.base_price_formula,
+                        value: &p.product_kind,
                         classes: "",
                     }),
                     field_text(FieldText {
@@ -339,7 +311,7 @@ impl ProductListPage {
                         classes: "",
                     }),
                     field_text(FieldText {
-                        value: &p.hsn_code,
+                        value: &p.code_label,
                         classes: "",
                     }),
                 ],
@@ -412,13 +384,12 @@ impl RenderTemplate for ProductListPage {
 pub struct ProductDetailPage {
     pub id: i64,
     pub name: String,
-    pub stock_name: String,
-    pub reference: String,
+    pub product_kind: String,
     pub remarks: String,
     pub hsn_code: String,
+    pub sac_code: String,
     pub taxes: String,
     pub variables: String,
-    pub base_price_formula: String,
     pub sales_price_formula: String,
     pub journal_name: String,
     pub journal_lines: String,
@@ -430,16 +401,11 @@ impl ProductDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.name, classes: "" }))
-                    (label("Stock", field_text(FieldText { value: &self.stock_name, classes: "" })))
-                    (label("Reference", field_text(FieldText { value: &self.reference, classes: "" })))
+                    (label("Kind", field_text(FieldText { value: &self.product_kind, classes: "" })))
                     (label("Remarks", field_text(FieldText { value: &self.remarks, classes: "" })))
                     (label("Taxes", field_text(FieldText { value: &self.taxes, classes: "" })))
                     (label("Variables", field_text(FieldText {
                         value: if self.variables.trim().is_empty() { "—" } else { self.variables.as_str() },
-                        classes: "",
-                    })))
-                    (label("Base price of one product", field_text(FieldText {
-                        value: if self.base_price_formula.trim().is_empty() { "—" } else { self.base_price_formula.as_str() },
                         classes: "",
                     })))
                     (label("Sales price of one product", field_text(FieldText {
@@ -451,7 +417,14 @@ impl ProductDetailPage {
                         value: &self.journal_lines,
                         classes: "",
                     })))
-                    (label("HSN code", field_text(FieldText { value: &self.hsn_code, classes: "" })))
+                    (label("HSN code", field_text(FieldText {
+                        value: if self.hsn_code.trim().is_empty() { "—" } else { self.hsn_code.as_str() },
+                        classes: "",
+                    })))
+                    (label("SAC code", field_text(FieldText {
+                        value: if self.sac_code.trim().is_empty() { "—" } else { self.sac_code.as_str() },
+                        classes: "",
+                    })))
                     @if lariv_core::components::role_permitted(&lariv_plugin_users::role_authorization::roles_for::<super::routes::FinanceProductsMutate>()) {
                         (container_row("flex gap-2 mt-4", html! {
                             (button_modal_form(ButtonModalForm {
@@ -497,17 +470,15 @@ pub struct ProductEditModalPage {
     pub id: i64,
     pub form_name: String,
     pub name: String,
-    pub stock_id: i64,
-    pub stock_display: String,
-    pub reference: String,
+    pub product_kind: String,
     pub remarks: String,
     pub variables: Vec<String>,
-    pub base_price_formula: String,
     pub sales_price_formula: String,
     pub journal_id: String,
     pub journal_display: String,
     pub journal_lines: String,
     pub hsn_code: i64,
+    pub sac_code: i64,
     pub tax_items: Vec<ManyToManyItem>,
     pub error: String,
 }
@@ -515,11 +486,6 @@ pub struct ProductEditModalPage {
 impl RenderTemplate for ProductEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = ProductDeleteGetRouteTag::new(self.id).url();
-        let stock_value = if self.stock_id > 0 {
-            self.stock_id.to_string()
-        } else {
-            String::new()
-        };
         modal_keyed::<ProductEditModalKey>(
             &self.form_name,
             html! {
@@ -533,12 +499,9 @@ impl RenderTemplate for ProductEditModalPage {
                     inputs: ProductForm::render_inputs(
                         &FormCtx::form::<ProductForm>(CsrfToken::current())
                             .value(ProductFormField::Name, &self.name)
-                            .value(ProductFormField::StockId, stock_value.as_str())
-                            .display(ProductFormField::StockId, &self.stock_display)
-                            .value(ProductFormField::Reference, &self.reference)
+                            .value(ProductFormField::ProductKind, &self.product_kind)
                             .value(ProductFormField::Remarks, &self.remarks)
                             .list(ProductFormField::Variables, &self.variables)
-                            .value(ProductFormField::BasePriceFormula, &self.base_price_formula)
                             .value(
                                 ProductFormField::SalesPriceFormula,
                                 &self.sales_price_formula,
@@ -547,6 +510,7 @@ impl RenderTemplate for ProductEditModalPage {
                             .display(ProductFormField::JournalId, &self.journal_display)
                             .value(ProductFormField::JournalLines, &self.journal_lines)
                             .value(ProductFormField::HsnCode, self.hsn_code.to_string())
+                            .value(ProductFormField::SacCode, self.sac_code.to_string())
                             .m2m(ProductFormField::TaxIds, &self.tax_items),
                     ),
                     actions: html! {
@@ -575,17 +539,15 @@ pub struct ProductCreateModalPage {
     pub refresh_table: String,
     pub target_input: String,
     pub name: String,
-    pub stock_id: i64,
-    pub stock_display: String,
-    pub reference: String,
+    pub product_kind: String,
     pub remarks: String,
     pub variables: Vec<String>,
-    pub base_price_formula: String,
     pub sales_price_formula: String,
     pub journal_id: String,
     pub journal_display: String,
     pub journal_lines: String,
     pub hsn_code: i64,
+    pub sac_code: i64,
     pub tax_items: Vec<ManyToManyItem>,
     pub error: String,
 }
@@ -596,11 +558,6 @@ impl RenderTemplate for ProductCreateModalPage {
             "p_finance_products.ProductCreateForm"
         } else {
             self.form_name.as_str()
-        };
-        let stock_value = if self.stock_id > 0 {
-            self.stock_id.to_string()
-        } else {
-            String::new()
         };
         modal_keyed::<ProductCreateModalKey>(
             "",
@@ -620,12 +577,9 @@ impl RenderTemplate for ProductCreateModalPage {
                     inputs: ProductForm::render_inputs(
                         &FormCtx::form::<ProductForm>(CsrfToken::current())
                             .value(ProductFormField::Name, &self.name)
-                            .value(ProductFormField::StockId, stock_value.as_str())
-                            .display(ProductFormField::StockId, &self.stock_display)
-                            .value(ProductFormField::Reference, &self.reference)
+                            .value(ProductFormField::ProductKind, &self.product_kind)
                             .value(ProductFormField::Remarks, &self.remarks)
                             .list(ProductFormField::Variables, &self.variables)
-                            .value(ProductFormField::BasePriceFormula, &self.base_price_formula)
                             .value(
                                 ProductFormField::SalesPriceFormula,
                                 &self.sales_price_formula,
@@ -634,6 +588,7 @@ impl RenderTemplate for ProductCreateModalPage {
                             .display(ProductFormField::JournalId, &self.journal_display)
                             .value(ProductFormField::JournalLines, &self.journal_lines)
                             .value(ProductFormField::HsnCode, self.hsn_code.to_string())
+                            .value(ProductFormField::SacCode, self.sac_code.to_string())
                             .m2m(ProductFormField::TaxIds, &self.tax_items),
                     ),
                     actions: html! {

@@ -23,12 +23,12 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "create_invoice",
-        "create_invoice(#{ customer_id?: int, lines: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new draft invoice id. Quantity multiplies the price of one product. When the product has variables, pass them; an omitted rate uses the sales formula, and a given rate is the price of one product. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
+        "create_invoice(#{ customer_id?: int, lines?: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new draft invoice id. Provide at least one line (lines). Quantity multiplies the price of one product. When the catalog item has variables, pass them; an omitted rate uses the sales formula, and a given rate is the price of one unit. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
         |_ctx| NativeBinding::Function(Arc::new(create_invoice)),
     );
     rune_env.register_contextual(
         "update_invoice",
-        "update_invoice(#{ id: int, customer_id?: int, lines: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated draft invoice id (full replace; invoice must be in draft state). Quantity multiplies the price of one product. When the product has variables, an omitted rate uses the sales formula, and a given rate is the price of one product. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
+        "update_invoice(#{ id: int, customer_id?: int, lines?: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated draft invoice id (full replace; invoice must be in draft state). Provide at least one line (lines). Quantity multiplies the price of one product. When the catalog item has variables, an omitted rate uses the sales formula, and a given rate is the price of one unit. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
         |_ctx| NativeBinding::Function(Arc::new(update_invoice)),
     );
     rune_env.register_contextual(
@@ -60,7 +60,7 @@ fn update_invoice(
     // Fail before any DB round-trip so empty-line scripts get a clear error
     // (and unit tests don't panic on a disconnected default connection).
     if input.lines.is_empty() {
-        return Err("add at least one invoice line".to_string());
+        return Err("add at least one line".to_string());
     }
     let db = ctx.db.clone();
     let draft = lariv_core::rune_env::block_on_async(async move {
@@ -281,6 +281,7 @@ mod args {
             .collect()
     }
 
+
     fn parse_fields(parsed: InvoiceFields) -> Result<(CreateDraftInput, String), String> {
         let tz = parsed.timezone.unwrap_or_else(|| "UTC".to_string());
         let datetime = match parsed.datetime.as_deref().or(parsed.date.as_deref()) {
@@ -305,7 +306,6 @@ mod args {
                 payment_term_lines: payment_term_lines(parsed.payment_term_lines)?,
                 header_tax_ids: parsed.header_tax_ids,
                 lines: draft_lines(parsed.lines),
-                service_lines: Vec::new(),
             },
             tz,
         ))
@@ -355,7 +355,6 @@ mod args {
                 payment_term_lines: create.payment_term_lines,
                 header_tax_ids: create.header_tax_ids,
                 lines: create.lines,
-                service_lines: Vec::new(),
             },
             tz,
         ))
@@ -450,7 +449,7 @@ mod tests {
             .and_then(|v| v.as_str())
             .unwrap_or_default();
         assert!(
-            error.contains("add at least one invoice line"),
+            error.contains("add at least one line"),
             "unexpected error payload: {out}"
         );
     }
@@ -574,7 +573,7 @@ create_invoice(#{
             .and_then(|v| v.as_str())
             .unwrap_or_default();
         assert!(
-            error.contains("add at least one invoice line"),
+            error.contains("add at least one line"),
             "unexpected error payload: {out}"
         );
     }
@@ -603,15 +602,37 @@ create_invoice(#{
             "customer_id": 5,
             "number": "P26RIN100294",
             "date": "27/04/2026",
-            "lines": [{ "product_id": 1, "quantity": 2, "rate": 100 }]
+            "lines": [
+                { "product_id": 1, "quantity": 2, "rate": 100 },
+                { "product_id": 7, "quantity": 3, "rate": 50 }
+            ]
         }))
         .expect("json to rune");
         let (id, input, tz) = parse_update_args(&[value]).expect("parse update args");
         assert_eq!(id, 42);
         assert_eq!(input.customer_id, 5);
         assert_eq!(input.number.as_deref(), Some("P26RIN100294"));
-        assert_eq!(input.lines.len(), 1);
+        assert_eq!(input.lines.len(), 2);
         assert_eq!(input.lines[0].product_id, 1);
+        assert_eq!(input.lines[1].product_id, 7);
+        assert_eq!(input.lines[1].quantity, "3");
+        assert_eq!(input.lines[1].rate.as_deref(), Some("50"));
         assert_eq!(tz, "UTC");
+    }
+
+    #[test]
+    fn create_invoice_args_require_at_least_one_line() {
+        use lariv_core::rune_env::json_to_rune;
+        use serde_json::json;
+
+        let value = json_to_rune(json!({
+            "customer_id": 5,
+            "lines": [{ "product_id": 9, "quantity": "2" }]
+        }))
+        .expect("json to rune");
+        let (input, _) = parse_create_args(&[value]).expect("parse create args");
+        assert_eq!(input.lines.len(), 1);
+        assert_eq!(input.lines[0].product_id, 9);
+        assert_eq!(input.lines[0].quantity, "2");
     }
 }

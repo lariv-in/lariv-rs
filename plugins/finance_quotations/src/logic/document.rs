@@ -10,41 +10,21 @@ use serde::Deserialize;
 
 use crate::entities::{
     quotation::{self, Entity as QuotationEntity},
-    quotation_goods_line::{self, Entity as GoodsLineEntity},
-    quotation_service_line::{self, Entity as ServiceLineEntity},
+    quotation_line::{self, Entity as LineEntity},
 };
 use crate::logic::number::resolve_quotation_number;
 use crate::logic::prefs::load_preferences;
-use crate::logic::tax::{set_goods_line_taxes, set_service_line_taxes};
+use crate::logic::tax::{load_quotation_line_tax_ids, set_quotation_line_taxes};
 use lariv_plugin_finance_common::decimal::{self, parse_decimal};
 use lariv_plugin_finance_products::{
     entities::product::Entity as ProductEntity, preferences::load_product_tax_ids,
     pricing as product_pricing,
 };
-use lariv_plugin_finance_services::{
-    entities::service::Entity as ServiceEntity, preferences::load_service_tax_ids,
-    pricing as service_pricing,
-};
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct GoodsLineInput {
+pub struct LineInput {
     pub product_id: i64,
-    #[serde(default)]
-    pub rate: Option<String>,
-    #[serde(default = "default_quantity")]
-    pub quantity: String,
-    #[serde(default)]
-    pub variables: Option<serde_json::Value>,
-    #[serde(default)]
-    pub tax_ids: Option<Vec<i64>>,
-    #[serde(default)]
-    pub remarks: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct ServiceLineInput {
-    pub service_id: i64,
     #[serde(default)]
     pub rate: Option<String>,
     #[serde(default = "default_quantity")]
@@ -61,20 +41,12 @@ fn default_quantity() -> String {
     "1".to_string()
 }
 
-pub fn parse_goods_lines(raw: &str) -> Result<Vec<GoodsLineInput>, String> {
+pub fn parse_lines(raw: &str) -> Result<Vec<LineInput>, String> {
     let raw = raw.trim();
     if raw.is_empty() {
         return Ok(Vec::new());
     }
-    serde_json::from_str(raw).map_err(|err| format!("invalid goods lines data: {err}"))
-}
-
-pub fn parse_service_lines(raw: &str) -> Result<Vec<ServiceLineInput>, String> {
-    let raw = raw.trim();
-    if raw.is_empty() {
-        return Ok(Vec::new());
-    }
-    serde_json::from_str(raw).map_err(|err| format!("invalid service lines data: {err}"))
+    serde_json::from_str(raw).map_err(|err| format!("invalid lines data: {err}"))
 }
 
 pub fn parse_quotation_date(raw: &str) -> Result<NaiveDate, String> {
@@ -96,28 +68,14 @@ fn line_is_blank(id: i64, rate: &Option<String>, remarks: &Option<String>) -> bo
         && remarks.as_deref().unwrap_or("").trim().is_empty()
 }
 
-fn occupied_goods(lines: &[GoodsLineInput]) -> Result<Vec<GoodsLineInput>, String> {
+fn occupied_lines(lines: &[LineInput]) -> Result<Vec<LineInput>, String> {
     let mut out = Vec::new();
     for row in lines {
         if line_is_blank(row.product_id, &row.rate, &row.remarks) {
             continue;
         }
         if row.product_id <= 0 {
-            return Err("choose a product for each goods line".to_string());
-        }
-        out.push(row.clone());
-    }
-    Ok(out)
-}
-
-fn occupied_services(lines: &[ServiceLineInput]) -> Result<Vec<ServiceLineInput>, String> {
-    let mut out = Vec::new();
-    for row in lines {
-        if line_is_blank(row.service_id, &row.rate, &row.remarks) {
-            continue;
-        }
-        if row.service_id <= 0 {
-            return Err("choose a service for each service line".to_string());
+            return Err("choose a product for each line".to_string());
         }
         out.push(row.clone());
     }
@@ -175,7 +133,7 @@ struct Priced {
     tax_ids: Vec<i64>,
 }
 
-async fn price_goods(db: &DatabaseConnection, row: &GoodsLineInput) -> Result<Priced, String> {
+async fn price_line(db: &DatabaseConnection, row: &LineInput) -> Result<Priced, String> {
     let product = ProductEntity::find_by_id(row.product_id)
         .one(db)
         .await
@@ -220,60 +178,15 @@ async fn price_goods(db: &DatabaseConnection, row: &GoodsLineInput) -> Result<Pr
     })
 }
 
-async fn price_service(db: &DatabaseConnection, row: &ServiceLineInput) -> Result<Priced, String> {
-    let service = ServiceEntity::find_by_id(row.service_id)
-        .one(db)
-        .await
-        .map_err(|err| err.to_string())?
-        .ok_or_else(|| format!("unknown service #{}", row.service_id))?;
-    let quantity = parse_quantity(&row.quantity)?;
-    let explicit = optional_rate(&row.rate)?;
-    let priced = if service_pricing::has_variable_pricing(&service.variables) {
-        let raw = row
-            .variables
-            .clone()
-            .unwrap_or_else(|| serde_json::json!({}));
-        let unit =
-            service_pricing::price_line(&service.variables, &service.sales_price_formula, &raw)?;
-        let mut priced = service_pricing::with_quantity(unit, quantity)?;
-        if let Some(rate) = explicit {
-            priced.rate = decimal::normalize(rate);
-            priced.pre_tax = decimal::dec_mul(priced.quantity, priced.rate);
-        }
-        priced
-    } else {
-        let rate = match explicit {
-            Some(rate) => rate,
-            None => service_pricing::unit_amount(&service.sales_price_formula)?,
-        };
-        service_pricing::from_quantity_rate(quantity, rate)?
-    };
-    let catalog = load_service_tax_ids(db, service.id).await;
-    let tax_ids = line_taxes(&row.tax_ids, &catalog);
-    validate_tax_ids(db, &tax_ids).await?;
-    let remarks = match &row.remarks {
-        Some(text) => optional_text(text),
-        None => service.remarks.as_deref().and_then(optional_text),
-    };
-    Ok(Priced {
-        rate: priced.rate,
-        quantity: priced.quantity,
-        pre_tax: priced.pre_tax,
-        variable_values: priced.variable_values,
-        remarks,
-        tax_ids,
-    })
-}
-
-async fn insert_goods<C: ConnectionTrait>(
+async fn insert_line<C: ConnectionTrait>(
     db: &DatabaseConnection,
     txn: &C,
     quotation_id: i64,
-    row: &GoodsLineInput,
+    row: &LineInput,
 ) -> Result<(), String> {
-    let priced = price_goods(db, row).await?;
+    let priced = price_line(db, row).await?;
     let now = Utc::now();
-    let line = quotation_goods_line::ActiveModel {
+    let line = quotation_line::ActiveModel {
         quotation_id: Set(quotation_id),
         product_id: Set(row.product_id),
         rate: Set(priced.rate),
@@ -288,35 +201,7 @@ async fn insert_goods<C: ConnectionTrait>(
     .insert(txn)
     .await
     .map_err(|err| err.to_string())?;
-    set_goods_line_taxes(txn, line.id, &priced.tax_ids)
-        .await
-        .map_err(|err| err.to_string())
-}
-
-async fn insert_service<C: ConnectionTrait>(
-    db: &DatabaseConnection,
-    txn: &C,
-    quotation_id: i64,
-    row: &ServiceLineInput,
-) -> Result<(), String> {
-    let priced = price_service(db, row).await?;
-    let now = Utc::now();
-    let line = quotation_service_line::ActiveModel {
-        quotation_id: Set(quotation_id),
-        service_id: Set(row.service_id),
-        rate: Set(priced.rate),
-        quantity: Set(priced.quantity),
-        variable_values: Set(priced.variable_values),
-        pre_tax_amount: Set(priced.pre_tax),
-        remarks: Set(priced.remarks),
-        created_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        ..Default::default()
-    }
-    .insert(txn)
-    .await
-    .map_err(|err| err.to_string())?;
-    set_service_line_taxes(txn, line.id, &priced.tax_ids)
+    set_quotation_line_taxes(txn, line.id, &priced.tax_ids)
         .await
         .map_err(|err| err.to_string())
 }
@@ -328,8 +213,7 @@ pub struct SaveQuotation {
     pub customer_id: i64,
     pub bank_account: String,
     pub remarks: String,
-    pub goods: Vec<GoodsLineInput>,
-    pub services: Vec<ServiceLineInput>,
+    pub lines: Vec<LineInput>,
 }
 
 pub async fn create_quotation(
@@ -352,13 +236,11 @@ async fn save(
     existing_id: Option<i64>,
     input: SaveQuotation,
 ) -> Result<quotation::Model, String> {
-    let goods = occupied_goods(&input.goods)?;
-    let services = occupied_services(&input.services)?;
-    if goods.is_empty() && services.is_empty() {
-        return Err("add at least one goods or service line".to_string());
+    let lines = occupied_lines(&input.lines)?;
+    if lines.is_empty() {
+        return Err("add at least one line".to_string());
     }
-    let customer_id =
-        lariv_plugin_crm::logic::customer::require_existing(db, input.customer_id).await?;
+    let customer_id = lariv_plugin_customer::logic::require_existing(db, input.customer_id).await?;
     let number = resolve_quotation_number(db, existing_id, input.date, &input.number).await?;
     let mut bank = optional_text(&input.bank_account);
     if bank.is_none() && existing_id.is_none() {
@@ -382,13 +264,8 @@ async fn save(
         am.remarks = Set(remarks);
         am.updated_at = Set(Some(now));
         let saved = am.update(&txn).await.map_err(|err| err.to_string())?;
-        GoodsLineEntity::delete_many()
-            .filter(quotation_goods_line::Column::QuotationId.eq(id))
-            .exec(&txn)
-            .await
-            .map_err(|err| err.to_string())?;
-        ServiceLineEntity::delete_many()
-            .filter(quotation_service_line::Column::QuotationId.eq(id))
+        LineEntity::delete_many()
+            .filter(quotation_line::Column::QuotationId.eq(id))
             .exec(&txn)
             .await
             .map_err(|err| err.to_string())?;
@@ -409,11 +286,8 @@ async fn save(
         .map_err(|err| err.to_string())?
     };
 
-    for row in &goods {
-        insert_goods(db, &txn, saved.id, row).await?;
-    }
-    for row in &services {
-        insert_service(db, &txn, saved.id, row).await?;
+    for row in &lines {
+        insert_line(db, &txn, saved.id, row).await?;
     }
     txn.commit().await.map_err(|err| err.to_string())?;
     Ok(saved)
@@ -433,15 +307,9 @@ pub async fn copy_quotation(db: &DatabaseConnection, id: i64) -> Result<quotatio
         .await
         .map_err(|err| err.to_string())?
         .ok_or_else(|| "quotation not found".to_string())?;
-    let goods = GoodsLineEntity::find()
-        .filter(quotation_goods_line::Column::QuotationId.eq(id))
-        .order_by_asc(quotation_goods_line::Column::Id)
-        .all(db)
-        .await
-        .map_err(|err| err.to_string())?;
-    let services = ServiceLineEntity::find()
-        .filter(quotation_service_line::Column::QuotationId.eq(id))
-        .order_by_asc(quotation_service_line::Column::Id)
+    let lines = LineEntity::find()
+        .filter(quotation_line::Column::QuotationId.eq(id))
+        .order_by_asc(quotation_line::Column::Id)
         .all(db)
         .await
         .map_err(|err| err.to_string())?;
@@ -463,11 +331,11 @@ pub async fn copy_quotation(db: &DatabaseConnection, id: i64) -> Result<quotatio
     .await
     .map_err(|err| err.to_string())?;
 
-    for line in goods {
-        let tax_ids = crate::logic::tax::load_goods_line_tax_ids(db, line.id)
+    for line in lines {
+        let tax_ids = load_quotation_line_tax_ids(db, line.id)
             .await
             .unwrap_or_default();
-        let copied = quotation_goods_line::ActiveModel {
+        let copied = quotation_line::ActiveModel {
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
             quotation_id: Set(saved.id),
@@ -482,30 +350,7 @@ pub async fn copy_quotation(db: &DatabaseConnection, id: i64) -> Result<quotatio
         .insert(&txn)
         .await
         .map_err(|err| err.to_string())?;
-        set_goods_line_taxes(&txn, copied.id, &tax_ids)
-            .await
-            .map_err(|err| err.to_string())?;
-    }
-    for line in services {
-        let tax_ids = crate::logic::tax::load_service_line_tax_ids(db, line.id)
-            .await
-            .unwrap_or_default();
-        let copied = quotation_service_line::ActiveModel {
-            created_at: Set(Some(now)),
-            updated_at: Set(Some(now)),
-            quotation_id: Set(saved.id),
-            service_id: Set(line.service_id),
-            rate: Set(line.rate),
-            quantity: Set(line.quantity),
-            variable_values: Set(line.variable_values),
-            pre_tax_amount: Set(line.pre_tax_amount),
-            remarks: Set(line.remarks),
-            ..Default::default()
-        }
-        .insert(&txn)
-        .await
-        .map_err(|err| err.to_string())?;
-        set_service_line_taxes(&txn, copied.id, &tax_ids)
+        set_quotation_line_taxes(&txn, copied.id, &tax_ids)
             .await
             .map_err(|err| err.to_string())?;
     }

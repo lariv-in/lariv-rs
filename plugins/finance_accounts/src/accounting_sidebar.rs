@@ -24,7 +24,8 @@ use crate::accounting_preferences_patch::{
 };
 use crate::routes::{
     AccountDetailRouteTag, AccountingPreferencesRouteTag, CustomSourceDocIndexRouteTag,
-    FinanceDefaultRouteTag, JournalEntryDetailRouteTag, JournalListRouteTag,
+    CustomSourceDocTemplateListRouteTag, FinanceDefaultRouteTag, JournalEntryDetailRouteTag,
+    JournalListRouteTag,
 };
 
 /// Directory of a route path, dropping a `{param}` segment and the slash before it.
@@ -357,6 +358,18 @@ impl AccountingSidebarRegistrar for BaseHook {
             35,
             Some("clipboard-document-list"),
         ))
+        .push(link::<CustomSourceDocTemplateListRouteTag>(
+            "transaction-templates",
+            "Transaction Templates",
+            36,
+            Some("document-duplicate"),
+        ))
+        .push(link::<crate::routes::CustomerListRouteTag>(
+            "customers",
+            "Customers",
+            40,
+            Some("user-circle"),
+        ))
         .push(link::<AccountingPreferencesRouteTag>(
             "preferences",
             "Accounting preferences",
@@ -433,10 +446,12 @@ mod tests {
             .add_hook::<TestAddonTag, _>(TestAddonHook)
             .resolve_hooks();
 
-        assert_eq!(cap.items.links().len(), 6);
+        assert_eq!(cap.items.links().len(), 8);
         let sections: Vec<_> = cap.items.links().iter().map(|l| l.section).collect();
         assert!(sections.contains(&"accounts"));
         assert!(sections.contains(&"custom-source-docs"));
+        assert!(sections.contains(&"transaction-templates"));
+        assert!(sections.contains(&"customers"));
         assert!(sections.contains(&"test-addon"));
         assert!(sections.contains(&"preferences"));
     }

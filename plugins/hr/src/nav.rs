@@ -2,7 +2,7 @@
 
 use sea_orm::DatabaseConnection;
 
-use crate::logic::leave::user_is_leave_manager;
+use crate::logic::manager::user_is_leave_manager;
 
 tokio::task_local! {
     static LEAVE_MANAGER: bool;

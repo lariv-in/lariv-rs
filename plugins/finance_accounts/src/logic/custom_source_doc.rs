@@ -268,6 +268,7 @@ pub async fn create_custom_source_doc(
     journal_id: i64,
     title: &str,
     content: &str,
+    attached_vnode_id: Option<i64>,
     created_by_id: i64,
     lines: &[JournalLineSpec],
 ) -> Result<custom_source_doc::Model, String> {
@@ -295,6 +296,7 @@ pub async fn create_custom_source_doc(
         content: Set(content.to_string()),
         created_by_id: Set(created_by_id),
         journal_entry_id: Set(entry_id),
+        attached_vnode_id: Set(attached_vnode_id),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -314,6 +316,7 @@ pub async fn update_custom_source_doc(
     id: i64,
     title: &str,
     content: &str,
+    attached_vnode_id: Option<i64>,
     lines: &[JournalLineSpec],
 ) -> Result<(), String> {
     let model = CustomSourceDocEntity::find_by_id(id)
@@ -340,6 +343,7 @@ pub async fn update_custom_source_doc(
     let mut am: custom_source_doc::ActiveModel = model.into();
     am.title = Set(title.to_string());
     am.content = Set(content.to_string());
+    am.attached_vnode_id = Set(attached_vnode_id);
     am.updated_at = Set(Some(now));
     am.update(&txn).await.map_err(|e| e.to_string())?;
     let mut entry_am: journal_entry::ActiveModel = entry.into();

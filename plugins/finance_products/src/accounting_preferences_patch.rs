@@ -19,18 +19,19 @@ impl AccountingPreferencesAddon for ProductsAccountingPreferencesAddon {
     async fn render_groups(&self, db: &DatabaseConnection) -> Vec<AccountingPreferenceGroup> {
         use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 
-        let fields = crate::journal_template::preference_form_fields(db, "product-pref-line").await;
+        let defaults =
+            crate::journal_template::preference_form_fields(db, "product-pref-line").await;
         let inputs = html! {
             (ProductJournalPreferencesForm::render_inputs(
                 &FormCtx::form::<ProductJournalPreferencesForm>(CsrfToken::current())
-                    .value(ProductJournalPreferencesFormField::JournalId, &fields.journal_id)
+                    .value(ProductJournalPreferencesFormField::JournalId, &defaults.journal_id)
                     .display(
                         ProductJournalPreferencesFormField::JournalId,
-                        &fields.journal_display,
+                        &defaults.journal_display,
                     )
                     .value(
                         ProductJournalPreferencesFormField::JournalLines,
-                        &fields.journal_lines,
+                        &defaults.journal_lines,
                     ),
             ))
         };

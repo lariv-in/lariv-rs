@@ -11,31 +11,17 @@ use crate::routes::VendorFkSelectRouteTag;
 use lariv_plugin_finance_taxes::routes::TaxMultiSelectRouteTag;
 
 use crate::components::{
-    InputPaymentTermLinesDraft, InputPurchaseGoodsLinesDraft, InputPurchaseServiceLinesDraft,
-    input_payment_term_lines_draft, input_purchase_goods_lines_draft,
-    input_purchase_service_lines_draft,
+    InputPaymentTermLinesDraft, InputPurchaseLinesDraft, input_payment_term_lines_draft,
+    input_purchase_lines_draft,
 };
-/// Custom widget for draft purchase goods lines (Alpine editor + hidden JSON).
-pub struct PurchaseGoodsLinesDraft;
-impl FormWidget for PurchaseGoodsLinesDraft {
+/// Custom widget for draft purchase lines (Alpine editor + hidden JSON).
+pub struct PurchaseLinesDraft;
+impl FormWidget for PurchaseLinesDraft {
     fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
-        input_purchase_goods_lines_draft(InputPurchaseGoodsLinesDraft {
+        input_purchase_lines_draft(InputPurchaseLinesDraft {
             name: field.name,
             defaults: field.value,
-            preview: ctx.display_of("purchase_goods_lines_preview"),
-            ..Default::default()
-        })
-    }
-}
-
-/// Custom widget for draft purchase service lines (Alpine editor + hidden JSON).
-pub struct PurchaseServiceLinesDraft;
-impl FormWidget for PurchaseServiceLinesDraft {
-    fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
-        input_purchase_service_lines_draft(InputPurchaseServiceLinesDraft {
-            name: field.name,
-            defaults: field.value,
-            preview: ctx.display_of("purchase_service_lines_preview"),
+            preview: ctx.display_of("purchase_lines_preview"),
             ..Default::default()
         })
     }
@@ -100,20 +86,12 @@ pub struct DraftPurchaseForm {
     pub taxes: Vec<i64>,
 
     #[form(
-        label = "Goods lines",
-        widget = PurchaseGoodsLinesDraft,
-        display = "purchase_goods_lines_preview",
+        label = "Lines",
+        widget = PurchaseLinesDraft,
+        display = "purchase_lines_preview",
         hint = "Quantity multiplies the unit price of one product."
     )]
-    pub purchase_goods_lines_json: String,
-
-    #[form(
-        label = "Service lines",
-        widget = PurchaseServiceLinesDraft,
-        display = "purchase_service_lines_preview",
-        hint = "Quantity multiplies the unit price of one service."
-    )]
-    pub purchase_service_lines_json: String,
+    pub purchase_lines_json: String,
 }
 
 /// Blank bulk-edit form: only non-empty fields are applied to selected drafts.
@@ -163,20 +141,12 @@ pub struct DraftPurchaseBulkEditForm {
     pub taxes: Vec<i64>,
 
     #[form(
-        label = "Goods lines",
-        widget = PurchaseGoodsLinesDraft,
-        display = "purchase_goods_lines_preview",
-        hint = "Quantity multiplies the unit price of one product. Leave both line sections empty to keep existing lines."
+        label = "Lines",
+        widget = PurchaseLinesDraft,
+        display = "purchase_lines_preview",
+        hint = "Quantity multiplies the unit price of one product. Leave empty to keep existing lines."
     )]
-    pub purchase_goods_lines_json: String,
-
-    #[form(
-        label = "Service lines",
-        widget = PurchaseServiceLinesDraft,
-        display = "purchase_service_lines_preview",
-        hint = "Quantity multiplies the unit price of one service. Leave both line sections empty to keep existing lines."
-    )]
-    pub purchase_service_lines_json: String,
+    pub purchase_lines_json: String,
 }
 
 /// Purchase number format + PDF template field names (custom UI on preferences page).
@@ -303,7 +273,7 @@ mod tests {
                 .display(DraftPurchaseFormField::VendorId, "Acme Co")
                 .value(DraftPurchaseFormField::Datetime, "2025-06-01")
                 .value(DraftPurchaseFormField::PaymentTermLinesJson, "")
-                .value(DraftPurchaseFormField::PurchaseGoodsLinesJson, ""),
+                .value(DraftPurchaseFormField::PurchaseLinesJson, ""),
         )
         .into_string();
         assert!(html.contains("Vendor"));

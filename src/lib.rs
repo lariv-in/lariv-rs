@@ -62,14 +62,22 @@ pub mod plugins {
     pub use lariv_plugin_finance_products as finance_products;
     #[cfg(feature = "plugin-finance-purchases")]
     pub use lariv_plugin_finance_purchases as finance_purchases;
-    #[cfg(feature = "plugin-finance-services")]
-    pub use lariv_plugin_finance_services as finance_services;
     #[cfg(feature = "plugin-finance-taxes")]
     pub use lariv_plugin_finance_taxes as finance_taxes;
     #[cfg(feature = "plugin-forms")]
     pub use lariv_plugin_forms as forms;
     #[cfg(feature = "plugin-hr")]
     pub use lariv_plugin_hr as hr;
+    #[cfg(feature = "plugin-hr-attendance")]
+    pub use lariv_plugin_hr_attendance as hr_attendance;
+    #[cfg(feature = "plugin-hr-holidays")]
+    pub use lariv_plugin_hr_holidays as hr_holidays;
+    #[cfg(feature = "plugin-hr-job-posting")]
+    pub use lariv_plugin_hr_job_posting as hr_job_posting;
+    #[cfg(feature = "plugin-hr-leaves")]
+    pub use lariv_plugin_hr_leaves as hr_leaves;
+    #[cfg(feature = "plugin-hr-overtime")]
+    pub use lariv_plugin_hr_overtime as hr_overtime;
     #[cfg(feature = "plugin-import")]
     pub use lariv_plugin_import as import;
     #[cfg(feature = "plugin-inventory")]

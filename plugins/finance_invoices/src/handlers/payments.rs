@@ -6,6 +6,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
+use maud::{Markup, html};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx};
@@ -20,6 +21,7 @@ use lariv_core::web::{
 };
 use lariv_plugin_users::middleware::RequireAuth;
 
+use lariv_plugin_finance_accounts::journal_lines_editor::input_journal_lines;
 use lariv_plugin_finance_accounts::logic::custom_source_doc::{
     ensure_posting_accounts, parse_submitted_journal_lines,
 };
@@ -44,7 +46,7 @@ use crate::{
     },
     logic::{
         CreatePaymentInput, InvoiceDateFormats, create_payment,
-        invoice_goods_line_editor::invoice_header_tax_labels, load_invoice_date_formats,
+        invoice_line_editor::invoice_header_tax_labels, load_invoice_date_formats,
         parse_invoice_datetime, parse_payment_amount, payment::suggest_payment_lines_json,
         posted_invoice_open_balance, tax_assoc::load_payment_tax_ids,
     },
@@ -463,6 +465,36 @@ pub async fn create_post(
             let page = payment_create_modal_page(&state.db, &q, form, e.to_string()).await;
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
+    }
+}
+
+pub async fn fill_journal_lines(
+    Cap(state): Cap<InvoicesState>,
+    RequireAuth(_ctx): RequireAuth,
+    HtmlFormBody(form): HtmlFormBody<PaymentForm>,
+) -> Markup {
+    let suggested = if form.posted_invoice_id <= 0 {
+        Err("select a posted invoice first".into())
+    } else {
+        match parse_payment_amount(&form.amount) {
+            Ok(amount) => {
+                suggest_payment_lines_json(
+                    &state.db,
+                    form.posted_invoice_id,
+                    amount,
+                    &form.taxes,
+                )
+                .await
+            }
+            Err(error) => Err(error.to_string()),
+        }
+    };
+    match suggested {
+        Ok(lines) => input_journal_lines("JournalLines", "Journal lines", &lines),
+        Err(error) => html! {
+            p class="text-error mb-2" { (error) }
+            (input_journal_lines("JournalLines", "Journal lines", &form.journal_lines))
+        },
     }
 }
 

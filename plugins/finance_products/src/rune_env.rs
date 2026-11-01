@@ -23,17 +23,17 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "create_product",
-        "create_product(#{ name: string, stock_id: int, base_price_formula: string, sales_price_formula: string, reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}], journal_id?: int, journal_lines?: [{ account_id: int, formula: string }] }) -> int  // new product id. stock_id is the inventory stock this product is kept in. Both formulas are the price of one product; invoice quantity multiplies them. journal_lines formulas may use quantity, rate, pre_tax, base_cost, sales_price, and the product variables. Lines must balance.",
+        "create_product(#{ name: string, product_kind?: string, sales_price_formula: string, remarks?: string, hsn_code?: int, sac_code?: int, tax_ids?: [int], variables?: object|[{string}], journal_id?: int, journal_lines?: [{ account_id: int, formula: string }] }) -> int  // new product id. product_kind is Goods (default) or Services. sales_price_formula is the price of one product; invoice quantity multiplies it. journal_lines formulas may use quantity, unit_rate, pre_tax, sales_price, and the product variables. Lines must balance.",
         |_ctx| NativeBinding::Function(Arc::new(create_product)),
     );
     rune_env.register_contextual(
         "update_product",
-        "update_product(#{ id: int, name: string, stock_id: int, base_price_formula: string, sales_price_formula: string, reference?: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}], journal_id?: int, journal_lines?: [{ account_id: int, formula: string }] }) -> int  // updated product id (full replace). stock_id is the inventory stock this product is kept in. Both formulas are the price of one product; invoice quantity multiplies them. journal_lines formulas may use quantity, rate, pre_tax, base_cost, sales_price, and the product variables.",
+        "update_product(#{ id: int, name: string, product_kind?: string, sales_price_formula: string, remarks?: string, hsn_code?: int, sac_code?: int, tax_ids?: [int], variables?: object|[{string}], journal_id?: int, journal_lines?: [{ account_id: int, formula: string }] }) -> int  // updated product id (full replace). product_kind is Goods or Services. sales_price_formula is the price of one product; invoice quantity multiplies it. journal_lines formulas may use quantity, unit_rate, pre_tax, sales_price, and the product variables.",
         |_ctx| NativeBinding::Function(Arc::new(update_product)),
     );
     rune_env.register_contextual(
         "search_products",
-        "search_products(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, name: string, reference: string|null, remarks: string|null, stock_id: int }] }",
+        "search_products(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, name: string, product_kind: string, remarks: string|null, hsn_code: int|null, sac_code: int|null }] }",
         |_ctx| NativeBinding::Function(Arc::new(search_products)),
     );
 }
@@ -94,7 +94,7 @@ fn search_products(
     let rows = block_on_async(async move {
         trigram::search::<ProductEntity, _>(
             &db,
-            &[product::Column::Name, product::Column::Reference],
+            &[product::Column::Name],
             &query,
             limit,
         )
@@ -105,9 +105,10 @@ fn search_products(
         "results": rows.into_iter().map(|p| json!({
             "id": p.id,
             "name": p.name,
-            "reference": p.reference,
+            "product_kind": p.product_kind.as_str(),
             "remarks": p.remarks,
-            "stock_id": p.stock_id,
+            "hsn_code": p.hsn_code,
+            "sac_code": p.sac_code,
         })).collect::<Vec<_>>(),
     }))
 }
@@ -118,20 +119,16 @@ mod args {
     use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
     use serde::Deserialize;
 
-    use crate::entities::product::{self, Entity as ProductEntity};
+    use crate::entities::product::{self, Entity as ProductEntity, ProductKind};
     use crate::preferences::set_product_tax_ids;
 
     #[derive(Debug, Deserialize)]
     pub(super) struct ProductFields {
         name: String,
         #[serde(default)]
-        stock_id: i64,
-        #[serde(default)]
-        reference: String,
+        product_kind: String,
         #[serde(default)]
         remarks: String,
-        #[serde(default)]
-        base_price_formula: String,
         #[serde(default)]
         sales_price_formula: String,
         #[serde(default)]
@@ -140,6 +137,8 @@ mod args {
         journal_lines: Option<serde_json::Value>,
         #[serde(default)]
         hsn_code: i64,
+        #[serde(default)]
+        sac_code: i64,
         #[serde(default)]
         tax_ids: Vec<i64>,
         #[serde(default)]
@@ -155,16 +154,57 @@ mod args {
 
     pub(super) struct ProductInput {
         pub name: String,
-        pub stock_id: i64,
-        pub reference: Option<String>,
+        pub product_kind: ProductKind,
         pub remarks: Option<String>,
-        pub base_price_formula: String,
         pub sales_price_formula: String,
         pub journal_id: String,
         pub journal_lines: String,
-        pub hsn_code: i64,
+        pub hsn_code: Option<i64>,
+        pub sac_code: Option<i64>,
         pub tax_ids: Vec<i64>,
         pub variables: String,
+    }
+
+    fn optional_code(raw: i64) -> Option<i64> {
+        if raw <= 0 {
+            None
+        } else {
+            Some(raw)
+        }
+    }
+
+    fn parse_product_kind(raw: &str) -> ProductKind {
+        ProductKind::parse(raw).unwrap_or(ProductKind::Goods)
+    }
+
+    fn validate_tax_codes(
+        kind: ProductKind,
+        hsn_code: Option<i64>,
+        sac_code: Option<i64>,
+    ) -> Result<(), String> {
+        match kind {
+            ProductKind::Goods => {
+                if hsn_code.is_none() {
+                    return Err("HSN code is required for goods".into());
+                }
+                if sac_code.is_some() {
+                    return Err("SAC code applies only to services".into());
+                }
+            }
+            ProductKind::Services => {
+                if sac_code.is_none() {
+                    return Err("SAC code is required for services".into());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn journal_lines_json(raw: Option<serde_json::Value>) -> String {
+        match raw {
+            Some(value) if !value.is_null() => value.to_string(),
+            _ => crate::journal_template::empty_lines_json(),
+        }
     }
 
     fn opt_string(s: String) -> Option<String> {
@@ -217,30 +257,24 @@ mod args {
         if name.is_empty() {
             return Err(format!("{op} requires name"));
         }
-        if parsed.stock_id <= 0 {
-            return Err(format!("{op} requires stock_id"));
-        }
+        let product_kind = parse_product_kind(&parsed.product_kind);
+        let hsn_code = optional_code(parsed.hsn_code);
+        let sac_code = optional_code(parsed.sac_code);
+        validate_tax_codes(product_kind, hsn_code, sac_code)?;
         let variables = parse_variables(parsed.variables.clone())?;
         let schema = crate::pricing::load_schema(&variables)?;
         crate::journal_template::ensure_schema_allows_bindings(&schema)?;
-        let base_price_formula =
-            parse_formula(&schema, &parsed.base_price_formula, "base price formula")?;
         let sales_price_formula =
             parse_formula(&schema, &parsed.sales_price_formula, "sales price formula")?;
-        let journal_lines = match parsed.journal_lines {
-            Some(value) if !value.is_null() => value.to_string(),
-            _ => crate::journal_template::empty_lines_json(),
-        };
+        let journal_lines = journal_lines_json(parsed.journal_lines);
         if parsed.journal_id > 0 {
             let lines = crate::journal_template::parse_template_lines(&journal_lines)?;
             crate::journal_template::validate_parsed_lines(&schema, &lines)?;
         }
         Ok(ProductInput {
             name,
-            stock_id: parsed.stock_id,
-            reference: opt_string(parsed.reference),
+            product_kind,
             remarks: opt_string(parsed.remarks),
-            base_price_formula,
             sales_price_formula,
             journal_id: if parsed.journal_id > 0 {
                 parsed.journal_id.to_string()
@@ -248,7 +282,8 @@ mod args {
                 String::new()
             },
             journal_lines,
-            hsn_code: parsed.hsn_code,
+            hsn_code,
+            sac_code,
             tax_ids: parsed.tax_ids,
             variables,
         })
@@ -288,13 +323,12 @@ mod args {
         let now = Utc::now();
         let am = product::ActiveModel {
             name: Set(input.name),
-            stock_id: Set(input.stock_id),
-            reference: Set(input.reference),
+            product_kind: Set(input.product_kind),
             remarks: Set(input.remarks),
             variables: Set(input.variables.clone()),
-            base_price_formula: Set(input.base_price_formula.clone()),
             sales_price_formula: Set(input.sales_price_formula.clone()),
             hsn_code: Set(input.hsn_code),
+            sac_code: Set(input.sac_code),
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
             ..Default::default()
@@ -328,13 +362,12 @@ mod args {
             .into();
         let now = Utc::now();
         am.name = Set(input.name);
-        am.stock_id = Set(input.stock_id);
-        am.reference = Set(input.reference);
+        am.product_kind = Set(input.product_kind);
         am.remarks = Set(input.remarks);
         am.variables = Set(input.variables.clone());
-        am.base_price_formula = Set(input.base_price_formula);
         am.sales_price_formula = Set(input.sales_price_formula);
         am.hsn_code = Set(input.hsn_code);
+        am.sac_code = Set(input.sac_code);
         am.updated_at = Set(Some(now));
         am.update(db).await.map_err(|e| e.to_string())?;
         set_product_tax_ids(db, id, &input.tax_ids)
@@ -464,7 +497,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn create_product_via_rune_rejects_missing_stock() {
+    async fn create_product_via_rune_rejects_missing_sales_price() {
         let cap = registered_env();
         let db = sea_orm::DatabaseConnection::default();
         let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
@@ -472,7 +505,7 @@ mod tests {
         let out = rune_engine::compile_and_run(
             &cap,
             &env_ctx,
-            r#"create_product(#{ name: "Widget", base_price_formula: "decimal(\"1\")", sales_price_formula: "decimal(\"2\")" })"#,
+            r#"create_product(#{ name: "Widget" })"#,
             &[],
         )
         .await;
@@ -481,13 +514,13 @@ mod tests {
             .and_then(|v| v.as_str())
             .unwrap_or_default();
         assert!(
-            error.contains("stock_id"),
+            error.contains("sales price formula"),
             "unexpected error payload: {out}"
         );
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn create_product_via_rune_rejects_invalid_base_price_formula() {
+    async fn create_product_via_rune_rejects_invalid_sales_price_formula() {
         let cap = registered_env();
         let db = sea_orm::DatabaseConnection::default();
         let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
@@ -495,7 +528,7 @@ mod tests {
         let out = rune_engine::compile_and_run(
             &cap,
             &env_ctx,
-            r#"create_product(#{ name: "Widget", stock_id: 1, base_price_formula: "nope", sales_price_formula: "decimal(\"2\")" })"#,
+            r#"create_product(#{ name: "Widget", sales_price_formula: "nope", hsn_code: 1 })"#,
             &[],
         )
         .await;
@@ -504,7 +537,7 @@ mod tests {
             .and_then(|v| v.as_str())
             .unwrap_or_default();
         assert!(
-            error.contains("base price formula"),
+            error.contains("sales price formula"),
             "unexpected error payload: {out}"
         );
     }
@@ -518,7 +551,7 @@ mod tests {
         let out = rune_engine::compile_and_run(
             &cap,
             &env_ctx,
-            r#"create_product(#{ name: "Widget", stock_id: 1, base_price_formula: "decimal(\"1\")", sales_price_formula: "decimal(\"2\")", journal_id: 1, journal_lines: [#{ account_id: 1, formula: "nope" }] })"#,
+            r#"create_product(#{ name: "Widget", sales_price_formula: "decimal(\"2\")", hsn_code: 1, journal_id: 1, journal_lines: [#{ account_id: 1, formula: "nope" }] })"#,
             &[],
         )
         .await;
@@ -543,12 +576,10 @@ let product_name = "Widget";
 let cost = "nope";
 create_product(#{
     name: product_name,
-    stock_id: 1,
-    base_price_formula: cost,
     sales_price_formula: "decimal(\"25\")",
+    hsn_code: 1234,
     journal_id: 1,
     journal_lines: [#{ account_id: 1, formula: cost }],
-    hsn_code: 1234
 })
 "#,
             &[],
@@ -559,7 +590,7 @@ create_product(#{
             .and_then(|v| v.as_str())
             .unwrap_or_default();
         assert!(
-            error.contains("base price formula"),
+            error.contains("formula"),
             "object-from-lets conversion failed: {out}"
         );
     }
@@ -626,15 +657,15 @@ create_product(#{
 
     #[test]
     fn update_product_args_accept_object_fields() {
+        use crate::entities::product::ProductKind;
         use lariv_core::rune_env::json_to_rune;
         use serde_json::json;
 
         let value = json_to_rune(json!({
             "id": 42,
             "name": "Widget",
-            "stock_id": 7,
+            "product_kind": "Goods",
             "remarks": "  Steel widget  ",
-            "base_price_formula": "decimal(\"10\")",
             "sales_price_formula": "decimal(\"25.50\")",
             "journal_id": 3,
             "journal_lines": [{ "account_id": 9, "formula": "unit_rate" }, { "account_id": 10, "formula": "-unit_rate" }],
@@ -645,13 +676,12 @@ create_product(#{
         let (id, input) = parse_update_args(&[value]).expect("parse update args");
         assert_eq!(id, 42);
         assert_eq!(input.name, "Widget");
-        assert_eq!(input.stock_id, 7);
+        assert_eq!(input.product_kind, ProductKind::Goods);
         assert_eq!(input.remarks.as_deref(), Some("Steel widget"));
-        assert_eq!(input.base_price_formula, "decimal(\"10\")");
         assert_eq!(input.sales_price_formula, "decimal(\"25.50\")");
         assert_eq!(input.journal_id, "3");
         assert!(input.journal_lines.contains("-unit_rate"));
-        assert_eq!(input.hsn_code, 9983);
+        assert_eq!(input.hsn_code, Some(9983));
         assert_eq!(input.tax_ids, vec![1, 2]);
     }
 }

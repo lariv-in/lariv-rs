@@ -24,38 +24,29 @@ use lariv_plugin_finance_taxes::entities::tax::Model as TaxModel;
 use lariv_plugin_finance_taxes::journal_template::evaluate_tax_for_document;
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
-use crate::purchase_products::journal_template::{
-    self as product_journal_template, ParsedTemplateLine as ProductTemplateLine,
-    evaluate_template_lines as evaluate_product_template_lines,
+use lariv_plugin_finance_products::{
+    entities::product::Entity as ProductEntity,
+    journal_template::{self, ParsedTemplateLine, evaluate_template_lines},
+    pricing,
 };
-use crate::purchase_products::pricing as product_pricing;
-use crate::purchase_services::journal_template::{
-    self as service_journal_template, ParsedTemplateLine as ServiceTemplateLine,
-    evaluate_template_lines as evaluate_service_template_lines,
-};
-use crate::purchase_services::pricing as service_pricing;
 
 use crate::entities::{
-    CancelledPurchaseEntity, DraftPurchaseEntity, DraftPurchaseGoodsLineEntity,
-    DraftPurchaseServiceLineEntity, PostedPurchaseEntity, PostedPurchaseGoodsLineEntity,
-    PostedPurchaseServiceLineEntity,
+    CancelledPurchaseEntity, DraftPurchaseEntity, DraftPurchaseLineEntity,
+    PostedPurchaseEntity, PostedPurchaseLineEntity,
 };
 use crate::entities::{
-    cancelled_purchase, draft_purchase, draft_purchase_goods_line, draft_purchase_service_line,
-    posted_purchase, posted_purchase_goods_line, posted_purchase_service_line,
+    cancelled_purchase, draft_purchase, draft_purchase_line,
+    posted_purchase, posted_purchase_line,
 };
 use crate::logic::draft_payment_term::{
     convert_draft_to_posted_payment_term, copy_posted_payment_term, posted_payment_term_to_draft,
 };
 use crate::logic::purchase_number::posted_purchase_number;
 use crate::logic::tax_assoc::{
-    load_cancelled_line_tax_ids, load_cancelled_purchase_tax_ids,
-    load_cancelled_service_line_tax_ids, load_draft_line_tax_ids, load_draft_purchase_tax_ids,
-    load_draft_service_line_tax_ids, load_posted_line_tax_ids, load_posted_purchase_tax_ids,
-    load_posted_service_line_tax_ids, set_cancelled_line_taxes, set_cancelled_purchase_taxes,
-    set_cancelled_service_line_taxes, set_draft_line_taxes, set_draft_purchase_taxes,
-    set_draft_service_line_taxes, set_posted_line_taxes, set_posted_purchase_taxes,
-    set_posted_service_line_taxes,
+    load_cancelled_line_tax_ids, load_cancelled_purchase_tax_ids, load_draft_line_tax_ids,
+    load_draft_purchase_tax_ids, load_posted_line_tax_ids, load_posted_purchase_tax_ids,
+    set_cancelled_line_taxes, set_cancelled_purchase_taxes, set_draft_line_taxes,
+    set_draft_purchase_taxes, set_posted_line_taxes, set_posted_purchase_taxes,
 };
 use crate::logic::tax_calculations::{
     PurchaseLinesTotals, document_level_header_taxes, merge_purchase_line_tax_ids,
@@ -67,14 +58,10 @@ use crate::entities::cancelled_purchase::PURCHASE_REVERSAL_SOURCE_DOC_TYPE;
 use crate::entities::posted_purchase::POSTED_PURCHASE_SOURCE_DOC_TYPE;
 
 struct LineWithTaxes {
-    line: draft_purchase_goods_line::Model,
+    line: draft_purchase_line::Model,
     taxes: Vec<TaxModel>,
 }
 
-struct ServiceLineWithTaxes {
-    line: draft_purchase_service_line::Model,
-    taxes: Vec<TaxModel>,
-}
 
 /// Journal lines for one document line, expanded from its product or service template.
 struct ExpandedLineJournal {
@@ -95,56 +82,50 @@ fn note_journal(journal_id: &mut Option<i64>, next: i64) -> Result<(), String> {
     Ok(())
 }
 
-async fn expand_product_journal(
+async fn expand_catalog_line_journal(
     db: &DatabaseConnection,
-    product_id: i64,
+    catalog_id: i64,
     variable_values: &str,
     quantity: Decimal,
     rate: Decimal,
     pre_tax: Decimal,
 ) -> Result<ExpandedLineJournal, String> {
-    let product = crate::purchase_products::entities::product::Entity::find_by_id(product_id)
+    let product = ProductEntity::find_by_id(catalog_id)
         .one(db)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("product {product_id} not found"))?;
-    let Some(template) = product_journal_template::load_template(db, product_id).await? else {
-        return Err(format!("{} has no journal entry template", product.name));
+        .ok_or_else(|| format!("catalog item {catalog_id} not found"))?;
+    let Some(template) = journal_template::load_template(db, catalog_id).await?
+    else {
+        return Err(format!("{} has no purchase journal entry template", product.name));
     };
     if template.items.is_empty() {
         return Err(format!(
-            "{} has no journal entry template lines",
+            "{} has no purchase journal entry template lines",
             product.name
         ));
     }
-    let parsed: Vec<ProductTemplateLine> = template
+    let parsed: Vec<ParsedTemplateLine> = template
         .items
         .iter()
-        .map(|item| ProductTemplateLine {
+        .map(|item| ParsedTemplateLine {
             account_id: item.account_id,
             formula: item.formula.clone(),
         })
         .collect();
-    let base_cost = product_pricing::unit_formula_amount(
-        &product.variables,
-        &product.base_price_formula,
-        variable_values,
-    )
-    .map_err(|e| format!("{} base cost: {e}", product.name))?;
-    let sales_price = product_pricing::unit_formula_amount(
+    let sales_price = pricing::unit_formula_amount(
         &product.variables,
         &product.sales_price_formula,
         variable_values,
     )
     .map_err(|e| format!("{} sales price: {e}", product.name))?;
-    let evaluated = evaluate_product_template_lines(
+    let evaluated = evaluate_template_lines(
         &product.variables,
         &parsed,
         variable_values,
         quantity,
         rate,
         pre_tax,
-        base_cost,
         sales_price,
     )
     .map_err(|e| format!("{}: {e}", product.name))?;
@@ -160,70 +141,17 @@ async fn expand_product_journal(
     })
 }
 
-async fn expand_service_journal(
+async fn expand_product_journal(
     db: &DatabaseConnection,
-    service_id: i64,
+    product_id: i64,
     variable_values: &str,
     quantity: Decimal,
     rate: Decimal,
     pre_tax: Decimal,
 ) -> Result<ExpandedLineJournal, String> {
-    let service = crate::purchase_services::entities::service::Entity::find_by_id(service_id)
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("service {service_id} not found"))?;
-    let Some(template) = service_journal_template::load_template(db, service_id).await? else {
-        return Err(format!("{} has no journal entry template", service.name));
-    };
-    if template.items.is_empty() {
-        return Err(format!(
-            "{} has no journal entry template lines",
-            service.name
-        ));
-    }
-    let parsed: Vec<ServiceTemplateLine> = template
-        .items
-        .iter()
-        .map(|item| ServiceTemplateLine {
-            account_id: item.account_id,
-            formula: item.formula.clone(),
-        })
-        .collect();
-    let base_cost = service_pricing::unit_formula_amount(
-        &service.variables,
-        &service.base_price_formula,
-        variable_values,
-    )
-    .map_err(|e| format!("{} base cost: {e}", service.name))?;
-    let sales_price = service_pricing::unit_formula_amount(
-        &service.variables,
-        &service.sales_price_formula,
-        variable_values,
-    )
-    .map_err(|e| format!("{} sales price: {e}", service.name))?;
-    let evaluated = evaluate_service_template_lines(
-        &service.variables,
-        &parsed,
-        variable_values,
-        quantity,
-        rate,
-        pre_tax,
-        base_cost,
-        sales_price,
-    )
-    .map_err(|e| format!("{}: {e}", service.name))?;
-    Ok(ExpandedLineJournal {
-        specs: evaluated
-            .into_iter()
-            .map(|line| JournalLineSpec {
-                account_id: line.account_id,
-                amount: line.amount,
-            })
-            .collect(),
-        journal_id: template.journal_id,
-    })
+    expand_catalog_line_journal(db, product_id, variable_values, quantity, rate, pre_tax).await
 }
+
 
 /// Append every tax template line onto the purchase journal.
 async fn append_purchase_tax_lines(
@@ -281,26 +209,17 @@ pub async fn posted_purchase_journal_lines(
     let item_ids: Vec<i64> = stored.iter().map(|(id, _)| *id).collect();
     let specs = stored.into_iter().map(|(_, spec)| spec).collect();
 
-    let lines = PostedPurchaseGoodsLineEntity::find()
-        .filter(posted_purchase_goods_line::Column::PostedPurchaseId.eq(posted_id))
-        .order_by_asc(posted_purchase_goods_line::Column::Id)
+    let lines = PostedPurchaseLineEntity::find()
+        .filter(posted_purchase_line::Column::PostedPurchaseId.eq(posted_id))
+        .order_by_asc(posted_purchase_line::Column::Id)
         .all(db)
         .await
         .map_err(|e| e.to_string())?;
-    let service_lines = PostedPurchaseServiceLineEntity::find()
-        .filter(posted_purchase_service_line::Column::PostedPurchaseId.eq(posted_id))
-        .order_by_asc(posted_purchase_service_line::Column::Id)
-        .all(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    if lines.is_empty() && service_lines.is_empty() {
+    if lines.is_empty() {
         return Err(format!("posted purchase {posted_id} has no lines"));
     }
-    let mut indexes = Vec::with_capacity(lines.len() + service_lines.len());
+    let mut indexes = Vec::with_capacity(lines.len());
     for line in &lines {
-        indexes.push(index_of_item(&item_ids, line.journal_entry_item_id)?);
-    }
-    for line in &service_lines {
         indexes.push(index_of_item(&item_ids, line.journal_entry_item_id)?);
     }
     Ok((posted.datetime, specs, indexes))
@@ -320,23 +239,16 @@ pub async fn adopt_posted_purchase_journal_entry<C: ConnectionTrait>(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("posted purchase {posted_id} not found"))?;
-    let lines = PostedPurchaseGoodsLineEntity::find()
-        .filter(posted_purchase_goods_line::Column::PostedPurchaseId.eq(posted_id))
-        .order_by_asc(posted_purchase_goods_line::Column::Id)
+    let lines = PostedPurchaseLineEntity::find()
+        .filter(posted_purchase_line::Column::PostedPurchaseId.eq(posted_id))
+        .order_by_asc(posted_purchase_line::Column::Id)
         .all(db)
         .await
         .map_err(|e| e.to_string())?;
-    let goods_count = lines.len();
-    let service_lines = PostedPurchaseServiceLineEntity::find()
-        .filter(posted_purchase_service_line::Column::PostedPurchaseId.eq(posted_id))
-        .order_by_asc(posted_purchase_service_line::Column::Id)
-        .all(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    if goods_count + service_lines.len() != line_item_indexes.len() {
+    if lines.len() != line_item_indexes.len() {
         return Err(format!(
             "posted purchase {posted_id} line count {} does not match {} journal item indexes",
-            goods_count + service_lines.len(),
+            lines.len(),
             line_item_indexes.len()
         ));
     }
@@ -344,19 +256,7 @@ pub async fn adopt_posted_purchase_journal_entry<C: ConnectionTrait>(
         let item_id = *item_ids.get(index).ok_or_else(|| {
             format!("posted purchase {posted_id} journal item index {index} is out of range")
         })?;
-        let mut am: posted_purchase_goods_line::ActiveModel = line.into();
-        am.journal_entry_item_id = Set(item_id);
-        am.updated_at = Set(Some(Utc::now()));
-        am.update(db).await.map_err(|e| e.to_string())?;
-    }
-    for (line, index) in service_lines
-        .into_iter()
-        .zip(line_item_indexes.iter().copied().skip(goods_count))
-    {
-        let item_id = *item_ids.get(index).ok_or_else(|| {
-            format!("posted purchase {posted_id} journal item index {index} is out of range")
-        })?;
-        let mut am: posted_purchase_service_line::ActiveModel = line.into();
+        let mut am: posted_purchase_line::ActiveModel = line.into();
         am.journal_entry_item_id = Set(item_id);
         am.updated_at = Set(Some(Utc::now()));
         am.update(db).await.map_err(|e| e.to_string())?;
@@ -416,7 +316,6 @@ struct PreparedDraftJournal {
     specs: Vec<JournalLineSpec>,
     line_item_indexes: Vec<usize>,
     lines_with_taxes: Vec<LineWithTaxes>,
-    service_lines_with_taxes: Vec<ServiceLineWithTaxes>,
     header_taxes: Vec<TaxModel>,
     total_payable: Decimal,
 }
@@ -440,19 +339,13 @@ async fn prepare_draft_journal(
         return Err("draft already posted".to_string());
     }
 
-    let lines = DraftPurchaseGoodsLineEntity::find()
-        .filter(draft_purchase_goods_line::Column::DraftPurchaseId.eq(draft_id))
-        .order_by_asc(draft_purchase_goods_line::Column::Id)
+    let lines = DraftPurchaseLineEntity::find()
+        .filter(draft_purchase_line::Column::DraftPurchaseId.eq(draft_id))
+        .order_by_asc(draft_purchase_line::Column::Id)
         .all(db)
         .await
         .map_err(|e| e.to_string())?;
-    let service_lines = DraftPurchaseServiceLineEntity::find()
-        .filter(draft_purchase_service_line::Column::DraftPurchaseId.eq(draft_id))
-        .order_by_asc(draft_purchase_service_line::Column::Id)
-        .all(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    if lines.is_empty() && service_lines.is_empty() {
+    if lines.is_empty() {
         return Err("draft has no lines".to_string());
     }
 
@@ -463,10 +356,8 @@ async fn prepare_draft_journal(
         .await
         .map_err(|e| e.to_string())?;
 
-    let mut lines_with_taxes = Vec::with_capacity(lines.len());
-    let mut service_lines_with_taxes = Vec::with_capacity(service_lines.len());
-    let mut specs = Vec::new();
-    let mut line_item_indexes = Vec::with_capacity(lines.len() + service_lines.len());
+    let mut lines_with_taxes = Vec::with_capacity(lines.len());    let mut specs = Vec::new();
+    let mut line_item_indexes = Vec::with_capacity(lines.len());
     let mut journal_id = None;
     for line in lines {
         let tax_ids = load_draft_line_tax_ids(db, line.id)
@@ -489,36 +380,10 @@ async fn prepare_draft_journal(
         specs.extend(expanded.specs);
         lines_with_taxes.push(LineWithTaxes { line, taxes });
     }
-    for line in service_lines {
-        let tax_ids = load_draft_service_line_tax_ids(db, line.id)
-            .await
-            .map_err(|e| e.to_string())?;
-        let taxes = load_taxes_by_ids(db, &tax_ids)
-            .await
-            .map_err(|e| e.to_string())?;
-        let expanded = expand_service_journal(
-            db,
-            line.service_id,
-            &line.variable_values,
-            line.quantity,
-            line.rate,
-            line.pre_tax_amount,
-        )
-        .await?;
-        note_journal(&mut journal_id, expanded.journal_id)?;
-        line_item_indexes.push(specs.len());
-        specs.extend(expanded.specs);
-        service_lines_with_taxes.push(ServiceLineWithTaxes { line, taxes });
-    }
     let journal_id = journal_id.ok_or("draft has no lines")?;
     let tax_inputs: Vec<(Decimal, Vec<TaxModel>)> = lines_with_taxes
         .iter()
         .map(|lwt| (lwt.line.pre_tax_amount, lwt.taxes.clone()))
-        .chain(
-            service_lines_with_taxes
-                .iter()
-                .map(|lwt| (lwt.line.pre_tax_amount, lwt.taxes.clone())),
-        )
         .collect();
     append_purchase_tax_lines(db, &mut specs, &tax_inputs, &header_taxes, journal_id).await?;
 
@@ -527,11 +392,6 @@ async fn prepare_draft_journal(
     for (pre_tax_amount, taxes) in lines_with_taxes
         .iter()
         .map(|lwt| (lwt.line.pre_tax_amount, &lwt.taxes))
-        .chain(
-            service_lines_with_taxes
-                .iter()
-                .map(|lwt| (lwt.line.pre_tax_amount, &lwt.taxes)),
-        )
     {
         merge_purchase_line_tax_ids(&mut all_line_tax_ids, taxes);
         let (untaxed, levied, withholding, _) = purchase_line_amounts(pre_tax_amount, taxes);
@@ -546,7 +406,6 @@ async fn prepare_draft_journal(
         specs,
         line_item_indexes,
         lines_with_taxes,
-        service_lines_with_taxes,
         header_taxes,
         total_payable,
     })
@@ -574,7 +433,6 @@ pub async fn draft_new_posted_with_lines(
         mut specs,
         mut line_item_indexes,
         lines_with_taxes,
-        service_lines_with_taxes,
         header_taxes,
         total_payable,
     } = prepare_draft_journal(db, draft_id).await?;
@@ -655,9 +513,9 @@ pub async fn draft_new_posted_with_lines(
             .get(item_idx)
             .map(|it| it.id)
             .ok_or("internal error: journal item index")?;
-        let pl_am = posted_purchase_goods_line::ActiveModel {
+        let pl_am = posted_purchase_line::ActiveModel {
             posted_purchase_id: Set(posted.id),
-            product_id: Set(lwt.line.product_id),
+            product_id: Set(Some(lwt.line.product_id)),
             rate: Set(lwt.line.rate),
             quantity: Set(lwt.line.quantity),
             variable_values: Set(lwt.line.variable_values.clone()),
@@ -671,33 +529,6 @@ pub async fn draft_new_posted_with_lines(
         let pl = pl_am.insert(&txn).await.map_err(|e| e.to_string())?;
         let tax_ids: Vec<i64> = lwt.taxes.iter().map(|t| t.id).collect();
         set_posted_line_taxes(&txn, pl.id, &tax_ids)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-    for (i, lwt) in service_lines_with_taxes.iter().enumerate() {
-        let item_idx = *line_item_indexes
-            .get(lines_with_taxes.len() + i)
-            .ok_or("internal error: journal item index")?;
-        let expense_item_id = je_items
-            .get(item_idx)
-            .map(|it| it.id)
-            .ok_or("internal error: journal item index")?;
-        let pl_am = posted_purchase_service_line::ActiveModel {
-            posted_purchase_id: Set(posted.id),
-            service_id: Set(lwt.line.service_id),
-            rate: Set(lwt.line.rate),
-            quantity: Set(lwt.line.quantity),
-            variable_values: Set(lwt.line.variable_values.clone()),
-            pre_tax_amount: Set(lwt.line.pre_tax_amount),
-            remarks: Set(lwt.line.remarks.clone()),
-            journal_entry_item_id: Set(expense_item_id),
-            created_at: Set(Some(now)),
-            updated_at: Set(Some(now)),
-            ..Default::default()
-        };
-        let pl = pl_am.insert(&txn).await.map_err(|e| e.to_string())?;
-        let tax_ids: Vec<i64> = lwt.taxes.iter().map(|t| t.id).collect();
-        set_posted_service_line_taxes(&txn, pl.id, &tax_ids)
             .await
             .map_err(|e| e.to_string())?;
     }
@@ -716,9 +547,9 @@ pub async fn posted_new_cancelled(
         .await
         .ok_or("posted purchase is not cancellable")?;
 
-    let posted_lines = PostedPurchaseGoodsLineEntity::find()
-        .filter(posted_purchase_goods_line::Column::PostedPurchaseId.eq(posted_id))
-        .order_by_asc(posted_purchase_goods_line::Column::Id)
+    let posted_lines = PostedPurchaseLineEntity::find()
+        .filter(posted_purchase_line::Column::PostedPurchaseId.eq(posted_id))
+        .order_by_asc(posted_purchase_line::Column::Id)
         .all(db)
         .await
         .map_err(|e| e.to_string())?;
@@ -805,7 +636,7 @@ pub async fn posted_new_cancelled(
         let cl_id = insert_cancelled_line(
             &txn,
             cancelled.id,
-            pl.product_id,
+            pl.product_id.unwrap_or(0),
             pl.rate,
             pl.quantity,
             &pl.variable_values,
@@ -816,39 +647,6 @@ pub async fn posted_new_cancelled(
         )
         .await?;
         set_cancelled_line_taxes(&txn, cl_id, &line_tax_ids)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-    let posted_service_lines = PostedPurchaseServiceLineEntity::find()
-        .filter(posted_purchase_service_line::Column::PostedPurchaseId.eq(posted_id))
-        .order_by_asc(posted_purchase_service_line::Column::Id)
-        .all(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    for pl in posted_service_lines {
-        let rev_id = orig_to_rev.get(&pl.journal_entry_item_id).ok_or_else(|| {
-            format!(
-                "could not map journal line for posted purchase service line {}",
-                pl.id
-            )
-        })?;
-        let line_tax_ids = load_posted_service_line_tax_ids(&txn, pl.id)
-            .await
-            .map_err(|e| e.to_string())?;
-        let cl_id = insert_cancelled_service_line(
-            &txn,
-            cancelled.id,
-            pl.service_id,
-            pl.rate,
-            pl.quantity,
-            &pl.variable_values,
-            pl.pre_tax_amount,
-            pl.remarks.clone(),
-            *rev_id,
-            now,
-        )
-        .await?;
-        set_cancelled_service_line_taxes(&txn, cl_id, &line_tax_ids)
             .await
             .map_err(|e| e.to_string())?;
     }
@@ -871,7 +669,7 @@ pub async fn cancelled_new_draft(
     let header_tax_ids = load_cancelled_purchase_tax_ids(db, cancelled_id)
         .await
         .map_err(|e| e.to_string())?;
-    let cancelled_lines = load_cancelled_purchase_goods_lines(db, cancelled_id).await?;
+    let cancelled_lines = load_cancelled_purchase_lines(db, cancelled_id).await?;
 
     let txn = db.begin().await.map_err(|e| e.to_string())?;
     let now = Utc::now();
@@ -902,7 +700,7 @@ pub async fn cancelled_new_draft(
         let line_tax_ids = load_cancelled_line_tax_ids(&txn, cl.id)
             .await
             .map_err(|e| e.to_string())?;
-        let line = draft_purchase_goods_line::ActiveModel {
+        let line = draft_purchase_line::ActiveModel {
             draft_purchase_id: Set(draft.id),
             product_id: Set(cl.product_id),
             rate: Set(cl.rate),
@@ -921,44 +719,6 @@ pub async fn cancelled_new_draft(
             .await
             .map_err(|e| e.to_string())?;
     }
-    let service_rows = db
-        .query_all_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT id, service_id, rate, quantity, variable_values, pre_tax_amount, remarks \
-             FROM cancelled_purchase_service_lines \
-             WHERE cancelled_purchase_id = $1 ORDER BY id ASC",
-            [cancelled_id.into()],
-        ))
-        .await
-        .map_err(|e| e.to_string())?;
-    for row in service_rows {
-        let id: i64 = row.try_get("", "id").map_err(|e| e.to_string())?;
-        let line_tax_ids = load_cancelled_service_line_tax_ids(&txn, id)
-            .await
-            .map_err(|e| e.to_string())?;
-        let line = draft_purchase_service_line::ActiveModel {
-            draft_purchase_id: Set(draft.id),
-            service_id: Set(row.try_get("", "service_id").map_err(|e| e.to_string())?),
-            rate: Set(row.try_get("", "rate").map_err(|e| e.to_string())?),
-            quantity: Set(row.try_get("", "quantity").map_err(|e| e.to_string())?),
-            variable_values: Set(row
-                .try_get("", "variable_values")
-                .map_err(|e| e.to_string())?),
-            pre_tax_amount: Set(row
-                .try_get("", "pre_tax_amount")
-                .map_err(|e| e.to_string())?),
-            remarks: Set(row.try_get("", "remarks").map_err(|e| e.to_string())?),
-            created_at: Set(Some(now)),
-            updated_at: Set(Some(now)),
-            ..Default::default()
-        }
-        .insert(&txn)
-        .await
-        .map_err(|e| e.to_string())?;
-        set_draft_service_line_taxes(&txn, line.id, &line_tax_ids)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
 
     txn.commit().await.map_err(|e| e.to_string())?;
     Ok(draft)
@@ -974,7 +734,7 @@ struct CancelledLineSnapshot {
     remarks: Option<String>,
 }
 
-async fn load_cancelled_purchase_goods_lines(
+async fn load_cancelled_purchase_lines(
     db: &DatabaseConnection,
     cancelled_id: i64,
 ) -> Result<Vec<CancelledLineSnapshot>, String> {
@@ -982,7 +742,7 @@ async fn load_cancelled_purchase_goods_lines(
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id, product_id, rate, quantity, variable_values, pre_tax_amount, remarks \
-             FROM cancelled_purchase_goods_lines \
+             FROM cancelled_purchase_lines \
              WHERE cancelled_purchase_id = $1 ORDER BY id ASC",
             [cancelled_id.into()],
         ))
@@ -1020,7 +780,7 @@ async fn insert_cancelled_line<C: ConnectionTrait>(
     let row = db
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "INSERT INTO cancelled_purchase_goods_lines \
+            "INSERT INTO cancelled_purchase_lines \
              (cancelled_purchase_id, product_id, rate, quantity, variable_values, pre_tax_amount, remarks, journal_entry_item_id, created_at, updated_at) \
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9) RETURNING id",
             [
@@ -1041,41 +801,6 @@ async fn insert_cancelled_line<C: ConnectionTrait>(
     row.try_get("", "id").map_err(|e| e.to_string())
 }
 
-async fn insert_cancelled_service_line<C: ConnectionTrait>(
-    db: &C,
-    cancelled_id: i64,
-    service_id: i64,
-    rate: Decimal,
-    quantity: Decimal,
-    variable_values: &str,
-    pre_tax_amount: Decimal,
-    remarks: Option<String>,
-    journal_entry_item_id: i64,
-    now: DateTime<Utc>,
-) -> Result<i64, String> {
-    let row = db
-        .query_one_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "INSERT INTO cancelled_purchase_service_lines \
-             (cancelled_purchase_id, service_id, rate, quantity, variable_values, pre_tax_amount, remarks, journal_entry_item_id, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9) RETURNING id",
-            [
-                cancelled_id.into(),
-                service_id.into(),
-                rate.into(),
-                quantity.into(),
-                variable_values.into(),
-                pre_tax_amount.into(),
-                remarks.into(),
-                journal_entry_item_id.into(),
-                now.into(),
-            ],
-        ))
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "insert cancelled service line failed".to_string())?;
-    row.try_get("", "id").map_err(|e| e.to_string())
-}
 
 /// Negate the posted purchase journal. Indexes are the stored anchor of each goods or service line.
 pub async fn cancelled_reversal_journal_lines(
@@ -1109,7 +834,7 @@ pub async fn adopt_cancelled_purchase_journal_entry<C: ConnectionTrait>(
 ) -> Result<(), String> {
     let line_ids = query_i64s(
         db,
-        "SELECT id FROM cancelled_purchase_goods_lines WHERE cancelled_purchase_id = $1 ORDER BY id ASC",
+        "SELECT id FROM cancelled_purchase_lines WHERE cancelled_purchase_id = $1 ORDER BY id ASC",
         cancelled_id,
     )
     .await?;
@@ -1126,7 +851,7 @@ pub async fn adopt_cancelled_purchase_journal_entry<C: ConnectionTrait>(
         })?;
         db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "UPDATE cancelled_purchase_goods_lines SET journal_entry_item_id = $1, updated_at = NOW() WHERE id = $2",
+            "UPDATE cancelled_purchase_lines SET journal_entry_item_id = $1, updated_at = NOW() WHERE id = $2",
             [item_id.into(), line_id.into()],
         ))
         .await

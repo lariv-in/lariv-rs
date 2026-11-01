@@ -1,13 +1,14 @@
 #![feature(impl_trait_in_assoc_type)]
-//! Customers dashboard app.
+//! Customer support addon — `customers` entity, create modal, and list table.
 //!
 //! Historical migrations stay registered so existing databases still recognize
-//! applied versions, and fresh installs still create `customers` before invoice
-//! tables reference it. A later finance migration copies those rows into
-//! `crm_customers` and drops the old table. The dashboard lists `crm_customers`.
+//! applied versions. Live rows live in `customers` (created as `crm_customers`,
+//! then renamed once the legacy address-shaped `customers` table is gone).
+//! `m00010` finishes that rename when an empty `customers` blocked `m00009` /
+//! finance `m00046` and a later `crm_customers` held the real rows.
 
-pub mod apps;
 pub mod create_modals;
+pub mod entities;
 pub mod forms;
 pub mod handlers;
 pub mod keys;
@@ -42,7 +43,6 @@ lariv_core::define_plugin_install! {
         cap_hook(lariv_plugin_users::role_authorization::RoleAuthorizationTag, lariv_plugin_users::role_authorization::RoleAuthorizationCap, routes::RoleHook),
         http(routes::Hook),
         state(StateHook),
-        apps(apps::Hook),
     ]
 }
 

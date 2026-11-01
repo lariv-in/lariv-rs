@@ -11,7 +11,6 @@ use maud::Markup;
 use crate::blood_group::BloodGroup;
 use crate::entities::leaves::LeaveType;
 use crate::gender::ApplicantGender;
-use crate::routes::JobFormFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
 use lariv_plugin_forms::forms::FormQuestionsDraft;
 use lariv_plugin_users::routes::UsersSelectRouteTag;
@@ -175,6 +174,17 @@ pub struct EmployeeForm {
     #[form(label = "Emergency contact mobile", widget = Phone)]
     pub emergency_contact_mobile: String,
 
+    #[form(label = "PF Number", widget = Text)]
+    pub pf_number: String,
+
+    /// Required on the employee self-service form; optional when an admin edits.
+    #[form(label = "Aadhaar Number", widget = Text, required_unless = "admin_dates")]
+    pub aadhar_number: String,
+
+    /// Required on the employee self-service form; optional when an admin edits.
+    #[form(label = "PAN Number", widget = Text, required_unless = "admin_dates")]
+    pub pan_number: String,
+
     #[form(label = "Aadhar", widget = File, accept = ".pdf,.jpg,.jpeg,.png")]
     pub aadhar: Option<Upload>,
 
@@ -289,14 +299,7 @@ pub struct ApplicantForm {
     #[form(label = "Remarks", widget = Textarea, rows = 4)]
     pub remarks: String,
 
-    #[form(
-        label = "Job posting",
-        widget = ForeignKey,
-        route = JobFormFkSelectRouteTag,
-        swap_key = "hr-applicant-job-form",
-        display = "job_form",
-        placeholder = "Select job posting…"
-    )]
+    #[form(label = "Job posting id", widget = Text, placeholder = "Optional job posting id")]
     pub job_form_id: String,
 
     #[form(
@@ -379,44 +382,6 @@ pub struct JobApplicationForm {
 }
 
 #[html_form]
-pub struct HolidayForm {
-    #[form(label = "Title", required, widget = Text)]
-    pub title: String,
-
-    #[form(label = "Description", widget = Textarea, rows = 4)]
-    pub description: String,
-
-    #[form(label = "Date", required, widget = Date)]
-    pub date: String,
-}
-
-#[html_form]
-pub struct HolidayImportForm {
-    #[form(label = "Year", required, widget = Number)]
-    pub year: String,
-}
-
-#[html_form]
-pub struct AttendanceForm {
-    #[form(
-        label = "User",
-        required,
-        widget = ForeignKey,
-        route = UsersSelectRouteTag,
-        swap_key = "hr-attendance-user",
-        display = "user",
-        placeholder = "Select user…"
-    )]
-    pub user_id: i64,
-
-    #[form(label = "Start", required, widget = Datetime)]
-    pub started_at: String,
-
-    #[form(label = "End", widget = Datetime)]
-    pub ended_at: String,
-}
-
-#[html_form]
 pub struct LeaveApplicationForm {
     /// Superuser picks who the leave is for. Hidden for every other role.
     #[form(
@@ -480,82 +445,6 @@ impl GiveLeaveForm {
         LeaveType::choices()
     }
 }
-
-#[html_form]
-pub struct OvertimeApplicationForm {
-    /// Superuser picks who the overtime is for. Hidden for every other role.
-    #[form(
-        label = "User",
-        required,
-        widget = ForeignKey,
-        route = UsersSelectRouteTag,
-        swap_key = "hr-overtime-user",
-        display = "user",
-        placeholder = "Select user…",
-        when = "pick_user"
-    )]
-    pub user_id: i64,
-
-    #[form(label = "Start", required, widget = Datetime)]
-    pub start_time: String,
-
-    #[form(label = "End", required, widget = Datetime)]
-    pub end_time: String,
-
-    #[form(label = "Reason", widget = Textarea, rows = 4)]
-    pub reason: String,
-}
-
-/// Superuser records approved overtime directly. Every column is entered here.
-#[html_form]
-pub struct ApprovedOvertimeForm {
-    #[form(
-        label = "User",
-        required,
-        widget = ForeignKey,
-        route = UsersSelectRouteTag,
-        swap_key = "hr-approved-overtime-user",
-        display = "user",
-        placeholder = "Select user…",
-    )]
-    pub user_id: i64,
-
-    #[form(label = "Start", required, widget = Datetime)]
-    pub start_time: String,
-
-    #[form(label = "End", required, widget = Datetime)]
-    pub end_time: String,
-
-    #[form(
-        label = "Approved by",
-        required,
-        widget = ForeignKey,
-        route = UsersSelectRouteTag,
-        swap_key = "hr-approved-overtime-approved-by",
-        display = "approved_by",
-        placeholder = "Select user…",
-    )]
-    pub approved_by_id: i64,
-
-    #[form(label = "Approved at", required, widget = Datetime)]
-    pub approved_at: String,
-}
-
-/// Confirm-only. The approver is the signed-in user and the time is now.
-#[html_form]
-pub struct ApproveOvertimeForm {}
-
-/// Confirm-only. The rejector is the signed-in user and the time is now.
-#[html_form]
-pub struct RejectOvertimeForm {}
-
-/// Confirm-only. Removes the approval and returns the application to pending.
-#[html_form]
-pub struct RevokeOvertimeApprovalForm {}
-
-/// Confirm-only. Removes the rejection and returns the application to pending.
-#[html_form]
-pub struct RevokeOvertimeRejectionForm {}
 
 const ALLOCATED_HINT: &str =
     "Whole days credited for each qualifying streak. 0 skips this leave type.";

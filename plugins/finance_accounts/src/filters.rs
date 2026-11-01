@@ -10,7 +10,7 @@ use lariv_core::list_filters::{
 };
 
 use crate::balance_type::BalanceType;
-use crate::entities::{account, currency, custom_source_doc, journal};
+use crate::entities::{account, currency, custom_source_doc, custom_source_doc_template, journal};
 
 pub struct PreparedFilters {
     pub fields: Vec<FilterField>,
@@ -112,5 +112,16 @@ pub fn custom_source_doc_fields() -> Vec<FilterField> {
     vec![
         text_column("title", "Title", custom_source_doc::Column::Title),
         text_column("content", "Content", custom_source_doc::Column::Content),
+    ]
+}
+
+pub fn custom_source_doc_template_fields() -> Vec<FilterField> {
+    vec![
+        text_column("name", "Name", custom_source_doc_template::Column::Name),
+        text_column(
+            "remarks",
+            "Remarks",
+            custom_source_doc_template::Column::Remarks,
+        ),
     ]
 }

@@ -36,12 +36,9 @@ use lariv_plugin_finance_accounts::templates::{
     render_picker_pagination,
 };
 
-use crate::components::{
-    self, field_invoice_goods_lines, field_invoice_service_lines, fiscal_year_environment_selector,
-};
+use crate::components::{self, field_invoice_lines, fiscal_year_environment_selector};
 use crate::logic::PaymentTermLineDisplayRow;
-use crate::logic::invoice_goods_line_editor::InvoiceGoodsLineDisplayRow;
-use crate::logic::invoice_service_line_editor::InvoiceServiceLineDisplayRow;
+use crate::logic::invoice_line_editor::InvoiceLineDisplayRow;
 
 use super::forms::{
     CancelInvoiceForm, CancelInvoiceFormField, DraftInvoiceBulkEditForm,
@@ -1101,8 +1098,7 @@ pub struct DraftInvoiceEditModalPage {
     pub error: String,
     pub customer_display: String,
     pub tax_items: Vec<ManyToManyItem>,
-    pub invoice_goods_lines_preview: String,
-    pub invoice_service_lines_preview: String,
+    pub invoice_lines_preview: String,
     pub extra_inputs: String,
 }
 
@@ -1132,11 +1128,9 @@ impl RenderTemplate for DraftInvoiceEditModalPage {
                             .value(DraftInvoiceFormField::DeliveryDate, &self.form.delivery_date)
                             .value(DraftInvoiceFormField::CustomerId, &self.form.customer_id.to_string())
                             .value(DraftInvoiceFormField::PaymentTermLinesJson, &self.form.payment_term_lines_json)
-                            .value(DraftInvoiceFormField::InvoiceGoodsLinesJson, &self.form.invoice_goods_lines_json)
-                            .value(DraftInvoiceFormField::InvoiceServiceLinesJson, &self.form.invoice_service_lines_json)
+                            .value(DraftInvoiceFormField::InvoiceLinesJson, &self.form.invoice_lines_json)
                             .display(DraftInvoiceFormField::CustomerId, &self.customer_display)
-                            .display(DraftInvoiceFormField::InvoiceGoodsLinesJson, &self.invoice_goods_lines_preview)
-                            .display(DraftInvoiceFormField::InvoiceServiceLinesJson, &self.invoice_service_lines_preview)
+                            .display(DraftInvoiceFormField::InvoiceLinesJson, &self.invoice_lines_preview)
                             .m2m(DraftInvoiceFormField::Taxes, &self.tax_items)))
                         (PreEscaped(&self.extra_inputs))
                     },
@@ -1166,8 +1160,7 @@ pub struct DraftInvoiceCreateModalPage {
     pub form: DraftInvoiceForm,
     pub customer_display: String,
     pub tax_items: Vec<ManyToManyItem>,
-    pub invoice_goods_lines_preview: String,
-    pub invoice_service_lines_preview: String,
+    pub invoice_lines_preview: String,
     pub extra_inputs: String,
     pub error: String,
 }
@@ -1222,24 +1215,16 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
                                     &self.form.payment_term_lines_json,
                                 )
                                 .value(
-                                    DraftInvoiceFormField::InvoiceGoodsLinesJson,
-                                    &self.form.invoice_goods_lines_json,
-                                )
-                                .value(
-                                    DraftInvoiceFormField::InvoiceServiceLinesJson,
-                                    &self.form.invoice_service_lines_json,
+                                    DraftInvoiceFormField::InvoiceLinesJson,
+                                    &self.form.invoice_lines_json,
                                 )
                                 .display(
                                     DraftInvoiceFormField::CustomerId,
                                     &self.customer_display,
                                 )
                                 .display(
-                                    DraftInvoiceFormField::InvoiceGoodsLinesJson,
-                                    &self.invoice_goods_lines_preview,
-                                )
-                                .display(
-                                    DraftInvoiceFormField::InvoiceServiceLinesJson,
-                                    &self.invoice_service_lines_preview,
+                                    DraftInvoiceFormField::InvoiceLinesJson,
+                                    &self.invoice_lines_preview,
                                 )
                                 .m2m(DraftInvoiceFormField::Taxes, &self.tax_items),
                         ))
@@ -1271,8 +1256,7 @@ pub struct DraftInvoiceBulkEditModalPage {
     pub form: DraftInvoiceBulkEditForm,
     pub customer_display: String,
     pub tax_items: Vec<ManyToManyItem>,
-    pub invoice_goods_lines_preview: String,
-    pub invoice_service_lines_preview: String,
+    pub invoice_lines_preview: String,
     pub extra_inputs: String,
     pub error: String,
     pub can_submit: bool,
@@ -1342,24 +1326,16 @@ impl RenderTemplate for DraftInvoiceBulkEditModalPage {
                                     &self.form.payment_term_lines_json,
                                 )
                                 .value(
-                                    DraftInvoiceBulkEditFormField::InvoiceGoodsLinesJson,
-                                    &self.form.invoice_goods_lines_json,
-                                )
-                                .value(
-                                    DraftInvoiceBulkEditFormField::InvoiceServiceLinesJson,
-                                    &self.form.invoice_service_lines_json,
+                                    DraftInvoiceBulkEditFormField::InvoiceLinesJson,
+                                    &self.form.invoice_lines_json,
                                 )
                                 .display(
                                     DraftInvoiceBulkEditFormField::CustomerId,
                                     &self.customer_display,
                                 )
                                 .display(
-                                    DraftInvoiceBulkEditFormField::InvoiceGoodsLinesJson,
-                                    &self.invoice_goods_lines_preview,
-                                )
-                                .display(
-                                    DraftInvoiceBulkEditFormField::InvoiceServiceLinesJson,
-                                    &self.invoice_service_lines_preview,
+                                    DraftInvoiceBulkEditFormField::InvoiceLinesJson,
+                                    &self.invoice_lines_preview,
                                 )
                                 .m2m(DraftInvoiceBulkEditFormField::Taxes, &self.tax_items),
                         ))
@@ -1400,8 +1376,7 @@ pub struct DraftInvoiceDetailPage {
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
     pub tax_labels: String,
     pub extra_detail: String,
-    pub line_rows: Vec<InvoiceGoodsLineDisplayRow>,
-    pub service_line_rows: Vec<InvoiceServiceLineDisplayRow>,
+    pub line_rows: Vec<InvoiceLineDisplayRow>,
     pub can_edit: bool,
     pub error: Option<String>,
 }
@@ -1449,10 +1424,8 @@ impl DraftInvoiceDetailPage {
                     (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
                     (PreEscaped(&self.extra_detail))
-                    h3 class="font-semibold mt-4" { "Goods" }
-                    (field_invoice_goods_lines(&self.line_rows))
-                    h3 class="font-semibold mt-4" { "Services" }
-                    (field_invoice_service_lines(&self.service_line_rows))
+                    h3 class="font-semibold mt-4" { "Lines" }
+                    (field_invoice_lines(&self.line_rows))
                 }))
             }))
         }
@@ -1505,8 +1478,7 @@ pub struct PostedInvoiceDetailPage {
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
     pub tax_labels: String,
-    pub line_rows: Vec<InvoiceGoodsLineDisplayRow>,
-    pub service_line_rows: Vec<InvoiceServiceLineDisplayRow>,
+    pub line_rows: Vec<InvoiceLineDisplayRow>,
     pub journal_entry_id: i64,
     pub can_edit: bool,
     pub can_pay: bool,
@@ -1560,10 +1532,8 @@ impl PostedInvoiceDetailPage {
                     (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
                     (label("Journal entry", journal_entry_link(self.journal_entry_id)))
-                    h3 class="font-semibold mt-4" { "Goods" }
-                    (field_invoice_goods_lines(&self.line_rows))
-                    h3 class="font-semibold mt-4" { "Services" }
-                    (field_invoice_service_lines(&self.service_line_rows))
+                    h3 class="font-semibold mt-4" { "Lines" }
+                    (field_invoice_lines(&self.line_rows))
                 }))
             }))
         }
@@ -1617,8 +1587,7 @@ pub struct SettlementDetailContext {
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
     pub tax_labels: String,
-    pub line_rows: Vec<InvoiceGoodsLineDisplayRow>,
-    pub service_line_rows: Vec<InvoiceServiceLineDisplayRow>,
+    pub line_rows: Vec<InvoiceLineDisplayRow>,
     pub journal_entry_id: i64,
     pub payment_id: i64,
     pub payment_label: String,
@@ -1647,7 +1616,6 @@ impl SettlementDetailContext {
             payment_term_rows: vec![],
             tax_labels: String::new(),
             line_rows: vec![],
-            service_line_rows: vec![],
             journal_entry_id: 0,
             payment_id: 0,
             payment_label: String::new(),
@@ -1710,10 +1678,8 @@ fn settlement_detail_body(
                     &ctx.prior_partial_href,
                     ctx.prior_partial_label.as_deref().unwrap_or("—"),
                 )))
-                h3 class="font-semibold mt-4" { "Goods" }
-                (field_invoice_goods_lines(&ctx.line_rows))
-                h3 class="font-semibold mt-4" { "Services" }
-                (field_invoice_service_lines(&ctx.service_line_rows))
+                h3 class="font-semibold mt-4" { "Lines" }
+                (field_invoice_lines(&ctx.line_rows))
             }))
         }))
     }
@@ -1865,8 +1831,7 @@ pub struct CancelledInvoiceDetailPage {
     pub customer_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
     pub tax_labels: String,
-    pub line_rows: Vec<InvoiceGoodsLineDisplayRow>,
-    pub service_line_rows: Vec<InvoiceServiceLineDisplayRow>,
+    pub line_rows: Vec<InvoiceLineDisplayRow>,
     pub posted_invoice_label: String,
     pub posted_invoice_href: Option<String>,
     pub credit_note_label: String,
@@ -1905,10 +1870,8 @@ impl CancelledInvoiceDetailPage {
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
                     (label("Posted invoice", cancelled_detail_link(&self.posted_invoice_href, &self.posted_invoice_label)))
                     (label("Credit note", cancelled_detail_link(&self.credit_note_href, &self.credit_note_label)))
-                    h3 class="font-semibold mt-4" { "Goods" }
-                    (field_invoice_goods_lines(&self.line_rows))
-                    h3 class="font-semibold mt-4" { "Services" }
-                    (field_invoice_service_lines(&self.service_line_rows))
+                    h3 class="font-semibold mt-4" { "Lines" }
+                    (field_invoice_lines(&self.line_rows))
                 }))
             }))
         }

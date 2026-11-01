@@ -13,6 +13,9 @@ pub mod filters;
 pub mod forms;
 pub mod gender;
 pub mod handlers;
+pub mod hr_employee_detail;
+pub mod hr_preferences_patch;
+pub mod hr_sidebar;
 pub mod id_card_assets;
 pub mod id_card_template;
 pub mod keys;
@@ -25,7 +28,6 @@ pub mod roles;
 pub mod routes;
 pub mod scope;
 pub mod seed;
-pub mod serve_startup;
 pub mod state;
 pub mod templates;
 
@@ -49,6 +51,8 @@ lariv_core::define_passthrough_cap!(HrStateCap, HrTag, HrState);
 lariv_core::define_plugin_install! {
     plugin: HrTag;
     steps: [
+        cap_attach(hr_sidebar::HrSidebarTag, hr_sidebar::HrSidebarCap, hr_sidebar::HrSidebarCap::<frunk::HNil>::new()),
+        cap_hook(hr_sidebar::HrSidebarTag, hr_sidebar::HrSidebarCap, hr_sidebar::BaseHook),
         apps(apps::Hook),
         migrations(migrations::Hook),
         templates(templates::Hook),
@@ -58,7 +62,6 @@ lariv_core::define_plugin_install! {
         http(routes::Hook),
         state(StateHook),
         seeds(SeedsHook),
-        serve_startup(serve_startup::ServeStartupHook),
     ]
 }
 

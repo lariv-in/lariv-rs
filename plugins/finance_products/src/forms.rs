@@ -1,14 +1,14 @@
 use lariv_core::html_form::{
     FieldRender, FormCtx, FormWidget, html_form,
-    widgets::{Number, Text, Textarea},
+    widgets::{Number, Select, Text, Textarea},
 };
 use lariv_formula::variable_schema_input::VariableSchemaList;
 use maud::Markup;
 
 use lariv_plugin_finance_accounts::routes::JournalSelectRouteTag;
 use lariv_plugin_finance_taxes::routes::TaxMultiSelectRouteTag;
-use lariv_plugin_inventory::routes::StockFkSelectRouteTag;
 
+use crate::entities::product::ProductKind;
 use crate::journal_template::{FORMULA_VARIABLES_HINT, empty_lines_json};
 use crate::journal_template_editor::input_journal_template_lines;
 
@@ -31,19 +31,8 @@ pub struct ProductForm {
     #[form(label = "Name", required, widget = Text)]
     pub name: String,
 
-    #[form(
-        label = "Stock",
-        required,
-        widget = ForeignKey,
-        route = StockFkSelectRouteTag,
-        swap_key = "product-stock",
-        display = "stock",
-        placeholder = "Select stock…"
-    )]
-    pub stock_id: i64,
-
-    #[form(label = "Reference", widget = Text)]
-    pub reference: String,
+    #[form(label = "Kind", required, widget = Select, choices = "product_kind")]
+    pub product_kind: String,
 
     #[form(label = "Remarks", widget = Textarea, rows = 4)]
     pub remarks: String,
@@ -55,15 +44,6 @@ pub struct ProductForm {
         hint = "Inputs the price and journal template formulas can use, for one product. Invoice quantity multiplies the result."
     )]
     pub variables: Vec<String>,
-
-    #[form(
-        label = "Base price of one product",
-        required,
-        widget = Textarea,
-        rows = 3,
-        hint = "Rune expression for the cost of one product. Invoice quantity multiplies it. Example: 40 or length * 2."
-    )]
-    pub base_price_formula: String,
 
     #[form(
         label = "Sales price of one product",
@@ -91,8 +71,11 @@ pub struct ProductForm {
     )]
     pub journal_lines: String,
 
-    #[form(label = "HSN code", required, widget = Number)]
+    #[form(label = "HSN code", widget = Number)]
     pub hsn_code: i64,
+
+    #[form(label = "SAC code", widget = Number)]
+    pub sac_code: i64,
 
     #[form(
         label = "Taxes",
@@ -102,6 +85,12 @@ pub struct ProductForm {
         placeholder = "Select taxes…"
     )]
     pub tax_ids: Vec<i64>,
+}
+
+impl ProductForm {
+    pub fn product_kind_choices() -> &'static [(&'static str, &'static str)] {
+        ProductKind::choices()
+    }
 }
 
 #[html_form]
@@ -139,7 +128,6 @@ mod tests {
         assert!(html.contains("quantity — invoice line quantity"));
         assert!(html.contains("unit_rate — unit rate on the invoice line"));
         assert!(html.contains("pre_tax — quantity * unit_rate"));
-        assert!(html.contains("base_cost — base price of one product"));
         assert!(html.contains("sales_price — sales price of one product"));
         assert!(html.contains("hintOpen"));
     }

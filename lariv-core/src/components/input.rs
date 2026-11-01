@@ -1087,6 +1087,11 @@ pub fn input_foreign_key(opts: InputForeignKey<'_>) -> Markup {
                 if (search) {{
                     search.value = ''
                 }}
+                this.$dispatch('fk-select', {{
+                    name: this.fieldName,
+                    value: '',
+                    display: '',
+                }})
             }},
             closeOutside() {{
                 this.open = false

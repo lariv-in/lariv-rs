@@ -11,6 +11,8 @@ mod m00008_drop_purchase_gl_preferences;
 mod m00009_default_purchase_journal_entry_item_templates;
 mod m00010_purchase_vendors_from_customers;
 mod m00011_journal_formula_unit_rate;
+mod m00012_unify_purchase_catalogs;
+mod m00013_unify_document_lines;
 
 use super::FinancePurchasesTag;
 
@@ -39,6 +41,8 @@ impl MigratorTrait for Migrator {
             Box::new(m00009_default_purchase_journal_entry_item_templates::Migration),
             Box::new(m00008_drop_purchase_gl_preferences::Migration),
             Box::new(m00011_journal_formula_unit_rate::Migration),
+            Box::new(m00012_unify_purchase_catalogs::Migration),
+            Box::new(m00013_unify_document_lines::Migration),
         ]
     }
 }

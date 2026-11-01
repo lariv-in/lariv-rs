@@ -111,7 +111,7 @@ fn draft_fields(tz: String) -> Vec<FilterField> {
         ),
         decimal_expr_field("untaxed", "Untaxed amount", false, || {
             expr_line_untaxed(
-                "draft_invoice_goods_lines",
+                "draft_invoice_lines",
                 "draft_invoice_id",
                 "draft_invoices",
             )
@@ -120,14 +120,14 @@ fn draft_fields(tz: String) -> Vec<FilterField> {
         decimal_expr_field("tax", "Tax levied", true, || Expr::cust("0")),
         product_field(|id| {
             format!(
-                "EXISTS (SELECT 1 FROM draft_invoice_goods_lines \
-                  WHERE draft_invoice_goods_lines.draft_invoice_id = draft_invoices.id \
-                    AND draft_invoice_goods_lines.product_id = {id})"
+                "EXISTS (SELECT 1 FROM draft_invoice_lines \
+                  WHERE draft_invoice_lines.draft_invoice_id = draft_invoices.id \
+                    AND draft_invoice_lines.product_id = {id})"
             )
         }),
         number_expr_field("product_count", "Number of products", || {
             expr_line_product_count(
-                "draft_invoice_goods_lines",
+                "draft_invoice_lines",
                 "draft_invoice_id",
                 "draft_invoices",
             )
@@ -152,7 +152,7 @@ fn posted_fields(tz: String) -> Vec<FilterField> {
         ),
         decimal_expr_field("untaxed", "Untaxed amount", false, || {
             expr_line_untaxed(
-                "posted_invoice_goods_lines",
+                "posted_invoice_lines",
                 "posted_invoice_id",
                 "posted_invoices",
             )
@@ -163,20 +163,20 @@ fn posted_fields(tz: String) -> Vec<FilterField> {
         decimal_expr_field("tax", "Tax levied", false, || {
             expr_tax_levied_approx(
                 "posted_invoices",
-                "posted_invoice_goods_lines",
+                "posted_invoice_lines",
                 "posted_invoice_id",
             )
         }),
         product_field(|id| {
             format!(
-                "EXISTS (SELECT 1 FROM posted_invoice_goods_lines \
-                  WHERE posted_invoice_goods_lines.posted_invoice_id = posted_invoices.id \
-                    AND posted_invoice_goods_lines.product_id = {id})"
+                "EXISTS (SELECT 1 FROM posted_invoice_lines \
+                  WHERE posted_invoice_lines.posted_invoice_id = posted_invoices.id \
+                    AND posted_invoice_lines.product_id = {id})"
             )
         }),
         number_expr_field("product_count", "Number of products", || {
             expr_line_product_count(
-                "posted_invoice_goods_lines",
+                "posted_invoice_lines",
                 "posted_invoice_id",
                 "posted_invoices",
             )
@@ -199,7 +199,7 @@ fn cancelled_fields(tz: String) -> Vec<FilterField> {
         ),
         decimal_expr_field("untaxed", "Untaxed amount", false, || {
             expr_line_untaxed(
-                "cancelled_invoice_goods_lines",
+                "cancelled_invoice_lines",
                 "cancelled_invoice_id",
                 "cancelled_invoices",
             )
@@ -208,14 +208,14 @@ fn cancelled_fields(tz: String) -> Vec<FilterField> {
         decimal_expr_field("tax", "Tax levied", true, || Expr::cust("0")),
         product_field(|id| {
             format!(
-                "EXISTS (SELECT 1 FROM cancelled_invoice_goods_lines \
-                  WHERE cancelled_invoice_goods_lines.cancelled_invoice_id = cancelled_invoices.id \
-                    AND cancelled_invoice_goods_lines.product_id = {id})"
+                "EXISTS (SELECT 1 FROM cancelled_invoice_lines \
+                  WHERE cancelled_invoice_lines.cancelled_invoice_id = cancelled_invoices.id \
+                    AND cancelled_invoice_lines.product_id = {id})"
             )
         }),
         number_expr_field("product_count", "Number of products", || {
             expr_line_product_count(
-                "cancelled_invoice_goods_lines",
+                "cancelled_invoice_lines",
                 "cancelled_invoice_id",
                 "cancelled_invoices",
             )
@@ -249,9 +249,9 @@ fn settlement_fields(table: &'static str, tz: String) -> Vec<FilterField> {
         }),
         product_field(move |id| {
             format!(
-                "EXISTS (SELECT 1 FROM posted_invoice_goods_lines \
-                  WHERE posted_invoice_goods_lines.posted_invoice_id = {table}.posted_invoice_id \
-                    AND posted_invoice_goods_lines.product_id = {id})"
+                "EXISTS (SELECT 1 FROM posted_invoice_lines \
+                  WHERE posted_invoice_lines.posted_invoice_id = {table}.posted_invoice_id \
+                    AND posted_invoice_lines.product_id = {id})"
             )
         }),
         number_expr_field("product_count", "Number of products", move || {

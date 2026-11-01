@@ -5005,6 +5005,7 @@ dependencies = [
  "http 1.5.0",
  "lariv-core",
  "lariv-plugin-contacts",
+ "lariv-plugin-customer",
  "lariv-plugin-users",
  "lariv-rs-macros",
  "maud",
@@ -5021,11 +5022,11 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "axum",
+ "chrono",
  "frunk",
  "frunk_core",
  "lariv-core",
  "lariv-plugin-contacts",
- "lariv-plugin-crm",
  "lariv-plugin-users",
  "lariv-rs-macros",
  "maud",
@@ -5137,6 +5138,9 @@ dependencies = [
  "frunk_core",
  "http 1.5.0",
  "lariv-core",
+ "lariv-formula",
+ "lariv-plugin-customer",
+ "lariv-plugin-filesystem",
  "lariv-plugin-finance-common",
  "lariv-plugin-users",
  "lariv-rs-macros",
@@ -5215,12 +5219,12 @@ dependencies = [
  "lariv-formula",
  "lariv-plugin-contacts",
  "lariv-plugin-crm",
+ "lariv-plugin-customer",
  "lariv-plugin-filesystem",
  "lariv-plugin-finance-accounts",
  "lariv-plugin-finance-common",
  "lariv-plugin-finance-creditnotes",
  "lariv-plugin-finance-products",
- "lariv-plugin-finance-services",
  "lariv-plugin-finance-taxes",
  "lariv-plugin-llm-assistant",
  "lariv-plugin-users",
@@ -5261,7 +5265,6 @@ dependencies = [
  "lariv-plugin-finance-accounts",
  "lariv-plugin-finance-common",
  "lariv-plugin-finance-taxes",
- "lariv-plugin-inventory",
  "lariv-plugin-llm-assistant",
  "lariv-plugin-users",
  "lariv-rs-macros",
@@ -5297,7 +5300,6 @@ dependencies = [
  "lariv-plugin-finance-common",
  "lariv-plugin-finance-products",
  "lariv-plugin-finance-taxes",
- "lariv-plugin-inventory",
  "lariv-plugin-llm-assistant",
  "lariv-plugin-users",
  "lariv-rs-macros",
@@ -5334,12 +5336,12 @@ dependencies = [
  "lariv-formula",
  "lariv-plugin-contacts",
  "lariv-plugin-crm",
+ "lariv-plugin-customer",
  "lariv-plugin-filesystem",
  "lariv-plugin-finance-accounts",
  "lariv-plugin-finance-common",
  "lariv-plugin-finance-invoices",
  "lariv-plugin-finance-products",
- "lariv-plugin-finance-services",
  "lariv-plugin-finance-taxes",
  "lariv-plugin-users",
  "lariv-rs-macros",
@@ -5355,36 +5357,6 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
-]
-
-[[package]]
-name = "lariv-plugin-finance-services"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "axum",
- "chrono",
- "frunk",
- "frunk_core",
- "http 1.5.0",
- "lariv-core",
- "lariv-formula",
- "lariv-plugin-filesystem",
- "lariv-plugin-finance-accounts",
- "lariv-plugin-finance-common",
- "lariv-plugin-finance-taxes",
- "lariv-plugin-llm-assistant",
- "lariv-plugin-users",
- "lariv-rs-macros",
- "maud",
- "rune",
- "rust_decimal",
- "sea-orm",
- "sea-orm-migration",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -5483,6 +5455,130 @@ dependencies = [
 ]
 
 [[package]]
+name = "lariv-plugin-hr-attendance"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "frunk",
+ "frunk_core",
+ "http 1.5.0",
+ "lariv-core",
+ "lariv-plugin-hr",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "lariv-plugin-hr-holidays"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "chrono-tz",
+ "frunk",
+ "frunk_core",
+ "http 1.5.0",
+ "lariv-core",
+ "lariv-plugin-hr",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "reqwest",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "lariv-plugin-hr-job-posting"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "chrono",
+ "frunk",
+ "frunk_core",
+ "http 1.5.0",
+ "lariv-core",
+ "lariv-plugin-filesystem",
+ "lariv-plugin-forms",
+ "lariv-plugin-hr",
+ "lariv-plugin-users",
+ "lariv-plugin-website",
+ "lariv-rs-macros",
+ "maud",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "lariv-plugin-hr-leaves"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "chrono",
+ "frunk",
+ "frunk_core",
+ "http 1.5.0",
+ "lariv-core",
+ "lariv-plugin-hr",
+ "lariv-plugin-hr-attendance",
+ "lariv-plugin-hr-holidays",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "lariv-plugin-hr-overtime"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "frunk",
+ "frunk_core",
+ "http 1.5.0",
+ "lariv-core",
+ "lariv-plugin-hr",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "reqwest",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "lariv-plugin-import"
 version = "0.1.0"
 dependencies = [
@@ -5518,6 +5614,7 @@ dependencies = [
  "lariv-formula",
  "lariv-plugin-contacts",
  "lariv-plugin-crm",
+ "lariv-plugin-customer",
  "lariv-plugin-filesystem",
  "lariv-plugin-users",
  "lariv-rs-macros",
@@ -5849,10 +5946,14 @@ dependencies = [
  "lariv-plugin-finance-products",
  "lariv-plugin-finance-purchases",
  "lariv-plugin-finance-quotations",
- "lariv-plugin-finance-services",
  "lariv-plugin-finance-taxes",
  "lariv-plugin-forms",
  "lariv-plugin-hr",
+ "lariv-plugin-hr-attendance",
+ "lariv-plugin-hr-holidays",
+ "lariv-plugin-hr-job-posting",
+ "lariv-plugin-hr-leaves",
+ "lariv-plugin-hr-overtime",
  "lariv-plugin-import",
  "lariv-plugin-inventory",
  "lariv-plugin-llm-assistant",

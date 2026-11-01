@@ -35,12 +35,11 @@ use lariv_plugin_finance_accounts::templates::{
 };
 
 use crate::components::{
-    self, field_purchase_goods_lines, field_purchase_service_lines,
+    self, field_purchase_lines,
     fiscal_year_environment_selector,
 };
 use crate::logic::PaymentTermLineDisplayRow;
-use crate::logic::purchase_goods_line_editor::PurchaseGoodsLineDisplayRow;
-use crate::logic::purchase_service_line_editor::PurchaseServiceLineDisplayRow;
+use crate::logic::purchase_line_editor::PurchaseLineDisplayRow;
 
 use super::forms::{
     CancelPurchaseForm, CancelPurchaseFormField, DraftPurchaseBulkEditForm,
@@ -89,18 +88,6 @@ lariv_core::define_register_items! {
         PurchasePreferencesIdx: PurchasePreferencesPageTag => PurchasePreferencesPage,
         ConfirmDeleteIdx: DraftPurchaseConfirmDeletePageTag => ConfirmDeletePage,
         ConfirmBulkDeleteIdx: DraftPurchaseConfirmBulkDeletePageTag => ConfirmBulkDeletePage,
-        PurchaseProductListIdx: PurchaseProductListPageTag => crate::purchase_products::templates::ProductListPage,
-        PurchaseProductDetailIdx: PurchaseProductDetailPageTag => crate::purchase_products::templates::ProductDetailPage,
-        PurchaseProductEditModalIdx: PurchaseProductEditModalPageTag => crate::purchase_products::templates::ProductEditModalPage,
-        PurchaseProductCreateModalIdx: PurchaseProductCreateModalPageTag => crate::purchase_products::templates::ProductCreateModalPage,
-        PurchaseProductSelectIdx: PurchaseProductSelectPageTag => crate::purchase_products::templates::ProductSelectPage,
-        PurchaseProductConfirmDeleteIdx: PurchaseProductConfirmDeletePageTag => crate::purchase_products::templates::ConfirmDeletePage,
-        PurchaseServiceListIdx: PurchaseServiceListPageTag => crate::purchase_services::templates::ServiceListPage,
-        PurchaseServiceDetailIdx: PurchaseServiceDetailPageTag => crate::purchase_services::templates::ServiceDetailPage,
-        PurchaseServiceEditModalIdx: PurchaseServiceEditModalPageTag => crate::purchase_services::templates::ServiceEditModalPage,
-        PurchaseServiceCreateModalIdx: PurchaseServiceCreateModalPageTag => crate::purchase_services::templates::ServiceCreateModalPage,
-        PurchaseServiceSelectIdx: PurchaseServiceSelectPageTag => crate::purchase_services::templates::ServiceSelectPage,
-        PurchaseServiceConfirmDeleteIdx: PurchaseServiceConfirmDeletePageTag => crate::purchase_services::templates::ConfirmDeletePage,
     ]
 }
 
@@ -922,8 +909,7 @@ pub struct DraftPurchaseEditModalPage {
     pub error: String,
     pub vendor_display: String,
     pub tax_items: Vec<ManyToManyItem>,
-    pub purchase_goods_lines_preview: String,
-    pub purchase_service_lines_preview: String,
+    pub purchase_lines_preview: String,
     pub extra_inputs: String,
 }
 
@@ -952,11 +938,9 @@ impl RenderTemplate for DraftPurchaseEditModalPage {
                             .value(DraftPurchaseFormField::DeliveryDate, &self.form.delivery_date)
                             .value(DraftPurchaseFormField::VendorId, &self.form.vendor_id.to_string())
                             .value(DraftPurchaseFormField::PaymentTermLinesJson, &self.form.payment_term_lines_json)
-                            .value(DraftPurchaseFormField::PurchaseGoodsLinesJson, &self.form.purchase_goods_lines_json)
                             .display(DraftPurchaseFormField::VendorId, &self.vendor_display)
-                            .value(DraftPurchaseFormField::PurchaseServiceLinesJson, &self.form.purchase_service_lines_json)
-                            .display(DraftPurchaseFormField::PurchaseGoodsLinesJson, &self.purchase_goods_lines_preview)
-                            .display(DraftPurchaseFormField::PurchaseServiceLinesJson, &self.purchase_service_lines_preview)
+                            .value(DraftPurchaseFormField::PurchaseLinesJson, &self.form.purchase_lines_json)
+                            .display(DraftPurchaseFormField::PurchaseLinesJson, &self.purchase_lines_preview)
                             .m2m(DraftPurchaseFormField::Taxes, &self.tax_items)))
                         (PreEscaped(&self.extra_inputs))
                     },
@@ -986,8 +970,7 @@ pub struct DraftPurchaseCreateModalPage {
     pub form: DraftPurchaseForm,
     pub vendor_display: String,
     pub tax_items: Vec<ManyToManyItem>,
-    pub purchase_goods_lines_preview: String,
-    pub purchase_service_lines_preview: String,
+    pub purchase_lines_preview: String,
     pub extra_inputs: String,
     pub error: String,
 }
@@ -1038,21 +1021,21 @@ impl RenderTemplate for DraftPurchaseCreateModalPage {
                                     &self.form.payment_term_lines_json,
                                 )
                                 .value(
-                                    DraftPurchaseFormField::PurchaseGoodsLinesJson,
-                                    &self.form.purchase_goods_lines_json,
+                                    DraftPurchaseFormField::PurchaseLinesJson,
+                                    &self.form.purchase_lines_json,
                                 )
                                 .value(
-                                    DraftPurchaseFormField::PurchaseServiceLinesJson,
-                                    &self.form.purchase_service_lines_json,
+                                    DraftPurchaseFormField::PurchaseLinesJson,
+                                    &self.form.purchase_lines_json,
                                 )
                                 .display(DraftPurchaseFormField::VendorId, &self.vendor_display)
                                 .display(
-                                    DraftPurchaseFormField::PurchaseGoodsLinesJson,
-                                    &self.purchase_goods_lines_preview,
+                                    DraftPurchaseFormField::PurchaseLinesJson,
+                                    &self.purchase_lines_preview,
                                 )
                                 .display(
-                                    DraftPurchaseFormField::PurchaseServiceLinesJson,
-                                    &self.purchase_service_lines_preview,
+                                    DraftPurchaseFormField::PurchaseLinesJson,
+                                    &self.purchase_lines_preview,
                                 )
                                 .m2m(DraftPurchaseFormField::Taxes, &self.tax_items),
                         ))
@@ -1084,8 +1067,7 @@ pub struct DraftPurchaseBulkEditModalPage {
     pub form: DraftPurchaseBulkEditForm,
     pub vendor_display: String,
     pub tax_items: Vec<ManyToManyItem>,
-    pub purchase_goods_lines_preview: String,
-    pub purchase_service_lines_preview: String,
+    pub purchase_lines_preview: String,
     pub extra_inputs: String,
     pub error: String,
     pub can_submit: bool,
@@ -1151,24 +1133,24 @@ impl RenderTemplate for DraftPurchaseBulkEditModalPage {
                                     &self.form.payment_term_lines_json,
                                 )
                                 .value(
-                                    DraftPurchaseBulkEditFormField::PurchaseGoodsLinesJson,
-                                    &self.form.purchase_goods_lines_json,
+                                    DraftPurchaseBulkEditFormField::PurchaseLinesJson,
+                                    &self.form.purchase_lines_json,
                                 )
                                 .value(
-                                    DraftPurchaseBulkEditFormField::PurchaseServiceLinesJson,
-                                    &self.form.purchase_service_lines_json,
+                                    DraftPurchaseBulkEditFormField::PurchaseLinesJson,
+                                    &self.form.purchase_lines_json,
                                 )
                                 .display(
                                     DraftPurchaseBulkEditFormField::VendorId,
                                     &self.vendor_display,
                                 )
                                 .display(
-                                    DraftPurchaseBulkEditFormField::PurchaseGoodsLinesJson,
-                                    &self.purchase_goods_lines_preview,
+                                    DraftPurchaseBulkEditFormField::PurchaseLinesJson,
+                                    &self.purchase_lines_preview,
                                 )
                                 .display(
-                                    DraftPurchaseBulkEditFormField::PurchaseServiceLinesJson,
-                                    &self.purchase_service_lines_preview,
+                                    DraftPurchaseBulkEditFormField::PurchaseLinesJson,
+                                    &self.purchase_lines_preview,
                                 )
                                 .m2m(DraftPurchaseBulkEditFormField::Taxes, &self.tax_items),
                         ))
@@ -1208,8 +1190,7 @@ pub struct DraftPurchaseDetailPage {
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
     pub tax_labels: String,
     pub extra_detail: String,
-    pub line_rows: Vec<PurchaseGoodsLineDisplayRow>,
-    pub service_line_rows: Vec<PurchaseServiceLineDisplayRow>,
+    pub line_rows: Vec<PurchaseLineDisplayRow>,
     pub can_edit: bool,
     pub error: Option<String>,
 }
@@ -1256,10 +1237,8 @@ impl DraftPurchaseDetailPage {
                     (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
                     (PreEscaped(&self.extra_detail))
-                    h3 class="font-semibold mt-4" { "Goods" }
-                    (field_purchase_goods_lines(&self.line_rows))
-                    h3 class="font-semibold mt-4" { "Services" }
-                    (field_purchase_service_lines(&self.service_line_rows))
+                    h3 class="font-semibold mt-4" { "Lines" }
+                    (field_purchase_lines(&self.line_rows))
                 }))
             }))
         }
@@ -1311,8 +1290,7 @@ pub struct PostedPurchaseDetailPage {
     pub vendor_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
     pub tax_labels: String,
-    pub line_rows: Vec<PurchaseGoodsLineDisplayRow>,
-    pub service_line_rows: Vec<PurchaseServiceLineDisplayRow>,
+    pub line_rows: Vec<PurchaseLineDisplayRow>,
     pub journal_entry_id: i64,
     pub can_edit: bool,
 }
@@ -1342,10 +1320,8 @@ impl PostedPurchaseDetailPage {
                     (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
                     (label("Journal entry", journal_entry_link(self.journal_entry_id)))
-                    h3 class="font-semibold mt-4" { "Goods" }
-                    (field_purchase_goods_lines(&self.line_rows))
-                    h3 class="font-semibold mt-4" { "Services" }
-                    (field_purchase_service_lines(&self.service_line_rows))
+                    h3 class="font-semibold mt-4" { "Lines" }
+                    (field_purchase_lines(&self.line_rows))
                 }))
             }))
         }
@@ -1397,8 +1373,7 @@ pub struct CancelledPurchaseDetailPage {
     pub vendor_name: String,
     pub payment_term_rows: Vec<PaymentTermLineDisplayRow>,
     pub tax_labels: String,
-    pub line_rows: Vec<PurchaseGoodsLineDisplayRow>,
-    pub service_line_rows: Vec<PurchaseServiceLineDisplayRow>,
+    pub line_rows: Vec<PurchaseLineDisplayRow>,
     pub posted_purchase_label: String,
     pub posted_purchase_href: Option<String>,
     pub reason: String,
@@ -1441,10 +1416,8 @@ impl CancelledPurchaseDetailPage {
                     (label("Reason", field_textarea(FieldTextarea { value: &self.reason, classes: "" })))
                     (label("Posted purchase", cancelled_detail_link(&self.posted_purchase_href, &self.posted_purchase_label)))
                     (label("Reversal", cancelled_detail_link(&self.reversal_href, &self.reversal_label)))
-                    h3 class="font-semibold mt-4" { "Goods" }
-                    (field_purchase_goods_lines(&self.line_rows))
-                    h3 class="font-semibold mt-4" { "Services" }
-                    (field_purchase_service_lines(&self.service_line_rows))
+                    h3 class="font-semibold mt-4" { "Lines" }
+                    (field_purchase_lines(&self.line_rows))
                 }))
             }))
         }
@@ -1791,7 +1764,7 @@ impl PurchasePreferencesPage {
     fn body(&self) -> Markup {
         html! {
             (field_title(FieldTitle { value: "Purchase preferences", classes: "" }))
-            p { "Purchase accounts come from each product and service journal entry template." }
+            p { "Purchase accounts come from each product journal entry template." }
         }
     }
 }

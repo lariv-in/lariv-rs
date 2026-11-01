@@ -1,10 +1,14 @@
 use std::collections::HashMap;
 
 use axum::{
+    Form,
     extract::{Path, Query},
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
+use maud::{Markup, html};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
+use serde::Deserialize;
 
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
@@ -16,8 +20,6 @@ use lariv_core::web::{
 };
 use lariv_plugin_users::middleware::RequireAuth;
 use lariv_plugin_users::role_authorization::scope_allowed;
-use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
-use serde::Deserialize;
 
 use crate::{
     entities::{
@@ -28,20 +30,25 @@ use crate::{
         journal_entry_item::{self, Entity as JournalEntryItemEntity},
     },
     forms::{CustomSourceDocForm, CustomSourceDocIndexCreateForm},
+    journal_lines_editor::input_journal_lines,
+    journal_template,
     keys::CustomSourceDocIndexCreateModalKey,
     logic::{
         custom_source_doc::{
             create_custom_source_doc, delete_custom_source_doc, empty_lines_json,
-            ensure_posting_accounts, lines_form_value, parse_journal_lines,
-            update_custom_source_doc,
+            ensure_posting_accounts, journal_specs_editor_json, lines_form_value,
+            parse_journal_lines, update_custom_source_doc,
         },
-        journal::{cascade_delete_preview, collect_journal_entry_cascade},
+        journal::{JournalLineSpec, cascade_delete_preview, collect_journal_entry_cascade},
     },
     routes::{
         CustomSourceDocDetailRouteTag, CustomSourceDocEditPostRouteTag,
         CustomSourceDocIndexRouteTag,
     },
-    scope::{find_journal_scoped, load_default_journal, load_journal_display_label},
+    scope::{
+        find_custom_source_doc_template_scoped, find_journal_scoped, load_default_journal,
+        load_journal_display_label,
+    },
     source_doc_registry::SourceDocRegistry,
     state::AccountsState,
     templates::{
@@ -49,10 +56,15 @@ use crate::{
         CustomSourceDocFormPage, CustomSourceDocIndexCreateModalPage, CustomSourceDocIndexPage,
         CustomSourceDocIndexRow, CustomSourceDocLineRow,
     },
+    variable_values_editor::{
+        empty_variable_values_fields, input_variable_values_fields, values_json_from_form_map,
+    },
 };
 
 use super::ModalNameQuery;
-use super::util::{parse_i64, path_and_query};
+use super::util::{
+    optional_fk, optional_fk_form_value, parse_i64, path_and_query, vnode_display, vnode_link,
+};
 
 #[derive(Debug, Deserialize, Default)]
 pub struct CustomSourceDocIndexQuery {
@@ -130,27 +142,143 @@ pub async fn index(
     html_built_page_with_slots(&page, &chrome, &slot_ctx)
 }
 
+#[derive(Debug, Deserialize, Default)]
+pub struct IndexCreateGetQuery {
+    #[serde(flatten)]
+    pub modal: ModalNameQuery,
+    #[serde(default)]
+    pub template_id: Option<String>,
+}
+
 pub async fn index_create_get(
     Cap(state): Cap<AccountsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    Query(q): Query<ModalNameQuery>,
+    Query(q): Query<IndexCreateGetQuery>,
 ) -> maud::Markup {
     let (journal_id, journal_display) = match load_default_journal(&state.db).await {
         Some(journal) if journal.is_mutable => (journal.id.to_string(), journal.name),
         _ => (String::new(), String::new()),
     };
+    let (template_id, template_display, variables_schema, title, content, attached_vnode_id) =
+        match q.template_id.as_deref().and_then(parse_i64).filter(|id| *id > 0) {
+            Some(id) => match find_custom_source_doc_template_scoped(&state.db, id).await {
+                Some(t) => (
+                    t.id.to_string(),
+                    t.name.clone(),
+                    t.variables.clone(),
+                    t.name,
+                    t.remarks.unwrap_or_default(),
+                    t.attached_vnode_id,
+                ),
+                None => (
+                    String::new(),
+                    String::new(),
+                    "{}".into(),
+                    String::new(),
+                    String::new(),
+                    None,
+                ),
+            },
+            None => (
+                String::new(),
+                String::new(),
+                "{}".into(),
+                String::new(),
+                String::new(),
+                None,
+            ),
+        };
+    let attached_vnode_display = vnode_display(&state.db, attached_vnode_id).await;
     let page = index_form_page(IndexFormDraft {
-        form_name: q.form_name(),
-        refresh_table: q.refresh_table(),
+        form_name: q.modal.form_name(),
+        refresh_table: q.modal.refresh_table(),
         journal_id,
         journal_display,
-        title: String::new(),
-        content: String::new(),
+        template_id,
+        template_display,
+        variables_schema,
+        variable_values: "{}".into(),
+        title,
+        content,
+        attached_vnode_id: optional_fk_form_value(attached_vnode_id),
+        attached_vnode_display,
         lines: empty_lines_json(),
         error: String::new(),
     });
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct TemplateVariablesQuery {
+    #[serde(default)]
+    pub template_id: Option<String>,
+}
+
+pub async fn template_variables(
+    Cap(state): Cap<AccountsState>,
+    RequireAuth(_ctx): RequireAuth,
+    Query(q): Query<TemplateVariablesQuery>,
+) -> Markup {
+    let Some(id) = q
+        .template_id
+        .as_deref()
+        .and_then(parse_i64)
+        .filter(|id| *id > 0)
+    else {
+        return empty_variable_values_fields();
+    };
+    let Some(template) = find_custom_source_doc_template_scoped(&state.db, id).await else {
+        return empty_variable_values_fields();
+    };
+    input_variable_values_fields(&template.variables, "{}")
+}
+
+pub async fn fill_journal_lines(
+    Cap(state): Cap<AccountsState>,
+    RequireAuth(_ctx): RequireAuth,
+    Form(map): Form<HashMap<String, String>>,
+) -> Markup {
+    let lines_field = map.get("Lines").cloned().unwrap_or_else(empty_lines_json);
+    let render_err = |error: String| {
+        html! {
+            p class="text-error mb-2" { (error) }
+            (input_journal_lines("Lines", "Lines", &lines_field))
+        }
+    };
+    let Some(template_id) = map
+        .get("TemplateID")
+        .and_then(|s| parse_i64(s))
+        .filter(|id| *id > 0)
+    else {
+        return render_err("Select a transaction template first".into());
+    };
+    let Some(template) = find_custom_source_doc_template_scoped(&state.db, template_id).await else {
+        return render_err("Transaction template not found".into());
+    };
+    let variable_values = values_json_from_form_map(&template.variables, &map);
+    let items = match journal_template::load_template_lines(&state.db, template.id).await {
+        Ok(items) => items,
+        Err(e) => return render_err(e),
+    };
+    let parsed = journal_template::parsed_lines_from_items(&items);
+    let evaluated =
+        match journal_template::evaluate_template_lines(&template.variables, &parsed, &variable_values)
+        {
+            Ok(lines) => lines,
+            Err(e) => return render_err(e),
+        };
+    let specs: Vec<JournalLineSpec> = evaluated
+        .into_iter()
+        .map(|line| JournalLineSpec {
+            account_id: line.account_id,
+            amount: line.amount,
+        })
+        .collect();
+    match journal_specs_editor_json(&state.db, &specs, &[], "journal-line").await {
+        Ok(lines) => input_journal_lines("Lines", "Lines", &lines),
+        Err(e) => render_err(e),
+    }
 }
 
 pub async fn index_create_post(
@@ -162,20 +290,36 @@ pub async fn index_create_post(
     HtmlFormBody(form): HtmlFormBody<CustomSourceDocIndexCreateForm>,
 ) -> Response {
     let journal_id_raw = form.journal_id.clone();
+    let template_id_raw = form.template_id.clone();
     let title = form.title.clone();
     let content = form.content.clone();
+    let attached_vnode_id_raw = form.attached_vnode_id.clone();
+    let variable_values = if form.variable_values.trim().is_empty() {
+        "{}".into()
+    } else {
+        form.variable_values.clone()
+    };
     let lines_raw = submitted_lines(&form.lines);
     let form_name = q.form_name();
     let refresh_table = q.refresh_table();
     let journal_display = journal_picker_label(&state.db, &journal_id_raw).await;
+    let (template_display, variables_schema) =
+        template_picker_state(&state.db, &template_id_raw).await;
+    let attached_vnode_display = vnode_display(&state.db, optional_fk(&attached_vnode_id_raw)).await;
     let render_err = |error: String| {
         let page = index_form_page(IndexFormDraft {
             form_name: form_name.clone(),
             refresh_table: refresh_table.clone(),
             journal_id: journal_id_raw.clone(),
             journal_display: journal_display.clone(),
+            template_id: template_id_raw.clone(),
+            template_display: template_display.clone(),
+            variables_schema: variables_schema.clone(),
+            variable_values: variable_values.clone(),
             title: title.clone(),
             content: content.clone(),
+            attached_vnode_id: attached_vnode_id_raw.clone(),
+            attached_vnode_display: attached_vnode_display.clone(),
             lines: lines_raw.clone(),
             error,
         });
@@ -199,6 +343,7 @@ pub async fn index_create_post(
         journal_id,
         &form.title,
         &form.content,
+        optional_fk(&form.attached_vnode_id),
         ctx.user.id,
         &lines,
     )
@@ -224,10 +369,14 @@ pub async fn detail(
         return Redirect::to(&CustomSourceDocIndexRouteTag.url()).into_response();
     };
     let lines = load_line_rows(&state.db, loaded.doc.journal_entry_id).await;
+    let (attached_vnode_href, attached_vnode_label) =
+        vnode_link(&state.db, loaded.doc.attached_vnode_id).await;
     let page = CustomSourceDocDetailPage {
         id: loaded.doc.id,
         title: loaded.doc.title,
         content: loaded.doc.content,
+        attached_vnode_href,
+        attached_vnode_label,
         created_by: user_name(&state.db, loaded.doc.created_by_id).await,
         created_at: loaded
             .doc
@@ -255,6 +404,7 @@ pub async fn edit_get(
         .await
         .unwrap_or_else(|_err| empty_lines_json());
     let mutable = can_mutate() && loaded.journal.is_mutable;
+    let attached_vnode_display = vnode_display(&state.db, loaded.doc.attached_vnode_id).await;
     let page = form_page(
         id,
         loaded.journal.name,
@@ -263,6 +413,8 @@ pub async fn edit_get(
             post_path: CustomSourceDocEditPostRouteTag::new(id).path(),
             title: loaded.doc.title,
             content: loaded.doc.content,
+            attached_vnode_id: optional_fk_form_value(loaded.doc.attached_vnode_id),
+            attached_vnode_display,
             lines,
             error: if mutable {
                 String::new()
@@ -288,6 +440,8 @@ pub async fn edit_post(
     };
     let journal_name = loaded.journal.name.clone();
     let mutable = can_mutate() && loaded.journal.is_mutable;
+    let attached_vnode_display =
+        vnode_display(&state.db, optional_fk(&form.attached_vnode_id)).await;
     let render_err = |error: String| {
         let page = form_page(
             id,
@@ -297,6 +451,8 @@ pub async fn edit_post(
                 post_path: CustomSourceDocEditPostRouteTag::new(id).path(),
                 title: form.title.clone(),
                 content: form.content.clone(),
+                attached_vnode_id: form.attached_vnode_id.clone(),
+                attached_vnode_display: attached_vnode_display.clone(),
                 lines: submitted_lines(&form.lines),
                 error,
                 can_save: mutable,
@@ -312,7 +468,16 @@ pub async fn edit_post(
     if let Err(e) = ensure_posting_accounts(&state.db, &lines).await {
         return render_err(e);
     }
-    match update_custom_source_doc(&state.db, id, &form.title, &form.content, &lines).await {
+    match update_custom_source_doc(
+        &state.db,
+        id,
+        &form.title,
+        &form.content,
+        optional_fk(&form.attached_vnode_id),
+        &lines,
+    )
+    .await
+    {
         Ok(()) => Redirect::to(&CustomSourceDocDetailRouteTag::new(id).url()).into_response(),
         Err(e) => render_err(e),
     }
@@ -433,6 +598,8 @@ struct FormDraft {
     post_path: String,
     title: String,
     content: String,
+    attached_vnode_id: String,
+    attached_vnode_display: String,
     lines: String,
     error: String,
     can_save: bool,
@@ -536,8 +703,14 @@ struct IndexFormDraft {
     refresh_table: String,
     journal_id: String,
     journal_display: String,
+    template_id: String,
+    template_display: String,
+    variables_schema: String,
+    variable_values: String,
     title: String,
     content: String,
+    attached_vnode_id: String,
+    attached_vnode_display: String,
     lines: String,
     error: String,
 }
@@ -548,10 +721,29 @@ fn index_form_page(draft: IndexFormDraft) -> CustomSourceDocIndexCreateModalPage
         refresh_table: draft.refresh_table,
         journal_id: draft.journal_id,
         journal_display: draft.journal_display,
+        template_id: draft.template_id,
+        template_display: draft.template_display,
+        variables_schema: draft.variables_schema,
+        variable_values: draft.variable_values,
         title: draft.title,
         content: draft.content,
+        attached_vnode_id: draft.attached_vnode_id,
+        attached_vnode_display: draft.attached_vnode_display,
         lines: draft.lines,
         error: draft.error,
+    }
+}
+
+async fn template_picker_state(
+    db: &sea_orm::DatabaseConnection,
+    raw: &str,
+) -> (String, String) {
+    match parse_i64(raw).filter(|id| *id > 0) {
+        Some(id) => match find_custom_source_doc_template_scoped(db, id).await {
+            Some(t) => (t.name, t.variables),
+            None => (String::new(), "{}".into()),
+        },
+        None => (String::new(), "{}".into()),
     }
 }
 
@@ -563,6 +755,8 @@ fn form_page(id: i64, journal_name: String, draft: FormDraft) -> CustomSourceDoc
         post_path: draft.post_path,
         title: draft.title,
         content: draft.content,
+        attached_vnode_id: draft.attached_vnode_id,
+        attached_vnode_display: draft.attached_vnode_display,
         lines: draft.lines,
         error: draft.error,
         can_save: draft.can_save,

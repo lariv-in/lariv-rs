@@ -16,7 +16,7 @@ use crate::{
     handlers::{ModalNameQuery, applicants::person_input_from_form},
     keys::ExEmployeeCreateModalKey,
     logic::ex_employee::create_ex_employee,
-    routes::{ApplicantHubRouteTag, ExEmployeeDetailRouteTag},
+    routes::{ExEmployeeDetailRouteTag, PeopleHubRouteTag},
     scope::{ex_employee_display_name, find_ex_employee_scoped, format_timestamp},
     state::HrState,
     templates::{ExEmployeeDetailPage, PersonCreateKind, PersonCreateModalPage},
@@ -74,7 +74,7 @@ pub async fn detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(ex_employee) = find_ex_employee_scoped(&state.db, id, &ctx).await else {
-        return Redirect::to(&ApplicantHubRouteTag.url()).into_response();
+        return Redirect::to(&PeopleHubRouteTag.url()).into_response();
     };
     let page = ExEmployeeDetailPage {
         id: ex_employee.id,

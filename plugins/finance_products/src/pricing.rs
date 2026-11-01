@@ -1,9 +1,7 @@
 //! Product price formulas and line amounts.
 //!
-//! A product stores a [`VariableSchema`], a base price formula, and a sales price
-//! formula. Each formula is the price of one product. Invoice line quantity
-//! multiplies that amount. Variables such as length and weight describe the
-//! single product; they are not a substitute for line quantity.
+//! A product stores a [`VariableSchema`] and a sales price formula. Each formula
+//! is the price of one product. Invoice line quantity multiplies that amount.
 
 use rust_decimal::Decimal;
 use serde::Serialize;
@@ -137,9 +135,9 @@ pub fn unit_formula_amount(
     }
 }
 
-/// Line cost from the base price formula of one product, times `quantity`.
+/// Line amount from a product price formula, times `quantity`.
 ///
-/// The formula is the cost of a single product. When it names a schema
+/// The formula is the price of a single product. When it names a schema
 /// variable, the saved line values are supplied, then `quantity` multiplies
 /// the result.
 pub fn line_cost(

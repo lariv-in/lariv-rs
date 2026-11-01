@@ -4,34 +4,19 @@ use lariv_core::html_form::{
 use lariv_plugin_crm::routes::CustomerFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
 use lariv_plugin_finance_invoices::components::{
-    InputInvoiceGoodsLinesDraft, InputInvoiceServiceLinesDraft, input_invoice_goods_lines_draft,
-    input_invoice_service_lines_draft,
+    InputInvoiceLinesDraft, input_invoice_lines_draft,
 };
 
-use crate::routes::{QuotationGoodsLinePriceRouteTag, QuotationServiceLinePriceRouteTag};
+use crate::routes::QuotationLinePriceRouteTag;
 
-pub struct QuotationGoodsLines;
-impl FormWidget for QuotationGoodsLines {
+pub struct QuotationLines;
+impl FormWidget for QuotationLines {
     fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> maud::Markup {
-        let price_url = QuotationGoodsLinePriceRouteTag.url();
-        input_invoice_goods_lines_draft(InputInvoiceGoodsLinesDraft {
+        let price_url = QuotationLinePriceRouteTag.url();
+        input_invoice_lines_draft(InputInvoiceLinesDraft {
             name: field.name,
             defaults: field.value,
-            preview: ctx.display_of("quotation_goods_lines_preview"),
-            price_url: &price_url,
-            ..Default::default()
-        })
-    }
-}
-
-pub struct QuotationServiceLines;
-impl FormWidget for QuotationServiceLines {
-    fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> maud::Markup {
-        let price_url = QuotationServiceLinePriceRouteTag.url();
-        input_invoice_service_lines_draft(InputInvoiceServiceLinesDraft {
-            name: field.name,
-            defaults: field.value,
-            preview: ctx.display_of("quotation_service_lines_preview"),
+            preview: ctx.display_of("quotation_lines_preview"),
             price_url: &price_url,
             ..Default::default()
         })
@@ -64,20 +49,12 @@ pub struct QuotationForm {
     pub remarks: String,
 
     #[form(
-        label = "Goods lines",
-        widget = QuotationGoodsLines,
-        display = "quotation_goods_lines_preview",
+        label = "Lines",
+        widget = QuotationLines,
+        display = "quotation_lines_preview",
         hint = "Quantity multiplies the unit price of one product. A typed unit price is kept."
     )]
-    pub goods_lines_json: String,
-
-    #[form(
-        label = "Service lines",
-        widget = QuotationServiceLines,
-        display = "quotation_service_lines_preview",
-        hint = "Quantity multiplies the unit price of one service. A typed unit price is kept."
-    )]
-    pub service_lines_json: String,
+    pub lines_json: String,
 }
 
 #[html_form]

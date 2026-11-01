@@ -6,7 +6,7 @@ use lariv_plugin_contacts::entities::{
     company::{self, Entity as CompanyEntity},
     contact::Entity as ContactEntity,
 };
-use lariv_plugin_crm::entities::customer::Entity as CustomerEntity;
+use lariv_plugin_customer::entities::customer::Entity as CustomerEntity;
 use lariv_plugin_filesystem::state::FilesystemState;
 use minijinja::{Environment, UndefinedBehavior};
 use sea_orm::EntityTrait;

@@ -24,8 +24,6 @@ pub mod preferences_hints;
 pub mod purchase_pdf_addon;
 pub mod purchase_pdf_assets;
 pub mod purchase_pdf_template;
-pub mod purchase_products;
-pub mod purchase_services;
 pub mod routes;
 pub mod rune_env;
 pub mod scope;

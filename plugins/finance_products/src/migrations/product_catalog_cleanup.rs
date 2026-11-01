@@ -6,7 +6,7 @@
 //! That move also lives on the invoice and purchase migrations, which skip it
 //! when `services` is not installed yet. A later run has to finish the move
 //! before those products can be deleted. It then drops `product_type` and
-//! requires `products.stock_id`.
+//! may require `products.stock_id` when that column still exists (pre m00025).
 
 pub const CLEANUP_PRODUCT_CATALOG: &str = r#"
 DO $$
@@ -178,7 +178,14 @@ BEGIN
         ALTER TABLE services DROP COLUMN legacy_product_id;
     END IF;
 
-    IF to_regclass('public.inventory_stocks') IS NOT NULL
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'products'
+          AND column_name = 'stock_id'
+    )
+       AND to_regclass('public.inventory_stocks') IS NOT NULL
        AND EXISTS (
         SELECT 1
         FROM information_schema.columns

@@ -126,7 +126,27 @@ BEGIN
     IF to_regclass('public.products') IS NULL THEN
         RAISE EXCEPTION 'purchase products require the products table';
     END IF;
+
+    -- Fresh installs may already have run finance_products catalog unification
+    -- (product_kind, no stock_id / base_price_formula). Skip the legacy copy;
+    -- m00012 drops these empty purchase catalog tables and keeps lines on products.
     IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'products'
+          AND column_name = 'product_kind'
+    ) THEN
+        NULL;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'products'
+          AND column_name = 'stock_id'
+    ) AND EXISTS (
         SELECT 1
         FROM products
         WHERE stock_id IS NULL
@@ -164,32 +184,30 @@ BEGIN
     WHERE product_id IN (SELECT id FROM purchase_products)
     ON CONFLICT DO NOTHING;
 
-    IF to_regclass('public.services') IS NULL THEN
-        RAISE EXCEPTION 'purchase services require the services table';
+    IF to_regclass('public.services') IS NOT NULL THEN
+        INSERT INTO purchase_services (
+            id, created_at, updated_at, reference, remarks, name, sac_code,
+            variables, base_price_formula, sales_price_formula
+        )
+        SELECT
+            id, created_at, updated_at, reference, remarks, name, sac_code,
+            variables, base_price_formula, sales_price_formula
+        FROM services
+        WHERE id IN (
+            SELECT service_id FROM draft_purchase_service_lines
+            UNION
+            SELECT service_id FROM posted_purchase_service_lines
+            UNION
+            SELECT service_id FROM cancelled_purchase_service_lines
+        )
+        ON CONFLICT (id) DO NOTHING;
+
+        INSERT INTO purchase_service_taxes (service_id, tax_id)
+        SELECT service_id, tax_id
+        FROM service_taxes
+        WHERE service_id IN (SELECT id FROM purchase_services)
+        ON CONFLICT DO NOTHING;
     END IF;
-
-    INSERT INTO purchase_services (
-        id, created_at, updated_at, reference, remarks, name, sac_code,
-        variables, base_price_formula, sales_price_formula
-    )
-    SELECT
-        id, created_at, updated_at, reference, remarks, name, sac_code,
-        variables, base_price_formula, sales_price_formula
-    FROM services
-    WHERE id IN (
-        SELECT service_id FROM draft_purchase_service_lines
-        UNION
-        SELECT service_id FROM posted_purchase_service_lines
-        UNION
-        SELECT service_id FROM cancelled_purchase_service_lines
-    )
-    ON CONFLICT (id) DO NOTHING;
-
-    INSERT INTO purchase_service_taxes (service_id, tax_id)
-    SELECT service_id, tax_id
-    FROM service_taxes
-    WHERE service_id IN (SELECT id FROM purchase_services)
-    ON CONFLICT DO NOTHING;
 
     PERFORM setval(
         pg_get_serial_sequence('purchase_products', 'id'),
@@ -227,6 +245,19 @@ DO $$
 DECLARE
     r record;
 BEGIN
+    -- After m00005 the line tables are `*_goods_lines` / `*_service_lines`.
+    -- Catalog unification (`product_kind`) skips the copy above; leave line FKs
+    -- on `products` / `services` and let m00012 / m00013 finish the merge.
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'products'
+          AND column_name = 'product_kind'
+    ) THEN
+        RETURN;
+    END IF;
+
     FOR r IN
         SELECT c.conname AS constraint_name, src.relname AS table_name
         FROM pg_constraint c
@@ -262,64 +293,87 @@ BEGIN
     LOOP
         EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I', r.table_name, r.constraint_name);
     END LOOP;
+
+    IF to_regclass('public.draft_purchase_goods_lines') IS NOT NULL THEN
+        ALTER TABLE draft_purchase_goods_lines
+            DROP CONSTRAINT IF EXISTS draft_purchase_goods_lines_purchase_product_id_fkey;
+        ALTER TABLE draft_purchase_goods_lines
+            ADD CONSTRAINT draft_purchase_goods_lines_purchase_product_id_fkey
+            FOREIGN KEY (product_id) REFERENCES purchase_products(id)
+            ON UPDATE CASCADE ON DELETE RESTRICT;
+    END IF;
+    IF to_regclass('public.posted_purchase_goods_lines') IS NOT NULL THEN
+        ALTER TABLE posted_purchase_goods_lines
+            DROP CONSTRAINT IF EXISTS posted_purchase_goods_lines_purchase_product_id_fkey;
+        ALTER TABLE posted_purchase_goods_lines
+            ADD CONSTRAINT posted_purchase_goods_lines_purchase_product_id_fkey
+            FOREIGN KEY (product_id) REFERENCES purchase_products(id)
+            ON UPDATE CASCADE ON DELETE RESTRICT;
+    END IF;
+    IF to_regclass('public.cancelled_purchase_goods_lines') IS NOT NULL THEN
+        ALTER TABLE cancelled_purchase_goods_lines
+            DROP CONSTRAINT IF EXISTS cancelled_purchase_goods_lines_purchase_product_id_fkey;
+        ALTER TABLE cancelled_purchase_goods_lines
+            ADD CONSTRAINT cancelled_purchase_goods_lines_purchase_product_id_fkey
+            FOREIGN KEY (product_id) REFERENCES purchase_products(id)
+            ON UPDATE CASCADE ON DELETE RESTRICT;
+    END IF;
+
+    IF to_regclass('public.draft_purchase_service_lines') IS NOT NULL THEN
+        ALTER TABLE draft_purchase_service_lines
+            DROP CONSTRAINT IF EXISTS draft_purchase_service_lines_purchase_service_id_fkey;
+        ALTER TABLE draft_purchase_service_lines
+            ADD CONSTRAINT draft_purchase_service_lines_purchase_service_id_fkey
+            FOREIGN KEY (service_id) REFERENCES purchase_services(id)
+            ON UPDATE CASCADE ON DELETE RESTRICT;
+    END IF;
+    IF to_regclass('public.posted_purchase_service_lines') IS NOT NULL THEN
+        ALTER TABLE posted_purchase_service_lines
+            DROP CONSTRAINT IF EXISTS posted_purchase_service_lines_purchase_service_id_fkey;
+        ALTER TABLE posted_purchase_service_lines
+            ADD CONSTRAINT posted_purchase_service_lines_purchase_service_id_fkey
+            FOREIGN KEY (service_id) REFERENCES purchase_services(id)
+            ON UPDATE CASCADE ON DELETE RESTRICT;
+    END IF;
+    IF to_regclass('public.cancelled_purchase_service_lines') IS NOT NULL THEN
+        ALTER TABLE cancelled_purchase_service_lines
+            DROP CONSTRAINT IF EXISTS cancelled_purchase_service_lines_purchase_service_id_fkey;
+        ALTER TABLE cancelled_purchase_service_lines
+            ADD CONSTRAINT cancelled_purchase_service_lines_purchase_service_id_fkey
+            FOREIGN KEY (service_id) REFERENCES purchase_services(id)
+            ON UPDATE CASCADE ON DELETE RESTRICT;
+    END IF;
 END $$;
-
-ALTER TABLE draft_purchase_goods_lines
-    DROP CONSTRAINT IF EXISTS draft_purchase_goods_lines_purchase_product_id_fkey;
-ALTER TABLE draft_purchase_goods_lines
-    ADD CONSTRAINT draft_purchase_goods_lines_purchase_product_id_fkey
-    FOREIGN KEY (product_id) REFERENCES purchase_products(id)
-    ON UPDATE CASCADE ON DELETE RESTRICT;
-
-ALTER TABLE posted_purchase_goods_lines
-    DROP CONSTRAINT IF EXISTS posted_purchase_goods_lines_purchase_product_id_fkey;
-ALTER TABLE posted_purchase_goods_lines
-    ADD CONSTRAINT posted_purchase_goods_lines_purchase_product_id_fkey
-    FOREIGN KEY (product_id) REFERENCES purchase_products(id)
-    ON UPDATE CASCADE ON DELETE RESTRICT;
-
-ALTER TABLE cancelled_purchase_goods_lines
-    DROP CONSTRAINT IF EXISTS cancelled_purchase_goods_lines_purchase_product_id_fkey;
-ALTER TABLE cancelled_purchase_goods_lines
-    ADD CONSTRAINT cancelled_purchase_goods_lines_purchase_product_id_fkey
-    FOREIGN KEY (product_id) REFERENCES purchase_products(id)
-    ON UPDATE CASCADE ON DELETE RESTRICT;
-
-ALTER TABLE draft_purchase_service_lines
-    DROP CONSTRAINT IF EXISTS draft_purchase_service_lines_purchase_service_id_fkey;
-ALTER TABLE draft_purchase_service_lines
-    ADD CONSTRAINT draft_purchase_service_lines_purchase_service_id_fkey
-    FOREIGN KEY (service_id) REFERENCES purchase_services(id)
-    ON UPDATE CASCADE ON DELETE RESTRICT;
-
-ALTER TABLE posted_purchase_service_lines
-    DROP CONSTRAINT IF EXISTS posted_purchase_service_lines_purchase_service_id_fkey;
-ALTER TABLE posted_purchase_service_lines
-    ADD CONSTRAINT posted_purchase_service_lines_purchase_service_id_fkey
-    FOREIGN KEY (service_id) REFERENCES purchase_services(id)
-    ON UPDATE CASCADE ON DELETE RESTRICT;
-
-ALTER TABLE cancelled_purchase_service_lines
-    DROP CONSTRAINT IF EXISTS cancelled_purchase_service_lines_purchase_service_id_fkey;
-ALTER TABLE cancelled_purchase_service_lines
-    ADD CONSTRAINT cancelled_purchase_service_lines_purchase_service_id_fkey
-    FOREIGN KEY (service_id) REFERENCES purchase_services(id)
-    ON UPDATE CASCADE ON DELETE RESTRICT;
 "#;
 
 const DOWN: &str = r#"
-ALTER TABLE draft_purchase_goods_lines
-    DROP CONSTRAINT IF EXISTS draft_purchase_goods_lines_purchase_product_id_fkey;
-ALTER TABLE posted_purchase_goods_lines
-    DROP CONSTRAINT IF EXISTS posted_purchase_goods_lines_purchase_product_id_fkey;
-ALTER TABLE cancelled_purchase_goods_lines
-    DROP CONSTRAINT IF EXISTS cancelled_purchase_goods_lines_purchase_product_id_fkey;
-ALTER TABLE draft_purchase_service_lines
-    DROP CONSTRAINT IF EXISTS draft_purchase_service_lines_purchase_service_id_fkey;
-ALTER TABLE posted_purchase_service_lines
-    DROP CONSTRAINT IF EXISTS posted_purchase_service_lines_purchase_service_id_fkey;
-ALTER TABLE cancelled_purchase_service_lines
-    DROP CONSTRAINT IF EXISTS cancelled_purchase_service_lines_purchase_service_id_fkey;
+DO $$
+BEGIN
+    IF to_regclass('public.draft_purchase_goods_lines') IS NOT NULL THEN
+        ALTER TABLE draft_purchase_goods_lines
+            DROP CONSTRAINT IF EXISTS draft_purchase_goods_lines_purchase_product_id_fkey;
+    END IF;
+    IF to_regclass('public.posted_purchase_goods_lines') IS NOT NULL THEN
+        ALTER TABLE posted_purchase_goods_lines
+            DROP CONSTRAINT IF EXISTS posted_purchase_goods_lines_purchase_product_id_fkey;
+    END IF;
+    IF to_regclass('public.cancelled_purchase_goods_lines') IS NOT NULL THEN
+        ALTER TABLE cancelled_purchase_goods_lines
+            DROP CONSTRAINT IF EXISTS cancelled_purchase_goods_lines_purchase_product_id_fkey;
+    END IF;
+    IF to_regclass('public.draft_purchase_service_lines') IS NOT NULL THEN
+        ALTER TABLE draft_purchase_service_lines
+            DROP CONSTRAINT IF EXISTS draft_purchase_service_lines_purchase_service_id_fkey;
+    END IF;
+    IF to_regclass('public.posted_purchase_service_lines') IS NOT NULL THEN
+        ALTER TABLE posted_purchase_service_lines
+            DROP CONSTRAINT IF EXISTS posted_purchase_service_lines_purchase_service_id_fkey;
+    END IF;
+    IF to_regclass('public.cancelled_purchase_service_lines') IS NOT NULL THEN
+        ALTER TABLE cancelled_purchase_service_lines
+            DROP CONSTRAINT IF EXISTS cancelled_purchase_service_lines_purchase_service_id_fkey;
+    END IF;
+END $$;
 "#;
 
 const DOWN_DROP: &str = r#"

@@ -10,8 +10,10 @@ impl RuneEnvRegistrar for Hook {
     fn register_rune_env(self, rune_env: &mut RuneEnvCapability) {
         #[cfg(feature = "cap-llm")]
         register(rune_env);
-        crate::purchase_products::rune_env::Hook.register_rune_env(rune_env);
-        crate::purchase_services::rune_env::Hook.register_rune_env(rune_env);
+        #[cfg(not(feature = "cap-llm"))]
+        {
+            let _ = rune_env;
+        }
     }
 }
 
@@ -299,8 +301,7 @@ mod args {
                 payment_term_lines: payment_term_lines(parsed.payment_term_lines)?,
                 header_tax_ids: parsed.header_tax_ids,
                 lines: draft_lines(parsed.lines),
-                service_lines: Vec::new(),
-            },
+                            },
             tz,
         ))
     }
@@ -348,8 +349,7 @@ mod args {
                 payment_term_lines: create.payment_term_lines,
                 header_tax_ids: create.header_tax_ids,
                 lines: create.lines,
-                service_lines: Vec::new(),
-            },
+                            },
             tz,
         ))
     }

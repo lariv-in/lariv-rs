@@ -52,5 +52,29 @@ lariv_core::swap_key!(
     CustomSourceDocIndexTableKey,
     "finance-custom-source-doc-index-table"
 );
+lariv_core::swap_key!(
+    CustomSourceDocTemplateTableKey,
+    "finance-custom-source-doc-template-table"
+);
+lariv_core::swap_key!(
+    CustomSourceDocTemplateCreateModalKey,
+    "finance-custom-source-doc-template-create-modal"
+);
+lariv_core::swap_key!(
+    CustomSourceDocTemplateEditModalKey,
+    "finance-custom-source-doc-template-edit-modal"
+);
+lariv_core::swap_key!(
+    CustomSourceDocTemplateDeleteModalKey,
+    "finance-custom-source-doc-template-delete-modal"
+);
+lariv_core::swap_key!(
+    CustomSourceDocTemplateSelectTableKey,
+    "finance-custom-source-doc-template-select-table"
+);
+lariv_core::swap_key!(
+    CustomSourceDocTemplateSelectModalKey,
+    "finance-custom-source-doc-template-select-modal"
+);
 lariv_core::swap_key!(JournalEntrySelectTableKey, "journal-entry-select-table");
 lariv_core::swap_key!(JournalEntrySelectModalKey, "journal-entry-select-modal");

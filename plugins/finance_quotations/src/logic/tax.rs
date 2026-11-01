@@ -2,48 +2,19 @@
 
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 
-pub async fn set_goods_line_taxes<C: ConnectionTrait>(
+pub async fn set_quotation_line_taxes<C: ConnectionTrait>(
     db: &C,
     line_id: i64,
     tax_ids: &[i64],
 ) -> Result<(), sea_orm::DbErr> {
-    set_line_taxes(
-        db,
-        "quotation_goods_line_taxes",
-        "line_id",
-        line_id,
-        tax_ids,
-    )
-    .await
+    set_line_taxes(db, "quotation_line_taxes", "line_id", line_id, tax_ids).await
 }
 
-pub async fn set_service_line_taxes<C: ConnectionTrait>(
-    db: &C,
-    line_id: i64,
-    tax_ids: &[i64],
-) -> Result<(), sea_orm::DbErr> {
-    set_line_taxes(
-        db,
-        "quotation_service_line_taxes",
-        "line_id",
-        line_id,
-        tax_ids,
-    )
-    .await
-}
-
-pub async fn load_goods_line_tax_ids<C: ConnectionTrait>(
+pub async fn load_quotation_line_tax_ids<C: ConnectionTrait>(
     db: &C,
     line_id: i64,
 ) -> Result<Vec<i64>, sea_orm::DbErr> {
-    load_line_tax_ids(db, "quotation_goods_line_taxes", line_id).await
-}
-
-pub async fn load_service_line_tax_ids<C: ConnectionTrait>(
-    db: &C,
-    line_id: i64,
-) -> Result<Vec<i64>, sea_orm::DbErr> {
-    load_line_tax_ids(db, "quotation_service_line_taxes", line_id).await
+    load_line_tax_ids(db, "quotation_line_taxes", line_id).await
 }
 
 async fn set_line_taxes<C: ConnectionTrait>(

@@ -18,9 +18,9 @@ use crate::{
     keys::{PostedInvoiceBulkNewDraftModalKey, PostedInvoiceNewDraftModalKey},
     logic::{
         draft_payment_term::posted_payment_term_display_rows,
-        invoice_goods_line_editor::{
+        invoice_line_editor::{
             invoice_customer_name, invoice_header_tax_labels,
-            posted_invoice_goods_line_display_rows,
+            posted_invoice_line_display_rows,
         },
         load_invoice_date_formats, optional_display, posted_invoice_can_accept_payment,
         posted_new_cancelled, posted_new_draft,
@@ -115,12 +115,7 @@ pub async fn detail(
         &dates.date,
     )
     .await;
-    let line_rows = posted_invoice_goods_line_display_rows(&state.db, p.id).await;
-    let service_line_rows =
-        crate::logic::invoice_service_line_editor::posted_invoice_service_line_display_rows(
-            &state.db, p.id,
-        )
-        .await;
+    let line_rows = posted_invoice_line_display_rows(&state.db, p.id).await;
     let can_edit = lariv_core::components::role_permitted(
         &lariv_plugin_users::role_authorization::roles_for::<crate::routes::FinanceInvoicesMutate>(
         ),
@@ -142,7 +137,6 @@ pub async fn detail(
         payment_term_rows,
         tax_labels,
         line_rows,
-        service_line_rows,
         journal_entry_id: p.journal_entry_id,
         can_edit,
         can_pay,

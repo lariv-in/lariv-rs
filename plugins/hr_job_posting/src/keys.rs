@@ -1,0 +1,11 @@
+lariv_core::swap_key!(ApplicantTableKey, "hr-applicant-hub-table");
+lariv_core::swap_key!(ApplicantCreateModalKey, "hr-applicant-create-modal");
+lariv_core::swap_key!(ApplicantEditModalKey, "hr-applicant-edit-modal");
+lariv_core::swap_key!(ApplicantDeleteModalKey, "hr-applicant-delete-modal");
+lariv_core::swap_key!(HireApplicantModalKey, "hr-hire-applicant-modal");
+lariv_core::swap_key!(JobFormTableKey, "hr-job-form-table");
+lariv_core::swap_key!(JobFormCreateModalKey, "hr-job-form-create-modal");
+lariv_core::swap_key!(JobFormEditModalKey, "hr-job-form-edit-modal");
+lariv_core::swap_key!(JobFormDeleteModalKey, "hr-job-form-delete-modal");
+lariv_core::swap_key!(JobFormSelectTableKey, "hr-job-form-select-table");
+lariv_core::swap_key!(JobFormSelectModalKey, "hr-job-form-select-modal");
