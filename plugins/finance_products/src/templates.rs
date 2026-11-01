@@ -33,6 +33,13 @@ use lariv_plugin_finance_accounts::templates::{
 
 use super::forms::{ProductForm, ProductFormField};
 
+fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
+    choices
+        .iter()
+        .map(|(key, label)| ((*key).to_string(), (*label).to_string()))
+        .collect()
+}
+
 fn data_table_with_filter_errors<K: SwapKey>(
     title: &str,
     actions: Markup,
@@ -231,7 +238,7 @@ pub struct ProductRow {
     pub sales_price_formula: String,
     /// Plain unit sales price for picker → rate fill when the product has no variables.
     pub sales_price_value: String,
-    /// HSN or SAC depending on kind.
+    /// HSN/SAC code.
     pub code_label: String,
     pub has_formula: bool,
     /// JSON array of `{name, type, placeholder}` for the invoice line editor.
@@ -387,7 +394,6 @@ pub struct ProductDetailPage {
     pub product_kind: String,
     pub remarks: String,
     pub hsn_code: String,
-    pub sac_code: String,
     pub taxes: String,
     pub variables: String,
     pub sales_price_formula: String,
@@ -417,12 +423,8 @@ impl ProductDetailPage {
                         value: &self.journal_lines,
                         classes: "",
                     })))
-                    (label("HSN code", field_text(FieldText {
+                    (label("HSN/SAC code", field_text(FieldText {
                         value: if self.hsn_code.trim().is_empty() { "—" } else { self.hsn_code.as_str() },
-                        classes: "",
-                    })))
-                    (label("SAC code", field_text(FieldText {
-                        value: if self.sac_code.trim().is_empty() { "—" } else { self.sac_code.as_str() },
                         classes: "",
                     })))
                     @if lariv_core::components::role_permitted(&lariv_plugin_users::role_authorization::roles_for::<super::routes::FinanceProductsMutate>()) {
@@ -478,7 +480,6 @@ pub struct ProductEditModalPage {
     pub journal_display: String,
     pub journal_lines: String,
     pub hsn_code: i64,
-    pub sac_code: i64,
     pub tax_items: Vec<ManyToManyItem>,
     pub error: String,
 }
@@ -486,6 +487,7 @@ pub struct ProductEditModalPage {
 impl RenderTemplate for ProductEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = ProductDeleteGetRouteTag::new(self.id).url();
+        let kind_choices = choice_pairs(ProductForm::product_kind_choices());
         modal_keyed::<ProductEditModalKey>(
             &self.form_name,
             html! {
@@ -500,6 +502,7 @@ impl RenderTemplate for ProductEditModalPage {
                         &FormCtx::form::<ProductForm>(CsrfToken::current())
                             .value(ProductFormField::Name, &self.name)
                             .value(ProductFormField::ProductKind, &self.product_kind)
+                            .choices(ProductFormField::ProductKind, &kind_choices)
                             .value(ProductFormField::Remarks, &self.remarks)
                             .list(ProductFormField::Variables, &self.variables)
                             .value(
@@ -510,7 +513,6 @@ impl RenderTemplate for ProductEditModalPage {
                             .display(ProductFormField::JournalId, &self.journal_display)
                             .value(ProductFormField::JournalLines, &self.journal_lines)
                             .value(ProductFormField::HsnCode, self.hsn_code.to_string())
-                            .value(ProductFormField::SacCode, self.sac_code.to_string())
                             .m2m(ProductFormField::TaxIds, &self.tax_items),
                     ),
                     actions: html! {
@@ -547,7 +549,6 @@ pub struct ProductCreateModalPage {
     pub journal_display: String,
     pub journal_lines: String,
     pub hsn_code: i64,
-    pub sac_code: i64,
     pub tax_items: Vec<ManyToManyItem>,
     pub error: String,
 }
@@ -559,6 +560,7 @@ impl RenderTemplate for ProductCreateModalPage {
         } else {
             self.form_name.as_str()
         };
+        let kind_choices = choice_pairs(ProductForm::product_kind_choices());
         modal_keyed::<ProductCreateModalKey>(
             "",
             form(
@@ -578,6 +580,7 @@ impl RenderTemplate for ProductCreateModalPage {
                         &FormCtx::form::<ProductForm>(CsrfToken::current())
                             .value(ProductFormField::Name, &self.name)
                             .value(ProductFormField::ProductKind, &self.product_kind)
+                            .choices(ProductFormField::ProductKind, &kind_choices)
                             .value(ProductFormField::Remarks, &self.remarks)
                             .list(ProductFormField::Variables, &self.variables)
                             .value(
@@ -588,7 +591,6 @@ impl RenderTemplate for ProductCreateModalPage {
                             .display(ProductFormField::JournalId, &self.journal_display)
                             .value(ProductFormField::JournalLines, &self.journal_lines)
                             .value(ProductFormField::HsnCode, self.hsn_code.to_string())
-                            .value(ProductFormField::SacCode, self.sac_code.to_string())
                             .m2m(ProductFormField::TaxIds, &self.tax_items),
                     ),
                     actions: html! {

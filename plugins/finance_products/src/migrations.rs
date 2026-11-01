@@ -27,6 +27,7 @@ mod m00023_default_product_journal_entry_item_templates;
 mod m00024_journal_formula_unit_rate;
 mod m00025_unify_catalog;
 mod m00026_drop_document_side;
+mod m00027_unify_hsn_sac;
 pub mod product_catalog_cleanup;
 
 pub use m00025_unify_catalog::PRODUCT_SERVICE_ID_MAP;
@@ -66,6 +67,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00024_journal_formula_unit_rate::Migration),
             Box::new(m00025_unify_catalog::Migration),
             Box::new(m00026_drop_document_side::Migration),
+            Box::new(m00027_unify_hsn_sac::Migration),
         ]
     }
 }

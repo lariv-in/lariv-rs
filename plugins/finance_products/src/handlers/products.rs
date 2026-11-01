@@ -170,7 +170,7 @@ async fn query_products(
             name: p.name,
             sales_price_formula: p.sales_price_formula,
             sales_price_value,
-            code_label: tax_code_label(p.product_kind, p.hsn_code, p.sac_code),
+            code_label: format_optional_code(p.hsn_code),
             has_formula,
             variables_json: pricing::variable_input_specs_json(&p.variables),
             remarks: p.remarks.unwrap_or_default(),
@@ -240,7 +240,6 @@ pub async fn detail(
         product_kind: p.product_kind.label().to_string(),
         remarks: p.remarks.unwrap_or_default(),
         hsn_code: format_optional_code(p.hsn_code),
-        sac_code: format_optional_code(p.sac_code),
         taxes: tax_labels.join(", "),
         variables: pricing::schema_entries_from_stored(&p.variables).join("\n"),
         sales_price_formula: p.sales_price_formula,
@@ -273,7 +272,6 @@ pub async fn create_get(
         journal_display: defaults.journal_display,
         journal_lines: defaults.journal_lines,
         hsn_code: 0,
-        sac_code: 0,
         tax_items,
         error: String::new(),
     };
@@ -300,7 +298,6 @@ async fn product_edit_modal_page_from_form(
         journal_display: journal_display(db, &form.journal_id).await,
         journal_lines: form.journal_lines.clone(),
         hsn_code: form.hsn_code,
-        sac_code: form.sac_code,
         tax_items,
         error,
     }
@@ -328,7 +325,6 @@ async fn product_create_modal_page_from_form(
         journal_display: journal_display(db, &form.journal_id).await,
         journal_lines: form.journal_lines.clone(),
         hsn_code: form.hsn_code,
-        sac_code: form.sac_code,
         tax_items,
         error,
     }
@@ -436,36 +432,13 @@ fn format_optional_code(code: Option<i64>) -> String {
     code.map(|value| value.to_string()).unwrap_or_default()
 }
 
-fn tax_code_label(kind: ProductKind, hsn: Option<i64>, sac: Option<i64>) -> String {
-    match kind {
-        ProductKind::Goods => format_optional_code(hsn),
-        ProductKind::Services => format_optional_code(sac),
-    }
-}
-
 fn parse_product_kind(raw: &str) -> Result<ProductKind, String> {
     ProductKind::parse(raw).ok_or_else(|| "select Goods or Services".to_string())
 }
 
-fn validate_tax_codes(
-    kind: ProductKind,
-    hsn_code: Option<i64>,
-    sac_code: Option<i64>,
-) -> Result<(), String> {
-    match kind {
-        ProductKind::Goods => {
-            if hsn_code.is_none() {
-                return Err("HSN code is required for goods".into());
-            }
-            if sac_code.is_some() {
-                return Err("SAC code applies only to services".into());
-            }
-        }
-        ProductKind::Services => {
-            if sac_code.is_none() {
-                return Err("SAC code is required for services".into());
-            }
-        }
+fn validate_tax_code(hsn_code: Option<i64>) -> Result<(), String> {
+    if hsn_code.is_none() {
+        return Err("HSN/SAC code is required".into());
     }
     Ok(())
 }
@@ -481,8 +454,7 @@ async fn save_product_from_form(
     crate::journal_template::ensure_schema_allows_bindings(&schema)?;
     let product_kind = parse_product_kind(&form.product_kind)?;
     let hsn_code = optional_code(form.hsn_code);
-    let sac_code = optional_code(form.sac_code);
-    validate_tax_codes(product_kind, hsn_code, sac_code)?;
+    validate_tax_code(hsn_code)?;
     let now = Utc::now();
     let tax_ids = &form.tax_ids;
 
@@ -499,7 +471,6 @@ async fn save_product_from_form(
         am.variables = Set(variables);
         am.sales_price_formula = Set(sales_price_formula);
         am.hsn_code = Set(hsn_code);
-        am.sac_code = Set(sac_code);
         am.updated_at = Set(Some(now));
         am.update(db).await.map_err(|e| e.to_string())?;
         set_product_tax_ids(db, id, &tax_ids)
@@ -522,7 +493,6 @@ async fn save_product_from_form(
             variables: Set(variables),
             sales_price_formula: Set(sales_price_formula),
             hsn_code: Set(hsn_code),
-            sac_code: Set(sac_code),
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
             ..Default::default()
@@ -620,7 +590,6 @@ pub async fn edit_get(
         journal_display: template.journal_display,
         journal_lines: template.journal_lines,
         hsn_code: p.hsn_code.unwrap_or(0),
-        sac_code: p.sac_code.unwrap_or(0),
         tax_items,
         error: String::new(),
     };

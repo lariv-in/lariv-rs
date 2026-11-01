@@ -23,17 +23,17 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "create_product",
-        "create_product(#{ name: string, product_kind?: string, sales_price_formula: string, remarks?: string, hsn_code?: int, sac_code?: int, tax_ids?: [int], variables?: object|[{string}], journal_id?: int, journal_lines?: [{ account_id: int, formula: string }] }) -> int  // new product id. product_kind is Goods (default) or Services. sales_price_formula is the price of one product; invoice quantity multiplies it. journal_lines formulas may use quantity, unit_rate, pre_tax, sales_price, and the product variables. Lines must balance.",
+        "create_product(#{ name: string, product_kind?: string, sales_price_formula: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}], journal_id?: int, journal_lines?: [{ account_id: int, formula: string }] }) -> int  // new product id. product_kind is Goods (default) or Services. hsn_code is the HSN/SAC code (required). sales_price_formula is the price of one product; invoice quantity multiplies it. journal_lines formulas may use quantity, unit_rate, pre_tax, sales_price, and the product variables. Lines must balance.",
         |_ctx| NativeBinding::Function(Arc::new(create_product)),
     );
     rune_env.register_contextual(
         "update_product",
-        "update_product(#{ id: int, name: string, product_kind?: string, sales_price_formula: string, remarks?: string, hsn_code?: int, sac_code?: int, tax_ids?: [int], variables?: object|[{string}], journal_id?: int, journal_lines?: [{ account_id: int, formula: string }] }) -> int  // updated product id (full replace). product_kind is Goods or Services. sales_price_formula is the price of one product; invoice quantity multiplies it. journal_lines formulas may use quantity, unit_rate, pre_tax, sales_price, and the product variables.",
+        "update_product(#{ id: int, name: string, product_kind?: string, sales_price_formula: string, remarks?: string, hsn_code?: int, tax_ids?: [int], variables?: object|[{string}], journal_id?: int, journal_lines?: [{ account_id: int, formula: string }] }) -> int  // updated product id (full replace). product_kind is Goods or Services. hsn_code is the HSN/SAC code (required). sales_price_formula is the price of one product; invoice quantity multiplies it. journal_lines formulas may use quantity, unit_rate, pre_tax, sales_price, and the product variables.",
         |_ctx| NativeBinding::Function(Arc::new(update_product)),
     );
     rune_env.register_contextual(
         "search_products",
-        "search_products(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, name: string, product_kind: string, remarks: string|null, hsn_code: int|null, sac_code: int|null }] }",
+        "search_products(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, name: string, product_kind: string, remarks: string|null, hsn_code: int|null }] }",
         |_ctx| NativeBinding::Function(Arc::new(search_products)),
     );
 }
@@ -108,7 +108,6 @@ fn search_products(
             "product_kind": p.product_kind.as_str(),
             "remarks": p.remarks,
             "hsn_code": p.hsn_code,
-            "sac_code": p.sac_code,
         })).collect::<Vec<_>>(),
     }))
 }
@@ -138,8 +137,6 @@ mod args {
         #[serde(default)]
         hsn_code: i64,
         #[serde(default)]
-        sac_code: i64,
-        #[serde(default)]
         tax_ids: Vec<i64>,
         #[serde(default)]
         variables: Option<serde_json::Value>,
@@ -160,7 +157,6 @@ mod args {
         pub journal_id: String,
         pub journal_lines: String,
         pub hsn_code: Option<i64>,
-        pub sac_code: Option<i64>,
         pub tax_ids: Vec<i64>,
         pub variables: String,
     }
@@ -177,25 +173,9 @@ mod args {
         ProductKind::parse(raw).unwrap_or(ProductKind::Goods)
     }
 
-    fn validate_tax_codes(
-        kind: ProductKind,
-        hsn_code: Option<i64>,
-        sac_code: Option<i64>,
-    ) -> Result<(), String> {
-        match kind {
-            ProductKind::Goods => {
-                if hsn_code.is_none() {
-                    return Err("HSN code is required for goods".into());
-                }
-                if sac_code.is_some() {
-                    return Err("SAC code applies only to services".into());
-                }
-            }
-            ProductKind::Services => {
-                if sac_code.is_none() {
-                    return Err("SAC code is required for services".into());
-                }
-            }
+    fn validate_tax_code(hsn_code: Option<i64>) -> Result<(), String> {
+        if hsn_code.is_none() {
+            return Err("HSN/SAC code is required".into());
         }
         Ok(())
     }
@@ -259,8 +239,7 @@ mod args {
         }
         let product_kind = parse_product_kind(&parsed.product_kind);
         let hsn_code = optional_code(parsed.hsn_code);
-        let sac_code = optional_code(parsed.sac_code);
-        validate_tax_codes(product_kind, hsn_code, sac_code)?;
+        validate_tax_code(hsn_code)?;
         let variables = parse_variables(parsed.variables.clone())?;
         let schema = crate::pricing::load_schema(&variables)?;
         crate::journal_template::ensure_schema_allows_bindings(&schema)?;
@@ -283,7 +262,6 @@ mod args {
             },
             journal_lines,
             hsn_code,
-            sac_code,
             tax_ids: parsed.tax_ids,
             variables,
         })
@@ -328,7 +306,6 @@ mod args {
             variables: Set(input.variables.clone()),
             sales_price_formula: Set(input.sales_price_formula.clone()),
             hsn_code: Set(input.hsn_code),
-            sac_code: Set(input.sac_code),
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
             ..Default::default()
@@ -367,7 +344,6 @@ mod args {
         am.variables = Set(input.variables.clone());
         am.sales_price_formula = Set(input.sales_price_formula);
         am.hsn_code = Set(input.hsn_code);
-        am.sac_code = Set(input.sac_code);
         am.updated_at = Set(Some(now));
         am.update(db).await.map_err(|e| e.to_string())?;
         set_product_tax_ids(db, id, &input.tax_ids)

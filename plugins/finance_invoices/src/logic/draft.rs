@@ -210,7 +210,7 @@ async fn build_line<C: ConnectionTrait>(
     let remarks = resolved_line_remarks(&row.remarks, prod.remarks.as_deref());
     let (hsn_code, sac_code) = match prod.product_kind {
         ProductKind::Goods => (prod.hsn_code, None),
-        ProductKind::Services => (None, prod.sac_code),
+        ProductKind::Services => (None, prod.hsn_code),
     };
     let line = draft_invoice_line::ActiveModel {
         draft_invoice_id: Set(draft_id),

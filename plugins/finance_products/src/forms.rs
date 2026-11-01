@@ -71,11 +71,8 @@ pub struct ProductForm {
     )]
     pub journal_lines: String,
 
-    #[form(label = "HSN code", widget = Number)]
+    #[form(label = "HSN/SAC code", widget = Number)]
     pub hsn_code: i64,
-
-    #[form(label = "SAC code", widget = Number)]
-    pub sac_code: i64,
 
     #[form(
         label = "Taxes",

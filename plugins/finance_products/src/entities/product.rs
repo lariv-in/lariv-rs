@@ -59,8 +59,8 @@ pub struct Model {
     pub product_kind: ProductKind,
     pub remarks: Option<String>,
     pub name: String,
+    /// HSN for goods, SAC for services.
     pub hsn_code: Option<i64>,
-    pub sac_code: Option<i64>,
     /// JSON object of variable name to type (`length`, `weight`, …).
     pub variables: String,
     /// Rune expression for the sales price of one product before tax. Invoice quantity multiplies it.

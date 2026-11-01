@@ -435,7 +435,7 @@ async fn load_product_pdf(
     let schema = p.variables.clone();
     let (product_type, hsn_code) = match p.product_kind {
         ProductKind::Goods => ("Goods".to_string(), p.hsn_code.unwrap_or(0)),
-        ProductKind::Services => ("Services".to_string(), p.sac_code.unwrap_or(0)),
+        ProductKind::Services => ("Services".to_string(), p.hsn_code.unwrap_or(0)),
     };
     Ok((
         PdfProduct {
