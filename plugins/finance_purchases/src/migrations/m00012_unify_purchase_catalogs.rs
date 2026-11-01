@@ -40,7 +40,7 @@ BEGIN
     LOOP
         IF EXISTS (SELECT 1 FROM products WHERE id = v_pp.id) THEN
             INSERT INTO products (
-                created_at, updated_at, product_kind, name, remarks, hsn_code, sac_code,
+                created_at, updated_at, product_kind, name, remarks, hsn_code,
                 variables, sales_price_formula
             ) VALUES (
                 v_pp.created_at,
@@ -49,14 +49,13 @@ BEGIN
                 v_pp.name || ' Purchase',
                 v_pp.remarks,
                 v_pp.hsn_code,
-                NULL,
                 v_pp.variables,
                 v_pp.sales_price_formula
             )
             RETURNING id INTO v_product_id;
         ELSE
             INSERT INTO products (
-                id, created_at, updated_at, product_kind, name, remarks, hsn_code, sac_code,
+                id, created_at, updated_at, product_kind, name, remarks, hsn_code,
                 variables, sales_price_formula
             ) VALUES (
                 v_pp.id,
@@ -66,7 +65,6 @@ BEGIN
                 v_pp.name || ' Purchase',
                 v_pp.remarks,
                 v_pp.hsn_code,
-                NULL,
                 v_pp.variables,
                 v_pp.sales_price_formula
             );
@@ -107,8 +105,9 @@ BEGIN
     FOR v_ps IN SELECT * FROM purchase_services ORDER BY id
     LOOP
         -- Always a distinct catalog row from sales services.
+        -- products.sac_code was folded into hsn_code by finance_products m00027.
         INSERT INTO products (
-            created_at, updated_at, product_kind, name, remarks, hsn_code, sac_code,
+            created_at, updated_at, product_kind, name, remarks, hsn_code,
             variables, sales_price_formula
         ) VALUES (
             v_ps.created_at,
@@ -116,7 +115,6 @@ BEGIN
             'Services'::product_kind,
             v_ps.name || ' Purchase',
             v_ps.remarks,
-            NULL,
             v_ps.sac_code,
             v_ps.variables,
             v_ps.sales_price_formula
