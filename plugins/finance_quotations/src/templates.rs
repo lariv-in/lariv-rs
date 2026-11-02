@@ -1,18 +1,22 @@
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
+use lariv_core::components::table::table_grid_content;
 use lariv_core::components::{
-    ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, DetailHeader, FieldLink, FieldText,
-    FieldTextarea, FormOpts, ObjectList, PaginationPage, ShellChrome, SlotCapability,
-    SlotRegistrar, SwapKey, TableColumnHeader, TablePagination, TableRow, breadcrumbs,
-    button_download_route, button_modal_form, button_modal_route, button_post_route, button_submit,
-    container_column, container_row, data_table_list_refresh, delete_confirmation, detail,
-    detail_header, field_link, field_text, field_textarea, form, form_hx_post_selector,
-    form_hx_post_url, label, modal_keyed, pagination_pages, row_attr_navigate_route,
-    table_create_button, table_pagination,
+    ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay, DeleteConfirmation,
+    DetailHeader, FieldLink, FieldText, FieldTextarea, FilterClauseView, FormOpts,
+    ListFilterBuilder, ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar,
+    SwapKey, TableButtonFilter, TableColumnHeader, TableListContent, TablePagination, TableRow,
+    breadcrumbs, button_download_route, button_modal_form, button_modal_route, button_post_route,
+    button_submit, container_column, container_row, data_table, delete_confirmation, detail,
+    detail_header, field_link, field_text, field_textarea, filter_error_banner, form,
+    form_hx_get_route, form_hx_post_selector, form_hx_post_url, label, list_filter_builder,
+    modal_keyed, pagination_pages, row_attr_navigate_route, table_button_columns,
+    table_button_filter, table_create_button, table_list_content, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
+use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
 };
@@ -41,9 +45,17 @@ use crate::routes::{
     QuotationPdfModalRouteTag,
 };
 
+fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
+    choices
+        .iter()
+        .map(|(key, label)| ((*key).to_string(), (*label).to_string()))
+        .collect()
+}
+
 pub struct QuotationFormFields {
     pub number: String,
     pub date: String,
+    pub status: String,
     pub customer_id: String,
     pub customer_display: String,
     pub bank_account: String,
@@ -53,10 +65,13 @@ pub struct QuotationFormFields {
 }
 
 fn quotation_inputs(fields: &QuotationFormFields) -> Markup {
+    let status_choices = choice_pairs(QuotationForm::quotation_status_choices());
     QuotationForm::render_inputs(
         &FormCtx::form::<QuotationForm>(CsrfToken::current())
             .value(QuotationFormField::Number, &fields.number)
             .value(QuotationFormField::Date, &fields.date)
+            .value(QuotationFormField::Status, &fields.status)
+            .choices(QuotationFormField::Status, &status_choices)
             .value(QuotationFormField::CustomerId, &fields.customer_id)
             .display(QuotationFormField::CustomerId, &fields.customer_display)
             .value(QuotationFormField::BankAccount, &fields.bank_account)
@@ -96,6 +111,76 @@ fn number_label(id: i64, number: &str) -> String {
     }
 }
 
+fn data_table_with_filter_errors<K: SwapKey>(
+    title: &str,
+    actions: Markup,
+    headers: &[TableColumnHeader<'_>],
+    rows: &[TableRow],
+    pagination: Markup,
+    refresh_url: &str,
+    errors: &[FilterRowError],
+) -> Markup {
+    let list = html! {
+        (filter_error_banner(errors))
+        (table_list_content(TableListContent {
+            headers,
+            rows,
+            hx_target: K::SELECTOR,
+        }))
+    };
+    let grid = html! {
+        (filter_error_banner(errors))
+        (table_grid_content(headers, rows))
+    };
+    let column_keys: Vec<&str> = headers
+        .iter()
+        .map(|header| header.key)
+        .filter(|key| !key.is_empty())
+        .collect();
+    let toolbar = if headers.len() > 1 {
+        html! {
+            (table_button_columns(headers))
+            (actions)
+        }
+    } else {
+        actions
+    };
+    data_table(DataTable {
+        uid: K::ID,
+        title,
+        classes: "w-full",
+        actions: toolbar,
+        displays: vec![
+            DataTableDisplay {
+                name: "Grid".into(),
+                html: grid,
+            },
+            DataTableDisplay {
+                name: "List".into(),
+                html: list,
+            },
+        ],
+        pagination,
+        refresh_url,
+        column_keys: &column_keys,
+        ..Default::default()
+    })
+}
+
+fn quotation_list_filter(page: &QuotationListPage) -> Markup {
+    list_filter_builder(ListFilterBuilder {
+        fields: &page.fields,
+        rows: &page.filters,
+        page_size: page.page_size,
+        sort: "",
+        attrs: form_hx_get_route::<QuotationTableKey, QuotationDefaultRouteTag>(
+            QuotationDefaultRouteTag,
+        ),
+        apply_label: "Apply Filters",
+        extra: html! {},
+    })
+}
+
 fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
@@ -119,6 +204,7 @@ pub struct QuotationRow {
     pub id: i64,
     pub number: String,
     pub date: String,
+    pub status: String,
     pub customer: String,
     pub total: String,
 }
@@ -126,6 +212,9 @@ pub struct QuotationRow {
 #[derive(Generic)]
 pub struct QuotationListPage {
     pub quotations: ObjectList<QuotationRow>,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
     pub path_and_query: String,
     pub page_size: u32,
 }
@@ -142,6 +231,12 @@ impl QuotationListPage {
             TableColumnHeader {
                 key: "Date",
                 label: "Date",
+                sort_url: None,
+                push_url: true,
+            },
+            TableColumnHeader {
+                key: "Status",
+                label: "Status",
                 sort_url: None,
                 push_url: true,
             },
@@ -174,6 +269,10 @@ impl QuotationListPage {
                         classes: "",
                     }),
                     field_text(FieldText {
+                        value: &row.status,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
                         value: &row.customer,
                         classes: "",
                     }),
@@ -186,28 +285,36 @@ impl QuotationListPage {
                 children: Vec::new(),
             })
             .collect();
-        let create = if lariv_core::components::role_permitted(
+        let mut actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: quotation_list_filter(self),
+                ..Default::default()
+            }))
+        };
+        if lariv_core::components::role_permitted(
             &lariv_plugin_users::role_authorization::roles_for::<FinanceQuotationsMutate>(),
         ) {
-            table_create_button::<QuotationTableKey, QuotationCreateModalKey>(
-                Some("plus"),
-                "btn-square btn-outline btn-sm",
-            )
-        } else {
-            html! {}
-        };
+            actions = html! {
+                (actions)
+                (table_create_button::<QuotationTableKey, QuotationCreateModalKey>(
+                    Some("plus"),
+                    "btn-square btn-outline btn-sm",
+                ))
+            };
+        }
         let pagination = render_pagination::<QuotationTableKey>(
             &self.path_and_query,
             self.quotations.number,
             self.quotations.num_pages,
         );
-        data_table_list_refresh::<QuotationTableKey>(
+        data_table_with_filter_errors::<QuotationTableKey>(
             "Quotations",
-            create,
+            actions,
             &headers,
             &rows,
             pagination,
             &self.path_and_query,
+            &self.filter_errors,
         )
     }
 
@@ -242,6 +349,7 @@ pub struct QuotationDetailPage {
     pub id: i64,
     pub number: String,
     pub date: String,
+    pub status: String,
     pub customer: String,
     pub customer_href: String,
     pub bank_account: String,
@@ -312,6 +420,7 @@ impl QuotationDetailPage {
                     (detail_header(DetailHeader { title: &title, actions }))
                     (label("Number", field_text(FieldText { value: &number_label(self.id, &self.number), classes: "" })))
                     (label("Date", field_text(FieldText { value: &self.date, classes: "" })))
+                    (label("Status", field_text(FieldText { value: &self.status, classes: "" })))
                     (label("Customer", customer_field(&self.customer_href, &self.customer)))
                     (label("Account", field_textarea(FieldTextarea { value: &self.bank_account, classes: "" })))
                     (label("Remarks", field_textarea(FieldTextarea { value: &self.remarks, classes: "" })))

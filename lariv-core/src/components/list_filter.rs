@@ -243,6 +243,7 @@ fn filter_builder_alpine(kinds_json: &str) -> String {
                 container.appendChild(tpl.content.cloneNode(true));
                 const row = container.lastElementChild;
                 if (window.Alpine && row) window.Alpine.initTree(row);
+                if (window.htmx && row) window.htmx.process(row);
                 this.reindex(container);
             }},
             clearRows() {{
@@ -321,8 +322,28 @@ fn filter_builder_alpine(kinds_json: &str) -> String {
                 const tpl = this.widgetTemplate(key);
                 if (!tpl) return;
                 const i = this.indexOf(row);
-                slot.innerHTML = tpl.innerHTML.replaceAll('__i__', String(i < 0 ? 0 : i));
+                const idx = String(i < 0 ? 0 : i);
+                // cloneNode keeps nested <template x-teleport> contents that
+                // innerHTML serialization can drop; then rewrite __i__ placeholders
+                // in both light DOM and nested template contents (dropdown ids).
+                const frag = tpl.content.cloneNode(true);
+                const rewrite = (root) => {{
+                    root.querySelectorAll('*').forEach((el) => {{
+                        for (const attr of [...el.attributes]) {{
+                            if (attr.value.includes('__i__')) {{
+                                el.setAttribute(attr.name, attr.value.replaceAll('__i__', idx));
+                            }}
+                        }}
+                        if (el.tagName === 'TEMPLATE' && el.content) {{
+                            rewrite(el.content);
+                        }}
+                    }});
+                }};
+                rewrite(frag);
+                slot.appendChild(frag);
                 if (window.Alpine) window.Alpine.initTree(slot);
+                // FK typeahead / table buttons use hx-get; Alpine alone does not bind them.
+                if (window.htmx) window.htmx.process(slot);
             }}
         }}"#,
         kinds_json = kinds_json,

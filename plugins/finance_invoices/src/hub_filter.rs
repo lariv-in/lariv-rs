@@ -14,7 +14,7 @@ use std::str::FromStr;
 
 use crate::entities::{cancelled_invoice, draft_invoice, posted_invoice};
 use crate::hub_sort::{
-    expr_ar_amount, expr_customer, expr_line_product_count, expr_line_untaxed, expr_open_balance,
+    expr_ar_amount, expr_line_product_count, expr_line_untaxed, expr_open_balance,
     expr_posted_final_due, expr_settlement_ar_amount, expr_settlement_final_due,
     expr_settlement_payment_datetime, expr_settlement_posted_delivery,
     expr_settlement_posted_number, expr_settlement_product_count,
@@ -26,8 +26,9 @@ use lariv_core::db::trigram::{WORD_SIMILARITY_THRESHOLD, like_contains_pattern};
 use lariv_core::html_form::UrlencodedFields;
 use lariv_core::list_filters::{
     CmpOp, FilterClause, FilterField, FilterWidget, JoinOp, custom, date_column, datetime_column,
-    parse_list_filters, text_column,
+    foreign_key_column, parse_list_filters, text_column,
 };
+use lariv_plugin_crm::routes::CustomerFkSelectRouteTag;
 use lariv_plugin_finance_products::routes::ProductFkSelectRouteTag;
 
 /// Which invoice hub tab the catalog is built for.
@@ -140,7 +141,13 @@ fn posted_fields(tz: String) -> Vec<FilterField> {
     vec![
         id_field("posted_invoices"),
         text_column("number", "Number", posted_invoice::Column::Number),
-        text_expr_field("customer", "Customer", || expr_customer("posted_invoices")),
+        foreign_key_column(
+            "customer",
+            "Customer",
+            posted_invoice::Column::CustomerId,
+            CustomerFkSelectRouteTag.url(),
+            "Select customer…",
+        ),
         decimal_expr_field("open_balance", "Open balance", false, || {
             expr_open_balance("posted_invoices")
         }),
@@ -286,7 +293,7 @@ where
 /// Trigram match against a SQL expression.
 ///
 /// [`text_column`] only accepts a column reference. Id is cast to text, and
-/// customer (and settlement number) are subqueries, so this follows
+/// settlement number is a subquery, so this follows
 /// [`text_match_condition`](lariv_core::db::trigram::text_match_condition):
 /// Postgres `word_similarity` plus a case-insensitive substring.
 fn text_expr_condition(backend: DatabaseBackend, expr: SimpleExpr, needle: &str) -> Condition {

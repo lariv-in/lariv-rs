@@ -12,16 +12,16 @@ pub struct Model {
     pub updated_at: Option<DateTime<Utc>>,
     pub name: String,
     #[sea_orm(unique, column_type = "Text")]
-    pub email: crate::null_text::NullText,
+    pub email: lariv_core::db::null_text::NullText,
     #[sea_orm(unique, column_type = "Text")]
-    pub phone: crate::phone::Phone,
+    pub phone: lariv_core::db::phone::Phone,
     #[sea_orm(column_type = "Text")]
     pub role: String,
     #[sea_orm(column_name = "password")]
     pub password_hash: Option<Vec<u8>>,
     pub password_salt: Option<Vec<u8>>,
     #[sea_orm(column_type = "Text")]
-    pub timezone: crate::null_text::NullText,
+    pub timezone: lariv_core::db::null_text::NullText,
     pub last_login_time: Option<DateTime<Utc>>,
 }
 

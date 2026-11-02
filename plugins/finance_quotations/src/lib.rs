@@ -9,6 +9,7 @@ pub mod entities;
 pub mod forms;
 pub mod handlers;
 pub mod keys;
+pub mod list_filters;
 pub mod logic;
 pub mod migrations;
 pub mod routes;

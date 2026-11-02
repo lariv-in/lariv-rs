@@ -106,8 +106,14 @@ pub(crate) async fn filter_clause_views(
 ) -> Vec<FilterClauseView> {
     let mut filters = FilterClauseView::from_clauses(clauses, errors);
     for row in &mut filters {
-        if row.clause.field == "product" {
-            row.fk_display = hub_product_display(db, row.clause.value()).await;
+        match row.clause.field.as_str() {
+            "product" => {
+                row.fk_display = hub_product_display(db, row.clause.value()).await;
+            }
+            "customer" => {
+                row.fk_display = hub_customer_display(db, row.clause.value()).await;
+            }
+            _ => {}
         }
     }
     filters
@@ -125,6 +131,18 @@ async fn hub_product_display(db: &sea_orm::DatabaseConnection, raw: &str) -> Str
     )
     .map(|product| product.name)
     .unwrap_or_else(|| format!("#{id}"))
+}
+
+async fn hub_customer_display(db: &sea_orm::DatabaseConnection, raw: &str) -> String {
+    let Some(id) = raw.trim().parse::<i64>().ok().filter(|id| *id > 0) else {
+        return String::new();
+    };
+    let label = crate::logic::bill_to::customer_label(db, id).await;
+    if label.is_empty() {
+        format!("#{id}")
+    } else {
+        label
+    }
 }
 
 fn path_and_query(uri: &Uri) -> String {

@@ -16,11 +16,11 @@ use lariv_rs::plugins::todo::routes::{
     TodoPageDeleteGetRouteTag, TodoPageDeletePostRouteTag, TodoPageDetailRouteTag,
     TodoPageEditGetRouteTag, TodoPageEditPostRouteTag,
 };
+use lariv_rs::db::null_text::NullText;
+use lariv_rs::db::phone::Phone;
 use lariv_rs::plugins::users::{
     self, UsersTag, auth,
     entities::user::{self, Entity as UserEntity},
-    null_text::NullText,
-    phone::Phone,
     roles::Unassigned,
 };
 use lariv_rs::traits::get::GetByTag;

@@ -9,6 +9,7 @@ use sea_orm::{
 use serde::Deserialize;
 
 use crate::entities::{
+    QuotationStatus,
     quotation::{self, Entity as QuotationEntity},
     quotation_line::{self, Entity as LineEntity},
 };
@@ -51,6 +52,10 @@ pub fn parse_lines(raw: &str) -> Result<Vec<LineInput>, String> {
 
 pub fn parse_quotation_date(raw: &str) -> Result<NaiveDate, String> {
     lariv_core::datetime::parse_date(raw.trim()).ok_or_else(|| "invalid date".to_string())
+}
+
+pub fn parse_quotation_status(raw: &str) -> Result<QuotationStatus, String> {
+    QuotationStatus::parse(raw).ok_or_else(|| format!("unknown status: {raw}"))
 }
 
 fn optional_text(raw: &str) -> Option<String> {
@@ -210,6 +215,7 @@ pub struct SaveQuotation {
     pub existing_id: Option<i64>,
     pub number: String,
     pub date: NaiveDate,
+    pub status: QuotationStatus,
     pub customer_id: i64,
     pub bank_account: String,
     pub remarks: String,
@@ -259,6 +265,7 @@ async fn save(
             .into();
         am.number = Set(number);
         am.date = Set(input.date);
+        am.status = Set(input.status);
         am.customer_id = Set(customer_id);
         am.bank_account = Set(bank);
         am.remarks = Set(remarks);
@@ -275,6 +282,7 @@ async fn save(
             created_at: Set(Some(now)),
             updated_at: Set(Some(now)),
             date: Set(input.date),
+            status: Set(input.status),
             customer_id: Set(customer_id),
             number: Set(number),
             bank_account: Set(bank),
@@ -321,6 +329,7 @@ pub async fn copy_quotation(db: &DatabaseConnection, id: i64) -> Result<quotatio
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         date: Set(date),
+        status: Set(QuotationStatus::Draft),
         customer_id: Set(source.customer_id),
         number: Set(number),
         bank_account: Set(source.bank_account.clone()),

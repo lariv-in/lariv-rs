@@ -21,6 +21,8 @@ use crate::{
 
 pub mod location;
 pub mod migration_sql;
+pub mod null_text;
+pub mod phone;
 pub mod trigram;
 
 /// Capability tag for the shared SeaORM connection.

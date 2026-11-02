@@ -37,7 +37,7 @@ pub async fn resolve_auth_headers(
     headers: &axum::http::HeaderMap,
     state: &UsersState,
 ) -> Option<AuthContext> {
-    let token = session::auth_token_from_headers(headers)?;
+    let token = lariv_core::web::cookie_value_from_headers(headers, session::AUTH_COOKIE)?;
     let claims = jwt::parse_token(&token, &state.signing_key, &state.jwt_issuer).ok()?;
     let user_id = jwt::user_id_from_subject(&claims.sub).ok()?;
     let user = lariv_core::web::opt_or_log(
@@ -72,7 +72,9 @@ async fn resolve_effective_user(
     if !Superuser::matches(&actual.role) {
         return actual.clone();
     }
-    let Some(raw) = session::effective_user_from_headers(headers) else {
+    let Some(raw) =
+        lariv_core::web::cookie_value_from_headers(headers, session::EFFECTIVE_USER_COOKIE)
+    else {
         return actual.clone();
     };
     let Ok(id) = raw.trim().parse::<i64>() else {

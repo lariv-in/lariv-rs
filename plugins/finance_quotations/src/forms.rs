@@ -1,5 +1,6 @@
 use lariv_core::html_form::{
-    FieldRender, FormCtx, FormWidget, html_form, widgets::Date, widgets::Text, widgets::Textarea,
+    FieldRender, FormCtx, FormWidget, html_form,
+    widgets::{Date, Select, Text, Textarea},
 };
 use lariv_plugin_crm::routes::CustomerFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
@@ -7,6 +8,7 @@ use lariv_plugin_finance_invoices::components::{
     InputInvoiceLinesDraft, input_invoice_lines_draft,
 };
 
+use crate::entities::QuotationStatus;
 use crate::routes::QuotationLinePriceRouteTag;
 
 pub struct QuotationLines;
@@ -30,6 +32,9 @@ pub struct QuotationForm {
 
     #[form(label = "Date", required, widget = Date)]
     pub date: String,
+
+    #[form(label = "Status", required, widget = Select, choices = "quotation_status")]
+    pub status: String,
 
     #[form(
         label = "Customer",
@@ -55,6 +60,12 @@ pub struct QuotationForm {
         hint = "Quantity multiplies the unit price of one product. A typed unit price is kept."
     )]
     pub lines_json: String,
+}
+
+impl QuotationForm {
+    pub fn quotation_status_choices() -> &'static [(&'static str, &'static str)] {
+        QuotationStatus::choices()
+    }
 }
 
 #[html_form]

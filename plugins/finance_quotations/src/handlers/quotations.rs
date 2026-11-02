@@ -32,13 +32,15 @@ use lariv_plugin_finance_products::entities::product::Entity as ProductEntity;
 use lariv_plugin_finance_products::pricing as product_pricing;
 use lariv_plugin_users::middleware::RequireAuth;
 
+use crate::entities::QuotationStatus;
 use crate::entities::quotation::{self, Entity as QuotationEntity};
 use crate::entities::quotation_line::{self, Entity as LineEntity};
 use crate::forms::QuotationForm;
 use crate::keys::QuotationCreateModalKey;
+use crate::list_filters::{self, QuotationListFilters};
 use crate::logic::document::{
     SaveQuotation, copy_quotation, create_quotation, delete_quotation, parse_lines,
-    parse_quotation_date, update_quotation,
+    parse_quotation_date, parse_quotation_status, update_quotation,
 };
 use crate::logic::editor::{line_display_rows, lines_form_json, quotation_grand_total};
 use crate::logic::prefs::load_preferences;
@@ -75,7 +77,10 @@ pub async fn list(
 ) -> maud::Markup {
     let page_num = q.page.get();
     let page_size = q.page_size.get();
+    let mut filters = list_filters::prepare(uri.query().unwrap_or(""), state.db.get_database_backend());
+    list_filters::enrich_fk_displays(&state.db, &mut filters.filters).await;
     let paginator = QuotationEntity::find()
+        .filter(filters.condition.clone())
         .order_by_desc(quotation::Column::Date)
         .order_by_desc(quotation::Column::Id)
         .paginate(&state.db, u64::from(page_size));
@@ -93,12 +98,22 @@ pub async fn list(
             id: quotation.id,
             number: quotation.number,
             date: lariv_core::datetime::format_date(quotation.date),
+            status: quotation.status.label().to_string(),
             customer,
             total: currency.display(total_amount),
         });
     }
+    let QuotationListFilters {
+        fields,
+        filters,
+        filter_errors,
+        ..
+    } = filters;
     let page = QuotationListPage {
         quotations: ObjectList::from_page(rows, page_num, page_size, total),
+        fields,
+        filters,
+        filter_errors,
         path_and_query: uri
             .path_and_query()
             .map(|pq| pq.as_str().to_string())
@@ -178,6 +193,7 @@ pub async fn detail(
         id,
         number: quotation.number.clone(),
         date: lariv_core::datetime::format_date(quotation.date),
+        status: quotation.status.label().to_string(),
         customer,
         customer_href,
         bank_account: quotation.bank_account.unwrap_or_default(),
@@ -197,6 +213,7 @@ async fn empty_form_view(db: &sea_orm::DatabaseConnection) -> QuotationFormField
     QuotationFormFields {
         number: String::new(),
         date: lariv_core::datetime::format_date(Utc::now().date_naive()),
+        status: QuotationStatus::Draft.as_str().to_string(),
         customer_id: String::new(),
         customer_display: String::new(),
         bank_account: prefs.default_bank_account.unwrap_or_default(),
@@ -218,6 +235,7 @@ async fn form_view_from_form(
     QuotationFormFields {
         number: form.number.clone(),
         date: form.date.clone(),
+        status: form.status.clone(),
         customer_id: if form.customer_id > 0 {
             form.customer_id.to_string()
         } else {
@@ -236,6 +254,7 @@ fn save_input(form: &QuotationForm) -> Result<SaveQuotation, String> {
         existing_id: None,
         number: form.number.clone(),
         date: parse_quotation_date(&form.date)?,
+        status: parse_quotation_status(&form.status)?,
         customer_id: form.customer_id,
         bank_account: form.bank_account.clone(),
         remarks: form.remarks.clone(),
@@ -300,6 +319,7 @@ pub async fn edit_get(
     let fields = QuotationFormFields {
         number: quotation.number.clone(),
         date: lariv_core::datetime::format_date(quotation.date),
+        status: quotation.status.as_str().to_string(),
         customer_id: quotation.customer_id.to_string(),
         customer_display,
         bank_account: quotation.bank_account.clone().unwrap_or_default(),
