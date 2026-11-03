@@ -1,4 +1,4 @@
-//! Payment create (models_payment.go BeforeCreate/AfterCreate).
+//! Invoice settlement against a customer payment.
 
 use std::collections::HashSet;
 
@@ -9,38 +9,36 @@ use sea_orm::{
     EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Statement, TransactionTrait,
 };
 
-use lariv_plugin_finance_accounts::logic::custom_source_doc::{
-    journal_specs_editor_json, stored_journal_line_specs,
+use lariv_plugin_finance_accounts::logic::journal::JournalLineSpec;
+use lariv_plugin_finance_common::decimal;
+use lariv_plugin_finance_payments::logic::{
+    CreatePaymentInput, build_payment_lines, insert_payment, prepare_payment,
 };
-use lariv_plugin_finance_accounts::logic::journal::{
-    JournalLineSpec, create_source_doc, insert_journal_entry, update_source_doc_id,
-};
-use lariv_plugin_finance_common::decimal::{self, parse_decimal};
 use lariv_plugin_finance_taxes::entities::tax;
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
-use crate::entities::payment::PAYMENT_SOURCE_DOC_TYPE;
 use crate::entities::{
-    cancelled_invoice, paid_invoice, partially_paid_invoice, payment, posted_invoice,
-    posted_invoice_line,
+    cancelled_invoice, paid_invoice, partially_paid_invoice, posted_invoice, posted_invoice_line,
 };
-use crate::logic::preferences::{
-    load_payment_preferences, validate_payment_preferences_for_create,
-};
-use crate::logic::tax_assoc::{load_posted_invoice_tax_ids, set_payment_taxes};
+use crate::logic::tax_assoc::load_posted_invoice_tax_ids;
 use crate::logic::tax_calculations::{
     InvoiceLinesTotals, invoice_line_amounts, invoice_receivable_grand_total,
-    merge_invoice_line_tax_ids, payment_withholding_base, payment_withholding_total,
-    taxes_withholding, validate_payment_taxes,
+    merge_invoice_line_tax_ids, payment_withholding_base, validate_payment_taxes,
 };
 
-pub struct CreatePaymentInput {
+pub struct PayPostedInvoiceInput {
     pub posted_invoice_id: i64,
     pub amount: Decimal,
     pub datetime: DateTime<Utc>,
     pub withholding_tax_ids: Vec<i64>,
     /// `None` evaluates the payment template. `Some` writes these lines.
     pub journal_lines: Option<Vec<JournalLineSpec>>,
+}
+
+pub struct PayPostedInvoiceResult {
+    pub payment_id: i64,
+    pub is_full: bool,
+    pub settlement_id: i64,
 }
 
 async fn sum_posted_invoice_payments<C: ConnectionTrait>(
@@ -50,7 +48,13 @@ async fn sum_posted_invoice_payments<C: ConnectionTrait>(
     let row = db
         .query_one_raw(Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
-            "SELECT COALESCE(SUM(amount), 0) AS s FROM payments WHERE posted_invoice_id = $1",
+            r#"SELECT COALESCE(SUM(p.amount), 0) AS s
+               FROM payments p
+               WHERE p.id IN (
+                   SELECT payment_id FROM paid_invoices WHERE posted_invoice_id = $1
+                   UNION
+                   SELECT payment_id FROM partially_paid_invoices WHERE posted_invoice_id = $1
+               )"#,
             [posted_invoice_id.into()],
         ))
         .await
@@ -120,7 +124,7 @@ async fn posted_invoice_receivable_total(
         .receivable_total)
 }
 
-/// Remaining receivable after existing payments on a posted invoice.
+/// Remaining receivable after settlements on a posted invoice.
 pub async fn posted_invoice_open_balance(
     db: &DatabaseConnection,
     posted_id: i64,
@@ -155,8 +159,6 @@ pub async fn posted_invoice_can_accept_payment(db: &DatabaseConnection, posted_i
 }
 
 /// Validate a payment allocation against invoice state and open balance.
-/// Returns the posted invoice, receivable total, untaxed subtotal, and whether this
-/// allocation fully pays it.
 pub async fn validate_payment_allocation(
     db: &DatabaseConnection,
     posted_id: i64,
@@ -204,104 +206,7 @@ pub async fn validate_payment_allocation(
     Ok((posted, inv_total, amounts.untaxed_subtotal, is_full))
 }
 
-/// Payment template lines plus withholding lines for one invoice allocation.
-///
-/// `withholding_base` is the untaxed amount the withholding percent applies to (not the
-/// GST-inclusive settlement).
-pub async fn build_payment_lines_for_allocation(
-    db: &DatabaseConnection,
-    posted: &posted_invoice::Model,
-    settlement: Decimal,
-    withholding_base: Decimal,
-    taxes: &[tax::Model],
-) -> Result<Vec<JournalLineSpec>, String> {
-    let settlement = decimal::normalize(settlement);
-    let withholding_base = decimal::normalize(withholding_base);
-    let withheld = payment_withholding_total(withholding_base, taxes);
-    let mut withholding_lines = Vec::new();
-    for tax in taxes_withholding(taxes) {
-        let evaluated = lariv_plugin_finance_taxes::journal_template::evaluate_withholding_lines(
-            db,
-            tax,
-            withholding_base,
-            posted.journal_id,
-        )
-        .await?;
-        withholding_lines.extend(evaluated.into_iter().map(|line| JournalLineSpec {
-            account_id: line.account_id,
-            amount: line.amount,
-        }));
-    }
-    let mut lines = crate::payment_journal_template::evaluate_payment_template(
-        db,
-        settlement,
-        withheld,
-        posted.journal_id,
-    )
-    .await?;
-    lines.extend(withholding_lines);
-    Ok(lines)
-}
-
-/// Journal lines confirmed when the payment was recorded.
-pub async fn payment_journal_lines(
-    db: &DatabaseConnection,
-    payment_id: i64,
-) -> Result<(DateTime<Utc>, Vec<JournalLineSpec>), String> {
-    let pay = payment::Entity::find_by_id(payment_id)
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("payment {payment_id} not found"))?;
-    let stored = stored_journal_line_specs(db, pay.journal_entry_id).await?;
-    let lines = stored.into_iter().map(|(_, spec)| spec).collect();
-    Ok((pay.datetime, lines))
-}
-
-/// Editor JSON for the payment template and withholding lines at this amount.
-pub async fn suggest_payment_lines_json(
-    db: &DatabaseConnection,
-    posted_invoice_id: i64,
-    amount: Decimal,
-    withholding_tax_ids: &[i64],
-) -> Result<String, String> {
-    let posted = posted_invoice::Entity::find_by_id(posted_invoice_id)
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("posted invoice {posted_invoice_id} not found"))?;
-    let amounts = posted_invoice_amounts(db, posted.id).await?;
-    let taxes = load_taxes_by_ids(db, withholding_tax_ids)
-        .await
-        .map_err(|e| e.to_string())?;
-    validate_payment_taxes(&taxes)?;
-    let withholding_base =
-        payment_withholding_base(amount, amounts.receivable_total, amounts.untaxed_subtotal);
-    let lines =
-        build_payment_lines_for_allocation(db, &posted, amount, withholding_base, &taxes).await?;
-    journal_specs_editor_json(db, &lines, &[], "payment-line").await
-}
-
-/// Point a payment at the journal entry created for its source document.
-pub async fn adopt_payment_journal_entry<C: ConnectionTrait>(
-    db: &C,
-    payment_id: i64,
-    journal_entry_id: i64,
-) -> Result<(), String> {
-    let pay = payment::Entity::find_by_id(payment_id)
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("payment {payment_id} not found"))?;
-    let mut am: payment::ActiveModel = pay.into();
-    am.journal_entry_id = Set(journal_entry_id);
-    am.updated_at = Set(Some(Utc::now()));
-    am.update(db).await.map_err(|e| e.to_string())?;
-    Ok(())
-}
-
 /// Insert paid or partially-paid settlement row for a payment.
-/// Returns the new settlement row id.
 pub async fn record_payment_settlement<C: ConnectionTrait>(
     db: &C,
     pay_id: i64,
@@ -346,93 +251,83 @@ pub async fn record_payment_settlement<C: ConnectionTrait>(
     }
 }
 
-pub struct CreatePaymentResult {
-    pub payment: payment::Model,
-    /// True when the payment fully settles the posted invoice.
-    pub is_full: bool,
-    pub settlement_id: i64,
+async fn invoice_payment_lines(
+    db: &DatabaseConnection,
+    settlement: Decimal,
+    receivable_total: Decimal,
+    untaxed_subtotal: Decimal,
+    taxes: &[tax::Model],
+) -> Result<Vec<JournalLineSpec>, String> {
+    let withholding_base = payment_withholding_base(settlement, receivable_total, untaxed_subtotal);
+    build_payment_lines(db, settlement, withholding_base, taxes).await
 }
 
-pub async fn create_payment(
+/// Journal-line JSON for paying one posted invoice.
+pub async fn suggest_invoice_payment_lines(
     db: &DatabaseConnection,
-    input: CreatePaymentInput,
-) -> Result<CreatePaymentResult, String> {
-    let payment_prefs = load_payment_preferences(db).await;
-    validate_payment_preferences_for_create(db, &payment_prefs).await?;
+    posted_invoice_id: i64,
+    amount: Decimal,
+    withholding_tax_ids: &[i64],
+) -> Result<String, String> {
+    let posted = posted_invoice::Entity::find_by_id(posted_invoice_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("posted invoice {posted_invoice_id} not found"))?;
+    let amounts = posted_invoice_amounts(db, posted.id).await?;
+    let taxes = load_taxes_by_ids(db, withholding_tax_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+    validate_payment_taxes(&taxes)?;
+    let withholding_base =
+        payment_withholding_base(amount, amounts.receivable_total, amounts.untaxed_subtotal);
+    lariv_plugin_finance_payments::logic::suggest_payment_lines_json(
+        db,
+        amount,
+        withholding_base,
+        withholding_tax_ids,
+    )
+    .await
+}
 
+/// Record a customer payment for this invoice and the settlement row that links them.
+pub async fn pay_posted_invoice(
+    db: &DatabaseConnection,
+    input: PayPostedInvoiceInput,
+) -> Result<PayPostedInvoiceResult, String> {
     let (posted, inv_total, untaxed_subtotal, is_full) =
         validate_payment_allocation(db, input.posted_invoice_id, input.amount).await?;
-
     let taxes = load_taxes_by_ids(db, &input.withholding_tax_ids)
         .await
         .map_err(|e| e.to_string())?;
     validate_payment_taxes(&taxes)?;
-
-    let now = Utc::now();
-    let dt = if input.datetime.timestamp() == 0 {
-        now
-    } else {
-        input.datetime
-    };
-
-    let txn = db.begin().await.map_err(|e| e.to_string())?;
-
-    let doc_id = create_source_doc(&txn, PAYMENT_SOURCE_DOC_TYPE)
-        .await
-        .map_err(|e| e.to_string())?;
-
     let settlement = decimal::normalize(input.amount);
-    let withholding_base = payment_withholding_base(settlement, inv_total, untaxed_subtotal);
     let lines = if let Some(lines) = input.journal_lines {
         lines
     } else {
-        build_payment_lines_for_allocation(db, &posted, settlement, withholding_base, &taxes)
-            .await?
+        invoice_payment_lines(db, settlement, inv_total, untaxed_subtotal, &taxes).await?
     };
+    let withholding_base = payment_withholding_base(settlement, inv_total, untaxed_subtotal);
 
-    let (je_id, _) = insert_journal_entry(&txn, dt, posted.journal_id, doc_id, &lines)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let pay = payment::ActiveModel {
-        posted_invoice_id: Set(posted.id),
-        amount: Set(settlement),
-        datetime: Set(dt),
-        journal_entry_id: Set(je_id),
-        payment_batch_id: Set(None),
-        created_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        ..Default::default()
-    }
-    .insert(&txn)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    update_source_doc_id(&txn, doc_id, pay.id)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    set_payment_taxes(&txn, pay.id, &input.withholding_tax_ids)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let settlement_id = record_payment_settlement(&txn, pay.id, posted.id, is_full).await?;
-
+    let prepared = prepare_payment(
+        db,
+        CreatePaymentInput {
+            customer_id: posted.customer_id,
+            amount: settlement,
+            datetime: input.datetime,
+            withholding_tax_ids: input.withholding_tax_ids,
+            journal_lines: Some(lines),
+            withholding_base: Some(withholding_base),
+        },
+    )
+    .await?;
+    let txn = db.begin().await.map_err(|e| e.to_string())?;
+    let payment = insert_payment(&txn, prepared).await?;
+    let settlement_id = record_payment_settlement(&txn, payment.id, posted.id, is_full).await?;
     txn.commit().await.map_err(|e| e.to_string())?;
-    Ok(CreatePaymentResult {
-        payment: pay,
+    Ok(PayPostedInvoiceResult {
+        payment_id: payment.id,
         is_full,
         settlement_id,
     })
-}
-
-pub fn parse_payment_amount(s: &str) -> Result<Decimal, String> {
-    parse_decimal(s).ok_or_else(|| "invalid amount".to_string())
-}
-
-pub fn parse_withholding_tax_ids(s: &str) -> Vec<i64> {
-    s.split(',')
-        .filter_map(|p| p.trim().parse().ok())
-        .filter(|id| *id > 0)
-        .collect()
 }

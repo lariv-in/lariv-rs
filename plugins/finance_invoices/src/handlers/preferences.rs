@@ -9,11 +9,3 @@ pub async fn invoice_preferences_get() -> Response {
 pub async fn invoice_preferences_post() -> Response {
     Redirect::to(&AccountingPreferencesRouteTag.url()).into_response()
 }
-
-pub async fn payment_preferences_get() -> Response {
-    Redirect::to(&AccountingPreferencesRouteTag.url()).into_response()
-}
-
-pub async fn payment_preferences_post() -> Response {
-    Redirect::to(&AccountingPreferencesRouteTag.url()).into_response()
-}

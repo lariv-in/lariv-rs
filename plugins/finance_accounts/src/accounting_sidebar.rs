@@ -364,12 +364,6 @@ impl AccountingSidebarRegistrar for BaseHook {
             36,
             Some("document-duplicate"),
         ))
-        .push(link::<crate::routes::CustomerListRouteTag>(
-            "customers",
-            "Customers",
-            40,
-            Some("user-circle"),
-        ))
         .push(link::<AccountingPreferencesRouteTag>(
             "preferences",
             "Accounting preferences",
@@ -446,12 +440,11 @@ mod tests {
             .add_hook::<TestAddonTag, _>(TestAddonHook)
             .resolve_hooks();
 
-        assert_eq!(cap.items.links().len(), 8);
+        assert_eq!(cap.items.links().len(), 7);
         let sections: Vec<_> = cap.items.links().iter().map(|l| l.section).collect();
         assert!(sections.contains(&"accounts"));
         assert!(sections.contains(&"custom-source-docs"));
         assert!(sections.contains(&"transaction-templates"));
-        assert!(sections.contains(&"customers"));
         assert!(sections.contains(&"test-addon"));
         assert!(sections.contains(&"preferences"));
     }

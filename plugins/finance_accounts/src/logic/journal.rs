@@ -443,7 +443,6 @@ pub struct CascadeGraph {
     pub source_doc_ids: HashSet<i64>,
     pub posted_invoice_ids: HashSet<i64>,
     pub payment_ids: HashSet<i64>,
-    pub payment_batch_ids: HashSet<i64>,
     pub credit_note_ids: HashSet<i64>,
     pub cancelled_invoice_ids: HashSet<i64>,
     pub posted_purchase_ids: HashSet<i64>,
@@ -462,7 +461,6 @@ pub struct CascadeDeleteItem {
 struct CascadeWork {
     journal_entries: VecDeque<i64>,
     posted_invoices: VecDeque<i64>,
-    payment_batches: VecDeque<i64>,
     credit_notes: VecDeque<i64>,
     cancelled_invoices: VecDeque<i64>,
     posted_purchases: VecDeque<i64>,
@@ -488,12 +486,6 @@ pub async fn collect_journal_entry_cascade<C: ConnectionTrait>(
         if let Some(posted_id) = work.posted_invoices.pop_front() {
             if graph.posted_invoice_ids.insert(posted_id) {
                 seed_from_posted_invoice(db, posted_id, &mut graph, &mut work).await?;
-            }
-            continue;
-        }
-        if let Some(batch_id) = work.payment_batches.pop_front() {
-            if graph.payment_batch_ids.insert(batch_id) {
-                seed_from_payment_batch(db, batch_id, &mut graph, &mut work).await?;
             }
             continue;
         }
@@ -596,24 +588,10 @@ pub async fn cascade_delete_preview(
             kind: "Payment".into(),
             label: format!("Payment #{id}"),
             url: registry
-                .type_detail_url("p_finance_invoices.Payment", id)
+                .type_detail_url("p_finance_payments.Payment", id)
                 .unwrap_or_else(|| {
                     lariv_core::http::route_tag::nav_url(&format!(
-                        "/finance-invoices/payments/{id}"
-                    ))
-                }),
-        });
-    }
-
-    for id in sorted_ids(&graph.payment_batch_ids) {
-        items.push(CascadeDeleteItem {
-            kind: "Payment batch".into(),
-            label: format!("Batch #{id}"),
-            url: registry
-                .type_detail_url("p_finance_invoices.PaymentBatch", id)
-                .unwrap_or_else(|| {
-                    lariv_core::http::route_tag::nav_url(&format!(
-                        "/finance-invoices/payment-batches/{id}"
+                        "/finance-payments/payments/{id}"
                     ))
                 }),
         });
@@ -783,31 +761,24 @@ async fn seed_from_journal_entry<C: ConnectionTrait>(
     let payment_rows = db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT id, posted_invoice_id, payment_batch_id FROM payments \
-             WHERE journal_entry_id = $1",
+            "SELECT p.id, s.posted_invoice_id FROM payments p \
+             LEFT JOIN ( \
+               SELECT payment_id, posted_invoice_id FROM paid_invoices \
+               UNION \
+               SELECT payment_id, posted_invoice_id FROM partially_paid_invoices \
+             ) s ON s.payment_id = p.id \
+             WHERE p.journal_entry_id = $1",
             [je_id.into()],
         ))
         .await?;
     for row in payment_rows {
         let payment_id: i64 = row.try_get("", "id")?;
-        let posted_invoice_id: i64 = row.try_get("", "posted_invoice_id")?;
-        let payment_batch_id: Option<i64> = row.try_get("", "payment_batch_id")?;
+        let posted_invoice_id: Option<i64> = row.try_get("", "posted_invoice_id")?;
         graph.payment_ids.insert(payment_id);
-        work.posted_invoices.push_back(posted_invoice_id);
-        if let Some(batch_id) = payment_batch_id {
-            work.payment_batches.push_back(batch_id);
+        if let Some(posted_invoice_id) = posted_invoice_id {
+            work.posted_invoices.push_back(posted_invoice_id);
         }
     }
-
-    push_ids(
-        &mut work.payment_batches,
-        query_i64_col(
-            db,
-            "SELECT id FROM payment_batches WHERE journal_entry_id = $1",
-            je_id,
-        )
-        .await?,
-    );
 
     let item_ids = query_i64_col(
         db,
@@ -881,20 +852,20 @@ async fn seed_from_posted_invoice<C: ConnectionTrait>(
     let payment_rows = db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT id, journal_entry_id, payment_batch_id FROM payments \
-             WHERE posted_invoice_id = $1",
+            "SELECT p.id, p.journal_entry_id FROM payments p \
+             WHERE p.id IN ( \
+               SELECT payment_id FROM paid_invoices WHERE posted_invoice_id = $1 \
+               UNION \
+               SELECT payment_id FROM partially_paid_invoices WHERE posted_invoice_id = $1 \
+             )",
             [posted_id.into()],
         ))
         .await?;
     for row in payment_rows {
         let payment_id: i64 = row.try_get("", "id")?;
         let je_id: i64 = row.try_get("", "journal_entry_id")?;
-        let payment_batch_id: Option<i64> = row.try_get("", "payment_batch_id")?;
         graph.payment_ids.insert(payment_id);
         push_je(&mut work.journal_entries, je_id);
-        if let Some(batch_id) = payment_batch_id {
-            work.payment_batches.push_back(batch_id);
-        }
     }
 
     push_ids(
@@ -967,42 +938,6 @@ async fn relation_exists<C: ConnectionTrait>(db: &C, name: &str) -> Result<bool>
         return Ok(false);
     };
     Ok(row.try_get("", "present")?)
-}
-
-async fn seed_from_payment_batch<C: ConnectionTrait>(
-    db: &C,
-    batch_id: i64,
-    graph: &mut CascadeGraph,
-    work: &mut CascadeWork,
-) -> Result<()> {
-    if let Some(je_id) = query_optional_i64(
-        db,
-        "SELECT journal_entry_id FROM payment_batches WHERE id = $1",
-        batch_id,
-    )
-    .await?
-    {
-        push_je(&mut work.journal_entries, je_id);
-    }
-
-    let payment_rows = db
-        .query_all_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT id, posted_invoice_id, journal_entry_id FROM payments \
-             WHERE payment_batch_id = $1",
-            [batch_id.into()],
-        ))
-        .await?;
-    for row in payment_rows {
-        let payment_id: i64 = row.try_get("", "id")?;
-        let posted_invoice_id: i64 = row.try_get("", "posted_invoice_id")?;
-        let je_id: i64 = row.try_get("", "journal_entry_id")?;
-        graph.payment_ids.insert(payment_id);
-        push_je(&mut work.journal_entries, je_id);
-        work.posted_invoices.push_back(posted_invoice_id);
-    }
-
-    Ok(())
 }
 
 async fn seed_from_cancelled_invoice<C: ConnectionTrait>(
@@ -1092,7 +1027,6 @@ async fn apply_cascade_deletes<C: ConnectionTrait>(db: &C, graph: &CascadeGraph)
     }
 
     delete_by_ids(db, "payments", &graph.payment_ids).await?;
-    delete_by_ids(db, "payment_batches", &graph.payment_batch_ids).await?;
 
     for &cancelled_id in &graph.cancelled_invoice_ids {
         delete_where(

@@ -5,10 +5,10 @@ use lariv_core::components::{
     ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldLink, FieldText, FieldTitle,
     FilterClauseView, FormOpts, ListFilterBuilder, ObjectList, ShellChrome, TableButtonFilter,
     TableColumnHeader, TableRow, breadcrumbs, button_modal_form, button_submit, column_sort_url,
-    container_column, container_row, data_table_list, data_table_list_refresh, detail, detail_header,
-    field_link, field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
-    form_hx_post_route, form_hx_post_url, label, list_filter_builder, modal_keyed,
-    row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
+    container_column, container_row, data_table_list, data_table_list_refresh, detail,
+    detail_header, field_link, field_text, field_title, form, form_hx_get_picker_route,
+    form_hx_get_route, form_hx_post_route, form_hx_post_url, label, list_filter_builder,
+    modal_keyed, row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::list_filters::{FilterField, FilterRowError};

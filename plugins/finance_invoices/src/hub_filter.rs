@@ -15,13 +15,10 @@ use std::str::FromStr;
 use crate::entities::{cancelled_invoice, draft_invoice, posted_invoice};
 use crate::hub_sort::{
     expr_ar_amount, expr_line_product_count, expr_line_untaxed, expr_open_balance,
-    expr_posted_final_due, expr_settlement_ar_amount, expr_settlement_final_due,
-    expr_settlement_payment_datetime, expr_settlement_posted_delivery,
-    expr_settlement_posted_number, expr_settlement_product_count,
-    expr_settlement_tax_levied_approx, expr_settlement_untaxed, expr_tax_levied_approx,
+    expr_posted_final_due, expr_tax_levied_approx,
 };
 use crate::logic::InvoiceListMetrics;
-use lariv_core::datetime::{DatetimeLocalInput, parse_date};
+use lariv_core::datetime::parse_date;
 use lariv_core::db::trigram::{WORD_SIMILARITY_THRESHOLD, like_contains_pattern};
 use lariv_core::html_form::UrlencodedFields;
 use lariv_core::list_filters::{
@@ -33,15 +30,13 @@ use lariv_plugin_finance_products::routes::ProductFkSelectRouteTag;
 
 /// Which invoice hub tab the catalog is built for.
 ///
-/// Customer and open balance exist only on the posted tab, matching the old
-/// form's `when = "posted"` flag.
+/// Open balance exists only on the posted tab, matching the old form's
+/// `when = "posted"` flag. Customer is also on the drafts tab.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HubFilterKind {
     Draft,
     Posted,
     Cancelled,
-    /// Paid and partially paid rows. `table` is the settlement table name.
-    Settlement(&'static str),
 }
 
 impl HubFilterKind {
@@ -49,8 +44,6 @@ impl HubFilterKind {
         match tab {
             "posted" => Self::Posted,
             "cancelled" => Self::Cancelled,
-            "paid" => Self::Settlement("paid_invoices"),
-            "partial" => Self::Settlement("partially_paid_invoices"),
             _ => Self::Draft,
         }
     }
@@ -86,7 +79,6 @@ pub fn hub_filter_fields(kind: HubFilterKind, tz: &str) -> Vec<FilterField> {
         HubFilterKind::Draft => draft_fields(tz),
         HubFilterKind::Posted => posted_fields(tz),
         HubFilterKind::Cancelled => cancelled_fields(tz),
-        HubFilterKind::Settlement(table) => settlement_fields(table, tz),
     }
 }
 
@@ -104,6 +96,13 @@ fn draft_fields(tz: String) -> Vec<FilterField> {
     vec![
         id_field("draft_invoices"),
         text_column("number", "Number", draft_invoice::Column::Number),
+        foreign_key_column(
+            "customer",
+            "Customer",
+            draft_invoice::Column::CustomerId,
+            CustomerFkSelectRouteTag.url(),
+            "Select customer…",
+        ),
         datetime_column("datetime", "Date", draft_invoice::Column::Datetime, tz),
         date_column(
             "delivery_date",
@@ -225,43 +224,6 @@ fn cancelled_fields(tz: String) -> Vec<FilterField> {
     ]
 }
 
-fn settlement_fields(table: &'static str, tz: String) -> Vec<FilterField> {
-    vec![
-        id_field(table),
-        text_expr_field("number", "Number", move || {
-            expr_settlement_posted_number(table)
-        }),
-        datetime_expr_field("datetime", "Date", tz, move || {
-            expr_settlement_payment_datetime(table)
-        }),
-        date_expr_field("delivery_date", "Delivery date", false, move || {
-            expr_settlement_posted_delivery(table)
-        }),
-        decimal_expr_field("untaxed", "Untaxed amount", false, move || {
-            expr_settlement_untaxed(table)
-        }),
-        decimal_expr_field("total", "Total amount", false, move || {
-            expr_settlement_ar_amount(table)
-        }),
-        decimal_expr_field("tax", "Tax levied", false, move || {
-            expr_settlement_tax_levied_approx(table)
-        }),
-        product_field(move |id| {
-            format!(
-                "EXISTS (SELECT 1 FROM posted_invoice_lines \
-                  WHERE posted_invoice_lines.posted_invoice_id = {table}.posted_invoice_id \
-                    AND posted_invoice_lines.product_id = {id})"
-            )
-        }),
-        number_expr_field("product_count", "Number of products", move || {
-            expr_settlement_product_count(table)
-        }),
-        date_expr_field("final_due", "Final due date", false, move || {
-            expr_settlement_final_due(table)
-        }),
-    ]
-}
-
 fn id_field(table: &'static str) -> FilterField {
     text_expr_field("id", "ID", move || {
         Expr::cust(format!("CAST({table}.id AS TEXT)"))
@@ -284,8 +246,7 @@ where
 
 /// Trigram match against a SQL expression.
 ///
-/// [`text_column`] only accepts a column reference. Id is cast to text, and
-/// settlement number is a subquery, so this follows
+/// [`text_column`] only accepts a column reference. Id is cast to text, so this follows
 /// [`text_match_condition`](lariv_core::db::trigram::text_match_condition):
 /// Postgres `word_similarity` plus a case-insensitive substring.
 fn text_expr_condition(backend: DatabaseBackend, expr: SimpleExpr, needle: &str) -> Condition {
@@ -374,31 +335,6 @@ where
             if post_filter {
                 return Ok(Condition::all());
             }
-            Ok(one(cmp_expr(expr(), clause.op, parsed)))
-        },
-    )
-}
-
-fn datetime_expr_field<F>(
-    key: &'static str,
-    label: &'static str,
-    tz: String,
-    expr: F,
-) -> FilterField
-where
-    F: Fn() -> SimpleExpr + Send + 'static,
-{
-    custom(
-        key,
-        label,
-        FilterWidget::Datetime,
-        Vec::new(),
-        false,
-        move |clause, _| {
-            let raw = clause.value();
-            let parsed = DatetimeLocalInput::from_raw(raw)
-                .to_stored(&tz)
-                .ok_or_else(|| format!("invalid date: {raw}"))?;
             Ok(one(cmp_expr(expr(), clause.op, parsed)))
         },
     )
@@ -515,9 +451,9 @@ mod tests {
     }
 
     #[test]
-    fn draft_catalog_omits_customer_and_open_balance() {
+    fn draft_catalog_includes_customer_and_omits_open_balance() {
         let html = render_catalog(HubFilterKind::Draft);
-        assert!(!html.contains(r#"data-filter-widget="customer""#), "{html}");
+        assert!(html.contains(r#"data-filter-widget="customer""#), "{html}");
         assert!(
             !html.contains(r#"data-filter-widget="open_balance""#),
             "{html}"

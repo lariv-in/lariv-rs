@@ -1,0 +1,39 @@
+[package]
+name = "lariv-plugin-finance-payments"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Lariv finance_payments plugin"
+
+[features]
+default = []
+
+[dependencies]
+lariv_core = { package = "lariv-core", path = "../../lariv-core" }
+lariv-formula = { workspace = true }
+lariv-rs-macros = { workspace = true }
+lariv-plugin-crm = { path = "../crm" }
+lariv-plugin-customer = { path = "../customer" }
+lariv-plugin-finance-accounts = { path = "../finance_accounts" }
+lariv-plugin-finance-customers = { path = "../finance_customers" }
+lariv-plugin-finance-common = { path = "../finance_common" }
+lariv-plugin-finance-taxes = { path = "../finance_taxes" }
+lariv-plugin-users = { path = "../users" }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+axum = { workspace = true }
+chrono = { workspace = true }
+frunk = { workspace = true }
+frunk_core = { workspace = true }
+http = { workspace = true }
+maud = { workspace = true }
+rust_decimal = { workspace = true }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

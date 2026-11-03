@@ -1,5 +1,3 @@
-use lariv_plugin_customer::keys::CUSTOMER_TABLE;
-
 use super::{
     handlers,
     keys::{
@@ -59,8 +57,6 @@ lariv_core::define_plugin_routes! {
         post JournalEditPostRouteTag, "/finance/journals/{id}/edit", handlers::journals::edit_post, authorize(FinanceAccountsMutate, []);
         get JournalDeleteGetRouteTag, "/finance/journals/{id}/delete", handlers::journals::delete_get, modal, authorize(FinanceAccountsMutate, []);
         post JournalDeletePostRouteTag, "/finance/journals/{id}/delete", bare handlers::journals::delete_post, fragment(JOURNAL_DELETE_MODAL), authorize(FinanceAccountsMutate, []);
-
-        get CustomerListRouteTag, "/finance/customers", handlers::customers::list, fragment(CUSTOMER_TABLE), authorize(FinanceAccountsView, []);
 
         get CustomSourceDocIndexRouteTag, "/finance/custom-source-docs", handlers::custom_source_docs::index, fragment(CUSTOM_SOURCE_DOC_INDEX_TABLE), authorize(FinanceAccountsView, []);
         get CustomSourceDocIndexCreateGetRouteTag, "/finance/custom-source-docs/create", handlers::custom_source_docs::index_create_get, modal, authorize(FinanceAccountsMutate, []);

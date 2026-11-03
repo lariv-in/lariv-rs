@@ -6,6 +6,7 @@ pub mod accounting_sidebar;
 pub mod apps;
 pub mod components;
 pub mod create_modals;
+pub mod customer_journal;
 pub mod draft_form_addon;
 pub mod entities;
 pub mod forms;
@@ -23,7 +24,6 @@ pub mod invoice_pdf_template;
 pub mod keys;
 pub mod logic;
 pub mod migrations;
-pub mod payment_journal_template;
 pub mod payment_term_kind;
 pub mod preferences_hints;
 pub mod routes;
@@ -62,6 +62,7 @@ lariv_core::define_plugin_install! {
     steps: [
         cap_hook(lariv_plugin_finance_accounts::accounting_sidebar::AccountingSidebarTag, lariv_plugin_finance_accounts::accounting_sidebar::AccountingSidebarCap, accounting_sidebar::Hook),
         cap_hook(lariv_plugin_finance_accounts::SourceDocTag, lariv_plugin_finance_accounts::SourceDocCap, source_docs::Hook),
+        cap_hook(lariv_plugin_finance_customers::journal::CustomerJournalTag, lariv_plugin_finance_customers::journal::CustomerJournalCap, customer_journal::Hook),
         cap_hook(lariv_plugin_llm_assistant::hitl::HitlTag, lariv_plugin_llm_assistant::hitl::HitlCap, hitl::Hook),
         apps(apps::Hook),
         rune_env(rune_env::Hook),
@@ -80,6 +81,7 @@ lariv_core::define_plugin_install! {
     steps: [
         cap_hook(lariv_plugin_finance_accounts::accounting_sidebar::AccountingSidebarTag, lariv_plugin_finance_accounts::accounting_sidebar::AccountingSidebarCap, accounting_sidebar::Hook),
         cap_hook(lariv_plugin_finance_accounts::SourceDocTag, lariv_plugin_finance_accounts::SourceDocCap, source_docs::Hook),
+        cap_hook(lariv_plugin_finance_customers::journal::CustomerJournalTag, lariv_plugin_finance_customers::journal::CustomerJournalCap, customer_journal::Hook),
         apps(apps::Hook),
         rune_env(rune_env::Hook),
         migrations(migrations::Hook),

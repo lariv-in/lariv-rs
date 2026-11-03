@@ -8,30 +8,13 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_plugin_crm::routes::CustomerFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
-use lariv_plugin_finance_accounts::routes::JournalSelectRouteTag;
-use lariv_plugin_finance_taxes::journal_template_editor::input_journal_template_lines;
 use lariv_plugin_finance_taxes::routes::TaxMultiSelectRouteTag;
 
 use crate::components::{
     InputInvoiceLinesDraft, InputPaymentTermLinesDraft, input_invoice_lines_draft,
     input_payment_term_lines_draft,
 };
-use crate::payment_journal_template::{FORMULA_VARIABLES_HINT, empty_lines_json};
-use crate::routes::PostedInvoiceFkSelectRouteTag;
-
-/// Account and formula lines stored as JSON.
-pub struct PaymentJournalTemplateLines;
-
-impl FormWidget for PaymentJournalTemplateLines {
-    fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
-        let defaults = if field.value.trim().is_empty() {
-            empty_lines_json()
-        } else {
-            field.value.to_string()
-        };
-        input_journal_template_lines(field.name, field.label, &defaults, ctx.hint_of(field.spec))
-    }
-}
+use crate::routes::InvoicePayJournalLinesRouteTag;
 
 /// Custom widget for draft invoice lines (Alpine editor + hidden JSON).
 pub struct InvoiceLinesDraft;
@@ -174,123 +157,6 @@ pub struct DraftInvoiceBulkEditForm {
     pub invoice_lines_json: String,
 }
 
-#[html_form]
-pub struct PaymentForm {
-    #[form(
-        label = "Posted invoice",
-        required,
-        widget = ForeignKey,
-        route = PostedInvoiceFkSelectRouteTag,
-        swap_key = "posted-invoice-select",
-        display = "posted_invoice",
-        placeholder = "Select posted invoice…",
-        search_key = "Number"
-    )]
-    pub posted_invoice_id: i64,
-
-    #[form(label = "Settlement amount", required, widget = Text)]
-    pub amount: String,
-
-    #[form(label = "Payment date & time", required, widget = Datetime)]
-    pub datetime: String,
-
-    #[form(
-        label = "Withholding taxes",
-        widget = ManyToMany,
-        route = TaxMultiSelectRouteTag,
-        swap_key = "payment-withholding-taxes",
-        placeholder = "Optional withholding at collection…"
-    )]
-    pub taxes: Vec<i64>,
-
-    #[form(label = "Journal lines", required, widget = PaymentJournalLines)]
-    pub journal_lines: String,
-}
-
-/// Debit and credit lines for one payment. Prefills from the payment template.
-pub struct PaymentJournalLines;
-
-impl FormWidget for PaymentJournalLines {
-    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
-        let url = crate::routes::PaymentJournalLinesRouteTag.path();
-        html! {
-            div id="payment-journal-lines" {
-                (input_journal_lines(field.name, field.label, field.value))
-            }
-            (PreEscaped(format!(
-                r##"<button type="button" class="btn btn-outline btn-sm" hx-post="{}" hx-target="#payment-journal-lines" hx-swap="innerHTML" hx-include="closest form">Fill from template</button>"##,
-                escape_attr(&url),
-            )))
-            p class="text-sm text-base-content/70 mt-2" {
-                "Saved lines are whatever is in this editor. Fill from template replaces them from the payment preferences for the amount and withholding taxes above."
-            }
-        }
-    }
-}
-
-/// Header fields for batch payment (allocations use a custom JSON editor widget).
-#[html_form]
-pub struct PaymentBatchForm {
-    #[form(label = "Payment date & time", required, widget = Datetime)]
-    pub datetime: String,
-
-    #[form(label = "Allocations", required, widget = PaymentBatchAllocations, display = "batch_allocations_preview")]
-    pub allocations_json: String,
-
-    #[form(label = "Journal lines", required, widget = PaymentBatchJournalLines)]
-    pub journal_lines: String,
-}
-
-/// Combined debit and credit lines for a payment batch.
-pub struct PaymentBatchJournalLines;
-
-impl FormWidget for PaymentBatchJournalLines {
-    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
-        let url = crate::routes::PaymentBatchJournalLinesRouteTag.path();
-        html! {
-            div id="payment-batch-journal-lines" {
-                (input_journal_lines(field.name, field.label, field.value))
-            }
-            (PreEscaped(format!(
-                r##"<button type="button" class="btn btn-outline btn-sm" hx-post="{}" hx-target="#payment-batch-journal-lines" hx-swap="innerHTML" hx-include="closest form">Fill from template</button>"##,
-                escape_attr(&url),
-            )))
-            p class="text-sm text-base-content/70 mt-2" {
-                "Saved lines are whatever is in this editor. Fill from template replaces them from the payment preferences for the allocations above."
-            }
-        }
-    }
-}
-
-/// Custom widget for batch payment allocations (Alpine editor + hidden JSON).
-pub struct PaymentBatchAllocations;
-impl FormWidget for PaymentBatchAllocations {
-    fn render(ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
-        let preview = ctx.display_of("batch_allocations_preview");
-        #[derive(serde::Deserialize, Default)]
-        struct Preview {
-            #[serde(default)]
-            tax_pct_by_id: serde_json::Map<String, serde_json::Value>,
-            #[serde(default)]
-            all_taxes: Vec<serde_json::Value>,
-        }
-        let parsed: Preview = serde_json::from_str(preview).unwrap_or_default();
-        let tax_pct_json =
-            serde_json::to_string(&parsed.tax_pct_by_id).unwrap_or_else(|_| "{}".into());
-        let all_taxes_json =
-            serde_json::to_string(&parsed.all_taxes).unwrap_or_else(|_| "[]".into());
-        crate::components::input_payment_batch_allocations(
-            crate::components::InputPaymentBatchAllocations {
-                name: field.name,
-                defaults: field.value,
-                tax_pct_json: &tax_pct_json,
-                all_taxes_json: &all_taxes_json,
-                ..Default::default()
-            },
-        )
-    }
-}
-
 /// Invoice number format + PDF template field names (custom UI on preferences page).
 #[html_form]
 pub struct InvoicePresentationPreferencesForm {
@@ -354,29 +220,62 @@ pub struct InvoiceCompanyPreferencesForm {
 }
 
 #[html_form]
-pub struct PaymentPreferencesForm {
-    #[form(
-        label = "Journal",
-        widget = ForeignKey,
-        route = JournalSelectRouteTag,
-        swap_key = "pref-payment-journal",
-        display = "journal",
-        placeholder = "Select journal…"
-    )]
-    pub journal_id: String,
-
-    #[form(
-        label = "Journal entry template",
-        widget = PaymentJournalTemplateLines,
-        hint = FORMULA_VARIABLES_HINT
-    )]
-    pub journal_lines: String,
-}
-
-#[html_form]
 pub struct CancelInvoiceForm {
     #[form(label = "Reason", required, widget = Textarea, rows = 3)]
     pub reason: String,
+}
+
+/// Hidden posted-invoice id carried by the pay modal.
+pub struct HiddenPostedInvoiceId;
+
+impl FormWidget for HiddenPostedInvoiceId {
+    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        html! {
+            input type="hidden" name=(field.name) value=(field.value);
+        }
+    }
+}
+
+/// Debit and credit lines when paying one posted invoice.
+pub struct InvoicePayJournalLines;
+
+impl FormWidget for InvoicePayJournalLines {
+    fn render(_ctx: &FormCtx<'_>, field: &FieldRender<'_>) -> Markup {
+        let url = InvoicePayJournalLinesRouteTag.path();
+        html! {
+            div id="invoice-pay-journal-lines" {
+                (input_journal_lines(field.name, field.label, field.value))
+            }
+            (PreEscaped(format!(
+                r##"<button type="button" class="btn btn-outline btn-sm" hx-post="{}" hx-target="#invoice-pay-journal-lines" hx-swap="innerHTML" hx-include="closest form">Fill from template</button>"##,
+                escape_attr(&url),
+            )))
+        }
+    }
+}
+
+#[html_form]
+pub struct InvoicePaymentForm {
+    #[form(widget = HiddenPostedInvoiceId)]
+    pub posted_invoice_id: i64,
+
+    #[form(label = "Settlement amount", required, widget = Text)]
+    pub amount: String,
+
+    #[form(label = "Payment date & time", required, widget = Datetime)]
+    pub datetime: String,
+
+    #[form(
+        label = "Withholding taxes",
+        widget = ManyToMany,
+        route = TaxMultiSelectRouteTag,
+        swap_key = "invoice-pay-withholding-taxes",
+        placeholder = "Optional withholding at collection…"
+    )]
+    pub taxes: Vec<i64>,
+
+    #[form(label = "Journal lines", required, widget = InvoicePayJournalLines)]
+    pub journal_lines: String,
 }
 
 #[cfg(test)]
@@ -407,48 +306,5 @@ mod tests {
             !alpine_js_leaked_as_text(&html),
             "Alpine JS rendered as text on the draft invoice form: {html}"
         );
-    }
-
-    #[test]
-    fn posted_invoice_picker_searches_by_number() {
-        let html = PaymentForm::render_inputs(&FormCtx::form::<PaymentForm>(CsrfToken::current()))
-            .into_string();
-        let picker = html
-            .split_once(r#"id="posted-invoice-select""#)
-            .map(|(_, rest)| {
-                rest.split_once("Settlement amount")
-                    .map(|(head, _)| head)
-                    .unwrap_or(rest)
-            })
-            .unwrap_or("");
-        assert!(
-            picker.contains(r#"name="Number""#),
-            "posted invoice picker should typeahead on Number: {picker}"
-        );
-        assert!(
-            !picker.contains(r#"name="Name""#),
-            "posted invoice picker still typeaheads on Name: {picker}"
-        );
-    }
-
-    #[test]
-    fn payment_template_label_lists_injected_variables() {
-        let html = PaymentPreferencesForm::render_inputs(&FormCtx::form::<PaymentPreferencesForm>(
-            CsrfToken::current(),
-        ))
-        .into_string();
-        assert!(html.contains("Journal entry template"));
-        assert!(html.contains("amount — settlement on this payment"));
-        assert!(html.contains("withholding — withheld tax on this payment"));
-        assert!(html.contains("hintOpen"));
-    }
-
-    #[test]
-    fn payment_form_offers_fill_from_template() {
-        let html = PaymentForm::render_inputs(&FormCtx::form::<PaymentForm>(CsrfToken::current()))
-            .into_string();
-        assert!(html.contains("id=\"payment-journal-lines\""));
-        assert!(html.contains("Fill from template"));
-        assert!(html.contains("/finance-invoices/payment-journal-lines"));
     }
 }

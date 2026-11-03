@@ -5139,7 +5139,6 @@ dependencies = [
  "http 1.5.0",
  "lariv-core",
  "lariv-formula",
- "lariv-plugin-customer",
  "lariv-plugin-filesystem",
  "lariv-plugin-finance-common",
  "lariv-plugin-users",
@@ -5190,6 +5189,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "lariv-plugin-finance-customers"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "frunk",
+ "frunk_core",
+ "http 1.5.0",
+ "lariv-core",
+ "lariv-plugin-customer",
+ "lariv-plugin-finance-accounts",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "sea-orm",
+ "serde",
+ "tracing",
+]
+
+[[package]]
 name = "lariv-plugin-finance-indian"
 version = "0.1.0"
 dependencies = [
@@ -5224,6 +5243,8 @@ dependencies = [
  "lariv-plugin-finance-accounts",
  "lariv-plugin-finance-common",
  "lariv-plugin-finance-creditnotes",
+ "lariv-plugin-finance-customers",
+ "lariv-plugin-finance-payments",
  "lariv-plugin-finance-products",
  "lariv-plugin-finance-taxes",
  "lariv-plugin-llm-assistant",
@@ -5247,6 +5268,35 @@ dependencies = [
  "tracing",
  "typst",
  "zip",
+]
+
+[[package]]
+name = "lariv-plugin-finance-payments"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "chrono",
+ "frunk",
+ "frunk_core",
+ "http 1.5.0",
+ "lariv-core",
+ "lariv-formula",
+ "lariv-plugin-crm",
+ "lariv-plugin-customer",
+ "lariv-plugin-finance-accounts",
+ "lariv-plugin-finance-common",
+ "lariv-plugin-finance-customers",
+ "lariv-plugin-finance-taxes",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "rust_decimal",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -5904,8 +5954,10 @@ dependencies = [
  "lariv-plugin-finance-accounts",
  "lariv-plugin-finance-common",
  "lariv-plugin-finance-creditnotes",
+ "lariv-plugin-finance-customers",
  "lariv-plugin-finance-indian",
  "lariv-plugin-finance-invoices",
+ "lariv-plugin-finance-payments",
  "lariv-plugin-finance-products",
  "lariv-plugin-finance-purchases",
  "lariv-plugin-finance-taxes",

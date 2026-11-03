@@ -131,34 +131,15 @@ pub fn sql_posted_not_cancelled() -> sea_orm::sea_query::SimpleExpr {
     )
 }
 
-pub fn sql_posted_not_fully_paid() -> sea_orm::sea_query::SimpleExpr {
-    Expr::cust(
-        "NOT EXISTS (SELECT 1 FROM paid_invoices paid WHERE paid.posted_invoice_id = posted_invoices.id)",
-    )
-}
-
-pub fn sql_posted_not_partially_paid() -> sea_orm::sea_query::SimpleExpr {
-    Expr::cust(
-        "NOT EXISTS (SELECT 1 FROM partially_paid_invoices pp WHERE pp.posted_invoice_id = posted_invoices.id)",
-    )
-}
-
 pub fn sql_settlement_posted_not_cancelled(table: &str) -> sea_orm::sea_query::SimpleExpr {
     Expr::cust(format!(
         "NOT EXISTS (SELECT 1 FROM cancelled_invoices c WHERE c.posted_invoice_id = {table}.posted_invoice_id)"
     ))
 }
 
-/// Hub list URL for a tab (`drafts`, `posted`, `paid`, `partial`, `cancelled`).
+/// Hub list URL for a tab (`drafts`, `posted`, `cancelled`).
 pub fn hub_tab_url(tab: &str) -> String {
     lariv_core::http::RouteQueryBuilder::new(crate::routes::InvoiceDefaultRouteTag)
-        .query("tab", tab)
-        .build()
-}
-
-/// Payments list URL for a tab (`single`, `batches`).
-pub fn payments_tab_url(tab: &str) -> String {
-    lariv_core::http::RouteQueryBuilder::new(crate::routes::PaymentListRouteTag)
         .query("tab", tab)
         .build()
 }
@@ -171,13 +152,11 @@ pub async fn find_active_draft(db: &DatabaseConnection, id: i64) -> Option<draft
     )
 }
 
-/// Posted invoice still listed under the posted hub tab.
+/// Posted invoice still listed under the posted hub tab (paid or unpaid, not cancelled).
 pub async fn find_active_posted(db: &DatabaseConnection, id: i64) -> Option<posted_invoice::Model> {
     lariv_core::web::opt_or_log(
         PostedInvoiceEntity::find_by_id(id)
             .filter(sql_posted_not_cancelled())
-            .filter(sql_posted_not_fully_paid())
-            .filter(sql_posted_not_partially_paid())
             .one(db)
             .await,
         "find by id",

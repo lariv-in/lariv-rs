@@ -106,79 +106,12 @@ pub fn expr_tax_levied_approx(invoice_table: &str, lines_table: &str, fk: &str) 
 pub fn expr_open_balance(invoice_table: &str) -> SimpleExpr {
     Expr::cust(format!(
         "({} \
-          - (SELECT COALESCE(SUM(amount), 0) FROM payments \
-             WHERE payments.posted_invoice_id = {invoice_table}.id))",
+          - (SELECT COALESCE(SUM(p.amount), 0) FROM payments p \
+             WHERE p.id IN ( \
+               SELECT payment_id FROM paid_invoices WHERE posted_invoice_id = {invoice_table}.id \
+               UNION \
+               SELECT payment_id FROM partially_paid_invoices WHERE posted_invoice_id = {invoice_table}.id \
+             )))",
         expr_invoice_total_sql(invoice_table)
-    ))
-}
-
-pub fn expr_settlement_posted_number(settlement_table: &str) -> SimpleExpr {
-    Expr::cust(format!(
-        "(SELECT number FROM posted_invoices \
-          WHERE posted_invoices.id = {settlement_table}.posted_invoice_id)"
-    ))
-}
-
-pub fn expr_settlement_payment_datetime(settlement_table: &str) -> SimpleExpr {
-    Expr::cust(format!(
-        "(SELECT datetime FROM payments WHERE payments.id = {settlement_table}.payment_id)"
-    ))
-}
-
-/// Posted invoice date for a paid or partial row.
-///
-/// The fiscal year filter uses this, as it does for drafts, posted, and
-/// cancelled. The hub Date column on these tabs still shows the payment date.
-pub fn expr_settlement_posted_datetime(settlement_table: &str) -> SimpleExpr {
-    Expr::cust(format!(
-        "(SELECT datetime FROM posted_invoices \
-          WHERE posted_invoices.id = {settlement_table}.posted_invoice_id)"
-    ))
-}
-
-pub fn expr_settlement_posted_delivery(settlement_table: &str) -> SimpleExpr {
-    Expr::cust(format!(
-        "(SELECT delivery_date FROM posted_invoices \
-          WHERE posted_invoices.id = {settlement_table}.posted_invoice_id)"
-    ))
-}
-
-pub fn expr_settlement_untaxed(settlement_table: &str) -> SimpleExpr {
-    Expr::cust(format!(
-        "(SELECT COALESCE(SUM(pre_tax_amount), 0) FROM posted_invoice_lines \
-          WHERE posted_invoice_lines.posted_invoice_id = {settlement_table}.posted_invoice_id)"
-    ))
-}
-
-pub fn expr_settlement_product_count(settlement_table: &str) -> SimpleExpr {
-    Expr::cust(format!(
-        "(SELECT COUNT(*) FROM posted_invoice_lines \
-          WHERE posted_invoice_lines.posted_invoice_id = {settlement_table}.posted_invoice_id)"
-    ))
-}
-
-pub fn expr_settlement_final_due(settlement_table: &str) -> SimpleExpr {
-    Expr::cust(format!(
-        "(SELECT MAX(ptl.due_date) FROM posted_payment_term_lines ptl \
-          INNER JOIN posted_invoices pi ON pi.posted_payment_term_id = ptl.posted_payment_term_id \
-          WHERE pi.id = {settlement_table}.posted_invoice_id)"
-    ))
-}
-
-pub fn expr_settlement_ar_amount(settlement_table: &str) -> SimpleExpr {
-    Expr::cust(format!(
-        "(SELECT COALESCE(SUM(ptl.amount), 0) FROM posted_payment_term_lines ptl \
-          INNER JOIN posted_invoices pi ON pi.posted_payment_term_id = ptl.posted_payment_term_id \
-          WHERE pi.id = {settlement_table}.posted_invoice_id)"
-    ))
-}
-
-pub fn expr_settlement_tax_levied_approx(settlement_table: &str) -> SimpleExpr {
-    Expr::cust(format!(
-        "((SELECT COALESCE(SUM(ptl.amount), 0) FROM posted_payment_term_lines ptl \
-           INNER JOIN posted_invoices pi ON pi.posted_payment_term_id = ptl.posted_payment_term_id \
-           WHERE pi.id = {settlement_table}.posted_invoice_id) \
-          - (SELECT COALESCE(SUM(pre_tax_amount), 0) FROM posted_invoice_lines \
-             WHERE posted_invoice_lines.posted_invoice_id = {settlement_table}.posted_invoice_id))"
     ))
 }

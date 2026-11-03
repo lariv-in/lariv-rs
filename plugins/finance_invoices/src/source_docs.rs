@@ -1,4 +1,4 @@
-//! Source document type registrations for invoices, payments, and payment batches.
+//! Source document type registration for posted invoices.
 
 use std::sync::Arc;
 
@@ -7,18 +7,13 @@ use async_trait::async_trait;
 use lariv_plugin_finance_accounts::{
     SourceDocInstance, SourceDocJournalLine, SourceDocJournalSpec, SourceDocRegistrar,
     SourceDocRegistry, SourceDocType, logic::journal::JournalLineSpec,
-    scope::load_journal_entry_currency_format,
 };
 use sea_orm::{DatabaseConnection, DatabaseTransaction, EntityTrait};
 
-use crate::logic::{invoice_posting, payment, payment_batch};
+use crate::logic::invoice_posting;
 use crate::{
-    entities::{
-        payment::{Entity as PaymentEntity, PAYMENT_SOURCE_DOC_TYPE},
-        payment_batch::{Entity as PaymentBatchEntity, PAYMENT_BATCH_SOURCE_DOC_TYPE},
-        posted_invoice::{Entity as PostedInvoiceEntity, POSTED_INVOICE_SOURCE_DOC_TYPE},
-    },
-    routes::{PaymentBatchDetailRouteTag, PaymentDetailRouteTag, PostedInvoiceDetailRouteTag},
+    entities::posted_invoice::{Entity as PostedInvoiceEntity, POSTED_INVOICE_SOURCE_DOC_TYPE},
+    routes::PostedInvoiceDetailRouteTag,
 };
 
 #[derive(Clone, Copy, Default)]
@@ -26,18 +21,8 @@ pub struct Hook;
 
 impl SourceDocRegistrar for Hook {
     fn register_source_docs(self, registry: SourceDocRegistry) -> SourceDocRegistry {
-        registry
-            .register(Arc::new(PostedInvoiceSourceDocType))
-            .register(Arc::new(PaymentSourceDocType))
-            .register(Arc::new(PaymentBatchSourceDocType))
+        registry.register(Arc::new(PostedInvoiceSourceDocType))
     }
-}
-
-fn journal_spec(
-    datetime: chrono::DateTime<chrono::Utc>,
-    lines: Vec<JournalLineSpec>,
-) -> SourceDocJournalSpec {
-    journal_spec_indexed(datetime, lines, Vec::new())
 }
 
 fn journal_spec_indexed(
@@ -157,176 +142,5 @@ impl SourceDocType for PostedInvoiceSourceDocType {
         )
         .await
         .map_err(anyhow::Error::msg)
-    }
-}
-
-struct PaymentSourceDocType;
-
-struct PaymentInstance {
-    id: i64,
-    amount_display: String,
-    datetime: chrono::DateTime<chrono::Utc>,
-}
-
-impl SourceDocInstance for PaymentInstance {
-    fn source_doc_type(&self) -> &str {
-        PAYMENT_SOURCE_DOC_TYPE
-    }
-
-    fn source_doc_id(&self) -> i64 {
-        self.id
-    }
-
-    fn display_name(&self) -> String {
-        format!("Payment of {}", self.amount_display)
-    }
-
-    fn detail_url(&self) -> String {
-        PaymentDetailRouteTag::new(self.id).url()
-    }
-
-    fn datetime(&self) -> chrono::DateTime<chrono::Utc> {
-        self.datetime
-    }
-}
-
-#[async_trait]
-impl SourceDocType for PaymentSourceDocType {
-    fn source_doc_type(&self) -> &str {
-        PAYMENT_SOURCE_DOC_TYPE
-    }
-
-    fn display_name(&self) -> &str {
-        "Payment"
-    }
-
-    fn detail_url(&self, id: i64) -> String {
-        PaymentDetailRouteTag::new(id).url()
-    }
-
-    async fn load_from_id(
-        &self,
-        db: &DatabaseConnection,
-        id: i64,
-    ) -> Result<Arc<dyn SourceDocInstance>> {
-        let model = PaymentEntity::find_by_id(id)
-            .one(db)
-            .await?
-            .with_context(|| format!("payment {id} not found"))?;
-        let currency = load_journal_entry_currency_format(db, model.journal_entry_id).await;
-        Ok(Arc::new(PaymentInstance {
-            id: model.id,
-            amount_display: currency.display(model.amount),
-            datetime: model.datetime,
-        }))
-    }
-
-    async fn journal_lines(
-        &self,
-        db: &DatabaseConnection,
-        id: i64,
-    ) -> Result<SourceDocJournalSpec> {
-        let (datetime, lines) = payment::payment_journal_lines(db, id)
-            .await
-            .map_err(anyhow::Error::msg)?;
-        Ok(journal_spec(datetime, lines))
-    }
-
-    async fn adopt_journal_entry(
-        &self,
-        txn: &DatabaseTransaction,
-        backing_id: i64,
-        _journal_id: i64,
-        journal_entry_id: i64,
-        _item_ids: &[i64],
-        _line_item_indexes: &[usize],
-    ) -> Result<()> {
-        payment::adopt_payment_journal_entry(txn, backing_id, journal_entry_id)
-            .await
-            .map_err(anyhow::Error::msg)
-    }
-}
-
-struct PaymentBatchSourceDocType;
-
-struct PaymentBatchInstance {
-    id: i64,
-    datetime: chrono::DateTime<chrono::Utc>,
-}
-
-impl SourceDocInstance for PaymentBatchInstance {
-    fn source_doc_type(&self) -> &str {
-        PAYMENT_BATCH_SOURCE_DOC_TYPE
-    }
-
-    fn source_doc_id(&self) -> i64 {
-        self.id
-    }
-
-    fn display_name(&self) -> String {
-        format!("Batch #{}", self.id)
-    }
-
-    fn detail_url(&self) -> String {
-        PaymentBatchDetailRouteTag::new(self.id).url()
-    }
-
-    fn datetime(&self) -> chrono::DateTime<chrono::Utc> {
-        self.datetime
-    }
-}
-
-#[async_trait]
-impl SourceDocType for PaymentBatchSourceDocType {
-    fn source_doc_type(&self) -> &str {
-        PAYMENT_BATCH_SOURCE_DOC_TYPE
-    }
-
-    fn display_name(&self) -> &str {
-        "Payment Batch"
-    }
-
-    fn detail_url(&self, id: i64) -> String {
-        PaymentBatchDetailRouteTag::new(id).url()
-    }
-
-    async fn load_from_id(
-        &self,
-        db: &DatabaseConnection,
-        id: i64,
-    ) -> Result<Arc<dyn SourceDocInstance>> {
-        let model = PaymentBatchEntity::find_by_id(id)
-            .one(db)
-            .await?
-            .with_context(|| format!("payment batch {id} not found"))?;
-        Ok(Arc::new(PaymentBatchInstance {
-            id: model.id,
-            datetime: model.datetime,
-        }))
-    }
-
-    async fn journal_lines(
-        &self,
-        db: &DatabaseConnection,
-        id: i64,
-    ) -> Result<SourceDocJournalSpec> {
-        let (datetime, lines) = payment_batch::payment_batch_journal_lines(db, id)
-            .await
-            .map_err(anyhow::Error::msg)?;
-        Ok(journal_spec(datetime, lines))
-    }
-
-    async fn adopt_journal_entry(
-        &self,
-        txn: &DatabaseTransaction,
-        backing_id: i64,
-        _journal_id: i64,
-        journal_entry_id: i64,
-        _item_ids: &[i64],
-        _line_item_indexes: &[usize],
-    ) -> Result<()> {
-        payment_batch::adopt_payment_batch_journal_entry(txn, backing_id, journal_entry_id)
-            .await
-            .map_err(anyhow::Error::msg)
     }
 }

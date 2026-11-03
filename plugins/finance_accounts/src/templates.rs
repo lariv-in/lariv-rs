@@ -3,7 +3,6 @@ mod common;
 mod currencies;
 mod custom_source_doc_templates;
 mod custom_source_docs;
-mod customers;
 mod journals;
 mod preferences;
 mod register;
@@ -18,7 +17,6 @@ pub use common::{
 pub use currencies::*;
 pub use custom_source_doc_templates::*;
 pub use custom_source_docs::*;
-pub use customers::*;
 pub use journals::*;
 pub use preferences::*;
 pub use register::{Hook, SlotsHook};

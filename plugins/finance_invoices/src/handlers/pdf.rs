@@ -239,7 +239,7 @@ pub async fn paid_pdf(
     Path(id): Path<i64>,
 ) -> Response {
     if find_active_paid(&state.db, id).await.is_none() {
-        return Redirect::to(&hub_tab_url("paid")).into_response();
+        return Redirect::to(&hub_tab_url("posted")).into_response();
     }
     match render_paid_invoice_pdf(&fs, id, &ctx.timezone).await {
         Ok(result) => pdf_ok_response(result),
@@ -254,7 +254,7 @@ pub async fn partially_paid_pdf(
     Path(id): Path<i64>,
 ) -> Response {
     if find_active_partial(&state.db, id).await.is_none() {
-        return Redirect::to(&hub_tab_url("partial")).into_response();
+        return Redirect::to(&hub_tab_url("posted")).into_response();
     }
     match render_partially_paid_invoice_pdf(&fs, id, &ctx.timezone).await {
         Ok(result) => pdf_ok_response(result),

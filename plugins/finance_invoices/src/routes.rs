@@ -1,9 +1,8 @@
 use super::{
-    handlers,
+    customer_journal, handlers,
     keys::{
         DRAFT_INVOICE_BULK_DELETE_MODAL, DRAFT_INVOICE_DELETE_MODAL, DRAFT_INVOICE_SELECT_MODAL,
-        DRAFT_INVOICE_SELECT_TABLE, INVOICE_HUB_TABLE, PAYMENT_TABLE, POSTED_INVOICE_SELECT_MODAL,
-        POSTED_INVOICE_SELECT_TABLE,
+        DRAFT_INVOICE_SELECT_TABLE, INVOICE_HUB_TABLE,
     },
 };
 
@@ -16,6 +15,9 @@ lariv_core::define_plugin_routes! {
     prefix: "/dashboard";
     routes: [
         get InvoiceDefaultRouteTag, "/finance-invoices", handlers::hub::hub, fragment(INVOICE_HUB_TABLE), authorize(FinanceInvoicesView, []);
+        get CustomerJournalQuotationsRouteTag, "/finance/customers/{id}/journal/quotations", customer_journal::quotations, authorize(FinanceInvoicesView, []);
+        get CustomerJournalInvoicesRouteTag, "/finance/customers/{id}/journal/invoices", customer_journal::invoices, authorize(FinanceInvoicesView, []);
+        get CustomerJournalCancelledRouteTag, "/finance/customers/{id}/journal/cancelled", customer_journal::cancelled, authorize(FinanceInvoicesView, []);
         get InvoiceLinePriceRouteTag, "/finance-invoices/line-price", handlers::drafts::line_price, authorize(FinanceInvoicesView, []);
         get DraftInvoiceCreateGetRouteTag, "/finance-invoices/create", handlers::drafts::create_get, modal, authorize(FinanceInvoicesMutate, []);
         post DraftInvoiceCreatePostRouteTag, "/finance-invoices/create", handlers::drafts::create_post, authorize(FinanceInvoicesMutate, []);
@@ -47,7 +49,10 @@ lariv_core::define_plugin_routes! {
         post PostedInvoiceBulkCancelPostRouteTag, "/finance-invoices/bulk-cancel", bare handlers::posted::bulk_cancel_post, redirect, authorize(FinanceInvoicesMutate, []);
         get PostedInvoicePdfModalRouteTag, "/finance-invoices/posted/{id}/pdf", bare handlers::pdf::posted_pdf_modal, modal, authorize(FinanceInvoicesView, []);
         get PostedInvoicePdfRouteTag, "/finance-invoices/posted/{id}/pdf/file", bare handlers::pdf::posted_pdf, file, authorize(FinanceInvoicesView, []);
-        get PostedInvoiceFkSelectRouteTag, "/finance-invoices/posted/pick", handlers::payments::posted_fk_select, fk_select(POSTED_INVOICE_SELECT_TABLE, POSTED_INVOICE_SELECT_MODAL), authorize(FinanceInvoicesView, []);
+
+        get PostedInvoicePayGetRouteTag, "/finance-invoices/posted/{id}/pay", handlers::pay::pay_get, modal, authorize(FinanceInvoicesMutate, []);
+        post PostedInvoicePayPostRouteTag, "/finance-invoices/posted/{id}/pay", handlers::pay::pay_post, authorize(FinanceInvoicesMutate, []);
+        post InvoicePayJournalLinesRouteTag, "/finance-invoices/pay-journal-lines", bare handlers::pay::fill_journal_lines, raw, authorize(FinanceInvoicesMutate, []);
 
         get CancelledInvoiceDetailRouteTag, "/finance-invoices/cancelled/{id}", handlers::cancelled::detail, authorize(FinanceInvoicesView, []);
         get CancelledInvoiceNewDraftGetRouteTag, "/finance-invoices/cancelled/{id}/new-draft", handlers::cancelled::new_draft_confirm_get, modal, authorize(FinanceInvoicesMutate, []);
@@ -60,21 +65,8 @@ lariv_core::define_plugin_routes! {
         get PaidInvoiceDetailRouteTag, "/finance-invoices/paid/{id}", handlers::settlements::paid_detail, authorize(FinanceInvoicesView, []);
         get PartiallyPaidInvoiceDetailRouteTag, "/finance-invoices/partial/{id}", handlers::settlements::partial_detail, authorize(FinanceInvoicesView, []);
 
-        get PaymentListRouteTag, "/finance-invoices/payments", handlers::payments::list, fragment(PAYMENT_TABLE), authorize(FinanceInvoicesView, []);
-        get PaymentCreateGetRouteTag, "/finance-invoices/payments/create", handlers::payments::create_get, modal, authorize(FinanceInvoicesMutate, []);
-        post PaymentCreatePostRouteTag, "/finance-invoices/payments/create", handlers::payments::create_post, authorize(FinanceInvoicesMutate, []);
-        post PaymentJournalLinesRouteTag, "/finance-invoices/payment-journal-lines", bare handlers::payments::fill_journal_lines, raw, authorize(FinanceInvoicesMutate, []);
-        get PaymentDetailRouteTag, "/finance-invoices/payments/{id}", handlers::payments::detail, authorize(FinanceInvoicesView, []);
-
-        get PaymentBatchCreateGetRouteTag, "/finance-invoices/payments/batch/create", handlers::payment_batches::create_get, modal, authorize(FinanceInvoicesMutate, []);
-        post PaymentBatchCreatePostRouteTag, "/finance-invoices/payments/batch/create", handlers::payment_batches::create_post, authorize(FinanceInvoicesMutate, []);
-        post PaymentBatchJournalLinesRouteTag, "/finance-invoices/payment-batch-journal-lines", bare handlers::payment_batches::fill_journal_lines, raw, authorize(FinanceInvoicesMutate, []);
-        get PaymentBatchDetailRouteTag, "/finance-invoices/payment-batches/{id}", handlers::payment_batches::detail, authorize(FinanceInvoicesView, []);
-
         get InvoicePreferencesRouteTag, "/finance-invoices/preferences", handlers::preferences::invoice_preferences_get, authorize(FinanceInvoicesView, []);
         post InvoicePreferencesPostRouteTag, "/finance-invoices/preferences", bare handlers::preferences::invoice_preferences_post, redirect, authorize(FinanceInvoicesMutate, []);
-        get PaymentPreferencesRouteTag, "/finance-invoices/payment-preferences", handlers::preferences::payment_preferences_get, authorize(FinanceInvoicesView, []);
-        post PaymentPreferencesPostRouteTag, "/finance-invoices/payment-preferences", bare handlers::preferences::payment_preferences_post, redirect, authorize(FinanceInvoicesMutate, []);
 
         get PaidInvoicePdfModalRouteTag, "/finance-invoices/paid/{id}/pdf", bare handlers::pdf::paid_pdf_modal, modal, authorize(FinanceInvoicesView, []);
         get PaidInvoicePdfRouteTag, "/finance-invoices/paid/{id}/pdf/file", bare handlers::pdf::paid_pdf, file, authorize(FinanceInvoicesView, []);

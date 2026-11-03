@@ -297,9 +297,9 @@ pub async fn edit_post(
 }
 
 fn can_mutate() -> bool {
-    lariv_core::components::role_permitted(
-        &lariv_plugin_users::role_authorization::roles_for::<crate::routes::FinanceAccountsMutate>(),
-    )
+    lariv_core::components::role_permitted(&lariv_plugin_users::role_authorization::roles_for::<
+        crate::routes::FinanceAccountsMutate,
+    >())
 }
 
 pub async fn delete_get(

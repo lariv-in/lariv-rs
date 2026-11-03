@@ -2,7 +2,6 @@ pub mod accounts;
 pub mod currencies;
 pub mod custom_source_doc_templates;
 pub mod custom_source_docs;
-pub mod customers;
 pub mod journal_entries;
 pub mod journals;
 pub mod preferences;

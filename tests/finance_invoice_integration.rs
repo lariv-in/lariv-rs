@@ -23,7 +23,8 @@ use lariv_rs::plugins::finance_taxes::entities::tax::{self, TaxKind};
 use lariv_rs::plugins::users::{self, UsersTag, auth, entities::user::Entity as UserEntity};
 use lariv_rs::plugins::{
     contacts, crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes,
-    finance_indian, finance_invoices, finance_products, finance_taxes, llm_assistant, otp, pwa,
+    finance_customers, finance_indian, finance_invoices, finance_payments, finance_products,
+    finance_taxes, llm_assistant, otp, pwa,
 };
 use rust_decimal::Decimal;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
@@ -61,6 +62,7 @@ async fn create_draft_invoice_via_http() {
     let app = filesystem::install(app);
     let app = llm_assistant::install(app);
     let app = finance_accounts::install(app);
+    let app = finance_customers::install(app);
     let app = contacts::install(app);
     let app = customer::install(app);
     let app = crm::install(app);
@@ -68,6 +70,7 @@ async fn create_draft_invoice_via_http() {
     let app = finance_taxes::install(app);
     let app = finance_products::install(app);
     let app = finance_invoices::install(app);
+    let app = finance_payments::install(app);
     let app = finance_indian::install(app);
     let app = otp::install(app);
     let app = pwa::install(app);
@@ -286,6 +289,7 @@ async fn create_draft_invoice_via_rune_env() {
     let app = filesystem::install(app);
     let app = llm_assistant::install(app);
     let app = finance_accounts::install(app);
+    let app = finance_customers::install(app);
     let app = contacts::install(app);
     let app = customer::install(app);
     let app = crm::install(app);
@@ -293,6 +297,7 @@ async fn create_draft_invoice_via_rune_env() {
     let app = finance_taxes::install(app);
     let app = finance_products::install(app);
     let app = finance_invoices::install(app);
+    let app = finance_payments::install(app);
     let app = finance_indian::install(app);
     let app = otp::install(app);
     let app = pwa::install(app);
@@ -451,10 +456,9 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
     use lariv_rs::plugins::finance_accounts::entities::{
         account, currency, journal, journal_entry_item,
     };
-    use lariv_rs::plugins::finance_invoices::logic::{
-        CreatePaymentInput, create_payment, draft_new_posted,
-    };
-    use lariv_rs::plugins::finance_invoices::payment_journal_template::save_payment_template;
+    use lariv_rs::plugins::finance_invoices::logic::PayPostedInvoiceInput;
+    use lariv_rs::plugins::finance_invoices::logic::{draft_new_posted, pay_posted_invoice};
+    use lariv_rs::plugins::finance_payments::payment_journal_template::save_payment_template;
     use lariv_rs::plugins::finance_products::journal_template::save_product_template;
     use sea_orm::QueryOrder;
 
@@ -466,6 +470,7 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
     let app = filesystem::install(app);
     let app = llm_assistant::install(app);
     let app = finance_accounts::install(app);
+    let app = finance_customers::install(app);
     let app = contacts::install(app);
     let app = customer::install(app);
     let app = crm::install(app);
@@ -473,6 +478,7 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
     let app = finance_taxes::install(app);
     let app = finance_products::install(app);
     let app = finance_invoices::install(app);
+    let app = finance_payments::install(app);
     let app = finance_indian::install(app);
     let app = otp::install(app);
     let app = pwa::install(app);
@@ -738,13 +744,13 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
         {"account_id": receivable.id, "formula": "decimal(\"0\") - amount"}
     ])
     .to_string();
-    lariv_rs::plugins::finance_invoices::logic::preferences::load_payment_preferences(&db).await;
+    lariv_rs::plugins::finance_payments::logic::load_payment_preferences(&db).await;
     save_payment_template(&db, &journal.id.to_string(), &payment_lines)
         .await
         .expect("payment template");
-    let over = create_payment(
+    let over = pay_posted_invoice(
         &db,
-        CreatePaymentInput {
+        PayPostedInvoiceInput {
             posted_invoice_id: posted.id,
             amount: Decimal::from(159),
             datetime: Utc::now(),

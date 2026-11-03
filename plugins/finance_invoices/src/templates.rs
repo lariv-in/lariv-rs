@@ -11,16 +11,15 @@ use lariv_core::components::{
     PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
     TableColumnHeader, TableListContent, TablePagination, TableRow, breadcrumbs, button_download,
     button_modal_form, button_modal_route, button_submit, column_sort_url, container_column,
-    container_row, data_table, data_table_list_refresh, delete_confirmation, detail, detail_header,
-    field_link, field_text, field_textarea, field_title, filter_error_banner, form,
-    form_hx_get_picker_route, form_hx_get_route, form_hx_post_main_url, form_hx_post_selector,
-    form_hx_post_url, label, list_filter_builder, modal, modal_keyed,
-    page_size_only_filter_form_with_extras, pagination_pages, row_attr_navigate, row_attr_select,
-    row_attr_select_multi, sort_indicator, table_button_bulk_actions, table_button_columns,
-    table_button_filter, table_list_content, table_pagination,
+    container_row, data_table, delete_confirmation, detail, detail_header, field_link, field_text,
+    field_textarea, field_title, filter_error_banner, form, form_hx_get_picker_route,
+    form_hx_get_route, form_hx_get_url, form_hx_post_main_url, form_hx_post_selector,
+    form_hx_post_url, label, list_filter_builder, modal, modal_keyed, pagination_pages,
+    row_attr_navigate, row_attr_select_multi, sort_indicator, table_button_bulk_actions,
+    table_button_columns, table_button_filter, table_list_content, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm, csrf_hidden_field};
-use lariv_core::http::{FkSelectGet, ProvideRequestCaps, RouteUrl};
+use lariv_core::http::{FkSelectGet, ProvideRequestCaps, RouteQueryBuilder, RouteUrl};
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
@@ -42,15 +41,13 @@ use crate::logic::invoice_line_editor::InvoiceLineDisplayRow;
 
 use super::forms::{
     CancelInvoiceForm, CancelInvoiceFormField, DraftInvoiceBulkEditForm,
-    DraftInvoiceBulkEditFormField, DraftInvoiceForm, DraftInvoiceFormField, PaymentBatchForm,
-    PaymentBatchFormField, PaymentForm, PaymentFormField, PaymentPreferencesForm,
-    PaymentPreferencesFormField,
+    DraftInvoiceBulkEditFormField, DraftInvoiceForm, DraftInvoiceFormField, InvoicePaymentForm,
+    InvoicePaymentFormField,
 };
 use super::keys::{
     DRAFT_INVOICE_BULK_DELETE_MODAL, DRAFT_INVOICE_BULK_EDIT_MODAL, DRAFT_INVOICE_CREATE_MODAL,
     DRAFT_INVOICE_DELETE_MODAL, DRAFT_INVOICE_EDIT_MODAL, DRAFT_INVOICE_SELECT_MODAL,
-    DRAFT_INVOICE_SELECT_TABLE, INVOICE_HUB_TABLE, PAYMENT_BATCH_CREATE_MODAL,
-    PAYMENT_CREATE_MODAL, PAYMENT_TABLE, POSTED_INVOICE_SELECT_MODAL, POSTED_INVOICE_SELECT_TABLE,
+    DRAFT_INVOICE_SELECT_TABLE, INVOICE_PAY_MODAL,
 };
 use super::routes::{
     CancelledInvoiceBulkNewDraftRouteTag, CancelledInvoiceDetailRouteTag,
@@ -63,13 +60,11 @@ use super::routes::{
     DraftInvoicePdfModalRouteTag, DraftInvoicePostGetRouteTag, InvoiceBulkPdfsRouteTag,
     InvoiceDefaultRouteTag, InvoiceExcelExportRouteTag, InvoicePreferencesRouteTag,
     PaidInvoiceDetailRouteTag, PaidInvoicePdfModalRouteTag, PartiallyPaidInvoiceDetailRouteTag,
-    PartiallyPaidInvoicePdfModalRouteTag, PaymentBatchCreateGetRouteTag,
-    PaymentBatchCreatePostRouteTag, PaymentBatchDetailRouteTag, PaymentCreateGetRouteTag,
-    PaymentCreatePostRouteTag, PaymentDetailRouteTag, PaymentListRouteTag,
-    PaymentPreferencesPostRouteTag, PaymentPreferencesRouteTag, PostedInvoiceBulkCancelGetRouteTag,
+    PartiallyPaidInvoicePdfModalRouteTag, PostedInvoiceBulkCancelGetRouteTag,
     PostedInvoiceBulkCancelPostRouteTag, PostedInvoiceBulkNewDraftRouteTag,
     PostedInvoiceCancelGetRouteTag, PostedInvoiceCancelRouteTag, PostedInvoiceDetailRouteTag,
-    PostedInvoiceFkSelectRouteTag, PostedInvoiceNewDraftGetRouteTag, PostedInvoicePdfModalRouteTag,
+    PostedInvoiceNewDraftGetRouteTag, PostedInvoicePayGetRouteTag, PostedInvoicePayPostRouteTag,
+    PostedInvoicePdfModalRouteTag,
 };
 use lariv_core::list_filters::{FilterField, FilterRowError};
 
@@ -92,15 +87,10 @@ lariv_core::define_register_items! {
         PaidInvoiceDetailIdx: PaidInvoiceDetailPageTag => PaidInvoiceDetailPage,
         PartiallyPaidInvoiceDetailIdx: PartiallyPaidInvoiceDetailPageTag => PartiallyPaidInvoiceDetailPage,
         CancelledInvoiceDetailIdx: CancelledInvoiceDetailPageTag => CancelledInvoiceDetailPage,
-        PaymentListIdx: PaymentListPageTag => PaymentListPage,
-        PaymentCreateModalIdx: PaymentCreateModalPageTag => PaymentCreateModalPage,
-        PaymentDetailIdx: PaymentDetailPageTag => PaymentDetailPage,
-        PaymentBatchCreateModalIdx: PaymentBatchCreateModalPageTag => PaymentBatchCreateModalPage,
-        PaymentBatchDetailIdx: PaymentBatchDetailPageTag => PaymentBatchDetailPage,
         CancelInvoiceIdx: CancelInvoicePageTag => CancelInvoicePage,
         CancelBulkInvoiceIdx: CancelBulkInvoicePageTag => CancelBulkInvoicePage,
+        InvoicePayModalIdx: InvoicePayModalPageTag => InvoicePayModalPage,
         InvoicePreferencesIdx: InvoicePreferencesPageTag => InvoicePreferencesPage,
-        PaymentPreferencesIdx: PaymentPreferencesPageTag => PaymentPreferencesPage,
         ConfirmDeleteIdx: DraftInvoiceConfirmDeletePageTag => ConfirmDeletePage,
         ConfirmBulkDeleteIdx: DraftInvoiceConfirmBulkDeletePageTag => ConfirmBulkDeletePage,
     ]
@@ -116,9 +106,15 @@ lariv_core::define_register_items! {
     hook: SlotsHook;
 }
 
-fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(
+    key: SwapKey,
+    path_and_query: &str,
+    number: u32,
+    num_pages: u32,
+    push: bool,
+) -> Markup {
     let hx_target = key.selector();
-    let owned = pagination_pages(path_and_query, number, num_pages, true);
+    let owned = pagination_pages(path_and_query, number, num_pages, push);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
         .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
@@ -138,13 +134,6 @@ fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages:
 fn invoices_list_crumbs() -> Markup {
     breadcrumbs(&[Crumb {
         label: "Invoices",
-        href: None,
-    }])
-}
-
-fn payments_list_crumbs() -> Markup {
-    breadcrumbs(&[Crumb {
-        label: "Payments",
         href: None,
     }])
 }
@@ -176,13 +165,6 @@ fn field_payment_term_schedule(rows: &[PaymentTermLineDisplayRow]) -> Markup {
 fn invoice_preferences_crumbs() -> Markup {
     breadcrumbs(&[Crumb {
         label: "Invoice preferences",
-        href: None,
-    }])
-}
-
-fn payment_preferences_crumbs() -> Markup {
-    breadcrumbs(&[Crumb {
-        label: "Payment preferences",
         href: None,
     }])
 }
@@ -233,34 +215,6 @@ fn invoice_section_crumbs(label: &str, detail_url: &str, action: Option<&str>) -
     }
 }
 
-fn payment_crumbs(label: &str) -> Markup {
-    let list_url = PaymentListRouteTag.url();
-    breadcrumbs(&[
-        Crumb {
-            label: "Payments",
-            href: Some(&list_url),
-        },
-        Crumb {
-            label: label,
-            href: None,
-        },
-    ])
-}
-
-fn payment_batch_crumbs(label: &str) -> Markup {
-    let list_url = payment_tab_href("batches");
-    breadcrumbs(&[
-        Crumb {
-            label: "Payments",
-            href: Some(&list_url),
-        },
-        Crumb {
-            label: label,
-            href: None,
-        },
-    ])
-}
-
 fn tab_href(tab: &str) -> String {
     lariv_core::http::RouteQueryBuilder::new(InvoiceDefaultRouteTag)
         .query("tab", tab)
@@ -294,15 +248,27 @@ where
 }
 
 fn invoice_hub_filter_form(page: &InvoiceHubPage) -> Markup {
+    let mut attrs = if page.filter_url.is_empty() {
+        form_hx_get_route(InvoiceDefaultRouteTag)
+    } else {
+        form_hx_get_url(page.table_key, &page.filter_url)
+    };
+    if !page.push_history {
+        attrs = attrs.set("hx-push-url", "false");
+    }
+    let tab = page.tab.clone();
+    let keep_tab = page.filter_url.is_empty();
     list_filter_builder(ListFilterBuilder {
         fields: &page.fields,
         rows: &page.filters,
         page_size: page.page_size,
         sort: &page.sort,
-        attrs: form_hx_get_route(InvoiceDefaultRouteTag),
+        attrs,
         apply_label: "Apply Filters",
         extra: html! {
-            input type="hidden" name="tab" value=(page.tab);
+            @if keep_tab {
+                input type="hidden" name="tab" value=(tab);
+            }
             (PreEscaped(page.extra_filters.as_str()))
         },
     })
@@ -368,12 +334,6 @@ fn hub_data_table(
         instance_id: "",
         body_only: false,
     })
-}
-
-fn payment_tab_href(tab: &str) -> String {
-    lariv_core::http::RouteQueryBuilder::new(PaymentListRouteTag)
-        .query("tab", tab)
-        .build()
 }
 
 fn draft_invoice_detail_menu(id: i64, number: &str) -> Markup {
@@ -463,32 +423,6 @@ fn partially_paid_invoice_detail_menu(id: i64, number: &str) -> Markup {
     )
 }
 
-fn payment_detail_menu(id: i64) -> Markup {
-    detail_sidebar_menu(
-        format!("Payment #{id}"),
-        &[DetailMenuNavItem {
-            title: "Payment Detail",
-            url: PaymentDetailRouteTag::new(id).url(),
-            active: true,
-        }],
-        None,
-        html! {},
-    )
-}
-
-fn payment_batch_detail_menu(id: i64) -> Markup {
-    detail_sidebar_menu(
-        format!("Batch #{id}"),
-        &[DetailMenuNavItem {
-            title: "Batch Detail",
-            url: PaymentBatchDetailRouteTag::new(id).url(),
-            active: true,
-        }],
-        None,
-        html! {},
-    )
-}
-
 #[derive(Clone)]
 pub struct InvoiceRow {
     pub id: i64,
@@ -525,6 +459,14 @@ pub struct InvoiceHubPage {
     pub filter_errors: Vec<FilterRowError>,
     /// Pre-rendered addon filter fields (foreign-key pickers need a database lookup).
     pub extra_filters: String,
+    pub table_key: SwapKey,
+    /// Filter and sort target. Empty uses the invoice hub route.
+    pub filter_url: String,
+    pub push_history: bool,
+    /// Table title. Empty follows the hub tab (quotations vs invoices).
+    pub heading: String,
+    /// When set, the quotation create button opens with this customer filled in.
+    pub create_customer_id: Option<i64>,
 }
 
 impl InvoiceHubPage {
@@ -571,7 +513,6 @@ impl InvoiceHubPage {
     }
 
     fn selection_x_data() -> String {
-        let batch = lariv_core::http::trailing_slash(&PaymentBatchCreateGetRouteTag.path());
         let bulk_delete =
             lariv_core::http::trailing_slash(&DraftInvoiceBulkDeleteGetRouteTag.path());
         let bulk_edit = lariv_core::http::trailing_slash(&DraftInvoiceBulkEditGetRouteTag.path());
@@ -606,11 +547,6 @@ impl InvoiceHubPage {
             }},
             selectedIds() {{
                 return Object.keys(this.selected).filter(k => this.selected[k]);
-            }},
-            paySelectedHref() {{
-                const ids = this.selectedIds();
-                if (ids.length < 1) return '#';
-                return '{batch}?PostedInvoiceIDs=' + ids.join(',');
             }},
             bulkDeleteHref() {{
                 const ids = this.selectedIds();
@@ -648,11 +584,6 @@ impl InvoiceHubPage {
                 const params = new URLSearchParams(window.location.search);
                 const tab = params.get('tab') || 'drafts';
                 return '{bulk_pdfs}?tab=' + encodeURIComponent(tab) + '&ids=' + ids.join(',');
-            }},
-            requestPaySelected(el) {{
-                const href = this.paySelectedHref();
-                if (href === '#' || typeof htmx === 'undefined') return;
-                htmx.ajax('GET', href, {{ target: 'body', swap: 'beforeend', source: el }});
             }},
             requestBulkDelete(el) {{
                 const href = this.bulkDeleteHref();
@@ -710,10 +641,21 @@ impl InvoiceHubPage {
         }
     }
 
+    /// Hub table, optionally wrapped in the bulk-selection Alpine root.
+    pub fn render_hub_table(&self, with_selection_root: bool) -> Markup {
+        let table = self.render_table();
+        if with_selection_root && self.show_select() {
+            self.wrap_with_selection(table)
+        } else {
+            table
+        }
+    }
+
     pub fn render_table(&self) -> Markup {
         let posted_hub = self.posted_hub();
         let drafts_hub = self.drafts_hub();
         let cancelled_hub = self.cancelled_hub();
+        let show_customer = drafts_hub || posted_hub;
         let show_select = self.show_select();
         let sel = Self::selection_root_js();
 
@@ -780,83 +722,85 @@ impl InvoiceHubPage {
                 key: "Select",
                 label: &select_all_label,
                 sort_url: None,
-                push_url: true,
+                push_url: self.push_history,
             });
         }
         headers.push(TableColumnHeader {
             key: "ID",
             label: &id_label,
             sort_url: Some(&id_sort),
-            push_url: true,
+            push_url: self.push_history,
         });
         headers.push(TableColumnHeader {
             key: "Number",
             label: &number_label,
             sort_url: Some(&number_sort),
-            push_url: true,
+            push_url: self.push_history,
         });
-        if posted_hub {
+        if show_customer {
             headers.push(TableColumnHeader {
                 key: "Customer",
                 label: &customer_label,
                 sort_url: Some(&customer_sort),
-                push_url: true,
+                push_url: self.push_history,
             });
+        }
+        if posted_hub {
             headers.push(TableColumnHeader {
                 key: "OpenBalance",
                 label: &open_balance_label,
                 sort_url: Some(&open_balance_sort),
-                push_url: true,
+                push_url: self.push_history,
             });
         }
         headers.push(TableColumnHeader {
             key: "Date",
             label: &date_label,
             sort_url: Some(&date_sort),
-            push_url: true,
+            push_url: self.push_history,
         });
         headers.push(TableColumnHeader {
             key: "DeliveryDate",
             label: &delivery_date_label,
             sort_url: Some(&delivery_date_sort),
-            push_url: true,
+            push_url: self.push_history,
         });
         headers.push(TableColumnHeader {
             key: "UntaxedAmount",
             label: &untaxed_label,
             sort_url: Some(&untaxed_sort),
-            push_url: true,
+            push_url: self.push_history,
         });
         headers.push(TableColumnHeader {
             key: "TotalAmount",
             label: &total_label,
             sort_url: Some(&total_sort),
-            push_url: true,
+            push_url: self.push_history,
         });
         headers.push(TableColumnHeader {
             key: "TaxLevied",
             label: &tax_label,
             sort_url: Some(&tax_sort),
-            push_url: true,
+            push_url: self.push_history,
         });
         headers.push(TableColumnHeader {
             key: "ProductCount",
             label: &product_count_label,
             sort_url: Some(&product_count_sort),
-            push_url: true,
+            push_url: self.push_history,
         });
         headers.push(TableColumnHeader {
             key: "FinalDueDate",
             label: &final_due_label,
             sort_url: Some(&final_due_sort),
-            push_url: true,
+            push_url: self.push_history,
         });
         for col in &self.extra_columns {
             headers.push(TableColumnHeader {
                 key: col.key,
                 label: col.label,
                 sort_url: None,
-                push_url: true,
+                push_url: self.push_history,
             });
         }
 
@@ -884,11 +828,13 @@ impl InvoiceHubPage {
                     value: &inv.number,
                     classes: "",
                 }));
-                if posted_hub {
+                if show_customer {
                     cells.push(field_text(FieldText {
                         value: &inv.customer_name,
                         classes: "",
                     }));
+                }
+                if posted_hub {
                     cells.push(field_text(FieldText {
                         value: &inv.open_balance,
                         classes: "text-end tabular-nums",
@@ -938,16 +884,23 @@ impl InvoiceHubPage {
             .collect();
 
         let pagination = render_pagination(
-            INVOICE_HUB_TABLE,
+            self.table_key,
             &self.path_and_query,
             self.invoices.number,
             self.invoices.num_pages,
+            self.push_history,
         );
 
+        let draft_create_href = match self.create_customer_id.filter(|id| *id > 0) {
+            Some(id) => RouteQueryBuilder::new(DraftInvoiceCreateGetRouteTag)
+                .query("CustomerID", id)
+                .build(),
+            None => DraftInvoiceCreateGetRouteTag.url(),
+        };
         let draft_create = if self.can_edit && drafts_hub {
             button_modal_form(ButtonModalForm {
                 name: "p_finance_invoices.DraftInvoiceCreateForm",
-                href: &DraftInvoiceCreateGetRouteTag.url(),
+                href: &draft_create_href,
                 form_post_url: &DraftInvoiceCreatePostRouteTag.path(),
                 modal_uid: DRAFT_INVOICE_CREATE_MODAL.id(),
                 icon_name: Some("plus"),
@@ -989,7 +942,6 @@ impl InvoiceHubPage {
                     "btn-ghost",
                     "requestBulkNewDraftFromPosted",
                 ));
-                items.push_str(&item("Pay selected", "btn-ghost", "requestPaySelected"));
                 items.push_str(&item(
                     "Cancel selected",
                     "btn-ghost text-error",
@@ -1016,9 +968,8 @@ impl InvoiceHubPage {
             ..Default::default()
         });
         let excel_export = InvoiceExcelExportRouteTag.path();
-        let actions = html! {
-            (page_size_filter)
-            (button_download(ButtonDownload {
+        let excel = if self.filter_url.is_empty() {
+            button_download(ButtonDownload {
                 label: "",
                 href: &excel_export,
                 icon_name: Some("arrow-down-tray"),
@@ -1026,16 +977,28 @@ impl InvoiceHubPage {
                 attrs: HtmlAttrs::new()
                     .set("aria-label", "Export Excel")
                     .set("title", "Export Excel"),
-            }))
+            })
+        } else {
+            html! {}
+        };
+        let actions = html! {
+            (page_size_filter)
+            (excel)
             (draft_create)
             (bulk_actions)
         };
 
         // Bare table only — selection Alpine state lives outside so pagination swaps
         // do not reset checkboxes.
-        let table_title = if drafts_hub { "Quotations" } else { "Invoices" };
+        let table_title = if !self.heading.is_empty() {
+            self.heading.as_str()
+        } else if drafts_hub {
+            "Quotations"
+        } else {
+            "Invoices"
+        };
         hub_data_table(
-            INVOICE_HUB_TABLE,
+            self.table_key,
             table_title,
             actions,
             &headers,
@@ -1060,8 +1023,6 @@ impl InvoiceHubPage {
                     (self.tab_link("drafts", "Quotations"))
                     (self.tab_link("posted", "Posted"))
                     (self.tab_link("cancelled", "Cancelled"))
-                    (self.tab_link("paid", "Paid"))
-                    (self.tab_link("partial", "Partially paid"))
                 }
                 (table)
             }))
@@ -1494,10 +1455,8 @@ pub struct PostedInvoiceDetailPage {
 
 impl PostedInvoiceDetailPage {
     fn body(&self) -> Markup {
-        let pay_href = PaymentCreateGetRouteTag
-            .with_query()
-            .query("PostedInvoiceID", self.id)
-            .build();
+        let pay_href = PostedInvoicePayGetRouteTag::new(self.id).url();
+        let pay_post = PostedInvoicePayPostRouteTag::new(self.id).path();
         let actions = html! {
             (button_modal_route(PostedInvoicePdfModalRouteTag::new(self.id), "PDF", "btn-outline"))
             @if self.can_edit {
@@ -1509,11 +1468,11 @@ impl PostedInvoiceDetailPage {
             }
             @if self.can_pay {
                 (button_modal_form(ButtonModalForm {
-                    name: "p_finance_invoices.PaymentCreateForm",
+                    name: "p_finance_invoices.InvoicePaymentForm",
                     label: "Pay",
                     href: &pay_href,
-                    form_post_url: &PaymentCreateGetRouteTag.path(),
-                    modal_uid: PAYMENT_CREATE_MODAL.id(),
+                    form_post_url: &pay_post,
+                    modal_uid: INVOICE_PAY_MODAL.id(),
                     classes: "btn-primary",
                     ..Default::default()
                 }))
@@ -1642,19 +1601,17 @@ fn settlement_detail_body(
     can_pay: bool,
     can_edit: bool,
 ) -> Markup {
-    let pay_href = PaymentCreateGetRouteTag
-        .with_query()
-        .query("PostedInvoiceID", ctx.posted_invoice_id)
-        .build();
+    let pay_href = PostedInvoicePayGetRouteTag::new(ctx.posted_invoice_id).url();
+    let pay_post = PostedInvoicePayPostRouteTag::new(ctx.posted_invoice_id).path();
     let actions = html! {
         (button_modal_route(pdf_route, "PDF", "btn-outline"))
         @if can_pay {
             (button_modal_form(ButtonModalForm {
-                name: "p_finance_invoices.PaymentCreateForm",
+                name: "p_finance_invoices.InvoicePaymentForm",
                 label: "Pay",
                 href: &pay_href,
-                form_post_url: &PaymentCreateGetRouteTag.path(),
-                modal_uid: PAYMENT_CREATE_MODAL.id(),
+                form_post_url: &pay_post,
+                modal_uid: INVOICE_PAY_MODAL.id(),
                 classes: "btn-primary",
                 ..Default::default()
             }))
@@ -1983,666 +1940,6 @@ impl RenderTemplate for CancelledInvoiceDetailPage {
 }
 
 #[derive(Clone)]
-pub struct PaymentRow {
-    pub id: i64,
-    pub invoice_label: String,
-    pub amount: String,
-    pub datetime: String,
-}
-
-#[derive(Clone)]
-pub struct PaymentBatchRow {
-    pub id: i64,
-    pub datetime: String,
-    pub total_amount: String,
-    pub payment_count: u64,
-}
-
-#[derive(Generic)]
-pub struct PaymentListPage {
-    pub tab: String,
-    pub payments: ObjectList<PaymentRow>,
-    pub batches: ObjectList<PaymentBatchRow>,
-    pub sort: String,
-    pub path_and_query: String,
-    pub can_edit: bool,
-    pub page_size: u32,
-}
-
-impl PaymentListPage {
-    fn tab_link(&self, tab: &str, label: &str) -> Markup {
-        use lariv_core::components::attrs::escape_attr;
-        use maud::PreEscaped;
-
-        let active = self.tab == tab;
-        let cls = if active { "tab tab-active" } else { "tab" };
-        let href = payment_tab_href(tab);
-        let nav = lariv_core::components::nav_content_attrs(&href);
-        html! {
-            (PreEscaped(format!(
-                r#"<a class="{cls}" href="{href}"{attrs}>"#,
-                cls = escape_attr(cls),
-                href = escape_attr(&href),
-                attrs = nav.as_string(),
-            )))
-            (label)
-            (PreEscaped("</a>"))
-        }
-    }
-
-    pub fn render_table(&self) -> Markup {
-        if self.tab == "batches" {
-            let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
-            let total_sort = column_sort_url(&self.path_and_query, "Total", &self.sort);
-            let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
-            let total_label = format!("Total{}", sort_indicator(&self.sort, "Total"));
-            let headers = [
-                TableColumnHeader {
-                    key: "Date",
-                    label: &date_label,
-                    sort_url: Some(&date_sort),
-                    push_url: true,
-                },
-                TableColumnHeader {
-                    key: "Total",
-                    label: &total_label,
-                    sort_url: Some(&total_sort),
-                    push_url: true,
-                },
-                TableColumnHeader {
-                    key: "Payments",
-                    label: "Payments",
-                    sort_url: None,
-                    push_url: true,
-                },
-            ];
-            let rows: Vec<TableRow> = self
-                .batches
-                .items
-                .iter()
-                .map(|b| TableRow {
-                    attrs: row_attr_navigate(&PaymentBatchDetailRouteTag::new(b.id).url()),
-                    cells: vec![
-                        field_text(FieldText {
-                            value: &b.datetime,
-                            classes: "",
-                        }),
-                        field_text(FieldText {
-                            value: &b.total_amount,
-                            classes: "",
-                        }),
-                        field_text(FieldText {
-                            value: &b.payment_count.to_string(),
-                            classes: "",
-                        }),
-                    ],
-                    key: String::new(),
-                    children: Vec::new(),
-                })
-                .collect();
-            let pagination = render_pagination(
-                PAYMENT_TABLE,
-                &self.path_and_query,
-                self.batches.number,
-                self.batches.num_pages,
-            );
-            let page_size_filter = table_button_filter(TableButtonFilter {
-                panel: page_size_only_filter_form_with_extras::<PaymentListRouteTag>(
-                    self.page_size,
-                    html! {
-                        input type="hidden" name="tab" value=(self.tab.as_str()) {}
-                    },
-                ),
-                ..Default::default()
-            });
-            return data_table_list_refresh(
-                PAYMENT_TABLE,
-                "Batch payments",
-                page_size_filter,
-                &headers,
-                &rows,
-                pagination,
-                &self.path_and_query,
-            );
-        }
-
-        let amount_sort = column_sort_url(&self.path_and_query, "Amount", &self.sort);
-        let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
-        let amount_label = format!("Amount{}", sort_indicator(&self.sort, "Amount"));
-        let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
-        let headers = [
-            TableColumnHeader {
-                key: "Invoice",
-                label: "Invoice",
-                sort_url: None,
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Amount",
-                label: &amount_label,
-                sort_url: Some(&amount_sort),
-                push_url: true,
-            },
-            TableColumnHeader {
-                key: "Date",
-                label: &date_label,
-                sort_url: Some(&date_sort),
-                push_url: true,
-            },
-        ];
-        let rows: Vec<TableRow> = self
-            .payments
-            .items
-            .iter()
-            .map(|p| TableRow {
-                attrs: row_attr_navigate(&PaymentDetailRouteTag::new(p.id).url()),
-                cells: vec![
-                    field_text(FieldText {
-                        value: &p.invoice_label,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &p.amount,
-                        classes: "",
-                    }),
-                    field_text(FieldText {
-                        value: &p.datetime,
-                        classes: "",
-                    }),
-                ],
-                key: String::new(),
-                children: Vec::new(),
-            })
-            .collect();
-        let pagination = render_pagination(
-            PAYMENT_TABLE,
-            &self.path_and_query,
-            self.payments.number,
-            self.payments.num_pages,
-        );
-        let page_size_filter = table_button_filter(TableButtonFilter {
-            panel: page_size_only_filter_form_with_extras::<PaymentListRouteTag>(
-                self.page_size,
-                html! {
-                    input type="hidden" name="tab" value=(self.tab.as_str()) {}
-                },
-            ),
-            ..Default::default()
-        });
-        let actions = if self.can_edit {
-            html! {
-                (page_size_filter)
-                (button_modal_form(ButtonModalForm {
-                    name: "p_finance_invoices.PaymentCreateForm",
-                    href: &PaymentCreateGetRouteTag.url(),
-                    form_post_url: &PaymentCreateGetRouteTag.path(),
-                    modal_uid: PAYMENT_CREATE_MODAL.id(),
-                    icon_name: Some("plus"),
-                    classes: "btn-square btn-outline btn-sm",
-                    ..Default::default()
-                }))
-            }
-        } else {
-            page_size_filter
-        };
-        data_table_list_refresh(
-            PAYMENT_TABLE,
-            "Single payments",
-            actions,
-            &headers,
-            &rows,
-            pagination,
-            &self.path_and_query,
-        )
-    }
-
-    fn body(&self) -> Markup {
-        html! {
-            (container_column("", html! {
-                div class="tabs tabs-boxed mb-4" {
-                    (self.tab_link("single", "Single payments"))
-                    (self.tab_link("batches", "Batch payments"))
-                }
-                (self.render_table())
-            }))
-        }
-    }
-}
-
-impl RenderAppPane for PaymentListPage {
-    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
-        layout_with_sidebar_crumbs(&self.path_and_query, payments_list_crumbs(), self.body())
-    }
-    fn render_main(&self) -> lariv_core::components::MainContentHtml {
-        layout_main_with_crumbs(payments_list_crumbs(), self.body())
-    }
-}
-
-impl RenderTemplate for PaymentListPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Payments",
-            chrome,
-            payments_list_crumbs(),
-            self.body(),
-            &self.path_and_query,
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct PaymentCreateModalPage {
-    pub form_name: String,
-    pub refresh_table: String,
-    pub form: PaymentForm,
-    pub posted_invoice_display: String,
-    pub tax_items: Vec<ManyToManyItem>,
-    pub error: String,
-}
-
-impl RenderTemplate for PaymentCreateModalPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let form_name = if self.form_name.is_empty() {
-            "p_finance_invoices.PaymentCreateForm"
-        } else {
-            self.form_name.as_str()
-        };
-        modal_keyed(
-            PAYMENT_CREATE_MODAL,
-            "!max-w-6xl w-full",
-            form(
-                &CsrfToken::current(),
-                FormOpts {
-                    title: "Record payment",
-                    subtitle: "Create a payment against a posted invoice",
-                    classes: "@container",
-                    attrs: form_hx_post_url(
-                        PAYMENT_CREATE_MODAL,
-                        &modal_create_post_url(
-                            PaymentCreatePostRouteTag,
-                            form_name,
-                            &self.refresh_table,
-                        ),
-                    ),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: PaymentForm::render_inputs(
-                        &FormCtx::form::<PaymentForm>(CsrfToken::current())
-                            .value(
-                                PaymentFormField::PostedInvoiceId,
-                                &self.form.posted_invoice_id.to_string(),
-                            )
-                            .value(PaymentFormField::Amount, &self.form.amount)
-                            .value(PaymentFormField::Datetime, &self.form.datetime)
-                            .value(PaymentFormField::JournalLines, &self.form.journal_lines)
-                            .display(
-                                PaymentFormField::PostedInvoiceId,
-                                &self.posted_invoice_display,
-                            )
-                            .m2m(PaymentFormField::Taxes, &self.tax_items),
-                    ),
-                    actions: html! {
-                        (container_row("flex justify-end gap-2 mt-2", html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Save",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
-                        }))
-                    },
-                    ..Default::default()
-                },
-            ),
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct PaymentDetailPage {
-    pub id: i64,
-    pub posted_invoice_label: String,
-    pub posted_invoice_href: Option<String>,
-    pub amount: String,
-    pub tax_labels: String,
-    pub datetime: String,
-    pub journal_entry_id: i64,
-    pub payment_batch_id: Option<i64>,
-    pub payment_batch_href: Option<String>,
-    pub can_edit: bool,
-}
-
-impl PaymentDetailPage {
-    fn body(&self) -> Markup {
-        html! {
-            (detail(html! {
-                (container_column("", html! {
-                    (field_title(FieldTitle { value: &format!("Payment #{}", self.id), classes: "" }))
-                    (label("Posted invoice", cancelled_detail_link(&self.posted_invoice_href, &self.posted_invoice_label)))
-                    @if let Some(href) = &self.payment_batch_href {
-                        @if let Some(batch_id) = self.payment_batch_id {
-                            (label("Batch", field_link(FieldLink { href: href.as_str(), label: &format!("Batch #{batch_id}"), classes: "" })))
-                        }
-                    }
-                    (label("Settlement amount", field_text(FieldText { value: &self.amount, classes: "" })))
-                    (label("Withholding taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
-                    (label("Datetime", field_text(FieldText { value: &self.datetime, classes: "" })))
-                    (label("Journal entry", journal_entry_link(self.journal_entry_id)))
-                }))
-            }))
-        }
-    }
-
-    fn menu(&self) -> Markup {
-        payment_detail_menu(self.id)
-    }
-}
-
-impl RenderAppPane for PaymentDetailPage {
-    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
-        let label = format!("#{}", self.id);
-        let crumbs = payment_crumbs(&label);
-        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
-    }
-    fn render_main(&self) -> lariv_core::components::MainContentHtml {
-        let label = format!("#{}", self.id);
-        layout_main_with_crumbs(payment_crumbs(&label), self.body())
-    }
-}
-
-impl RenderTemplate for PaymentDetailPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        let label = format!("#{}", self.id);
-        let crumbs = payment_crumbs(&label);
-        app_scaffold_with_sidebar("Payment", chrome, self.menu(), crumbs, self.body())
-    }
-}
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct PaymentBatchAllocationRow {
-    pub posted_invoice_id: i64,
-    pub amount: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tax_ids: Vec<i64>,
-    pub invoice_number: String,
-    pub customer_name: String,
-    pub open_balance: String,
-}
-
-#[derive(Generic)]
-pub struct PaymentBatchCreateModalPage {
-    pub form_name: String,
-    pub refresh_table: String,
-    pub form: PaymentBatchForm,
-    pub batch_allocations_preview: String,
-    pub error: String,
-}
-
-impl RenderTemplate for PaymentBatchCreateModalPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let form_name = if self.form_name.is_empty() {
-            "p_finance_invoices.PaymentBatchCreateForm"
-        } else {
-            self.form_name.as_str()
-        };
-        modal_keyed(
-            PAYMENT_BATCH_CREATE_MODAL,
-            "!max-w-6xl w-full",
-            form(
-                &CsrfToken::current(),
-                FormOpts {
-                    title: "Batch payment",
-                    subtitle: "Record payments against multiple posted invoices",
-                    classes: "@container",
-                    attrs: form_hx_post_url(
-                        PAYMENT_BATCH_CREATE_MODAL,
-                        &modal_create_post_url(
-                            PaymentBatchCreatePostRouteTag,
-                            form_name,
-                            &self.refresh_table,
-                        ),
-                    ),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: PaymentBatchForm::render_inputs(
-                        &FormCtx::form::<PaymentBatchForm>(CsrfToken::current())
-                            .value(PaymentBatchFormField::Datetime, &self.form.datetime)
-                            .value(
-                                PaymentBatchFormField::AllocationsJson,
-                                &self.form.allocations_json,
-                            )
-                            .value(
-                                PaymentBatchFormField::JournalLines,
-                                &self.form.journal_lines,
-                            )
-                            .display(
-                                PaymentBatchFormField::AllocationsJson,
-                                &self.batch_allocations_preview,
-                            ),
-                    ),
-                    actions: html! {
-                        (container_row("flex justify-end gap-2 mt-2", html! {
-                            (button_submit(ButtonSubmit {
-                                label: "Record batch payment",
-                                classes: "btn-primary",
-                                ..Default::default()
-                            }))
-                        }))
-                    },
-                    ..Default::default()
-                },
-            ),
-        )
-    }
-}
-
-#[derive(Clone)]
-pub struct PaymentBatchPaymentRow {
-    pub id: i64,
-    pub href: String,
-    pub invoice_label: String,
-    pub invoice_href: String,
-    pub amount: String,
-    pub tax_labels: String,
-}
-
-#[derive(Generic)]
-pub struct PaymentBatchDetailPage {
-    pub id: i64,
-    pub datetime: String,
-    pub total_amount: String,
-    pub journal_entry_id: i64,
-    pub payments: Vec<PaymentBatchPaymentRow>,
-    pub can_edit: bool,
-}
-
-impl PaymentBatchDetailPage {
-    fn body(&self) -> Markup {
-        html! {
-            (detail(html! {
-                (container_column("", html! {
-                    (field_title(FieldTitle { value: &format!("Payment batch #{}", self.id), classes: "" }))
-                    (label("Datetime", field_text(FieldText { value: &self.datetime, classes: "" })))
-                    (label("Total settlement", field_text(FieldText { value: &self.total_amount, classes: "" })))
-                    (label("Journal entry", journal_entry_link(self.journal_entry_id)))
-                    h3 class="text-lg font-semibold mt-4" { "Payments in batch" }
-                    div class="overflow-x-auto" {
-                        table class="table table-zebra w-full" {
-                            thead {
-                                tr {
-                                    th { "Payment" }
-                                    th { "Invoice" }
-                                    th class="text-end" { "Amount" }
-                                    th { "Withholding" }
-                                }
-                            }
-                            tbody {
-                                @for p in &self.payments {
-                                    tr {
-                                        td {
-                                            (field_link(FieldLink { href: &p.href, label: &format!("#{}", p.id), classes: "" }))
-                                        }
-                                        td {
-                                            (field_link(FieldLink { href: &p.invoice_href, label: &p.invoice_label, classes: "" }))
-                                        }
-                                        td class="text-end tabular-nums" {
-                                            (field_text(FieldText { value: &p.amount, classes: "" }))
-                                        }
-                                        td {
-                                            (field_text(FieldText { value: &p.tax_labels, classes: "" }))
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }))
-            }))
-        }
-    }
-
-    fn menu(&self) -> Markup {
-        payment_batch_detail_menu(self.id)
-    }
-}
-
-impl RenderAppPane for PaymentBatchDetailPage {
-    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
-        let label = format!("Batch #{}", self.id);
-        let crumbs = payment_batch_crumbs(&label);
-        layout_with_entity_sidebar_crumbs(self.menu(), crumbs, self.body())
-    }
-    fn render_main(&self) -> lariv_core::components::MainContentHtml {
-        let label = format!("Batch #{}", self.id);
-        layout_main_with_crumbs(payment_batch_crumbs(&label), self.body())
-    }
-}
-
-impl RenderTemplate for PaymentBatchDetailPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        let label = format!("Batch #{}", self.id);
-        let crumbs = payment_batch_crumbs(&label);
-        app_scaffold_with_sidebar("Payment Batch", chrome, self.menu(), crumbs, self.body())
-    }
-}
-
-#[derive(Clone)]
-pub struct PostedInvoiceSelectRow {
-    pub id: i64,
-    pub number: String,
-    pub datetime: String,
-}
-
-#[derive(Generic)]
-pub struct PostedInvoiceSelectPage {
-    pub invoices: ObjectList<PostedInvoiceSelectRow>,
-    pub fields: Vec<FilterField>,
-    pub filters: Vec<FilterClauseView>,
-    pub filter_errors: Vec<FilterRowError>,
-    /// Pre-rendered addon filter fields, matching the invoice hub.
-    pub extra_filters: String,
-    pub target_input: String,
-    pub sort: String,
-    pub path_and_query: String,
-    pub page_size: u32,
-}
-
-impl RenderPickerSelect for PostedInvoiceSelectPage {
-    fn render_table(&self) -> Markup {
-        let id_sort = column_sort_url(&self.path_and_query, "ID", &self.sort);
-        let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
-        let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
-        let id_label = format!("ID{}", sort_indicator(&self.sort, "ID"));
-        let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
-        let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
-        let headers = [
-            TableColumnHeader {
-                key: "ID",
-                label: &id_label,
-                sort_url: Some(&id_sort),
-                push_url: false,
-            },
-            TableColumnHeader {
-                key: "Number",
-                label: &number_label,
-                sort_url: Some(&number_sort),
-                push_url: false,
-            },
-            TableColumnHeader {
-                key: "Date",
-                label: &date_label,
-                sort_url: Some(&date_sort),
-                push_url: false,
-            },
-        ];
-        let rows: Vec<TableRow> = self
-            .invoices
-            .items
-            .iter()
-            .map(|inv| {
-                let label = if inv.number.is_empty() {
-                    format!("#{}", inv.id)
-                } else {
-                    inv.number.clone()
-                };
-                TableRow {
-                    attrs: row_attr_select(&self.target_input, &inv.id.to_string(), &label),
-                    cells: vec![
-                        field_text(FieldText {
-                            value: &inv.id.to_string(),
-                            classes: "tabular-nums",
-                        }),
-                        field_text(FieldText {
-                            value: &inv.number,
-                            classes: "",
-                        }),
-                        field_text(FieldText {
-                            value: &inv.datetime,
-                            classes: "",
-                        }),
-                    ],
-                    key: String::new(),
-                    children: Vec::new(),
-                }
-            })
-            .collect();
-        let actions = html! {
-            (table_button_filter(TableButtonFilter {
-                panel: invoice_select_filter_form(
-                    &self.fields,
-                    &self.filters,
-                    self.page_size,
-                    &self.sort,
-                    PostedInvoiceFkSelectRouteTag,
-                    &self.target_input,
-                    &self.extra_filters,
-                ),
-                ..Default::default()
-            }))
-        };
-        let pagination = render_picker_pagination(
-            POSTED_INVOICE_SELECT_MODAL,
-            &self.path_and_query,
-            self.invoices.number,
-            self.invoices.num_pages,
-        );
-        data_table_with_filter_errors(
-            POSTED_INVOICE_SELECT_TABLE,
-            "Select Posted Invoice",
-            actions,
-            &headers,
-            &rows,
-            pagination,
-            &self.path_and_query,
-            &self.filter_errors,
-        )
-    }
-}
-
-impl RenderTemplate for PostedInvoiceSelectPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal(POSTED_INVOICE_SELECT_MODAL).into_inner()
-    }
-}
-
-#[derive(Clone)]
 pub struct DraftInvoiceSelectRow {
     pub id: i64,
     pub number: String,
@@ -2767,6 +2064,70 @@ impl RenderPickerSelect for DraftInvoiceSelectPage {
 impl RenderTemplate for DraftInvoiceSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         self.render_modal(DRAFT_INVOICE_SELECT_MODAL).into_inner()
+    }
+}
+
+#[derive(Generic)]
+pub struct InvoicePayModalPage {
+    pub form_name: String,
+    pub refresh_table: String,
+    pub form: InvoicePaymentForm,
+    pub tax_items: Vec<ManyToManyItem>,
+    pub error: String,
+}
+
+impl RenderTemplate for InvoicePayModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let form_name = if self.form_name.is_empty() {
+            "p_finance_invoices.InvoicePaymentForm"
+        } else {
+            self.form_name.as_str()
+        };
+        modal_keyed(
+            INVOICE_PAY_MODAL,
+            "!max-w-6xl w-full",
+            form(
+                &CsrfToken::current(),
+                FormOpts {
+                    title: "Record payment",
+                    subtitle: "Settle this posted invoice",
+                    classes: "@container",
+                    attrs: form_hx_post_url(
+                        INVOICE_PAY_MODAL,
+                        &modal_create_post_url(
+                            PostedInvoicePayPostRouteTag::new(self.form.posted_invoice_id),
+                            form_name,
+                            &self.refresh_table,
+                        ),
+                    ),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs: InvoicePaymentForm::render_inputs(
+                        &FormCtx::form::<InvoicePaymentForm>(CsrfToken::current())
+                            .value(
+                                InvoicePaymentFormField::PostedInvoiceId,
+                                self.form.posted_invoice_id.to_string(),
+                            )
+                            .value(InvoicePaymentFormField::Amount, &self.form.amount)
+                            .value(InvoicePaymentFormField::Datetime, &self.form.datetime)
+                            .value(
+                                InvoicePaymentFormField::JournalLines,
+                                &self.form.journal_lines,
+                            )
+                            .m2m(InvoicePaymentFormField::Taxes, &self.tax_items),
+                    ),
+                    actions: html! {
+                        (container_row("flex justify-end gap-2 mt-2", html! {
+                            (button_submit(ButtonSubmit {
+                                label: "Save",
+                                classes: "btn-primary",
+                                ..Default::default()
+                            }))
+                        }))
+                    },
+                    ..Default::default()
+                },
+            ),
+        )
     }
 }
 
@@ -2932,51 +2293,6 @@ impl RenderTemplate for InvoicePreferencesPage {
             invoice_preferences_crumbs(),
             self.body(),
             &InvoiceDefaultRouteTag.url(),
-        )
-    }
-}
-
-#[derive(Generic)]
-pub struct PaymentPreferencesPage {
-    pub form: PaymentPreferencesForm,
-    pub can_edit: bool,
-}
-
-impl PaymentPreferencesPage {
-    fn body(&self) -> Markup {
-        html! {
-            (field_title(FieldTitle { value: "Payment preferences", classes: "" }))
-            form method="post" action=(PaymentPreferencesPostRouteTag.url()) {
-                (PaymentPreferencesForm::render_inputs(&FormCtx::form::<PaymentPreferencesForm>(CsrfToken::current())
-                    .value(PaymentPreferencesFormField::JournalId, &self.form.journal_id)
-                    .value(PaymentPreferencesFormField::JournalLines, &self.form.journal_lines)))
-                (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-            }
-        }
-    }
-}
-
-impl RenderAppPane for PaymentPreferencesPage {
-    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
-        layout_with_sidebar_crumbs(
-            &PaymentPreferencesRouteTag.url(),
-            payment_preferences_crumbs(),
-            self.body(),
-        )
-    }
-    fn render_main(&self) -> lariv_core::components::MainContentHtml {
-        layout_main_with_crumbs(payment_preferences_crumbs(), self.body())
-    }
-}
-
-impl RenderTemplate for PaymentPreferencesPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold(
-            "Payment Preferences",
-            chrome,
-            payment_preferences_crumbs(),
-            self.body(),
-            &PaymentListRouteTag.url(),
         )
     }
 }

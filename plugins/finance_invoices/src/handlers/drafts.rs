@@ -408,16 +408,25 @@ async fn draft_bulk_edit_modal_page(
     }
 }
 
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct DraftInvoiceCreateQuery {
+    #[serde(flatten)]
+    modal: ModalNameQuery,
+    #[serde(default, rename = "CustomerID")]
+    customer_id: Option<i64>,
+}
+
 pub async fn create_get(
     Cap(state): Cap<InvoicesState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    Query(q): Query<ModalNameQuery>,
+    Query(q): Query<DraftInvoiceCreateQuery>,
 ) -> Response {
     let prefs = load_invoice_preferences(&state.db).await;
+    let customer_id = q.customer_id.filter(|id| *id > 0).unwrap_or(0);
     let page = draft_create_modal_page(
         &state.db,
-        &q,
+        &q.modal,
         DraftInvoiceForm {
             number: String::new(),
             reference: String::new(),
@@ -427,7 +436,7 @@ pub async fn create_get(
             remarks: String::new(),
             datetime: format_invoice_date(Utc::now(), &ctx.timezone),
             delivery_date: String::new(),
-            customer_id: 0,
+            customer_id,
             payment_term_lines_json: default_payment_term_lines_json(),
             taxes: vec![],
             invoice_lines_json: default_lines_json(),
@@ -941,10 +950,7 @@ pub async fn bulk_edit_get(
         .collect::<Vec<_>>()
         .join(",");
     let (error, can_submit) = if ids.is_empty() {
-        (
-            "Select at least one quotation to edit.".to_string(),
-            false,
-        )
+        ("Select at least one quotation to edit.".to_string(), false)
     } else {
         (String::new(), true)
     };

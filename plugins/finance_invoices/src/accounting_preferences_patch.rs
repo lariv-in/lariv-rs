@@ -9,12 +9,9 @@ use lariv_core::components::{
     label_hint,
 };
 use lariv_core::html_form::FormFieldKey;
-use lariv_plugin_finance_accounts::{
-    accounting_preferences_patch::{
-        AccountingPreferenceGroup, AccountingPreferencesAddon, opt_i64_form_value, str_to_opt_i64,
-        str_to_opt_string,
-    },
-    scope::{load_account_parent_label, load_default_journal_form, load_journal_display_label},
+use lariv_plugin_finance_accounts::accounting_preferences_patch::{
+    AccountingPreferenceGroup, AccountingPreferencesAddon, opt_i64_form_value, str_to_opt_i64,
+    str_to_opt_string,
 };
 use maud::{PreEscaped, html};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
@@ -25,10 +22,9 @@ use crate::{
         InvoiceCompanyPreferencesForm, InvoiceCompanyPreferencesFormField,
         InvoicePdfAssetPreferencesForm, InvoicePdfAssetPreferencesFormField,
         InvoicePresentationPreferencesForm, InvoicePresentationPreferencesFormField,
-        PaymentPreferencesForm, PaymentPreferencesFormField,
     },
     invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE,
-    logic::preferences::{load_invoice_preferences, load_payment_preferences},
+    logic::preferences::load_invoice_preferences,
     preferences_hints::{
         INVOICE_DATE_FORMAT_HINT, INVOICE_DATETIME_FORMAT_HINT, INVOICE_NUMBER_FORMAT_HINT,
         INVOICE_PDF_TEMPLATE_HINT,
@@ -49,32 +45,6 @@ fn fk_value(id: Option<i64>) -> String {
     opt_i64_form_value(id)
 }
 
-async fn payment_template_form(db: &DatabaseConnection) -> (String, String, String) {
-    let Ok(Some(template)) = crate::payment_journal_template::load_template(db).await else {
-        let (journal_id, journal_display) = load_default_journal_form(db).await;
-        return (
-            journal_id,
-            journal_display,
-            crate::payment_journal_template::empty_lines_json(),
-        );
-    };
-    let mut labels = Vec::with_capacity(template.items.len());
-    for item in &template.items {
-        let label = load_account_parent_label(db, Some(item.account_id)).await;
-        labels.push(if label == "—" { String::new() } else { label });
-    }
-    let journal_display = load_journal_display_label(db, Some(template.journal_id)).await;
-    (
-        template.journal_id.to_string(),
-        if journal_display == "—" {
-            String::new()
-        } else {
-            journal_display
-        },
-        crate::payment_journal_template::lines_to_json(&template.items, &labels),
-    )
-}
-
 pub(crate) struct InvoicesAccountingPreferencesAddon;
 
 #[async_trait::async_trait]
@@ -87,8 +57,6 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
         use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 
         let inv = load_invoice_preferences(db).await;
-        let _pay = load_payment_preferences(db).await;
-        let (journal_id, journal_display, journal_lines) = payment_template_form(db).await;
 
         let number_format = inv.invoice_number_format.unwrap_or_default();
         let date_format = inv.invoice_date_format.unwrap_or_default();
@@ -210,24 +178,10 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
                 },
             ))
         };
-        let payments = html! {
-            (PaymentPreferencesForm::render_inputs(
-                &FormCtx::form::<PaymentPreferencesForm>(CsrfToken::current())
-                    .value(PaymentPreferencesFormField::JournalId, &journal_id)
-                    .display(PaymentPreferencesFormField::JournalId, &journal_display)
-                    .value(PaymentPreferencesFormField::JournalLines, &journal_lines),
-            ))
-        };
-        vec![
-            AccountingPreferenceGroup {
-                title: "Invoices",
-                inputs: invoices,
-            },
-            AccountingPreferenceGroup {
-                title: "Payments",
-                inputs: payments,
-            },
-        ]
+        vec![AccountingPreferenceGroup {
+            title: "Invoices",
+            inputs: invoices,
+        }]
     }
 
     async fn save_from_form(
@@ -243,9 +197,6 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
             .map_err(|e| e.to_string())?;
         let company = post
             .deserialize::<InvoiceCompanyPreferencesForm>()
-            .map_err(|e| e.to_string())?;
-        let payment = post
-            .deserialize::<PaymentPreferencesForm>()
             .map_err(|e| e.to_string())?;
 
         let now = Utc::now();
@@ -267,14 +218,6 @@ impl AccountingPreferencesAddon for InvoicesAccountingPreferencesAddon {
         inv_am.invoice_pdf_template = Set(str_to_opt_string(&presentation.invoice_pdf_template));
         inv_am.updated_at = Set(Some(now));
         inv_am.update(db).await.map_err(|e| e.to_string())?;
-
-        let _pay_prefs = load_payment_preferences(db).await;
-        crate::payment_journal_template::save_payment_template(
-            db,
-            &payment.journal_id,
-            &payment.journal_lines,
-        )
-        .await?;
 
         Ok(())
     }

@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use axum::{
     extract::Query,
     http::{HeaderMap, Uri},
@@ -7,7 +5,7 @@ use axum::{
 use sea_orm::sea_query::{Expr, ExprTrait, SimpleExpr};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Select};
 
-use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx};
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
 use lariv_core::http::Cap;
 use lariv_core::list_filters::{
     AppliedFilters, FilterClause, FilterRowError, apply_filters, parse_list_filters,
@@ -19,28 +17,20 @@ use lariv_plugin_users::middleware::RequireAuth;
 use crate::logic::bill_to::PartyLabels;
 use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_formats,
-    load_journal_entry_currency_formats,
 };
 
 use crate::{
     entities::{
         cancelled_invoice::{self, Entity as CancelledInvoiceEntity},
         draft_invoice::{self, Entity as DraftInvoiceEntity},
-        paid_invoice::{self, Entity as PaidInvoiceEntity},
-        partially_paid_invoice::{self, Entity as PartiallyPaidInvoiceEntity},
-        payment::{self, Entity as PaymentEntity},
         posted_invoice::{self, Entity as PostedInvoiceEntity},
     },
     hub_filter::{HubFilterKind, hub_filter_fields, matches_in_memory},
     hub_filter_addon::{HubQueryParams, apply_extra_sql_filters, render_extra_filter_inputs},
     hub_sort::{
         HubSortKey, expr_ar_amount, expr_customer, expr_line_product_count, expr_line_untaxed,
-        expr_open_balance, expr_posted_final_due, expr_settlement_ar_amount,
-        expr_settlement_final_due, expr_settlement_payment_datetime,
-        expr_settlement_posted_datetime, expr_settlement_posted_delivery,
-        expr_settlement_posted_number, expr_settlement_product_count,
-        expr_settlement_tax_levied_approx, expr_settlement_untaxed, expr_tax_levied_approx,
-        parse_hub_sort, sort_order,
+        expr_open_balance, expr_posted_final_due, expr_tax_levied_approx, parse_hub_sort,
+        sort_order,
     },
     hub_table_addon::enrich_hub_rows,
     invoice_addon_key::InvoiceAddonKey,
@@ -48,16 +38,14 @@ use crate::{
     logic::{
         InvoiceDateFormats, InvoiceListMetrics, cancelled_invoice_list_metrics,
         draft_invoice_list_metrics, load_invoice_date_formats, posted_invoice_list_metrics,
-        posted_invoice_list_metrics_map, posted_invoice_open_balance,
+        posted_invoice_open_balance,
     },
     routes::{
-        CancelledInvoiceDetailRouteTag, DraftInvoiceDetailRouteTag, PaidInvoiceDetailRouteTag,
-        PartiallyPaidInvoiceDetailRouteTag, PostedInvoiceDetailRouteTag,
+        CancelledInvoiceDetailRouteTag, DraftInvoiceDetailRouteTag, PostedInvoiceDetailRouteTag,
     },
     scope::{
         LarivEnvironment, list_fiscal_year_options, resolve_list_fiscal_year,
-        selected_fiscal_year_start_for_ui, sql_posted_not_cancelled, sql_posted_not_fully_paid,
-        sql_posted_not_partially_paid, sql_settlement_posted_not_cancelled,
+        selected_fiscal_year_start_for_ui, sql_posted_not_cancelled,
     },
     state::InvoicesState,
     templates::{InvoiceHubPage, InvoiceRow},
@@ -193,6 +181,20 @@ where
     query.order_by(expr, sort_order(desc))
 }
 
+fn filter_customer<E>(
+    query: Select<E>,
+    customer_id: Option<i64>,
+    column: impl ColumnTrait,
+) -> Select<E>
+where
+    E: EntityTrait,
+{
+    match customer_id {
+        Some(id) => query.filter(column.eq(id)),
+        None => query,
+    }
+}
+
 fn cmp_opt_date(
     a: Option<chrono::NaiveDate>,
     b: Option<chrono::NaiveDate>,
@@ -282,6 +284,7 @@ fn apply_draft_sql_sort(
                 query.order_by_asc(draft_invoice::Column::DeliveryDate)
             }
         }
+        HubSortKey::Customer => order_by_expr(query, expr_customer("draft_invoices"), desc),
         HubSortKey::UntaxedAmount => order_by_expr(
             query,
             expr_line_untaxed("draft_invoice_lines", "draft_invoice_id", "draft_invoices"),
@@ -292,7 +295,7 @@ fn apply_draft_sql_sort(
             expr_line_product_count("draft_invoice_lines", "draft_invoice_id", "draft_invoices"),
             desc,
         ),
-        // Metric-sorted keys and posted-only columns fall through to default.
+        // Metric-sorted keys and posted-only columns fall through to date order.
         _ => {
             if desc {
                 query.order_by_desc(draft_invoice::Column::Datetime)
@@ -438,53 +441,9 @@ fn apply_cancelled_sql_sort(
     }
 }
 
-fn apply_settlement_sql_sort<E>(
-    query: Select<E>,
-    settlement_table: &str,
-    key: HubSortKey,
-    desc: bool,
-) -> Select<E>
-where
-    E: EntityTrait,
-{
-    match key {
-        HubSortKey::Number => {
-            order_by_expr(query, expr_settlement_posted_number(settlement_table), desc)
-        }
-        HubSortKey::Date => order_by_expr(
-            query,
-            expr_settlement_payment_datetime(settlement_table),
-            desc,
-        ),
-        HubSortKey::DeliveryDate => order_by_expr(
-            query,
-            expr_settlement_posted_delivery(settlement_table),
-            desc,
-        ),
-        HubSortKey::UntaxedAmount => {
-            order_by_expr(query, expr_settlement_untaxed(settlement_table), desc)
-        }
-        HubSortKey::TotalAmount => {
-            order_by_expr(query, expr_settlement_ar_amount(settlement_table), desc)
-        }
-        HubSortKey::TaxLevied => order_by_expr(
-            query,
-            expr_settlement_tax_levied_approx(settlement_table),
-            desc,
-        ),
-        HubSortKey::ProductCount => {
-            order_by_expr(query, expr_settlement_product_count(settlement_table), desc)
-        }
-        HubSortKey::FinalDueDate => {
-            order_by_expr(query, expr_settlement_final_due(settlement_table), desc)
-        }
-        // Id handled by callers (entity-specific column).
-        _ => query,
-    }
-}
-
 async fn query_draft_rows(
     db: &sea_orm::DatabaseConnection,
+    customer_id: Option<i64>,
     q: &HubQuery,
     params: &HubQueryParams<'_>,
     env: &LarivEnvironment,
@@ -494,6 +453,7 @@ async fn query_draft_rows(
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.get();
     let mut query = DraftInvoiceEntity::find();
+    query = filter_customer(query, customer_id, draft_invoice::Column::CustomerId);
     query = query.filter(applied.condition.clone());
     query = apply_extra_sql_filters(query, params, "draft_invoices.id");
     query = apply_fiscal_year_datetime_filter(query, env, draft_invoice::Column::Datetime);
@@ -582,9 +542,11 @@ async fn draft_models_to_rows(
     dates: &InvoiceDateFormats,
 ) -> Vec<InvoiceRow> {
     let currency = load_default_currency_format(db).await;
+    let customer_ids: Vec<i64> = models.iter().map(|d| d.customer_id).collect();
+    let parties = crate::logic::bill_to::parties_in_order(db, &customer_ids).await;
+    let customers = PartyLabels::load(db, &parties).await;
     let mut rows = Vec::with_capacity(models.len());
-    for d in models {
-        let (customer_name, open_balance, _) = hub_row_extras_none();
+    for (d, party) in models.iter().zip(parties) {
         let metrics = draft_invoice_list_metrics(db, d.id, tz).await;
         let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
             format_metrics(&metrics, &currency, dates);
@@ -595,8 +557,8 @@ async fn draft_models_to_rows(
             datetime: dates.datetime(d.datetime, tz),
             delivery_date: format_hub_delivery_date(d.delivery_date, dates),
             detail_href: DraftInvoiceDetailRouteTag::new(d.id).url(),
-            customer_name,
-            open_balance,
+            customer_name: customers.name(party),
+            open_balance: String::new(),
             selectable: true,
             untaxed_amount,
             total_amount,
@@ -611,6 +573,7 @@ async fn draft_models_to_rows(
 
 async fn query_posted_rows(
     db: &sea_orm::DatabaseConnection,
+    customer_id: Option<i64>,
     q: &HubQuery,
     params: &HubQueryParams<'_>,
     env: &LarivEnvironment,
@@ -619,10 +582,8 @@ async fn query_posted_rows(
     applied: &AppliedFilters,
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.get();
-    let mut query = PostedInvoiceEntity::find()
-        .filter(sql_posted_not_cancelled())
-        .filter(sql_posted_not_fully_paid())
-        .filter(sql_posted_not_partially_paid());
+    let mut query = PostedInvoiceEntity::find().filter(sql_posted_not_cancelled());
+    query = filter_customer(query, customer_id, posted_invoice::Column::CustomerId);
     query = query.filter(applied.condition.clone());
     query = apply_extra_sql_filters(query, params, "posted_invoices.id");
     query = apply_fiscal_year_datetime_filter(query, env, posted_invoice::Column::Datetime);
@@ -675,6 +636,7 @@ async fn query_posted_rows(
 
 async fn query_cancelled_rows(
     db: &sea_orm::DatabaseConnection,
+    customer_id: Option<i64>,
     q: &HubQuery,
     params: &HubQueryParams<'_>,
     env: &LarivEnvironment,
@@ -684,6 +646,7 @@ async fn query_cancelled_rows(
 ) -> (Vec<InvoiceRow>, u32, u64) {
     let page_num = q.page.get();
     let mut query = CancelledInvoiceEntity::find();
+    query = filter_customer(query, customer_id, cancelled_invoice::Column::CustomerId);
     query = query.filter(applied.condition.clone());
     query = apply_extra_sql_filters(query, params, "cancelled_invoices.posted_invoice_id");
     query = apply_fiscal_year_datetime_filter(query, env, cancelled_invoice::Column::Datetime);
@@ -802,274 +765,144 @@ async fn cancelled_models_to_rows(
     rows
 }
 
-async fn load_posted_invoice_delivery_dates(
-    db: &sea_orm::DatabaseConnection,
-    posted_ids: &[i64],
-) -> HashMap<i64, Option<chrono::NaiveDate>> {
-    if posted_ids.is_empty() {
-        return HashMap::new();
-    }
-    PostedInvoiceEntity::find()
-        .filter(posted_invoice::Column::Id.is_in(posted_ids.to_vec()))
-        .all(db)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|inv| (inv.id, inv.delivery_date))
-        .collect()
+struct HubTableRequest<'a> {
+    tab: &'a str,
+    customer_id: Option<i64>,
+    q: &'a HubQuery,
+    query: &'a str,
+    cookie_header: Option<&'a str>,
+    timezone: &'a str,
+    path_and_query: String,
+    table_key: SwapKey,
+    filter_url: String,
+    push_history: bool,
+    heading: String,
 }
 
-async fn load_posted_invoice_labels(
+async fn load_hub_page(
     db: &sea_orm::DatabaseConnection,
-    ids: &[i64],
-) -> HashMap<i64, String> {
-    if ids.is_empty() {
-        return HashMap::new();
-    }
-    PostedInvoiceEntity::find()
-        .filter(posted_invoice::Column::Id.is_in(ids.to_vec()))
-        .all(db)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|inv| {
-            let label = if inv.number.is_empty() {
-                format!("#{}", inv.id)
-            } else {
-                inv.number.clone()
-            };
-            (inv.id, label)
-        })
-        .collect()
-}
-
-async fn load_posted_invoice_journals(
-    db: &sea_orm::DatabaseConnection,
-    ids: &[i64],
-) -> HashMap<i64, i64> {
-    if ids.is_empty() {
-        return HashMap::new();
-    }
-    PostedInvoiceEntity::find()
-        .filter(posted_invoice::Column::Id.is_in(ids.to_vec()))
-        .all(db)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|inv| (inv.id, inv.journal_id))
-        .collect()
-}
-
-async fn query_paid_rows(
-    db: &sea_orm::DatabaseConnection,
-    q: &HubQuery,
-    params: &HubQueryParams<'_>,
-    env: &LarivEnvironment,
-    tz: &str,
-    dates: &InvoiceDateFormats,
-    applied: &AppliedFilters,
-) -> (Vec<InvoiceRow>, u32, u64) {
-    let page_num = q.page.get();
-    let mut query =
-        PaidInvoiceEntity::find().filter(sql_settlement_posted_not_cancelled("paid_invoices"));
-    query = query.filter(applied.condition.clone());
-    query = apply_extra_sql_filters(query, params, "paid_invoices.posted_invoice_id");
-    query =
-        apply_fiscal_year_expr_filter(query, env, expr_settlement_posted_datetime("paid_invoices"));
-    let sort = q.sort.as_deref().unwrap_or("").trim();
-    query = match parse_hub_sort(sort) {
-        Some((HubSortKey::Id, true)) => query.order_by_desc(paid_invoice::Column::Id),
-        Some((HubSortKey::Id, false)) => query.order_by_asc(paid_invoice::Column::Id),
-        Some((HubSortKey::Customer | HubSortKey::OpenBalance, _)) | None => {
-            query.order_by_desc(paid_invoice::Column::Id)
+    req: HubTableRequest<'_>,
+) -> InvoiceHubPage {
+    let params = HubQueryParams::new(req.query);
+    let env = LarivEnvironment::from_cookie_header(req.cookie_header);
+    let dates = load_invoice_date_formats(db).await;
+    let clauses = parse_list_filters(req.query);
+    let fields = hub_filter_fields(HubFilterKind::from_tab(req.tab), req.timezone);
+    let applied = apply_filters(db.get_database_backend(), &fields, &clauses);
+    let (mut rows, page_num, total) = match req.tab {
+        "posted" => {
+            query_posted_rows(
+                db,
+                req.customer_id,
+                req.q,
+                &params,
+                &env,
+                req.timezone,
+                &dates,
+                &applied,
+            )
+            .await
         }
-        Some((key, desc)) => apply_settlement_sql_sort(query, "paid_invoices", key, desc),
+        "cancelled" => {
+            query_cancelled_rows(
+                db,
+                req.customer_id,
+                req.q,
+                &params,
+                &env,
+                req.timezone,
+                &dates,
+                &applied,
+            )
+            .await
+        }
+        _ => {
+            query_draft_rows(
+                db,
+                req.customer_id,
+                req.q,
+                &params,
+                &env,
+                req.timezone,
+                &dates,
+                &applied,
+            )
+            .await
+        }
     };
-    let paginator = query.paginate(db, q.page_size.get() as u64);
-    let total = paginator.num_items().await.unwrap_or(0);
-    let models = paginator
-        .fetch_page((page_num as u64).saturating_sub(1))
-        .await
-        .unwrap_or_default();
-    let payment_ids: Vec<i64> = models.iter().map(|p| p.payment_id).collect();
-    let posted_ids: Vec<i64> = models.iter().map(|p| p.posted_invoice_id).collect();
-    let payments = PaymentEntity::find()
-        .filter(payment::Column::Id.is_in(payment_ids))
-        .all(db)
-        .await
-        .unwrap_or_default()
+    let fiscal_years = list_fiscal_year_options()
         .into_iter()
-        .map(|p| (p.id, p))
-        .collect::<HashMap<_, _>>();
-    let je_ids: Vec<i64> = payments.values().map(|p| p.journal_entry_id).collect();
-    let currency_fmts = load_journal_entry_currency_formats(db, &je_ids).await;
-    let journal_by_posted = load_posted_invoice_journals(db, &posted_ids).await;
-    let journal_ids: Vec<i64> = journal_by_posted.values().copied().collect();
-    let posted_currency_fmts = load_journal_currency_formats(db, &journal_ids).await;
-    let fallback = CurrencyFormat::fallback();
-    let invoice_labels = load_posted_invoice_labels(db, &posted_ids).await;
-    let metrics_map = posted_invoice_list_metrics_map(db, &posted_ids).await;
-    let delivery_by_posted = load_posted_invoice_delivery_dates(db, &posted_ids).await;
-    let mut rows = Vec::with_capacity(models.len());
-    for paid in models {
-        let inv_label = invoice_labels
-            .get(&paid.posted_invoice_id)
-            .cloned()
-            .unwrap_or_else(|| format!("#{}", paid.posted_invoice_id));
-        let datetime = if let Some(pay) = payments.get(&paid.payment_id) {
-            dates.datetime(pay.datetime, tz)
-        } else {
-            "—".to_string()
-        };
-        let (customer_name, open_balance, _) = hub_row_extras_none();
-        let metrics = metrics_map
-            .get(&paid.posted_invoice_id)
-            .cloned()
-            .unwrap_or_default();
-        let fmt = journal_by_posted
-            .get(&paid.posted_invoice_id)
-            .and_then(|jid| posted_currency_fmts.get(jid))
-            .or_else(|| {
-                payments
-                    .get(&paid.payment_id)
-                    .and_then(|pay| currency_fmts.get(&pay.journal_entry_id))
-            })
-            .unwrap_or(&fallback);
-        let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
-            format_metrics(&metrics, fmt, dates);
-        rows.push(InvoiceRow {
-            id: paid.id,
-            addon_key: Some(InvoiceAddonKey::Posted(paid.posted_invoice_id)),
-            number: inv_label,
-            datetime,
-            delivery_date: format_hub_delivery_date(
-                delivery_by_posted
-                    .get(&paid.posted_invoice_id)
-                    .copied()
-                    .flatten(),
-                dates,
-            ),
-            detail_href: PaidInvoiceDetailRouteTag::new(paid.id).url(),
-            customer_name,
-            open_balance,
-            selectable: true,
-            untaxed_amount,
-            total_amount,
-            tax_levied,
-            product_count,
-            final_due_date,
-            extra_cells: Vec::new(),
-        });
+        .map(|(start_year, label)| crate::components::FiscalYearOption { start_year, label })
+        .collect();
+    let selected_fiscal_year_start = selected_fiscal_year_start_for_ui(&env);
+    let extra_columns = enrich_hub_rows(db, &mut rows).await;
+    let filters = filter_clause_views(db, &clauses, &applied.errors).await;
+    let extra_filters = render_extra_filter_inputs(db, &params).await.into_string();
+    let invoices = ObjectList::from_page(rows, page_num, req.q.page_size.get(), total);
+    InvoiceHubPage {
+        invoices,
+        tab: req.tab.to_string(),
+        sort: req.q.sort.clone().unwrap_or_default(),
+        path_and_query: req.path_and_query,
+        fiscal_years,
+        selected_fiscal_year_start,
+        can_edit: lariv_core::components::role_permitted(
+            &lariv_plugin_users::role_authorization::roles_for::<
+                crate::routes::FinanceInvoicesMutate,
+            >(),
+        ),
+        extra_columns,
+        page_size: req.q.page_size.get(),
+        fields,
+        filters,
+        filter_errors: applied.errors,
+        extra_filters,
+        table_key: req.table_key,
+        filter_url: req.filter_url,
+        push_history: req.push_history,
+        heading: req.heading,
+        create_customer_id: req.customer_id.filter(|id| *id > 0),
     }
-    (rows, page_num, total)
 }
 
-async fn query_partial_rows(
+/// One invoice-hub table constrained to a customer, with that tab's columns and filters.
+pub struct CustomerHubTable<'a> {
+    pub customer_id: i64,
+    pub tab: &'a str,
+    pub table_key: SwapKey,
+    pub filter_url: &'a str,
+    pub heading: &'a str,
+    pub query: &'a str,
+    pub path_and_query: &'a str,
+    pub cookie_header: Option<&'a str>,
+    pub timezone: &'a str,
+    /// Alpine selection root. The journal page includes it; later HTMX swaps return the table only.
+    pub embed_selection: bool,
+}
+
+pub async fn customer_hub_table(
     db: &sea_orm::DatabaseConnection,
+    spec: CustomerHubTable<'_>,
     q: &HubQuery,
-    params: &HubQueryParams<'_>,
-    env: &LarivEnvironment,
-    tz: &str,
-    dates: &InvoiceDateFormats,
-    applied: &AppliedFilters,
-) -> (Vec<InvoiceRow>, u32, u64) {
-    let page_num = q.page.get();
-    let mut query = PartiallyPaidInvoiceEntity::find().filter(sql_settlement_posted_not_cancelled(
-        "partially_paid_invoices",
-    ));
-    query = query.filter(applied.condition.clone());
-    query = apply_extra_sql_filters(query, params, "partially_paid_invoices.posted_invoice_id");
-    query = apply_fiscal_year_expr_filter(
-        query,
-        env,
-        expr_settlement_posted_datetime("partially_paid_invoices"),
-    );
-    let sort = q.sort.as_deref().unwrap_or("").trim();
-    query = match parse_hub_sort(sort) {
-        Some((HubSortKey::Id, true)) => query.order_by_desc(partially_paid_invoice::Column::Id),
-        Some((HubSortKey::Id, false)) => query.order_by_asc(partially_paid_invoice::Column::Id),
-        Some((HubSortKey::Customer | HubSortKey::OpenBalance, _)) | None => {
-            query.order_by_desc(partially_paid_invoice::Column::Id)
-        }
-        Some((key, desc)) => apply_settlement_sql_sort(query, "partially_paid_invoices", key, desc),
-    };
-    let paginator = query.paginate(db, q.page_size.get() as u64);
-    let total = paginator.num_items().await.unwrap_or(0);
-    let models = paginator
-        .fetch_page((page_num as u64).saturating_sub(1))
-        .await
-        .unwrap_or_default();
-    let payment_ids: Vec<i64> = models.iter().map(|p| p.payment_id).collect();
-    let posted_ids: Vec<i64> = models.iter().map(|p| p.posted_invoice_id).collect();
-    let payments = PaymentEntity::find()
-        .filter(payment::Column::Id.is_in(payment_ids))
-        .all(db)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|p| (p.id, p))
-        .collect::<HashMap<_, _>>();
-    let je_ids: Vec<i64> = payments.values().map(|p| p.journal_entry_id).collect();
-    let currency_fmts = load_journal_entry_currency_formats(db, &je_ids).await;
-    let journal_by_posted = load_posted_invoice_journals(db, &posted_ids).await;
-    let journal_ids: Vec<i64> = journal_by_posted.values().copied().collect();
-    let posted_currency_fmts = load_journal_currency_formats(db, &journal_ids).await;
-    let fallback = CurrencyFormat::fallback();
-    let invoice_labels = load_posted_invoice_labels(db, &posted_ids).await;
-    let metrics_map = posted_invoice_list_metrics_map(db, &posted_ids).await;
-    let delivery_by_posted = load_posted_invoice_delivery_dates(db, &posted_ids).await;
-    let mut rows = Vec::with_capacity(models.len());
-    for partial in models {
-        let inv_label = invoice_labels
-            .get(&partial.posted_invoice_id)
-            .cloned()
-            .unwrap_or_else(|| format!("#{}", partial.posted_invoice_id));
-        let datetime = if let Some(pay) = payments.get(&partial.payment_id) {
-            dates.datetime(pay.datetime, tz)
-        } else {
-            "—".to_string()
-        };
-        let (customer_name, open_balance, _) = hub_row_extras_none();
-        let metrics = metrics_map
-            .get(&partial.posted_invoice_id)
-            .cloned()
-            .unwrap_or_default();
-        let fmt = journal_by_posted
-            .get(&partial.posted_invoice_id)
-            .and_then(|jid| posted_currency_fmts.get(jid))
-            .or_else(|| {
-                payments
-                    .get(&partial.payment_id)
-                    .and_then(|pay| currency_fmts.get(&pay.journal_entry_id))
-            })
-            .unwrap_or(&fallback);
-        let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
-            format_metrics(&metrics, fmt, dates);
-        rows.push(InvoiceRow {
-            id: partial.id,
-            addon_key: Some(InvoiceAddonKey::Posted(partial.posted_invoice_id)),
-            number: inv_label,
-            datetime,
-            delivery_date: format_hub_delivery_date(
-                delivery_by_posted
-                    .get(&partial.posted_invoice_id)
-                    .copied()
-                    .flatten(),
-                dates,
-            ),
-            detail_href: PartiallyPaidInvoiceDetailRouteTag::new(partial.id).url(),
-            customer_name,
-            open_balance,
-            selectable: true,
-            untaxed_amount,
-            total_amount,
-            tax_levied,
-            product_count,
-            final_due_date,
-            extra_cells: Vec::new(),
-        });
-    }
-    (rows, page_num, total)
+) -> maud::Markup {
+    let page = load_hub_page(
+        db,
+        HubTableRequest {
+            tab: spec.tab,
+            customer_id: Some(spec.customer_id),
+            q,
+            query: spec.query,
+            cookie_header: spec.cookie_header,
+            timezone: spec.timezone,
+            path_and_query: spec.path_and_query.to_string(),
+            table_key: spec.table_key,
+            filter_url: spec.filter_url.to_string(),
+            push_history: false,
+            heading: spec.heading.to_string(),
+        },
+    )
+    .await;
+    page.render_hub_table(spec.embed_selection)
 }
 
 pub async fn hub(
@@ -1081,108 +914,27 @@ pub async fn hub(
     uri: Uri,
     Query(q): Query<HubQuery>,
 ) -> maud::Markup {
-    let tab = q.tab.as_deref().unwrap_or("drafts");
-    let params = HubQueryParams::new(uri.query().unwrap_or(""));
-    let env = LarivEnvironment::from_cookie_header(cookie_header(&headers));
-
-    let dates = load_invoice_date_formats(&state.db).await;
-    let clauses = parse_list_filters(uri.query().unwrap_or(""));
-    let fields = hub_filter_fields(HubFilterKind::from_tab(tab), &ctx.timezone);
-    let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
-    let (mut rows, page_num, total) = match tab {
-        "posted" => {
-            query_posted_rows(
-                &state.db,
-                &q,
-                &params,
-                &env,
-                &ctx.timezone,
-                &dates,
-                &applied,
-            )
-            .await
-        }
-        "cancelled" => {
-            query_cancelled_rows(
-                &state.db,
-                &q,
-                &params,
-                &env,
-                &ctx.timezone,
-                &dates,
-                &applied,
-            )
-            .await
-        }
-        "paid" => {
-            query_paid_rows(
-                &state.db,
-                &q,
-                &params,
-                &env,
-                &ctx.timezone,
-                &dates,
-                &applied,
-            )
-            .await
-        }
-        "partial" => {
-            query_partial_rows(
-                &state.db,
-                &q,
-                &params,
-                &env,
-                &ctx.timezone,
-                &dates,
-                &applied,
-            )
-            .await
-        }
-        _ => {
-            query_draft_rows(
-                &state.db,
-                &q,
-                &params,
-                &env,
-                &ctx.timezone,
-                &dates,
-                &applied,
-            )
-            .await
-        }
+    let tab = match q.tab.as_deref().unwrap_or("drafts") {
+        "paid" | "partial" => "posted",
+        other => other,
     };
-
-    let fiscal_years = list_fiscal_year_options()
-        .into_iter()
-        .map(|(start_year, label)| crate::components::FiscalYearOption { start_year, label })
-        .collect();
-    let selected_fiscal_year_start = selected_fiscal_year_start_for_ui(&env);
-
-    let extra_columns = enrich_hub_rows(&state.db, &mut rows).await;
-    let filters = filter_clause_views(&state.db, &clauses, &applied.errors).await;
-    let extra_filters = render_extra_filter_inputs(&state.db, &params)
-        .await
-        .into_string();
-    let invoices = ObjectList::from_page(rows, page_num, q.page_size.get(), total);
-    let page = InvoiceHubPage {
-        invoices,
-        tab: tab.to_string(),
-        sort: q.sort.clone().unwrap_or_default(),
-        path_and_query: path_and_query(&uri),
-        fiscal_years,
-        selected_fiscal_year_start,
-        can_edit: lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<
-                crate::routes::FinanceInvoicesMutate,
-            >(),
-        ),
-        extra_columns,
-        page_size: q.page_size.get(),
-        fields,
-        filters,
-        filter_errors: applied.errors,
-        extra_filters,
-    };
+    let page = load_hub_page(
+        &state.db,
+        HubTableRequest {
+            tab,
+            customer_id: None,
+            q: &q,
+            query: uri.query().unwrap_or(""),
+            cookie_header: cookie_header(&headers),
+            timezone: &ctx.timezone,
+            path_and_query: path_and_query(&uri),
+            table_key: INVOICE_HUB_TABLE,
+            filter_url: String::new(),
+            push_history: true,
+            heading: String::new(),
+        },
+    )
+    .await;
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if htmx.targets(INVOICE_HUB_TABLE) {
         return page.render_table();
@@ -1194,65 +946,4 @@ pub async fn hub(
         return page.render_pane().into();
     }
     html_built_page_with_slots(&page, &chrome, &slot_ctx)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use sea_orm::QueryTrait;
-
-    fn env_for_year(year: &str) -> LarivEnvironment {
-        let mut env = LarivEnvironment::default();
-        env.fiscal_year = Some(year.to_string());
-        env
-    }
-
-    #[test]
-    fn paid_and_partial_lists_use_posted_invoice_datetime_for_fiscal_year() {
-        let env = env_for_year("2024");
-        let paid = apply_fiscal_year_expr_filter(
-            PaidInvoiceEntity::find(),
-            &env,
-            expr_settlement_posted_datetime("paid_invoices"),
-        )
-        .build(sea_orm::DatabaseBackend::Postgres);
-        assert!(
-            paid.sql.contains("posted_invoices")
-                && paid.sql.contains("paid_invoices.posted_invoice_id"),
-            "{sql}",
-            sql = paid.sql
-        );
-        let paid_values = format!("{:?}", paid.values);
-        assert!(paid_values.contains("2024-04-01"), "{paid_values}");
-        assert!(paid_values.contains("2025-04-01"), "{paid_values}");
-
-        let partial = apply_fiscal_year_expr_filter(
-            PartiallyPaidInvoiceEntity::find(),
-            &env,
-            expr_settlement_posted_datetime("partially_paid_invoices"),
-        )
-        .build(sea_orm::DatabaseBackend::Postgres);
-        assert!(
-            partial
-                .sql
-                .contains("partially_paid_invoices.posted_invoice_id"),
-            "{sql}",
-            sql = partial.sql
-        );
-    }
-
-    #[test]
-    fn blank_fiscal_year_leaves_settlement_queries_unbounded() {
-        let query = apply_fiscal_year_expr_filter(
-            PaidInvoiceEntity::find(),
-            &env_for_year(""),
-            expr_settlement_posted_datetime("paid_invoices"),
-        )
-        .build(sea_orm::DatabaseBackend::Postgres);
-        assert!(
-            !query.sql.contains("posted_invoices"),
-            "{sql}",
-            sql = query.sql
-        );
-    }
 }

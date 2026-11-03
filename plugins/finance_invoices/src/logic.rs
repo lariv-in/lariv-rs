@@ -7,7 +7,6 @@ pub mod invoice_number;
 pub mod invoice_pdf;
 pub mod invoice_posting;
 pub mod payment;
-pub mod payment_batch;
 pub mod preferences;
 pub mod tax_assoc;
 pub mod tax_calculations;
@@ -34,13 +33,9 @@ pub use invoice_posting::{
     cancelled_new_draft, draft_new_posted, posted_new_cancelled, posted_new_draft,
 };
 pub use payment::{
-    CreatePaymentInput, CreatePaymentResult, build_payment_lines_for_allocation, create_payment,
-    parse_payment_amount, parse_withholding_tax_ids, posted_invoice_can_accept_payment,
-    posted_invoice_open_balance, record_payment_settlement, validate_payment_allocation,
-};
-pub use payment_batch::{
-    BatchAllocation, CreatePaymentBatchInput, CreatePaymentBatchResult, create_payment_batch,
-    parse_batch_allocations_json,
+    PayPostedInvoiceInput, PayPostedInvoiceResult, pay_posted_invoice,
+    posted_invoice_can_accept_payment, posted_invoice_open_balance, record_payment_settlement,
+    suggest_invoice_payment_lines, validate_payment_allocation,
 };
 pub use preferences::{
     InvoiceDateFormats, invoice_date_format, invoice_datetime_format, load_invoice_date_formats,

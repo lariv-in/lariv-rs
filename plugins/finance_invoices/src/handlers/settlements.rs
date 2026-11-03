@@ -12,7 +12,7 @@ use lariv_plugin_users::middleware::RequireAuth;
 use lariv_plugin_finance_accounts::scope::load_journal_entry_currency_format;
 
 use crate::{
-    entities::{payment::Entity as PaymentEntity, posted_invoice::Entity as PostedInvoiceEntity},
+    entities::posted_invoice::Entity as PostedInvoiceEntity,
     logic::{
         draft_payment_term::posted_payment_term_display_rows,
         invoice_line_editor::{
@@ -21,11 +21,14 @@ use crate::{
         load_invoice_date_formats, optional_display, posted_invoice_can_accept_payment,
         tax_assoc::load_posted_invoice_tax_ids,
     },
-    routes::{PartiallyPaidInvoiceDetailRouteTag, PaymentDetailRouteTag},
+    routes::PartiallyPaidInvoiceDetailRouteTag,
     scope::{find_active_paid, find_active_partial, hub_tab_url},
     state::InvoicesState,
     templates::{PaidInvoiceDetailPage, PartiallyPaidInvoiceDetailPage, SettlementDetailContext},
 };
+
+use lariv_plugin_finance_payments::entities::payment::Entity as PaymentEntity;
+use lariv_plugin_finance_payments::routes::PaymentDetailRouteTag;
 
 async fn load_settlement_context(
     db: &sea_orm::DatabaseConnection,
@@ -107,7 +110,7 @@ pub async fn paid_detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(paid) = find_active_paid(&state.db, id).await else {
-        return Redirect::to(&hub_tab_url("paid")).into_response();
+        return Redirect::to(&hub_tab_url("posted")).into_response();
     };
     let can_edit = lariv_core::components::role_permitted(
         &lariv_plugin_users::role_authorization::roles_for::<crate::routes::FinanceInvoicesMutate>(
@@ -123,7 +126,7 @@ pub async fn paid_detail(
     )
     .await
     else {
-        return Redirect::to(&hub_tab_url("paid")).into_response();
+        return Redirect::to(&hub_tab_url("posted")).into_response();
     };
     let page = PaidInvoiceDetailPage {
         ctx: ctx_data,
@@ -141,7 +144,7 @@ pub async fn partial_detail(
     Path(id): Path<i64>,
 ) -> Response {
     let Some(partial) = find_active_partial(&state.db, id).await else {
-        return Redirect::to(&hub_tab_url("partial")).into_response();
+        return Redirect::to(&hub_tab_url("posted")).into_response();
     };
     let can_edit = lariv_core::components::role_permitted(
         &lariv_plugin_users::role_authorization::roles_for::<crate::routes::FinanceInvoicesMutate>(
@@ -157,7 +160,7 @@ pub async fn partial_detail(
     )
     .await
     else {
-        return Redirect::to(&hub_tab_url("partial")).into_response();
+        return Redirect::to(&hub_tab_url("posted")).into_response();
     };
     let can_pay =
         can_edit && posted_invoice_can_accept_payment(&state.db, partial.posted_invoice_id).await;

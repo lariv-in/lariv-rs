@@ -20,7 +20,6 @@ use super::{
         CustomSourceDocDeleteModalPage, CustomSourceDocDetailPage, CustomSourceDocFormPage,
         CustomSourceDocIndexCreateModalPage, CustomSourceDocIndexPage,
     },
-    customers::CustomersListPage,
     journals::{
         JournalCreateModalPage, JournalDetailPage, JournalEditModalPage,
         JournalEntryCreateModalPage, JournalEntryDeleteModalPage, JournalEntryDetailPage,
@@ -72,7 +71,6 @@ lariv_core::define_register_items! {
         CustomSourceDocTemplateSelectIdx: CustomSourceDocTemplateSelectPageTag => CustomSourceDocTemplateSelectPage,
         CustomSourceDocTemplateCreateModalIdx: CustomSourceDocTemplateCreateModalPageTag => CustomSourceDocTemplateCreateModalPage,
         CustomSourceDocTemplateEditModalIdx: CustomSourceDocTemplateEditModalPageTag => CustomSourceDocTemplateEditModalPage,
-        CustomersListIdx: CustomersListPageTag => CustomersListPage,
         AccountingPreferencesIdx: AccountingPreferencesPageTag => AccountingPreferencesPage,
         ConfirmDeleteIdx: FinanceAccountsConfirmDeletePageTag => ConfirmDeletePage,
     ]

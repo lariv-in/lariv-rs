@@ -8,6 +8,7 @@ use lariv_rs::plugins::customer;
 use lariv_rs::plugins::dashboard;
 use lariv_rs::plugins::filesystem;
 use lariv_rs::plugins::finance_accounts;
+use lariv_rs::plugins::finance_customers;
 use lariv_rs::plugins::forms;
 use lariv_rs::plugins::inventory;
 use lariv_rs::plugins::llm_assistant;
@@ -43,6 +44,7 @@ async fn main() -> anyhow::Result<()> {
     let app = customer::install(app);
     let app = crm::install(app);
     let app = finance_accounts::install(app);
+    let app = finance_customers::install(app);
     let app = inventory::install(app);
     let app = dashboard::install(app);
     // After dashboard so website can own `/` (CMS home) over the auth redirect.

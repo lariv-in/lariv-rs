@@ -612,7 +612,6 @@ fn fk_label(
         }
         "credit_notes" => field(sheets, index, table, id, "reason").to_string(),
         "payments" => field(sheets, index, table, id, "amount").to_string(),
-        "payment_batches" => field(sheets, index, table, id, "total_amount").to_string(),
         "source_docs" => field(sheets, index, table, id, "source_doc_type").to_string(),
         "journal_entries" => join_parts(&[
             field(
@@ -1611,45 +1610,23 @@ const SHEETS: &[SheetDef] = &[
             "id",
             "created_at",
             "updated_at",
-            "posted_invoice_id",
+            "customer_id",
             "amount",
             "datetime",
             "journal_entry_id",
-            "payment_batch_id",
         ],
         root: false,
         parent: None,
         fks: &[
             Fk {
-                column: "posted_invoice_id",
-                target: "posted_invoices",
+                column: "customer_id",
+                target: "customers",
             },
             Fk {
                 column: "journal_entry_id",
                 target: "journal_entries",
             },
-            Fk {
-                column: "payment_batch_id",
-                target: "payment_batches",
-            },
         ],
-    },
-    SheetDef {
-        table: "payment_batches",
-        columns: &[
-            "id",
-            "created_at",
-            "updated_at",
-            "datetime",
-            "journal_entry_id",
-            "total_amount",
-        ],
-        root: false,
-        parent: None,
-        fks: &[Fk {
-            column: "journal_entry_id",
-            target: "journal_entries",
-        }],
     },
     SheetDef {
         table: "source_docs",

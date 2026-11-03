@@ -45,7 +45,10 @@ struct ParsedTemplateLine {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-#[allow(dead_code)]
+#[expect(
+    dead_code,
+    reason = "serde keeps editor-only fields that posting does not read"
+)]
 struct RawTemplateLine {
     #[serde(default)]
     account_id: i64,
@@ -249,19 +252,16 @@ pub fn lines_to_json(
     }
 }
 
-/// Payment template lines for one allocation. Withholding tax lines are separate.
+/// Payment template lines for one receipt. Returns the template journal and the lines.
+/// Withholding tax lines are separate.
 pub async fn evaluate_payment_template<C: ConnectionTrait>(
     db: &C,
     amount: Decimal,
     withholding: Decimal,
-    expected_journal_id: i64,
-) -> Result<Vec<JournalLineSpec>, String> {
+) -> Result<(i64, Vec<JournalLineSpec>), String> {
     let Some(template) = load_template(db).await? else {
         return Err("payment preferences have no journal entry template".into());
     };
-    if template.journal_id != expected_journal_id {
-        return Err("payment template must use the same journal as the invoice".into());
-    }
     let mut lines = Vec::with_capacity(template.items.len());
     for (idx, item) in template.items.iter().enumerate() {
         let value = evaluate_item_formula(&item.formula, amount, withholding)
@@ -271,7 +271,7 @@ pub async fn evaluate_payment_template<C: ConnectionTrait>(
             amount: value,
         });
     }
-    Ok(lines)
+    Ok((template.journal_id, lines))
 }
 
 #[cfg(test)]

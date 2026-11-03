@@ -32,9 +32,9 @@ use sha2::{Digest, Sha256};
 use crate::entities::preferences;
 use crate::entities::{
     CancelledInvoiceEntity, DraftInvoiceEntity, DraftInvoiceLineEntity, PaidInvoiceEntity,
-    PartiallyPaidInvoiceEntity, PaymentEntity, PostedInvoiceEntity, PostedInvoiceLineEntity,
+    PartiallyPaidInvoiceEntity, PostedInvoiceEntity, PostedInvoiceLineEntity,
 };
-use crate::entities::{draft_invoice_line, payment, posted_invoice, posted_invoice_line};
+use crate::entities::{draft_invoice_line, posted_invoice, posted_invoice_line};
 use crate::invoice_addon_key::InvoiceAddonKey;
 use crate::invoice_pdf_addon::{collect_invoice_pdf_extras, collect_invoice_pdf_sample_extras};
 use crate::invoice_pdf_assets::VnodeImageContext;
@@ -58,6 +58,7 @@ use crate::logic::tax_calculations::{
     merge_invoice_line_tax_ids,
 };
 use lariv_plugin_filesystem::state::FilesystemState;
+use lariv_plugin_finance_payments::entities::payment::{self, Entity as PaymentEntity};
 
 #[derive(Debug, thiserror::Error)]
 pub enum InvoicePdfError {
@@ -455,6 +456,28 @@ fn pdf_product_from_line_snapshot(
     )
 }
 
+async fn settlement_payment_ids(
+    db: &DatabaseConnection,
+    posted_id: i64,
+) -> Result<Vec<i64>, InvoicePdfError> {
+    let rows = db
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT payment_id FROM paid_invoices WHERE posted_invoice_id = $1 \
+             UNION \
+             SELECT payment_id FROM partially_paid_invoices WHERE posted_invoice_id = $1",
+            [posted_id.into()],
+        ))
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+    rows.into_iter()
+        .map(|row| {
+            row.try_get("", "payment_id")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))
+        })
+        .collect()
+}
+
 async fn load_payments_for_posted(
     db: &DatabaseConnection,
     posted_id: i64,
@@ -462,12 +485,17 @@ async fn load_payments_for_posted(
     datetime_fmt: &str,
     currency: &CurrencyFormat,
 ) -> Result<Vec<PdfPayment>, InvoicePdfError> {
-    let rows = PaymentEntity::find()
-        .filter(payment::Column::PostedInvoiceId.eq(posted_id))
-        .order_by_asc(payment::Column::Datetime)
-        .all(db)
-        .await
-        .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+    let payment_ids = settlement_payment_ids(db, posted_id).await?;
+    let rows = if payment_ids.is_empty() {
+        Vec::new()
+    } else {
+        PaymentEntity::find()
+            .filter(payment::Column::Id.is_in(payment_ids))
+            .order_by_asc(payment::Column::Datetime)
+            .all(db)
+            .await
+            .map_err(|e| InvoicePdfError::msg(e.to_string()))?
+    };
     Ok(rows
         .into_iter()
         .map(|p| {
@@ -1630,7 +1658,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&asset_dir);
         assert!(draft.contains("*QUOTATION*"), "{draft}");
         assert!(draft.contains("*Quotation No.:*"), "{draft}");
-        assert!(draft.contains("This is a Computer Generated Quotation"), "{draft}");
+        assert!(
+            draft.contains("This is a Computer Generated Quotation"),
+            "{draft}"
+        );
 
         root.invoice_type = InvoiceState::Cancelled.as_str().to_string();
         let asset_dir = std::env::temp_dir().join("lariv-invoice-pdf-test-type-cancelled");

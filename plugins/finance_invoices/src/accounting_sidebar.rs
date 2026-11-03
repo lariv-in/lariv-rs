@@ -2,7 +2,7 @@
 
 use lariv_plugin_finance_accounts::accounting_sidebar::{self, AccountingSidebarRegistrar};
 
-use crate::routes::{InvoiceDefaultRouteTag, PaymentListRouteTag};
+use crate::routes::InvoiceDefaultRouteTag;
 
 #[derive(Clone, Copy, Default)]
 pub struct Hook;
@@ -17,12 +17,6 @@ impl AccountingSidebarRegistrar for Hook {
             "Invoices",
             100,
             Some("document-text"),
-        ))
-        .push(accounting_sidebar::link::<PaymentListRouteTag>(
-            "payments",
-            "Payments",
-            120,
-            Some("banknotes"),
         ))
     }
 
