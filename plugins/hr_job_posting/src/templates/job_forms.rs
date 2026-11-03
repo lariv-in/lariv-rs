@@ -21,8 +21,8 @@ use crate::{
     crumbs::job_forms_crumbs,
     forms::{JobFormForm, JobFormFormField},
     keys::{
-        JobFormCreateModalKey, JobFormDeleteModalKey, JobFormEditModalKey, JobFormSelectModalKey,
-        JobFormSelectTableKey, JobFormTableKey,
+        JOB_FORM_CREATE_MODAL, JOB_FORM_DELETE_MODAL, JOB_FORM_EDIT_MODAL, JOB_FORM_SELECT_MODAL,
+        JOB_FORM_SELECT_TABLE, JOB_FORM_TABLE,
     },
     routes::{
         JobApplicationPublicPostRouteTag, JobFormCreateGetRouteTag, JobFormCreatePostRouteTag,
@@ -62,11 +62,13 @@ pub struct JobFormOption {
     pub job_title: String,
 }
 
-fn render_picker_pagination<K: SwapKey>(
+fn render_picker_pagination(
+    key: SwapKey,
     path_and_query: &str,
     number: u32,
     num_pages: u32,
 ) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, false);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -80,7 +82,7 @@ fn render_picker_pagination<K: SwapKey>(
         .collect();
     table_pagination_picker(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -92,7 +94,7 @@ pub struct JobFormSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<JobFormSelectTableKey, JobFormSelectModalKey> for JobFormSelectPage {
+impl RenderPickerSelect for JobFormSelectPage {
     fn render_table(&self) -> Markup {
         let rows: Vec<TableRow> = self
             .jobs
@@ -108,7 +110,8 @@ impl RenderPickerSelect<JobFormSelectTableKey, JobFormSelectModalKey> for JobFor
                 children: Vec::new(),
             })
             .collect();
-        data_table_list_refresh::<JobFormSelectTableKey>(
+        data_table_list_refresh(
+            JOB_FORM_SELECT_TABLE,
             "Select job posting",
             html! {},
             &[TableColumnHeader {
@@ -118,7 +121,8 @@ impl RenderPickerSelect<JobFormSelectTableKey, JobFormSelectModalKey> for JobFor
                 push_url: false,
             }],
             &rows,
-            render_picker_pagination::<JobFormSelectTableKey>(
+            render_picker_pagination(
+                JOB_FORM_SELECT_TABLE,
                 &self.path_and_query,
                 self.jobs.number,
                 self.jobs.num_pages,
@@ -130,7 +134,7 @@ impl RenderPickerSelect<JobFormSelectTableKey, JobFormSelectModalKey> for JobFor
 
 impl RenderTemplate for JobFormSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<JobFormSelectModalKey>("", self.render_table())
+        modal_keyed(JOB_FORM_SELECT_MODAL, "", self.render_table())
     }
 }
 
@@ -193,7 +197,7 @@ impl JobFormListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<JobFormTableKey, JobFormListRouteTag>(
+                    attrs: form_hx_get_route(
                         JobFormListRouteTag,
                     ),
                     apply_label: "Apply",
@@ -211,7 +215,7 @@ impl JobFormListPage {
                     name: "p_hr.JobFormCreateForm",
                     href: &JobFormCreateGetRouteTag.url(),
                     form_post_url: &JobFormCreateGetRouteTag.path(),
-                    modal_uid: JobFormCreateModalKey::ID,
+                    modal_uid: JOB_FORM_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
@@ -234,14 +238,15 @@ impl JobFormListPage {
                 label: label.as_str(),
             })
             .collect();
-        data_table_with_filter_errors::<JobFormTableKey>(
+        data_table_with_filter_errors(
+            JOB_FORM_TABLE,
             "Job postings",
             actions,
             &headers,
             &table_rows,
             table_pagination(TablePagination {
                 pages: &pages,
-                hx_target: JobFormTableKey::SELECTOR,
+                hx_target: &JOB_FORM_TABLE.selector(),
             }),
             &self.path_and_query,
             &self.filter_errors,
@@ -296,7 +301,7 @@ impl JobFormDetailPage {
                     name: "p_hr.JobFormEditForm",
                     href: &JobFormEditGetRouteTag::new(self.id).url(),
                     form_post_url: &JobFormEditPostRouteTag::new(self.id).path(),
-                    modal_uid: JobFormEditModalKey::ID,
+                    modal_uid: JOB_FORM_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline btn-sm",
                     ..Default::default()
@@ -305,7 +310,7 @@ impl JobFormDetailPage {
                     name: "p_hr.JobFormDeleteForm",
                     href: &JobFormDeleteGetRouteTag::new(self.id).url(),
                     form_post_url: &JobFormDeleteGetRouteTag::new(self.id).path(),
-                    modal_uid: JobFormDeleteModalKey::ID,
+                    modal_uid: JOB_FORM_DELETE_MODAL.id(),
                     label: "Delete",
                     classes: "btn-outline btn-error btn-sm",
                     ..Default::default()
@@ -420,12 +425,13 @@ impl RenderTemplate for JobFormCreateModalPage {
             )
             .value(JobFormFormField::Description, &self.form.description)
             .value(JobFormFormField::QuestionsJson, &self.form.questions_json);
-        modal_keyed::<JobFormCreateModalKey>(
+        modal_keyed(
+            JOB_FORM_CREATE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New job posting" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<JobFormCreateModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(JOB_FORM_CREATE_MODAL, &modal_create_post_url(
                         JobFormCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
@@ -465,12 +471,13 @@ impl RenderTemplate for JobFormEditModalPage {
             )
             .value(JobFormFormField::Description, &self.description)
             .value(JobFormFormField::QuestionsJson, &self.questions_json);
-        modal_keyed::<JobFormEditModalKey>(
+        modal_keyed(
+            JOB_FORM_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit job posting" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<JobFormEditModalKey>(&self.post_url),
+                    attrs: form_hx_post_url(JOB_FORM_EDIT_MODAL, &self.post_url),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: JobFormForm::render_inputs(&ctx),
                     actions: html! {
@@ -492,10 +499,10 @@ pub struct JobFormDeleteModalPage {
 
 impl RenderTemplate for JobFormDeleteModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let target = format!("#{}", JobFormDeleteModalKey::ID);
+        let target = format!("#{}", JOB_FORM_DELETE_MODAL.id());
         let post_url = JobFormDeletePostRouteTag::new(self.id).url();
         modal(lariv_core::components::Modal {
-            uid: JobFormDeleteModalKey::ID,
+            uid: JOB_FORM_DELETE_MODAL.id(),
             children: delete_confirmation(DeleteConfirmation {
                 title: "Confirm deletion",
                 message: &self.message,

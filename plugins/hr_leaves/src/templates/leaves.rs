@@ -24,9 +24,9 @@ use crate::{
         RevokeApprovalForm, RevokeRejectionForm,
     },
     keys::{
-        GiveLeaveModalKey, LeaveApproveModalKey, LeaveCreateModalKey, LeaveDeleteModalKey,
-        LeaveEditModalKey, LeaveJournalTableKey, LeaveRejectModalKey, LeaveRevokeApprovalModalKey,
-        LeaveRevokeRejectionModalKey, LeaveTableKey,
+        GIVE_LEAVE_MODAL, LEAVE_APPROVE_MODAL, LEAVE_CREATE_MODAL, LEAVE_DELETE_MODAL,
+        LEAVE_EDIT_MODAL, LEAVE_JOURNAL_TABLE, LEAVE_REJECT_MODAL, LEAVE_REVOKE_APPROVAL_MODAL,
+        LEAVE_REVOKE_REJECTION_MODAL, LEAVE_TABLE,
     },
     logic::leave::STATUS_PENDING,
     routes::{
@@ -52,7 +52,8 @@ pub struct LeaveRow {
     pub detail_href: String,
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -66,7 +67,7 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -214,7 +215,7 @@ impl LeaveListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_url::<LeaveTableKey>(&self.filter_path),
+                    attrs: form_hx_get_url(LEAVE_TABLE, &self.filter_path),
                     apply_label: "Apply",
                     extra: html! {},
                 }),
@@ -232,19 +233,21 @@ impl LeaveListPage {
                     name: "p_hr.LeaveCreateForm",
                     href: &LeaveCreateGetRouteTag.url(),
                     form_post_url: &LeaveCreateGetRouteTag.path(),
-                    modal_uid: LeaveCreateModalKey::ID,
+                    modal_uid: LEAVE_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
                 }))
             };
         }
-        lariv_plugin_hr::templates::data_table_with_filter_errors::<LeaveTableKey>(
+        lariv_plugin_hr::templates::data_table_with_filter_errors(
+            LEAVE_TABLE,
             &self.title,
             actions,
             &headers,
             &table_rows,
-            render_pagination::<LeaveTableKey>(
+            render_pagination(
+                LEAVE_TABLE,
                 &self.path_and_query,
                 self.rows.number,
                 self.rows.num_pages,
@@ -333,7 +336,7 @@ impl LeaveDetailPage {
                     name: "p_hr.LeaveApproveForm",
                     href: &LeaveApproveGetRouteTag::new(self.id).url(),
                     form_post_url: &LeaveApprovePostRouteTag::new(self.id).path(),
-                    modal_uid: LeaveApproveModalKey::ID,
+                    modal_uid: LEAVE_APPROVE_MODAL.id(),
                     label: "Approve",
                     classes: "btn-outline btn-sm",
                     ..Default::default()
@@ -345,7 +348,7 @@ impl LeaveDetailPage {
                         name: "p_hr.LeaveRejectForm",
                         href: &LeaveRejectGetRouteTag::new(self.id).url(),
                         form_post_url: &LeaveRejectPostRouteTag::new(self.id).path(),
-                        modal_uid: LeaveRejectModalKey::ID,
+                        modal_uid: LEAVE_REJECT_MODAL.id(),
                         label: "Reject",
                         classes: "btn-outline btn-error btn-sm",
                         ..Default::default()
@@ -355,7 +358,7 @@ impl LeaveDetailPage {
                     name: "p_hr.LeaveDeleteForm",
                     href: &LeaveDeleteGetRouteTag::new(self.id).url(),
                     form_post_url: &LeaveDeleteGetRouteTag::new(self.id).path(),
-                    modal_uid: LeaveDeleteModalKey::ID,
+                    modal_uid: LEAVE_DELETE_MODAL.id(),
                     label: "Delete",
                     classes: "btn-outline btn-error btn-sm",
                     ..Default::default()
@@ -366,7 +369,7 @@ impl LeaveDetailPage {
                     name: "p_hr.LeaveRevokeApprovalForm",
                     href: &LeaveRevokeApprovalGetRouteTag::new(self.id).url(),
                     form_post_url: &LeaveRevokeApprovalPostRouteTag::new(self.id).path(),
-                    modal_uid: LeaveRevokeApprovalModalKey::ID,
+                    modal_uid: LEAVE_REVOKE_APPROVAL_MODAL.id(),
                     label: "Revoke approval",
                     classes: "btn-outline btn-sm",
                     ..Default::default()
@@ -377,7 +380,7 @@ impl LeaveDetailPage {
                     name: "p_hr.LeaveRevokeRejectionForm",
                     href: &LeaveRevokeRejectionGetRouteTag::new(self.id).url(),
                     form_post_url: &LeaveRevokeRejectionPostRouteTag::new(self.id).path(),
-                    modal_uid: LeaveRevokeRejectionModalKey::ID,
+                    modal_uid: LEAVE_REVOKE_REJECTION_MODAL.id(),
                     label: "Revoke rejection",
                     classes: "btn-outline btn-error btn-sm",
                     ..Default::default()
@@ -388,7 +391,7 @@ impl LeaveDetailPage {
                     name: "p_hr.LeaveEditForm",
                     href: &LeaveEditGetRouteTag::new(self.id).url(),
                     form_post_url: &LeaveEditPostRouteTag::new(self.id).path(),
-                    modal_uid: LeaveEditModalKey::ID,
+                    modal_uid: LEAVE_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline btn-sm",
                     ..Default::default()
@@ -507,12 +510,13 @@ impl LeaveCreateModalPage {
 
 impl RenderTemplate for LeaveCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<LeaveCreateModalKey>(
+        modal_keyed(
+            LEAVE_CREATE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New leave" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<LeaveCreateModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(LEAVE_CREATE_MODAL, &modal_create_post_url(
                         LeaveCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
@@ -548,12 +552,13 @@ pub struct LeaveEditModalPage {
 
 impl RenderTemplate for LeaveEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<LeaveEditModalKey>(
+        modal_keyed(
+            LEAVE_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit leave" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<LeaveEditModalKey>(&self.post_url),
+                    attrs: form_hx_post_url(LEAVE_EDIT_MODAL, &self.post_url),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: leave_form_inputs(&self.date, &self.leave_type, &self.reason, "", "", false),
                     actions: html! {
@@ -575,10 +580,10 @@ pub struct LeaveDeleteModalPage {
 
 impl RenderTemplate for LeaveDeleteModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let target = format!("#{}", LeaveDeleteModalKey::ID);
+        let target = format!("#{}", LEAVE_DELETE_MODAL.id());
         let post_url = LeaveDeletePostRouteTag::new(self.id).url();
         modal(lariv_core::components::Modal {
-            uid: LeaveDeleteModalKey::ID,
+            uid: LEAVE_DELETE_MODAL.id(),
             children: delete_confirmation(DeleteConfirmation {
                 title: "Confirm deletion",
                 message: &self.message,
@@ -600,13 +605,14 @@ pub struct LeaveApproveModalPage {
 
 impl RenderTemplate for LeaveApproveModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<LeaveApproveModalKey>(
+        modal_keyed(
+            LEAVE_APPROVE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg" { "Approve leave" }
                 p class="text-sm opacity-80 mb-4" { "This records the approval in your name at the current time." }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<LeaveApproveModalKey>(&self.post_url),
+                    attrs: form_hx_post_url(LEAVE_APPROVE_MODAL, &self.post_url),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: approve_form_inputs(),
                     actions: html! {
@@ -629,13 +635,14 @@ pub struct LeaveRejectModalPage {
 
 impl RenderTemplate for LeaveRejectModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<LeaveRejectModalKey>(
+        modal_keyed(
+            LEAVE_REJECT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg" { "Reject leave" }
                 p class="text-sm opacity-80 mb-4" { "This records the rejection in your name at the current time. You can add a reason." }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<LeaveRejectModalKey>(&self.post_url),
+                    attrs: form_hx_post_url(LEAVE_REJECT_MODAL, &self.post_url),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: reject_form_inputs(&self.reason),
                     actions: html! {
@@ -657,13 +664,14 @@ pub struct LeaveRevokeApprovalModalPage {
 
 impl RenderTemplate for LeaveRevokeApprovalModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<LeaveRevokeApprovalModalKey>(
+        modal_keyed(
+            LEAVE_REVOKE_APPROVAL_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg" { "Revoke approval" }
                 p class="text-sm opacity-80 mb-4" { "This removes the approval and returns the leave to pending." }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<LeaveRevokeApprovalModalKey>(&self.post_url),
+                    attrs: form_hx_post_url(LEAVE_REVOKE_APPROVAL_MODAL, &self.post_url),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: RevokeApprovalForm::render_inputs(
                         &FormCtx::form::<RevokeApprovalForm>(CsrfToken::current()),
@@ -687,13 +695,14 @@ pub struct LeaveRevokeRejectionModalPage {
 
 impl RenderTemplate for LeaveRevokeRejectionModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<LeaveRevokeRejectionModalKey>(
+        modal_keyed(
+            LEAVE_REVOKE_REJECTION_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg" { "Revoke rejection" }
                 p class="text-sm opacity-80 mb-4" { "This removes the rejection and returns the leave to pending." }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<LeaveRevokeRejectionModalKey>(&self.post_url),
+                    attrs: form_hx_post_url(LEAVE_REVOKE_REJECTION_MODAL, &self.post_url),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: RevokeRejectionForm::render_inputs(
                         &FormCtx::form::<RevokeRejectionForm>(CsrfToken::current()),
@@ -800,20 +809,22 @@ impl EmployeeLeaveJournalPage {
                     name: "p_hr.GiveLeaveForm",
                     href: &EmployeeGiveLeaveGetRouteTag::new(self.employee_id).url(),
                     form_post_url: &EmployeeGiveLeaveGetRouteTag::new(self.employee_id).path(),
-                    modal_uid: GiveLeaveModalKey::ID,
+                    modal_uid: GIVE_LEAVE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
                 }))
             };
         }
-        data_table_list_opts::<LeaveJournalTableKey>(
+        data_table_list_opts(
+            LEAVE_JOURNAL_TABLE,
             "Leaves journal",
             &subtitle,
             actions,
             &headers,
             &table_rows,
-            render_pagination::<LeaveJournalTableKey>(
+            render_pagination(
+                LEAVE_JOURNAL_TABLE,
                 &self.path_and_query,
                 self.rows.number,
                 self.rows.num_pages,
@@ -890,12 +901,13 @@ impl GiveLeaveModalPage {
 
 impl RenderTemplate for GiveLeaveModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<GiveLeaveModalKey>(
+        modal_keyed(
+            GIVE_LEAVE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Give leave" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<GiveLeaveModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(GIVE_LEAVE_MODAL, &modal_create_post_url(
                         EmployeeGiveLeavePostRouteTag::new(self.employee_id),
                         &self.form_name,
                         &self.refresh_table,
@@ -953,7 +965,7 @@ mod tests {
         let page = GiveLeaveModalPage {
             employee_id: 4,
             form_name: "p_hr.GiveLeaveForm".into(),
-            refresh_table: LeaveJournalTableKey::ID.into(),
+            refresh_table: LEAVE_JOURNAL_TABLE.id().into(),
             leave_type: "casual".into(),
             amount: "2".into(),
             error: String::new(),

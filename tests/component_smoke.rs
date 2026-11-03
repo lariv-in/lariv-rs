@@ -179,6 +179,7 @@ mod tests {
 
     #[test]
     fn apps_page_uses_folded_dashboard_chrome() {
+        lariv_rs::plugins::dashboard::nav_origin::register();
         let slots = SlotCapability::new()
             .add::<DashboardAppsPageButtonTag, TopbarItemsSlotTag, DashboardAppsPageButton>()
             .add::<DashboardThemeButtonTag, TopbarItemsSlotTag, DashboardThemeButton>()
@@ -239,15 +240,13 @@ mod tests {
     #[test]
     fn parity_components_render() {
         use lariv_rs::components::{
-            AppLayoutKey, ButtonModalForm, DeleteConfirmation, FieldText, InputForeignKey, Modal,
-            SidebarMenu, SidebarMenuItem, SwapKey, TableButtonFilter, TableColumnHeader, TableRow,
+            APP_LAYOUT, ButtonModalForm, DeleteConfirmation, FieldText, InputForeignKey, Modal,
+            SidebarMenu, SidebarMenuItem, TableButtonFilter, TableColumnHeader, TableRow,
             button_link_route, button_modal_form, data_table_list, data_table_list_refresh,
             delete_confirmation, detail, field_text, form_hx_post_route, input_foreign_key, modal,
             nav_main_attrs, sidebar_menu, sidebar_menu_item, table_button_filter,
         };
-        use lariv_rs::plugins::users::keys::{
-            UserCreateModalKey, UserDeleteModalKey, UserTableKey,
-        };
+        use lariv_rs::plugins::users::keys::{USER_CREATE_MODAL, USER_TABLE};
         use lariv_rs::plugins::users::routes::{UsersDeletePostRouteTag, UsersListRouteTag};
 
         let menu = markup_str(sidebar_menu(SidebarMenu {
@@ -297,7 +296,8 @@ mod tests {
             key: String::new(),
             children: Vec::new(),
         }];
-        let table = markup_str(data_table_list::<UserTableKey>(
+        let table = markup_str(data_table_list(
+            USER_TABLE,
             "Users",
             table_button_filter(TableButtonFilter {
                 panel: maud::html! { "filters" },
@@ -307,12 +307,12 @@ mod tests {
             &rows,
             maud::Markup::default(),
         ));
-        assert!(table.contains(UserTableKey::ID));
+        assert!(table.contains(USER_TABLE.id()));
         assert!(table.contains("data-table-container"));
-        assert!(table.contains(&format!("id=\"{}--", UserTableKey::ID)));
-        assert!(table.contains(&format!("data-table-key=\"{}\"", UserTableKey::ID)));
+        assert!(table.contains(&format!("id=\"{}--", USER_TABLE.id())));
+        assert!(table.contains(&format!("data-table-key=\"{}\"", USER_TABLE.id())));
         assert!(table.contains("Ada"));
-        assert!(table.contains(AppLayoutKey::SELECTOR));
+        assert!(table.contains(&APP_LAYOUT.selector()));
         assert!(table.contains("closest .data-table-body"));
         assert!(table.contains("hx-select=\".data-table-body\""));
         assert!(table.contains("querySelector('.data-table-body')"));
@@ -320,8 +320,8 @@ mod tests {
         assert!(table.contains(r#"data-col="Email""#));
         assert!(table.contains("isVisible('Name')"));
         assert!(table.contains("lariv.table.cols."));
-        assert!(table.contains(&format!("lariv.table.{}.view", UserTableKey::ID)));
-        assert!(table.contains(&format!("lariv.table.{}.sort", UserTableKey::ID)));
+        assert!(table.contains(&format!("lariv.table.{}.view", USER_TABLE.id())));
+        assert!(table.contains(&format!("lariv.table.{}.sort", USER_TABLE.id())));
         assert!(table.contains("$persist"));
         assert!(table.contains("persistSortFromHref"));
         assert!(table.contains("restoreSort"));
@@ -332,18 +332,16 @@ mod tests {
         assert!(table.contains("Reset"));
 
         let dlg = markup_str(modal(Modal {
-            uid: UserCreateModalKey::ID,
+            uid: USER_CREATE_MODAL.id(),
             children: delete_confirmation(DeleteConfirmation {
                 title: "Confirm Deletion",
                 message: "Sure?",
-                attrs: form_hx_post_route::<UserDeleteModalKey, UsersDeletePostRouteTag>(
-                    UsersDeletePostRouteTag::new(1),
-                ),
+                attrs: form_hx_post_route(UsersDeletePostRouteTag::new(1)),
                 ..Default::default()
             }),
             ..Default::default()
         }));
-        assert!(dlg.contains(UserCreateModalKey::ID));
+        assert!(dlg.contains(USER_CREATE_MODAL.id()));
         assert!(dlg.contains("Confirm Delete"));
         assert!(dlg.contains("hx-post"));
         assert!(!dlg.contains("lariv-form-submit"));
@@ -415,7 +413,7 @@ mod tests {
             href: "/users/create",
             name: "p_users.UserCreateForm",
             form_post_url: "/users/create",
-            modal_uid: UserCreateModalKey::ID,
+            modal_uid: USER_CREATE_MODAL.id(),
             icon_name: Some("plus"),
             classes: "btn-square btn-outline btn-sm",
             ..Default::default()
@@ -437,7 +435,8 @@ mod tests {
         assert!(!btn.contains("lariv-form-submit"));
         assert!(!btn.contains("htmx.ajax"));
 
-        let refreshable = markup_str(data_table_list_refresh::<UserTableKey>(
+        let refreshable = markup_str(data_table_list_refresh(
+            USER_TABLE,
             "Users",
             maud::Markup::default(),
             &[],
@@ -446,21 +445,23 @@ mod tests {
             "/users/?page=1",
         ));
         assert!(refreshable.contains("hx-get=\"/users/?page=1\""));
-        assert!(refreshable.contains(&format!("lariv-table-refresh-{}--", UserTableKey::ID)));
+        assert!(refreshable.contains(&format!("lariv-table-refresh-{}--", USER_TABLE.id())));
         assert!(refreshable.contains("from:document"));
         assert!(refreshable.contains("hx-target=\"find .data-table-body\""));
         assert!(refreshable.contains("hx-select=\".data-table-body\""));
         assert!(refreshable.contains("__rows"));
         assert!(refreshable.contains("hx-push-url=\"false\""));
 
-        let table_a = markup_str(data_table_list::<UserTableKey>(
+        let table_a = markup_str(data_table_list(
+            USER_TABLE,
             "A",
             maud::Markup::default(),
             &[],
             &[],
             maud::Markup::default(),
         ));
-        let table_b = markup_str(data_table_list::<UserTableKey>(
+        let table_b = markup_str(data_table_list(
+            USER_TABLE,
             "B",
             maud::Markup::default(),
             &[],
@@ -478,8 +479,8 @@ mod tests {
             .map(|(id, _)| id.to_string())
             .expect("table B id");
         assert_ne!(id_a, id_b, "two table instances must not share an id");
-        assert!(id_a.starts_with(&format!("{}--", UserTableKey::ID)));
-        assert!(id_b.starts_with(&format!("{}--", UserTableKey::ID)));
+        assert!(id_a.starts_with(&format!("{}--", USER_TABLE.id())));
+        assert!(id_b.starts_with(&format!("{}--", USER_TABLE.id())));
 
         let d = markup_str(detail(maud::html! { "hello" }));
         assert!(d.contains("hello"));

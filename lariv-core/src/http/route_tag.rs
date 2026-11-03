@@ -66,10 +66,14 @@ pub trait AppPaneGet: RouteTag {}
 pub trait AppPanePost: RouteTag {}
 
 /// GET handler returns a partial for the given [`SwapKey`] region (filters, tables).
-pub trait FragmentGet<K: SwapKey>: RouteTag {}
+pub trait FragmentGet: RouteTag {
+    const TARGET: SwapKey;
+}
 
 /// POST handler targets the given [`SwapKey`] region (modal confirm, table row action).
-pub trait FragmentPost<K: SwapKey>: RouteTag {}
+pub trait FragmentPost: RouteTag {
+    const TARGET: SwapKey;
+}
 
 /// GET handler returns a file attachment (plain link, `hx-boost=false`).
 pub trait FileDownloadGet: RouteTag {}
@@ -81,7 +85,10 @@ pub trait FileDownloadPost: RouteTag {}
 pub trait ModalGet: RouteTag {}
 
 /// GET handler for FK / M2M picker routes (modal open + table fragment pagination).
-pub trait FkSelectGet<K: SwapKey, M: SwapKey>: RouteTag {}
+pub trait FkSelectGet: RouteTag {
+    const TABLE: SwapKey;
+    const MODAL: SwapKey;
+}
 
 /// POST via hx-boost into `#app-layout` (logout-style actions).
 pub trait BoostPost: RouteTag {}

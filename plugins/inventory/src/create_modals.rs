@@ -1,17 +1,14 @@
 //! Typed [`CreateModal`] wiring for inventory swap keys.
 
-use super::keys::{
-    MovementInSelectModalKey, MovementInSelectTableKey, MovementProcessSelectModalKey,
-    MovementProcessSelectTableKey, StockCreateModalKey, StockSelectModalKey, StockSelectTableKey,
-};
+use lariv_core::web::CreateModal;
+
+use super::keys::STOCK_CREATE_MODAL;
 use super::routes::{StockCreateGetRouteTag, StockCreatePostRouteTag};
 
-lariv_core::impl_create_modal!(
-    StockCreateModalKey,
-    StockCreateGetRouteTag,
-    StockCreatePostRouteTag,
-    "p_inventory.StockCreateForm"
-);
-lariv_core::impl_picker_modal!(StockSelectModalKey, StockSelectTableKey);
-lariv_core::impl_picker_modal!(MovementInSelectModalKey, MovementInSelectTableKey);
-lariv_core::impl_picker_modal!(MovementProcessSelectModalKey, MovementProcessSelectTableKey);
+pub const STOCK_CREATE: CreateModal<StockCreateGetRouteTag, StockCreatePostRouteTag> =
+    CreateModal {
+        key: STOCK_CREATE_MODAL,
+        form_name: "p_inventory.StockCreateForm",
+        get: StockCreateGetRouteTag,
+        post: StockCreatePostRouteTag,
+    };

@@ -1,3 +1,4 @@
+use crate::create_modals::PRODUCT_CREATE;
 use frunk::Generic;
 use maud::{Markup, html};
 
@@ -40,7 +41,8 @@ fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
         .collect()
 }
 
-fn data_table_with_filter_errors<K: SwapKey>(
+fn data_table_with_filter_errors(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -49,12 +51,13 @@ fn data_table_with_filter_errors<K: SwapKey>(
     refresh_url: &str,
     errors: &[FilterRowError],
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -75,7 +78,7 @@ fn data_table_with_filter_errors<K: SwapKey>(
         actions
     };
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         classes: "w-full",
         actions: toolbar,
@@ -96,8 +99,8 @@ fn data_table_with_filter_errors<K: SwapKey>(
     })
 }
 use super::keys::{
-    ProductCreateModalKey, ProductDeleteModalKey, ProductEditModalKey, ProductSelectModalKey,
-    ProductSelectTableKey, ProductTableKey,
+    PRODUCT_CREATE_MODAL, PRODUCT_DELETE_MODAL, PRODUCT_EDIT_MODAL, PRODUCT_SELECT_MODAL,
+    PRODUCT_SELECT_TABLE, PRODUCT_TABLE,
 };
 use super::routes::{
     ProductCreatePostRouteTag, ProductDefaultRouteTag, ProductDeleteGetRouteTag,
@@ -188,7 +191,7 @@ fn product_list_filter(page: &ProductListPage) -> Markup {
         rows: &page.filters,
         page_size: page.page_size,
         sort: &page.sort,
-        attrs: form_hx_get_route::<ProductTableKey, ProductDefaultRouteTag>(ProductDefaultRouteTag),
+        attrs: form_hx_get_route(ProductDefaultRouteTag),
         apply_label: "Apply Filters",
         extra: html! {},
     })
@@ -201,10 +204,7 @@ fn product_select_filter(page: &ProductSelectPage) -> Markup {
         rows: &page.filters,
         page_size: page.page_size,
         sort: &page.sort,
-        attrs: form_hx_get_route::<ProductSelectTableKey, ProductFkSelectRouteTag>(
-            ProductFkSelectRouteTag,
-        )
-        .set("hx-push-url", "false"),
+        attrs: form_hx_get_route(ProductFkSelectRouteTag).set("hx-push-url", "false"),
         apply_label: "Apply",
         extra: html! {
             input type="hidden" name="target_input" value=(target_input) {}
@@ -212,7 +212,8 @@ fn product_select_filter(page: &ProductSelectPage) -> Markup {
     })
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -226,7 +227,7 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -339,18 +340,20 @@ impl ProductListPage {
         ) {
             actions = html! {
                 (actions)
-                (table_create_button::<ProductTableKey, ProductCreateModalKey>(
+                (table_create_button(PRODUCT_TABLE, PRODUCT_CREATE,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        let pagination = render_pagination::<ProductTableKey>(
+        let pagination = render_pagination(
+            PRODUCT_TABLE,
             &self.path_and_query,
             self.products.number,
             self.products.num_pages,
         );
-        data_table_with_filter_errors::<ProductTableKey>(
+        data_table_with_filter_errors(
+            PRODUCT_TABLE,
             "Products",
             actions,
             &headers,
@@ -433,7 +436,7 @@ impl ProductDetailPage {
                                 name: "p_finance_products.ProductEditForm",
                                 href: &ProductEditGetRouteTag::new(self.id).url(),
                                 form_post_url: &ProductEditPostRouteTag::new(self.id).path(),
-                                modal_uid: ProductEditModalKey::ID,
+                                modal_uid: PRODUCT_EDIT_MODAL.id(),
                                 label: "Edit",
                                 classes: "btn-outline",
                                 ..Default::default()
@@ -488,12 +491,13 @@ impl RenderTemplate for ProductEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = ProductDeleteGetRouteTag::new(self.id).url();
         let kind_choices = choice_pairs(ProductForm::product_kind_choices());
-        modal_keyed::<ProductEditModalKey>(
+        modal_keyed(
+            PRODUCT_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit product" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<ProductEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(PRODUCT_EDIT_MODAL, &modal_edit_post_url(
                         ProductEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -523,7 +527,7 @@ impl RenderTemplate for ProductEditModalPage {
                             name: "p_finance_products.ProductDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: ProductDeleteModalKey::ID,
+                            modal_uid: PRODUCT_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -561,7 +565,8 @@ impl RenderTemplate for ProductCreateModalPage {
             self.form_name.as_str()
         };
         let kind_choices = choice_pairs(ProductForm::product_kind_choices());
-        modal_keyed::<ProductCreateModalKey>(
+        modal_keyed(
+            PRODUCT_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
@@ -569,12 +574,15 @@ impl RenderTemplate for ProductCreateModalPage {
                     title: "Create Product",
                     subtitle: "Create a new product",
                     classes: "@container",
-                    attrs: form_hx_post_url::<ProductCreateModalKey>(&modal_create_post_query(
-                        ProductCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                        &self.target_input,
-                    )),
+                    attrs: form_hx_post_url(
+                        PRODUCT_CREATE_MODAL,
+                        &modal_create_post_query(
+                            ProductCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                            &self.target_input,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: ProductForm::render_inputs(
                         &FormCtx::form::<ProductForm>(CsrfToken::current())
@@ -621,7 +629,7 @@ pub struct ProductSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for ProductSelectPage {
+impl RenderPickerSelect for ProductSelectPage {
     fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
@@ -668,19 +676,21 @@ impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for Produc
         ) {
             actions = html! {
                 (actions)
-                (picker_create_button::<ProductCreateModalKey>(
+                (picker_create_button(PRODUCT_CREATE,
                     &self.target_input,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        let pagination = render_pagination::<ProductSelectTableKey>(
+        let pagination = render_pagination(
+            PRODUCT_SELECT_TABLE,
             &self.path_and_query,
             self.products.number,
             self.products.num_pages,
         );
-        data_table_with_filter_errors::<ProductSelectTableKey>(
+        data_table_with_filter_errors(
+            PRODUCT_SELECT_TABLE,
             "Select Product",
             actions,
             &headers,
@@ -694,7 +704,7 @@ impl RenderPickerSelect<ProductSelectTableKey, ProductSelectModalKey> for Produc
 
 impl RenderTemplate for ProductSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(PRODUCT_SELECT_MODAL).into_inner()
     }
 }
 
@@ -710,12 +720,12 @@ pub struct ConfirmDeletePage {
 impl RenderTemplate for ConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = if self.modal_uid.is_empty() {
-            format!("#{}", ProductDeleteModalKey::ID)
+            format!("#{}", PRODUCT_DELETE_MODAL.id())
         } else {
             format!("#{}", self.modal_uid)
         };
         let uid = if self.modal_uid.is_empty() {
-            ProductDeleteModalKey::ID
+            PRODUCT_DELETE_MODAL.id()
         } else {
             self.modal_uid.as_str()
         };

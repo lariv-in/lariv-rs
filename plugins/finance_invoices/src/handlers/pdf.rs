@@ -20,7 +20,7 @@ use crate::logic::invoice_pdf::{
     render_paid_invoice_pdf, render_partially_paid_invoice_pdf, render_posted_invoice_pdf,
 };
 use crate::{
-    keys::InvoicePdfModalKey,
+    keys::INVOICE_PDF_MODAL,
     routes::{
         CancelledInvoicePdfRouteTag, DraftInvoicePdfRouteTag, PaidInvoicePdfRouteTag,
         PartiallyPaidInvoicePdfRouteTag, PostedInvoicePdfRouteTag,
@@ -83,7 +83,8 @@ fn pdf_ok_response(result: crate::logic::invoice_pdf::InvoicePdfResult) -> Respo
 }
 
 fn render_pdf_modal(title: &str, pdf_url: &str) -> Markup {
-    modal_keyed::<InvoicePdfModalKey>(
+    modal_keyed(
+        INVOICE_PDF_MODAL,
         "max-w-6xl w-[95vw]",
         html! {
             div class="flex items-center justify-between gap-3 mb-3 pr-10" {
@@ -115,7 +116,8 @@ fn render_pdf_modal(title: &str, pdf_url: &str) -> Markup {
 }
 
 fn render_pdf_modal_error(message: &str) -> Markup {
-    modal_keyed::<InvoicePdfModalKey>(
+    modal_keyed(
+        INVOICE_PDF_MODAL,
         "max-w-2xl",
         html! {
             h3 class="text-lg font-semibold mb-2" { "Invoice PDF failed" }
@@ -131,10 +133,10 @@ pub async fn draft_pdf_modal(
     Path(id): Path<i64>,
 ) -> Markup {
     if find_active_draft(&state.db, id).await.is_none() {
-        return render_pdf_modal_error("Draft invoice not found");
+        return render_pdf_modal_error("Quotation not found");
     }
     render_pdf_modal(
-        &format!("Draft invoice #{id} PDF"),
+        &format!("Quotation #{id} PDF"),
         &DraftInvoicePdfRouteTag::new(id).path(),
     )
 }

@@ -10,7 +10,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
 };
 
-use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
 use lariv_core::list_filters::{
@@ -33,8 +33,8 @@ use crate::{
     forms::ContactForm,
     handlers::ModalNameQuery,
     keys::{
-        ContactCreateModalKey, ContactDeleteModalKey, ContactEditModalKey, ContactSelectModalKey,
-        ContactSelectTableKey, ContactTableKey,
+        CONTACT_CREATE_MODAL, CONTACT_DELETE_MODAL, CONTACT_EDIT_MODAL, CONTACT_SELECT_MODAL,
+        CONTACT_SELECT_TABLE, CONTACT_TABLE,
     },
     routes::{CompanyFkSelectRouteTag, ContactDefaultRouteTag, ContactDetailRouteTag},
     scope::{apply_contact_sort, company_display_label, find_company_scoped, find_contact_scoped},
@@ -242,7 +242,7 @@ pub async fn list(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<ContactTableKey>() {
+    if htmx.targets(CONTACT_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -356,8 +356,9 @@ pub async fn create_post(
             let company_id = saved.company_id.unwrap_or(0);
             let company_name = company_display_label(&state.db, company_id).await;
             let company_id_s = company_id.to_string();
-            respond_create_modal_done_fk_extra::<ContactCreateModalKey>(
+            respond_create_modal_done_fk_extra(
                 &htmx,
+                CONTACT_CREATE_MODAL,
                 &q.refresh_table(),
                 &ContactDetailRouteTag::new(saved.id).url(),
                 saved.id,
@@ -467,8 +468,9 @@ pub async fn edit_post(
     am.phone = Set(opt_string(form.phone.clone()));
     am.is_primary = Set(checkbox_on(&form.is_primary));
     match am.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<ContactEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            CONTACT_EDIT_MODAL,
             &ContactDetailRouteTag::new(id).url(),
         ),
         Err(e) => {
@@ -484,7 +486,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: ContactDeleteModalKey::ID.to_string(),
+        modal_uid: CONTACT_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this contact?".into(),
         form_name: q
             .name
@@ -511,7 +513,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete contact");
             let page = ConfirmDeletePage {
-                modal_uid: ContactDeleteModalKey::ID.to_string(),
+                modal_uid: CONTACT_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this contact?".into(),
                 form_name: "p_contacts.ContactDeleteForm".into(),
                 id,
@@ -552,7 +554,7 @@ pub async fn select(
         target_input: q.target_input.clone().unwrap_or_else(|| "ContactID".into()),
         page_size: q.filter.page_size.get(),
     };
-    respond_picker_select::<ContactSelectTableKey, ContactSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(&htmx, CONTACT_SELECT_TABLE, CONTACT_SELECT_MODAL, &page)
 }
 
 #[cfg(test)]

@@ -12,14 +12,14 @@ use lariv_plugin_contacts::entities::{
 };
 
 use crate::logic::BillTo;
-use lariv_plugin_finance_products::{
-    entities::product::{Entity as ProductEntity, ProductKind},
-    journal_template, pricing,
-};
 use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_format,
 };
 use lariv_plugin_finance_common::{decimal::decimal_display_currency, typst};
+use lariv_plugin_finance_products::{
+    entities::product::{Entity as ProductEntity, ProductKind},
+    journal_template, pricing,
+};
 use lariv_plugin_finance_taxes::entities::tax::{self, TaxKind};
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 use minijinja::{Environment, UndefinedBehavior};
@@ -34,8 +34,8 @@ use sha2::{Digest, Sha256};
 
 use crate::entities::preferences;
 use crate::entities::{
-    CancelledPurchaseEntity, DraftPurchaseEntity, DraftPurchaseLineEntity,
-    PostedPurchaseEntity, PostedPurchaseLineEntity,
+    CancelledPurchaseEntity, DraftPurchaseEntity, DraftPurchaseLineEntity, PostedPurchaseEntity,
+    PostedPurchaseLineEntity,
 };
 use crate::entities::{draft_purchase_line, posted_purchase, posted_purchase_line};
 use crate::logic::draft_payment_term::{

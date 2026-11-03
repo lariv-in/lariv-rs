@@ -1,6 +1,6 @@
 use super::{
     handlers,
-    keys::{HolidayDeleteModalKey, HolidayTableKey},
+    keys::{HOLIDAY_DELETE_MODAL, HOLIDAY_TABLE},
 };
 
 pub struct HolidayView;
@@ -14,7 +14,7 @@ lariv_core::define_plugin_routes! {
     plugin: HrHolidaysTag;
     prefix: "/dashboard";
     routes: [
-        get HolidayListRouteTag, "/hr/holidays", handlers::holidays::list, fragment(HolidayTableKey), authorize(HolidayView, []);
+        get HolidayListRouteTag, "/hr/holidays", handlers::holidays::list, fragment(HOLIDAY_TABLE), authorize(HolidayView, []);
         get HolidayCreateGetRouteTag, "/hr/holidays/create", handlers::holidays::create_get, modal, authorize(HolidayMutate, []);
         post HolidayCreatePostRouteTag, "/hr/holidays/create", handlers::holidays::create_post, authorize(HolidayMutate, []);
         get HolidayImportGetRouteTag, "/hr/holidays/import", handlers::holidays::import_get, modal, authorize(HolidayImport, []);
@@ -23,6 +23,6 @@ lariv_core::define_plugin_routes! {
         get HolidayEditGetRouteTag, "/hr/holidays/{id}/edit", handlers::holidays::edit_get, modal, authorize(HolidayMutate, []);
         post HolidayEditPostRouteTag, "/hr/holidays/{id}/edit", handlers::holidays::edit_post, authorize(HolidayMutate, []);
         get HolidayDeleteGetRouteTag, "/hr/holidays/{id}/delete", handlers::holidays::delete_get, modal, authorize(HolidayMutate, []);
-        post HolidayDeletePostRouteTag, "/hr/holidays/{id}/delete", bare handlers::holidays::delete_post, fragment(HolidayDeleteModalKey), authorize(HolidayMutate, []);
+        post HolidayDeletePostRouteTag, "/hr/holidays/{id}/delete", bare handlers::holidays::delete_post, fragment(HOLIDAY_DELETE_MODAL), authorize(HolidayMutate, []);
     ]
 }

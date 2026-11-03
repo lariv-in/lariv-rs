@@ -9,14 +9,16 @@ use lariv_plugin_users::middleware::RequireAuth;
 use sea_orm::EntityTrait;
 
 use crate::forms::CustomerForm;
-use crate::keys::CustomerCreateModalKey;
+use crate::keys::CUSTOMER_CREATE_MODAL;
 use crate::logic;
 use crate::state::CustomerState;
 use crate::templates::CustomerCreateModalPage;
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use lariv_core::web::{Htmx, ModalFormQuery, html_built_page_with_slots, respond_create_modal_done};
+use lariv_core::web::{
+    Htmx, ModalFormQuery, html_built_page_with_slots, respond_create_modal_done,
+};
 
 /// Fallback redirect when create is not an HTMX modal refresh (list lives under Accounting).
 pub const CUSTOMERS_LIST_PATH: &str = "/finance/customers";
@@ -47,8 +49,9 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<CustomerForm>,
 ) -> Response {
     match logic::create_for_party(&state.db, form.company_id, form.individual_id).await {
-        Ok(_id) => respond_create_modal_done::<CustomerCreateModalKey>(
+        Ok(_id) => respond_create_modal_done(
             &htmx,
+            CUSTOMER_CREATE_MODAL,
             &q.refresh_table(),
             CUSTOMERS_LIST_PATH,
         ),

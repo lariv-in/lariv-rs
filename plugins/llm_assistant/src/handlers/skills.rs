@@ -17,7 +17,7 @@ use crate::{
         skill_file_link,
     },
     forms::{SkillForm, SkillImportForm},
-    keys::{SkillCreateModalKey, SkillDeleteModalKey, SkillEditModalKey, SkillsTableKey},
+    keys::{SKILL_CREATE_MODAL, SKILL_DELETE_MODAL, SKILL_EDIT_MODAL, SKILLS_TABLE},
     routes::{SkillsDetailRouteTag, SkillsListRouteTag},
     skill_hints,
     skill_zip::{export_skill, import_skill},
@@ -28,7 +28,7 @@ use crate::{
     },
 };
 use lariv_core::components::{
-    FilterClauseView, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
+    FilterClauseView, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx,
 };
 use lariv_core::db::trigram::text_match_condition;
 use lariv_core::html_form::{CsrfToken, HtmlForm, HtmlFormBody};
@@ -227,7 +227,7 @@ pub async fn list(
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
-    if htmx.targets::<SkillsTableKey>() {
+    if htmx.targets(SKILLS_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -326,8 +326,9 @@ pub async fn create_post(
                 return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                     .into_response();
             }
-            respond_create_modal_done::<SkillCreateModalKey>(
+            respond_create_modal_done(
                 &htmx,
+                SKILL_CREATE_MODAL,
                 &q.refresh_table(),
                 &SkillsDetailRouteTag::new(saved.id).url(),
             )
@@ -422,8 +423,9 @@ pub async fn edit_post(
                 return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                     .into_response();
             }
-            respond_edit_modal_done::<SkillEditModalKey>(
+            respond_edit_modal_done(
                 &htmx,
+                SKILL_EDIT_MODAL,
                 &SkillsDetailRouteTag::new(id).url(),
             )
         }
@@ -452,7 +454,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: SkillDeleteModalKey::ID.to_string(),
+        modal_uid: SKILL_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this skill?".into(),
         name: q
             .name
@@ -477,7 +479,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete skill");
             let page = ConfirmDeletePage {
-                modal_uid: SkillDeleteModalKey::ID.to_string(),
+                modal_uid: SKILL_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this skill?".into(),
                 name: "p_llm_assistant.SkillDeleteForm".into(),
                 id,

@@ -1,13 +1,14 @@
-lariv_core::swap_key!(FormTableKey, "form-table");
-lariv_core::swap_key!(FormCreateModalKey, "form-create-modal");
-lariv_core::swap_key!(FormEditModalKey, "form-edit-modal");
-lariv_core::swap_key!(FormDeleteModalKey, "form-delete-modal");
-lariv_core::swap_key!(FormSelectTableKey, "form-select-table");
-lariv_core::swap_key!(FormSelectModalKey, "form-select-modal");
+use lariv_core::components::SwapKey;
 
-lariv_core::swap_key!(FormDetailResponsesTableKey, "form-detail-responses-table");
-lariv_core::swap_key!(FormResponseCreateModalKey, "form-response-create-modal");
-lariv_core::swap_key!(FormResponseEditModalKey, "form-response-edit-modal");
-lariv_core::swap_key!(FormResponseDeleteModalKey, "form-response-delete-modal");
-lariv_core::swap_key!(FormResponseSelectTableKey, "form-response-select-table");
-lariv_core::swap_key!(FormResponseSelectModalKey, "form-response-select-modal");
+pub const FORM_TABLE: SwapKey = SwapKey("form-table");
+pub const FORM_CREATE_MODAL: SwapKey = SwapKey("form-create-modal");
+pub const FORM_EDIT_MODAL: SwapKey = SwapKey("form-edit-modal");
+pub const FORM_DELETE_MODAL: SwapKey = SwapKey("form-delete-modal");
+pub const FORM_SELECT_TABLE: SwapKey = SwapKey("form-select-table");
+pub const FORM_SELECT_MODAL: SwapKey = SwapKey("form-select-modal");
+pub const FORM_DETAIL_RESPONSES_TABLE: SwapKey = SwapKey("form-detail-responses-table");
+pub const FORM_RESPONSE_CREATE_MODAL: SwapKey = SwapKey("form-response-create-modal");
+pub const FORM_RESPONSE_EDIT_MODAL: SwapKey = SwapKey("form-response-edit-modal");
+pub const FORM_RESPONSE_DELETE_MODAL: SwapKey = SwapKey("form-response-delete-modal");
+pub const FORM_RESPONSE_SELECT_TABLE: SwapKey = SwapKey("form-response-select-table");
+pub const FORM_RESPONSE_SELECT_MODAL: SwapKey = SwapKey("form-response-select-modal");

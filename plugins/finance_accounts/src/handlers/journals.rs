@@ -10,7 +10,7 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
@@ -31,8 +31,8 @@ use crate::{
     forms::{JournalCreateForm, JournalForm},
     handlers::ModalNameQuery,
     keys::{
-        JournalCreateModalKey, JournalDeleteModalKey, JournalEditModalKey, JournalGenerateModalKey,
-        JournalSelectModalKey, JournalSelectTableKey, JournalTableKey,
+        JOURNAL_CREATE_MODAL, JOURNAL_DELETE_MODAL, JOURNAL_EDIT_MODAL, JOURNAL_GENERATE_MODAL,
+        JOURNAL_SELECT_MODAL, JOURNAL_SELECT_TABLE, JOURNAL_TABLE,
     },
     logic::journal::generate_journal_from_source_docs,
     routes::{JournalDetailRouteTag, JournalListRouteTag},
@@ -169,7 +169,7 @@ pub async fn list(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<JournalTableKey>() {
+    if htmx.targets(JOURNAL_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -244,7 +244,7 @@ pub async fn detail(
             JOURNAL_FISCAL_YEAR_COOKIE,
         ),
     };
-    if htmx.targets::<JournalTableKey>() {
+    if htmx.targets(JOURNAL_TABLE) {
         return page.render_entries_table().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -298,8 +298,9 @@ pub async fn create_post(
         ..Default::default()
     };
     match model.insert(&state.db).await {
-        Ok(saved) => respond_create_modal_done_fk::<JournalCreateModalKey>(
+        Ok(saved) => respond_create_modal_done_fk(
             &htmx,
+            JOURNAL_CREATE_MODAL,
             &q.refresh_table(),
             &JournalDetailRouteTag::new(saved.id).url(),
             saved.id,
@@ -378,8 +379,9 @@ pub async fn generate_post(
     )
     .await
     {
-        Ok(saved) => respond_create_modal_done_fk::<JournalGenerateModalKey>(
+        Ok(saved) => respond_create_modal_done_fk(
             &htmx,
+            JOURNAL_GENERATE_MODAL,
             &q.refresh_table(),
             &JournalDetailRouteTag::new(saved.id).url(),
             saved.id,
@@ -450,8 +452,9 @@ pub async fn edit_post(
         ..Default::default()
     };
     match model.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<JournalEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            JOURNAL_EDIT_MODAL,
             &JournalDetailRouteTag::new(id).url(),
         ),
         Err(e) => {
@@ -485,7 +488,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: JournalDeleteModalKey::ID.to_string(),
+        modal_uid: JOURNAL_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this journal?".into(),
         form_name: q
             .name
@@ -512,7 +515,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete journal");
             let page = ConfirmDeletePage {
-                modal_uid: JournalDeleteModalKey::ID.to_string(),
+                modal_uid: JOURNAL_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this journal?".into(),
                 form_name: "p_finance_accounts.JournalDeleteForm".into(),
                 id,
@@ -548,5 +551,5 @@ pub async fn select(
         target_input: q.target_input.unwrap_or_else(|| "JournalID".into()),
         page_size: q.filter.page_size.get(),
     };
-    respond_picker_select::<JournalSelectTableKey, JournalSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(&htmx, JOURNAL_SELECT_TABLE, JOURNAL_SELECT_MODAL, &page)
 }

@@ -3,8 +3,8 @@ use maud::{Markup, html};
 
 use lariv_core::components::{
     ButtonModalForm, ButtonSubmit, Crumb, FieldText, FieldTitle, FilterClauseView, FormOpts,
-    ListFilterBuilder, ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader,
-    TableRow, breadcrumbs, button_modal_form, button_submit, column_sort_url, container_column,
+    ListFilterBuilder, ObjectList, ShellChrome, TableButtonFilter, TableColumnHeader, TableRow,
+    breadcrumbs, button_modal_form, button_submit, column_sort_url, container_column,
     container_row, detail, field_text, field_title, form, form_hx_get_picker_route,
     form_hx_get_route, form_hx_post_url, label, list_filter_builder, modal_keyed,
     row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
@@ -19,8 +19,8 @@ use crate::{
     entities::currency,
     forms::{CurrencyForm, CurrencyFormField},
     keys::{
-        CurrencyCreateModalKey, CurrencyDeleteModalKey, CurrencyEditModalKey,
-        CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey,
+        CURRENCY_CREATE_MODAL, CURRENCY_DELETE_MODAL, CURRENCY_EDIT_MODAL, CURRENCY_SELECT_MODAL,
+        CURRENCY_SELECT_TABLE, CURRENCY_TABLE,
     },
     routes::{
         CurrencyCreateGetRouteTag, CurrencyCreatePostRouteTag, CurrencyDeleteGetRouteTag,
@@ -100,7 +100,7 @@ fn currency_filter_form(page: &CurrencyListPage) -> Markup {
         rows: &page.filters,
         page_size: page.page_size,
         sort: &page.sort,
-        attrs: form_hx_get_route::<CurrencyTableKey, CurrencyListRouteTag>(CurrencyListRouteTag),
+        attrs: form_hx_get_route(CurrencyListRouteTag),
         apply_label: "Apply Filters",
         extra: html! {},
     })
@@ -195,19 +195,21 @@ impl CurrencyListPage {
                     name: "p_finance_accounts.CurrencyCreateForm",
                     href: &CurrencyCreateGetRouteTag.url(),
                     form_post_url: &CurrencyCreateGetRouteTag.path(),
-                    modal_uid: CurrencyCreateModalKey::ID,
+                    modal_uid: CURRENCY_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
                 }))
             };
         }
-        let pagination = render_pagination::<CurrencyTableKey>(
+        let pagination = render_pagination(
+            CURRENCY_TABLE,
             &self.path_and_query,
             self.currencies.number,
             self.currencies.num_pages,
         );
-        super::data_table_with_filter_errors::<CurrencyTableKey>(
+        super::data_table_with_filter_errors(
+            CURRENCY_TABLE,
             "Currencies",
             actions,
             &headers,
@@ -272,7 +274,7 @@ impl CurrencyDetailPage {
                                 name: "p_finance_accounts.CurrencyEditForm",
                                 href: &CurrencyEditGetRouteTag::new(self.id).url(),
                                 form_post_url: &CurrencyEditPostRouteTag::new(self.id).path(),
-                                modal_uid: CurrencyEditModalKey::ID,
+                                modal_uid: CURRENCY_EDIT_MODAL.id(),
                                 label: "Edit",
                                 classes: "btn-outline",
                                 ..Default::default()
@@ -334,12 +336,13 @@ impl CurrencyEditModalPage {
 impl RenderTemplate for CurrencyEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = CurrencyDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<CurrencyEditModalKey>(
+        modal_keyed(
+            CURRENCY_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit currency" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<CurrencyEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(CURRENCY_EDIT_MODAL, &modal_edit_post_url(
                         CurrencyEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -359,7 +362,7 @@ impl RenderTemplate for CurrencyEditModalPage {
                             name: "p_finance_accounts.CurrencyDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: CurrencyDeleteModalKey::ID,
+                            modal_uid: CURRENCY_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -389,18 +392,22 @@ impl RenderTemplate for CurrencyCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed::<CurrencyCreateModalKey>(
+        modal_keyed(
+            CURRENCY_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
                 FormOpts {
                     title: "Create Currency",
                     subtitle: "Create a new currency",
-                    attrs: form_hx_post_url::<CurrencyCreateModalKey>(&modal_create_post_url(
-                        CurrencyCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    )),
+                    attrs: form_hx_post_url(
+                        CURRENCY_CREATE_MODAL,
+                        &modal_create_post_url(
+                            CurrencyCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: CurrencyForm::render_inputs(
                         &FormCtx::form::<CurrencyForm>(CsrfToken::current())
@@ -437,7 +444,7 @@ pub struct CurrencySelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<CurrencySelectTableKey, CurrencySelectModalKey> for CurrencySelectPage {
+impl RenderPickerSelect for CurrencySelectPage {
     fn render_table(&self) -> Markup {
         let code_sort = column_sort_url(&self.path_and_query, "Code", &self.sort);
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
@@ -500,11 +507,7 @@ impl RenderPickerSelect<CurrencySelectTableKey, CurrencySelectModalKey> for Curr
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_picker_route::<
-                        CurrencySelectTableKey,
-                        CurrencySelectModalKey,
-                        CurrencySelectRouteTag,
-                    >(CurrencySelectRouteTag),
+                    attrs: form_hx_get_picker_route(CurrencySelectRouteTag),
                     apply_label: "Apply",
                     extra: html! {
                         input type="hidden" name="target_input" value=(target_input) {}
@@ -513,12 +516,14 @@ impl RenderPickerSelect<CurrencySelectTableKey, CurrencySelectModalKey> for Curr
                 ..Default::default()
             }))
         };
-        let pagination = render_picker_pagination::<CurrencySelectModalKey>(
+        let pagination = render_picker_pagination(
+            CURRENCY_SELECT_MODAL,
             &self.path_and_query,
             self.currencies.number,
             self.currencies.num_pages,
         );
-        super::data_table_with_filter_errors::<CurrencySelectTableKey>(
+        super::data_table_with_filter_errors(
+            CURRENCY_SELECT_TABLE,
             "Select Currency",
             actions,
             &headers,
@@ -532,6 +537,6 @@ impl RenderPickerSelect<CurrencySelectTableKey, CurrencySelectModalKey> for Curr
 
 impl RenderTemplate for CurrencySelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(CURRENCY_SELECT_MODAL).into_inner()
     }
 }

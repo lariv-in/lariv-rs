@@ -6,7 +6,7 @@ use axum::{
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 
 use lariv_core::components::{
-    ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
+    ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, table_rows_instance_id,
 };
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
@@ -27,9 +27,9 @@ use crate::{
     forms::{MovementPartyForm, ProcessMovementForm},
     handlers::{ModalNameQuery, path_and_query},
     keys::{
-        MovementCreateModalKey, MovementDeleteModalKey, MovementEditModalKey,
-        MovementInSelectModalKey, MovementInSelectTableKey, MovementProcessSelectModalKey,
-        MovementProcessSelectTableKey, MovementTableKey,
+        MOVEMENT_CREATE_MODAL, MOVEMENT_DELETE_MODAL, MOVEMENT_EDIT_MODAL,
+        MOVEMENT_IN_SELECT_MODAL, MOVEMENT_IN_SELECT_TABLE, MOVEMENT_PROCESS_SELECT_MODAL,
+        MOVEMENT_PROCESS_SELECT_TABLE, MOVEMENT_TABLE,
     },
     logic::{
         line::{
@@ -159,11 +159,11 @@ pub async fn list(
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref())
-        && MovementTableKey::matches_id(instance)
+        && MOVEMENT_TABLE.matches_id(instance)
     {
         return page.render_table_rows(instance);
     }
-    if htmx.targets::<MovementTableKey>() {
+    if htmx.targets(MOVEMENT_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -290,10 +290,11 @@ fn finish_movement_create(
     let detail = detail_url(kind, id);
     let target = q.target_input();
     if target.is_empty() {
-        respond_create_modal_done::<MovementCreateModalKey>(htmx, &q.refresh_table(), &detail)
+        respond_create_modal_done(htmx, MOVEMENT_CREATE_MODAL, &q.refresh_table(), &detail)
     } else {
-        respond_create_modal_done_fk::<MovementCreateModalKey>(
+        respond_create_modal_done_fk(
             htmx,
+            MOVEMENT_CREATE_MODAL,
             &q.refresh_table(),
             &detail,
             id,
@@ -1009,7 +1010,7 @@ async fn edit_party(
         MovementKind::Process => Err("process movements use a different form".into()),
     };
     match saved {
-        Ok(()) => respond_edit_modal_done::<MovementEditModalKey>(&htmx, &detail_url(kind, id)),
+        Ok(()) => respond_edit_modal_done(&htmx, MOVEMENT_EDIT_MODAL, &detail_url(kind, id)),
         Err(error) => party_edit_error(&state.db, &chrome, &ctx, id, kind, &q, &form, error).await,
     }
 }
@@ -1030,8 +1031,9 @@ pub async fn edit_process_post(
         }
     };
     match update_process(&state.db, id, input).await {
-        Ok(_) => respond_edit_modal_done::<MovementEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            MOVEMENT_EDIT_MODAL,
             &detail_url(MovementKind::Process, id),
         ),
         Err(error) => process_edit_error(&state.db, &chrome, &ctx, id, &q, &form, error).await,
@@ -1136,7 +1138,7 @@ fn delete_page(
     error: String,
 ) -> ConfirmDeletePage {
     ConfirmDeletePage {
-        modal_uid: MovementDeleteModalKey::ID.to_string(),
+        modal_uid: MOVEMENT_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this movement? Its lines will be deleted too."
             .into(),
         form_name: q
@@ -1170,7 +1172,7 @@ pub async fn delete_post(
         Err(error) => {
             tracing::error!(error = %error, id, "failed to delete movement");
             let page = ConfirmDeletePage {
-                modal_uid: MovementDeleteModalKey::ID.to_string(),
+                modal_uid: MOVEMENT_DELETE_MODAL.id().to_string(),
                 message:
                     "Are you sure you want to delete this movement? Its lines will be deleted too."
                         .into(),
@@ -1236,8 +1238,14 @@ pub async fn select_in(
         target_input: q.target_input.unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
+        kind: "in",
     };
-    respond_picker_select::<MovementInSelectTableKey, MovementInSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(
+        &htmx,
+        MOVEMENT_IN_SELECT_TABLE,
+        MOVEMENT_IN_SELECT_MODAL,
+        &page,
+    )
 }
 
 pub async fn select_process(
@@ -1276,8 +1284,12 @@ pub async fn select_process(
         target_input: q.target_input.unwrap_or_default(),
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
+        kind: "process",
     };
-    respond_picker_select::<MovementProcessSelectTableKey, MovementProcessSelectModalKey, _>(
-        &htmx, &page,
+    respond_picker_select(
+        &htmx,
+        MOVEMENT_PROCESS_SELECT_TABLE,
+        MOVEMENT_PROCESS_SELECT_MODAL,
+        &page,
     )
 }

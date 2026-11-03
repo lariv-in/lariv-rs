@@ -281,7 +281,6 @@ mod args {
             .collect()
     }
 
-
     fn parse_fields(parsed: InvoiceFields) -> Result<(CreateDraftInput, String), String> {
         let tz = parsed.timezone.unwrap_or_else(|| "UTC".to_string());
         let datetime = match parsed.datetime.as_deref().or(parsed.date.as_deref()) {

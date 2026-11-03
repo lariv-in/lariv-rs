@@ -1,6 +1,8 @@
-lariv_core::swap_key!(ProductCreateModalKey, "finance-product-create-modal");
-lariv_core::swap_key!(ProductEditModalKey, "finance-product-edit-modal");
-lariv_core::swap_key!(ProductTableKey, "finance-product-table");
-lariv_core::swap_key!(ProductSelectTableKey, "finance-product-select-table");
-lariv_core::swap_key!(ProductSelectModalKey, "finance-product-select-modal");
-lariv_core::swap_key!(ProductDeleteModalKey, "finance-product-delete-modal");
+use lariv_core::components::SwapKey;
+
+pub const PRODUCT_CREATE_MODAL: SwapKey = SwapKey("finance-product-create-modal");
+pub const PRODUCT_EDIT_MODAL: SwapKey = SwapKey("finance-product-edit-modal");
+pub const PRODUCT_TABLE: SwapKey = SwapKey("finance-product-table");
+pub const PRODUCT_SELECT_TABLE: SwapKey = SwapKey("finance-product-select-table");
+pub const PRODUCT_SELECT_MODAL: SwapKey = SwapKey("finance-product-select-modal");
+pub const PRODUCT_DELETE_MODAL: SwapKey = SwapKey("finance-product-delete-modal");

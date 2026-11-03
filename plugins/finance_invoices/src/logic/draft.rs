@@ -16,7 +16,9 @@ use lariv_plugin_finance_products::{
 };
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
-use crate::entities::{DraftInvoiceEntity, DraftPaymentTermEntity, draft_invoice, draft_invoice_line};
+use crate::entities::{
+    DraftInvoiceEntity, DraftPaymentTermEntity, draft_invoice, draft_invoice_line,
+};
 use crate::logic::draft_payment_term::{DraftPaymentTermLineInput, upsert_draft_payment_term};
 use crate::logic::tax_assoc::{set_draft_invoice_taxes, set_draft_line_taxes};
 
@@ -112,7 +114,7 @@ pub async fn draft_invoice_state(
     if exists {
         Ok(InvoiceState::Draft)
     } else {
-        Err("draft invoice not found".to_string())
+        Err("quotation not found".to_string())
     }
 }
 
@@ -369,7 +371,7 @@ pub async fn update_draft_invoice(
         .one(&txn)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "draft not found".to_string())?
+        .ok_or_else(|| "quotation not found".to_string())?
         .into();
     am.number = Set(number);
     am.reference = Set(input.reference);
@@ -464,7 +466,7 @@ pub async fn patch_draft_invoice(
         .one(&txn)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "draft not found".to_string())?
+        .ok_or_else(|| "quotation not found".to_string())?
         .into();
 
     if let Some(number) = &input.number {
@@ -536,7 +538,6 @@ pub async fn patch_draft_invoice(
         }
     }
 
-
     txn.commit().await.map_err(|e| e.to_string())?;
     Ok(draft)
 }
@@ -578,7 +579,6 @@ pub fn parse_lines_json(raw: &str) -> Result<Vec<DraftLinePending>, String> {
     serde_json::from_str(raw).map_err(|e| format!("invalid goods lines data: {e}"))
 }
 
-
 fn line_is_blank(id: i64, rate: &Option<String>, remarks: &Option<String>) -> bool {
     id <= 0
         && rate.as_deref().unwrap_or("").trim().is_empty()
@@ -598,8 +598,6 @@ fn occupied_lines(lines: &[DraftLinePending]) -> Result<Vec<DraftLinePending>, S
     }
     Ok(out)
 }
-
-
 
 #[cfg(test)]
 mod tests {

@@ -9,7 +9,7 @@ use crate::{
     auth,
     entities::user,
     forms::{PasswordForm, SelfEditForm},
-    keys::SelfEditModalKey,
+    keys::SELF_EDIT_MODAL,
     middleware::RequireAuth,
     routes::{UsersSelfChangePasswordPostRouteTag, UsersSelfRouteTag},
     state::UsersState,
@@ -76,7 +76,7 @@ pub async fn edit_post(
     am.timezone = Set(form.timezone.clone().into());
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<SelfEditModalKey>(&htmx, &UsersSelfRouteTag.url()),
+        Ok(_) => respond_edit_modal_done(&htmx, SELF_EDIT_MODAL, &UsersSelfRouteTag.url()),
         Err(e) => {
             let slot_ctx = SlotCtx::from_auth(&ctx);
             let page = SelfEditModalPage {

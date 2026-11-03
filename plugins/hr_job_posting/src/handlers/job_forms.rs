@@ -21,7 +21,7 @@ use crate::{
     forms::JobFormForm,
     handlers::ModalNameQuery,
     keys::{
-        JobFormCreateModalKey, JobFormEditModalKey, JobFormSelectModalKey, JobFormSelectTableKey,
+        JOB_FORM_CREATE_MODAL, JOB_FORM_EDIT_MODAL, JOB_FORM_SELECT_MODAL, JOB_FORM_SELECT_TABLE,
     },
     logic::job_form::{JobFormInput, create_job_form, delete_job_form, update_job_form},
     questions::parse_questions_json,
@@ -160,7 +160,7 @@ pub async fn select(
         path_and_query: path_and_query(&uri),
         page_size,
     };
-    respond_picker_select::<JobFormSelectTableKey, JobFormSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(&htmx, JOB_FORM_SELECT_TABLE, JOB_FORM_SELECT_MODAL, &page)
 }
 
 pub async fn create_get(
@@ -190,8 +190,9 @@ pub async fn create_post(
         }
     };
     match create_job_form(&state.db, input).await {
-        Ok(job) => respond_create_modal_done::<JobFormCreateModalKey>(
+        Ok(job) => respond_create_modal_done(
             &htmx,
+            JOB_FORM_CREATE_MODAL,
             &q.refresh_table(),
             &JobFormDetailRouteTag::new(job.id).url(),
         ),
@@ -282,8 +283,9 @@ pub async fn edit_post(
         }
     };
     match update_job_form(&state.db, id, input).await {
-        Ok(_) => respond_edit_modal_done::<JobFormEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            JOB_FORM_EDIT_MODAL,
             &JobFormDetailRouteTag::new(id).url(),
         ),
         Err(e) => {

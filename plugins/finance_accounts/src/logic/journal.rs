@@ -100,6 +100,142 @@ pub async fn insert_journal_entry<C: ConnectionTrait>(
     Ok((je.id, items))
 }
 
+/// Update `entry`'s items to match `lines`, preserving row ids where possible.
+///
+/// Existing items (id order) are updated in place so foreign keys that point at
+/// them (posted invoice lines, purchase lines, etc.) stay valid. Extra submitted
+/// lines are inserted; leftover items are deleted only when nothing references
+/// them.
+pub async fn replace_journal_entry_lines<C: ConnectionTrait>(
+    db: &C,
+    entry: &journal_entry::Model,
+    lines: &[JournalLineSpec],
+) -> Result<()> {
+    if lines.is_empty() {
+        bail!("journal entry requires at least one line");
+    }
+    let mut balance = Decimal::ZERO;
+    for line in lines {
+        balance = decimal::dec_sum(balance, decimal::normalize(line.amount));
+    }
+    if !decimal::dec_is_zero(balance) {
+        bail!("journal entry does not balance");
+    }
+
+    let existing = JournalEntryItemEntity::find()
+        .filter(journal_entry_item::Column::JournalEntryId.eq(entry.id))
+        .order_by_asc(journal_entry_item::Column::Id)
+        .all(db)
+        .await?;
+
+    let now = Utc::now();
+    let shared = existing.len().min(lines.len());
+    for (item, line) in existing.iter().zip(lines.iter()).take(shared) {
+        let mut am: journal_entry_item::ActiveModel = item.clone().into();
+        am.datetime = Set(entry.datetime);
+        am.account_id = Set(line.account_id);
+        am.amount = Set(decimal::normalize(line.amount));
+        am.updated_at = Set(Some(now));
+        am.update(db).await?;
+    }
+    for line in lines.iter().skip(shared) {
+        journal_entry_item::ActiveModel {
+            datetime: Set(entry.datetime),
+            account_id: Set(line.account_id),
+            amount: Set(decimal::normalize(line.amount)),
+            journal_entry_id: Set(entry.id),
+            created_at: Set(Some(now)),
+            updated_at: Set(Some(now)),
+            ..Default::default()
+        }
+        .insert(db)
+        .await?;
+    }
+    for item in existing.iter().skip(shared) {
+        if journal_entry_item_is_referenced(db, item.id).await? {
+            bail!(
+                "Cannot remove journal line #{} because a posted document line references it",
+                item.id
+            );
+        }
+        JournalEntryItemEntity::delete_by_id(item.id)
+            .exec(db)
+            .await?;
+    }
+    Ok(())
+}
+
+const JOURNAL_ENTRY_ITEM_REF_TABLES: &[&str] = &[
+    "posted_invoice_lines",
+    "cancelled_invoice_lines",
+    "posted_invoice_goods_lines",
+    "posted_invoice_service_lines",
+    "cancelled_invoice_goods_lines",
+    "cancelled_invoice_service_lines",
+    "posted_purchase_lines",
+    "cancelled_purchase_lines",
+    "posted_purchase_goods_lines",
+    "posted_purchase_service_lines",
+    "cancelled_purchase_goods_lines",
+    "cancelled_purchase_service_lines",
+];
+
+async fn journal_entry_item_is_referenced<C: ConnectionTrait>(
+    db: &C,
+    item_id: i64,
+) -> Result<bool> {
+    for table in JOURNAL_ENTRY_ITEM_REF_TABLES {
+        if !relation_exists(db, table).await? {
+            continue;
+        }
+        if query_optional_i64(
+            db,
+            &format!("SELECT 1 FROM {table} WHERE journal_entry_item_id = $1 LIMIT 1"),
+            item_id,
+        )
+        .await?
+        .is_some()
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Replace lines on a journal entry when its journal is mutable.
+pub async fn update_journal_entry_lines(
+    db: &DatabaseConnection,
+    entry_id: i64,
+    lines: &[JournalLineSpec],
+) -> Result<(), String> {
+    let entry = JournalEntryEntity::find_by_id(entry_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Journal entry not found".to_string())?;
+    let journal = JournalEntity::find_by_id(entry.journal_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Journal not found".to_string())?;
+    if !journal.is_mutable {
+        return Err(
+            "This journal is immutable. Enable Mutable on the journal edit page before editing entries."
+                .into(),
+        );
+    }
+    let now = Utc::now();
+    let txn = db.begin().await.map_err(|e| e.to_string())?;
+    replace_journal_entry_lines(&txn, &entry, lines)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut entry_am: journal_entry::ActiveModel = entry.into();
+    entry_am.updated_at = Set(Some(now));
+    entry_am.update(&txn).await.map_err(|e| e.to_string())?;
+    txn.commit().await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Create one journal and move every source document onto a new entry in it.
 ///
 /// Each entry is stored on a new `source_docs` row. The backing document is

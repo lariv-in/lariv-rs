@@ -21,7 +21,7 @@ use crate::{
     },
     forms::{RouteCreateBody, RouteEditBody},
     html_edit::{BLANK_PAGE_STARTER_HTML, is_editable_html_name},
-    keys::{RouteCreateModalKey, RouteEditModalKey, RoutesTableKey},
+    keys::{ROUTE_CREATE_MODAL, ROUTE_EDIT_MODAL, ROUTES_TABLE},
     routes::{WebsiteRoutesDetailRouteTag, WebsiteRoutesListRouteTag},
     state::WebsiteState,
     templates::{
@@ -167,7 +167,7 @@ pub async fn list(
         path_and_query: pq,
         page_size: q.page_size.get(),
     };
-    if htmx.targets::<RoutesTableKey>() {
+    if htmx.targets(ROUTES_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -325,8 +325,9 @@ pub async fn create_post(
                 let slot_ctx = SlotCtx::from_auth(&ctx);
                 return html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response();
             }
-            respond_create_modal_done::<RouteCreateModalKey>(
+            respond_create_modal_done(
                 &htmx,
+                ROUTE_CREATE_MODAL,
                 &q.refresh_table(),
                 &WebsiteRoutesDetailRouteTag::new(route.id).url(),
             )
@@ -515,7 +516,11 @@ pub async fn edit_post(
         let slot_ctx = SlotCtx::from_auth(&ctx);
         return html_built_page_with_slots(&page, &chrome, &slot_ctx).into_response();
     }
-    respond_edit_modal_done::<RouteEditModalKey>(&htmx, &WebsiteRoutesDetailRouteTag::new(id).url())
+    respond_edit_modal_done(
+        &htmx,
+        ROUTE_EDIT_MODAL,
+        &WebsiteRoutesDetailRouteTag::new(id).url(),
+    )
 }
 
 /// HTTP handler: `delete_get`.

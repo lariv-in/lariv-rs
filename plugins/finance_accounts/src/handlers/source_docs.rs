@@ -11,7 +11,7 @@ use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
     entities::source_doc::{self, Entity as SourceDocEntity},
-    keys::{SourceDocSelectModalKey, SourceDocSelectTableKey},
+    keys::{SOURCE_DOC_SELECT_MODAL, SOURCE_DOC_SELECT_TABLE},
     source_doc_label::resolve_source_doc_display,
     source_doc_registry::SourceDocRegistry,
     state::AccountsState,
@@ -83,5 +83,10 @@ pub async fn select(
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
-    respond_picker_select::<SourceDocSelectTableKey, SourceDocSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(
+        &htmx,
+        SOURCE_DOC_SELECT_TABLE,
+        SOURCE_DOC_SELECT_MODAL,
+        &page,
+    )
 }

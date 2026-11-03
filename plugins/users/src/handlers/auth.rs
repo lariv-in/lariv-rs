@@ -34,32 +34,26 @@ pub async fn login_post(
     headers: HeaderMap,
     HtmlFormBody(form): HtmlFormBody<LoginForm>,
 ) -> Response {
-    match auth::authenticate(&state.db, &form.email, &form.password).await {
-        Ok(user) => match auth::record_login(&state.db, user.id)
-            .await
-            .and_then(|_| auth::login_token(&user, &state.signing_key, &state.jwt_issuer))
-        {
-            Ok(token) => {
-                let mut response = htmx.redirect(&UsersLoginSuccessRouteTag.url());
-                set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));
-                response
-            }
-            Err(_) => {
-                let page = LoginPage {
-                    error: "Could not create session".into(),
-                };
-                html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
-                    .into_response()
-            }
-        },
-        Err(_) => {
-            let page = LoginPage {
-                error: "Invalid email or password".into(),
-            };
-            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
-                .into_response()
-        }
-    }
+    let Ok(user) = auth::authenticate(&state.db, &form.email, &form.password).await else {
+        return login_error(&htmx, &chrome, "Invalid email or password");
+    };
+    let Ok(token) = auth::record_login(&state.db, user.id)
+        .await
+        .and_then(|_| auth::login_token(&user, &state.signing_key, &state.jwt_issuer))
+    else {
+        return login_error(&htmx, &chrome, "Could not create session");
+    };
+
+    let mut response = htmx.redirect(&UsersLoginSuccessRouteTag.url());
+    set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));
+    response
+}
+
+fn login_error(htmx: &Htmx, chrome: &SharedChromeFolder, error: &str) -> Response {
+    let page = LoginPage {
+        error: error.into(),
+    };
+    html_built_page_or_app_layout(&page, htmx, chrome, &SlotCtx::default()).into_response()
 }
 
 /// HTTP handler: `logout`.

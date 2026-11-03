@@ -31,12 +31,11 @@ use lariv_plugin_finance_products::{
 };
 
 use crate::entities::{
-    CancelledPurchaseEntity, DraftPurchaseEntity, DraftPurchaseLineEntity,
-    PostedPurchaseEntity, PostedPurchaseLineEntity,
+    CancelledPurchaseEntity, DraftPurchaseEntity, DraftPurchaseLineEntity, PostedPurchaseEntity,
+    PostedPurchaseLineEntity,
 };
 use crate::entities::{
-    cancelled_purchase, draft_purchase, draft_purchase_line,
-    posted_purchase, posted_purchase_line,
+    cancelled_purchase, draft_purchase, draft_purchase_line, posted_purchase, posted_purchase_line,
 };
 use crate::logic::draft_payment_term::{
     convert_draft_to_posted_payment_term, copy_posted_payment_term, posted_payment_term_to_draft,
@@ -61,7 +60,6 @@ struct LineWithTaxes {
     line: draft_purchase_line::Model,
     taxes: Vec<TaxModel>,
 }
-
 
 /// Journal lines for one document line, expanded from its product or service template.
 struct ExpandedLineJournal {
@@ -95,9 +93,11 @@ async fn expand_catalog_line_journal(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("catalog item {catalog_id} not found"))?;
-    let Some(template) = journal_template::load_template(db, catalog_id).await?
-    else {
-        return Err(format!("{} has no purchase journal entry template", product.name));
+    let Some(template) = journal_template::load_template(db, catalog_id).await? else {
+        return Err(format!(
+            "{} has no purchase journal entry template",
+            product.name
+        ));
     };
     if template.items.is_empty() {
         return Err(format!(
@@ -151,7 +151,6 @@ async fn expand_product_journal(
 ) -> Result<ExpandedLineJournal, String> {
     expand_catalog_line_journal(db, product_id, variable_values, quantity, rate, pre_tax).await
 }
-
 
 /// Append every tax template line onto the purchase journal.
 async fn append_purchase_tax_lines(
@@ -356,7 +355,8 @@ async fn prepare_draft_journal(
         .await
         .map_err(|e| e.to_string())?;
 
-    let mut lines_with_taxes = Vec::with_capacity(lines.len());    let mut specs = Vec::new();
+    let mut lines_with_taxes = Vec::with_capacity(lines.len());
+    let mut specs = Vec::new();
     let mut line_item_indexes = Vec::with_capacity(lines.len());
     let mut journal_id = None;
     for line in lines {
@@ -800,7 +800,6 @@ async fn insert_cancelled_line<C: ConnectionTrait>(
         .ok_or_else(|| "insert cancelled line failed".to_string())?;
     row.try_get("", "id").map_err(|e| e.to_string())
 }
-
 
 /// Negate the posted purchase journal. Indexes are the stored anchor of each goods or service line.
 pub async fn cancelled_reversal_journal_lines(

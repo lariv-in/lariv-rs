@@ -9,7 +9,7 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::list_filters::{
@@ -30,8 +30,8 @@ use crate::{
     forms::DocumentForm,
     handlers::ModalNameQuery,
     keys::{
-        DocumentCreateModalKey, DocumentDeleteModalKey, DocumentEditModalKey,
-        DocumentSelectModalKey, DocumentSelectTableKey, DocumentTableKey,
+        DOCUMENT_CREATE_MODAL, DOCUMENT_DELETE_MODAL, DOCUMENT_EDIT_MODAL, DOCUMENT_SELECT_MODAL,
+        DOCUMENT_SELECT_TABLE, DOCUMENT_TABLE,
     },
     logic::{self, TypeFields},
     routes::{DocumentDefaultRouteTag, DocumentDetailRouteTag},
@@ -187,7 +187,7 @@ pub async fn list(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<DocumentTableKey>() {
+    if htmx.targets(DOCUMENT_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -301,8 +301,9 @@ pub async fn create_post(
             } else {
                 name
             };
-            respond_create_modal_done_fk::<DocumentCreateModalKey>(
+            respond_create_modal_done_fk(
                 &htmx,
+                DOCUMENT_CREATE_MODAL,
                 &q.refresh_table(),
                 &DocumentDetailRouteTag::new(saved.id).url(),
                 saved.id,
@@ -372,8 +373,9 @@ pub async fn edit_post(
         return Redirect::to(&DocumentDefaultRouteTag.url()).into_response();
     };
     match logic::update_document(&state.db, &existing, &form).await {
-        Ok(()) => respond_edit_modal_done::<DocumentEditModalKey>(
+        Ok(()) => respond_edit_modal_done(
             &htmx,
+            DOCUMENT_EDIT_MODAL,
             &DocumentDetailRouteTag::new(id).url(),
         ),
         Err(err) => {
@@ -397,7 +399,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: DocumentDeleteModalKey::ID.to_string(),
+        modal_uid: DOCUMENT_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this document?".into(),
         form_name: q
             .name
@@ -424,7 +426,7 @@ pub async fn delete_post(
         Err(err) => {
             tracing::error!(error = %err, id, "failed to delete document");
             let page = ConfirmDeletePage {
-                modal_uid: DocumentDeleteModalKey::ID.to_string(),
+                modal_uid: DOCUMENT_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this document?".into(),
                 form_name: "p_documents.DocumentDeleteForm".into(),
                 id,
@@ -517,7 +519,7 @@ async fn select_documents(
         page_size,
         title: document_type.label().to_string(),
     };
-    respond_picker_select::<DocumentSelectTableKey, DocumentSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(&htmx, DOCUMENT_SELECT_TABLE, DOCUMENT_SELECT_MODAL, &page)
 }
 
 impl DocumentListQuery {

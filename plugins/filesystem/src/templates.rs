@@ -1,5 +1,7 @@
 //! Filesystem plugin pages (Maud), go`.
 
+use crate::create_modals::V_NODE_CREATE;
+
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
@@ -7,7 +9,7 @@ use lariv_core::capability::define_register_items;
 use lariv_core::components::{
     ButtonLink, ButtonModalForm, ButtonSubmit, CodeEditorInput, Crumb, DataTable, DataTableDisplay,
     DeleteConfirmation, DetailHeader, FieldText, FilterClauseView, FormOpts, HtmlAttrs, LayoutMain,
-    LayoutSidebar, ListFilterBuilder, MainContentKey, ObjectList, PaginationPage, ShellChrome,
+    LayoutSidebar, ListFilterBuilder, MAIN_CONTENT, ObjectList, PaginationPage, ShellChrome,
     ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarMenuModalForm, SidebarNavLink,
     SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TableListContent,
     TablePagination, TableRow, breadcrumbs, button_link, button_modal_form, button_modal_route,
@@ -25,7 +27,7 @@ use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
 use lariv_core::web::{
-    CreateModal, modal_create_href_for_picker, modal_create_post_query, modal_create_post_url,
+    modal_create_href_for_picker, modal_create_post_query, modal_create_post_url,
     modal_edit_post_url,
 };
 
@@ -36,9 +38,9 @@ use super::forms::{
     VNodePermissionsFormFlag, VNodeZipUploadForm, VNodeZipUploadFormField,
 };
 use super::keys::{
-    VNodeBulkDeleteModalKey, VNodeCreateModalKey, VNodeDeleteModalKey, VNodeEditModalKey,
-    VNodeMultiUploadModalKey, VNodeSelectModalKey, VNodeSelectTableKey, VNodeTableKey,
-    VNodeZipUploadModalKey,
+    V_NODE_BULK_DELETE_MODAL, V_NODE_CREATE_MODAL, V_NODE_DELETE_MODAL, V_NODE_EDIT_MODAL,
+    V_NODE_MULTI_UPLOAD_MODAL, V_NODE_SELECT_MODAL, V_NODE_SELECT_TABLE, V_NODE_TABLE,
+    V_NODE_ZIP_UPLOAD_MODAL,
 };
 use super::permissions::NodePermissions;
 use super::routes::{
@@ -300,7 +302,8 @@ fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) -> Markup {
     })
 }
 
-fn data_table_filtered<K: SwapKey>(
+fn data_table_filtered(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -309,12 +312,13 @@ fn data_table_filtered<K: SwapKey>(
     refresh_url: &str,
     errors: &[FilterRowError],
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -335,7 +339,7 @@ fn data_table_filtered<K: SwapKey>(
         actions
     };
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         subtitle: "",
         classes: "w-full",
@@ -360,12 +364,14 @@ fn data_table_filtered<K: SwapKey>(
     })
 }
 
-fn render_pagination<K: SwapKey>(
+fn render_pagination(
+    key: SwapKey,
     path_and_query: &str,
     number: u32,
     num_pages: u32,
     push_url: bool,
 ) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, push_url);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -379,7 +385,7 @@ fn render_pagination<K: SwapKey>(
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -629,7 +635,7 @@ impl VNodeListPage {
             })
             .collect();
         let filter_attrs = if self.parent_id == 0 {
-            form_hx_get_route::<VNodeTableKey, VNodeListRouteTag>(VNodeListRouteTag)
+            form_hx_get_route(VNodeListRouteTag)
         } else {
             lariv_core::components::swap::form_hx_get_for_url(
                 &VNodeBrowseRouteTag::new(self.parent_id).url(),
@@ -688,16 +694,17 @@ impl VNodeListPage {
             (download_btn)
             (bulk_actions)
             (button_modal_form(ButtonModalForm {
-                name: VNodeCreateModalKey::FORM_NAME,
+                name: V_NODE_CREATE.form_name,
                 href: &create_href,
                 form_post_url: "",
-                modal_uid: VNodeCreateModalKey::ID,
+                modal_uid: V_NODE_CREATE_MODAL.id(),
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
             }))
         };
-        let pagination = render_pagination::<VNodeTableKey>(
+        let pagination = render_pagination(
+            V_NODE_TABLE,
             &self.path_and_query,
             self.items.number,
             self.items.num_pages,
@@ -705,7 +712,8 @@ impl VNodeListPage {
         );
         // Bare table only — selection Alpine state lives outside so pagination swaps
         // do not reset checkboxes.
-        data_table_filtered::<VNodeTableKey>(
+        data_table_filtered(
+            V_NODE_TABLE,
             "",
             actions,
             &headers,
@@ -771,7 +779,7 @@ impl VNodeDetailPage {
                 name: "p_filesystem.VNodeEditForm",
                 href: &edit_get,
                 form_post_url: &edit_post,
-                modal_uid: VNodeEditModalKey::ID,
+                modal_uid: V_NODE_EDIT_MODAL.id(),
                 label: "Edit",
                 classes: "btn-outline",
                 ..Default::default()
@@ -821,7 +829,7 @@ impl VNodeDetailPage {
                     })))
                     @if let Some(content) = self.text_content.as_deref() {
                         (form(&CsrfToken::current(), FormOpts {
-                            attrs: form_hx_post_url::<MainContentKey>(&content_post),
+                            attrs: form_hx_post_url(MAIN_CONTENT, &content_post),
                             form_error: Some(self.save_error.as_str()).filter(|e| !e.is_empty()),
                             inputs: container_column(
                                 "",
@@ -899,12 +907,13 @@ impl RenderTemplate for VNodeEditModalPage {
             .flag(VNodeEditFormFlag::ShowFile, show_file_field)
             .label(VNodeEditFormField::File, file_label);
         let inputs = VNodeEditForm::render_inputs(&ctx);
-        modal_keyed::<VNodeEditModalKey>(
+        modal_keyed(
+            V_NODE_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit item" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<VNodeEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(V_NODE_EDIT_MODAL, &modal_edit_post_url(
                         VNodeEditPostRouteTag::new(self.id),
                         &self.form_name,
                     ))
@@ -920,7 +929,7 @@ impl RenderTemplate for VNodeEditModalPage {
                             name: "p_filesystem.VNodeDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: VNodeDeleteModalKey::ID,
+                            modal_uid: V_NODE_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -988,12 +997,13 @@ impl VNodeCreateModalPage {
 impl RenderTemplate for VNodeCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let form_name = if self.form_name.is_empty() {
-            VNodeCreateModalKey::FORM_NAME
+            V_NODE_CREATE.form_name
         } else {
             self.form_name.as_str()
         };
         let post_url = self.post_url(form_name);
-        modal_keyed::<VNodeCreateModalKey>(
+        modal_keyed(
+            V_NODE_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
@@ -1001,7 +1011,7 @@ impl RenderTemplate for VNodeCreateModalPage {
                     title: "Create Item",
                     subtitle: "Add a new file or folder",
                     classes: "@container",
-                    attrs: form_hx_post_url::<VNodeCreateModalKey>(&post_url)
+                    attrs: form_hx_post_url(V_NODE_CREATE_MODAL, &post_url)
                         .set("hx-encoding", "multipart/form-data"),
                     enctype: Some("multipart/form-data"),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
@@ -1496,14 +1506,15 @@ impl RenderTemplate for VNodeMultiUploadModalPage {
                 VNodeMultiUploadFormField::ParentId,
                 self.parent_display.as_str(),
             );
-        modal_keyed::<VNodeMultiUploadModalKey>(
+        modal_keyed(
+            V_NODE_MULTI_UPLOAD_MODAL,
             "",
             form(
                 &CsrfToken::current(),
                 FormOpts {
                     title: "Bulk Upload",
                     subtitle: "Upload multiple files at once",
-                    attrs: form_hx_post_url::<VNodeMultiUploadModalKey>(&self.post_url(form_name))
+                    attrs: form_hx_post_url(V_NODE_MULTI_UPLOAD_MODAL, &self.post_url(form_name))
                         .set("hx-encoding", "multipart/form-data"),
                     enctype: Some("multipart/form-data"),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
@@ -1564,14 +1575,15 @@ impl RenderTemplate for VNodeZipUploadModalPage {
                 VNodeZipUploadFormField::ParentId,
                 self.parent_display.as_str(),
             );
-        modal_keyed::<VNodeZipUploadModalKey>(
+        modal_keyed(
+            V_NODE_ZIP_UPLOAD_MODAL,
             "",
             form(
                 &CsrfToken::current(),
                 FormOpts {
                     title: "Upload Zip",
                     subtitle: "Replaces the contents of the destination folder",
-                    attrs: form_hx_post_url::<VNodeZipUploadModalKey>(&self.post_url(form_name))
+                    attrs: form_hx_post_url(V_NODE_ZIP_UPLOAD_MODAL, &self.post_url(form_name))
                         .set("hx-encoding", "multipart/form-data"),
                     enctype: Some("multipart/form-data"),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
@@ -1621,20 +1633,22 @@ pub struct VNodeSelectPage {
     pub page_size: u32,
 }
 
-fn form_hx_get_picker_url<M: SwapKey>(url: &str) -> HtmlAttrs {
+fn form_hx_get_picker_url(key: SwapKey, url: &str) -> HtmlAttrs {
     HtmlAttrs::new()
         .set("method", "GET")
         .set("hx-get", url)
-        .set("hx-target", M::SELECTOR)
+        .set("hx-target", key.selector())
         .set("hx-swap", "outerHTML")
         .set("hx-push-url", "false")
 }
 
-fn render_picker_pagination<M: SwapKey>(
+fn render_picker_pagination(
+    key: SwapKey,
     path_and_query: &str,
     number: u32,
     num_pages: u32,
 ) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, false);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -1648,7 +1662,7 @@ fn render_picker_pagination<M: SwapKey>(
         .collect();
     table_pagination_picker(TablePagination {
         pages: &pages,
-        hx_target: M::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -1735,7 +1749,7 @@ impl VNodeSelectPage {
     fn browse_hx_attrs(&self, parent_id: i64) -> HtmlAttrs {
         HtmlAttrs::new()
             .set("hx-get", self.browse_route_url(parent_id))
-            .set("hx-target", VNodeSelectModalKey::SELECTOR)
+            .set("hx-target", V_NODE_SELECT_MODAL.selector())
             .set("hx-swap", "outerHTML")
             .set("hx-push-url", "false")
     }
@@ -1750,7 +1764,7 @@ impl VNodeSelectPage {
     }
 }
 
-impl RenderPickerSelect<VNodeSelectTableKey, VNodeSelectModalKey> for VNodeSelectPage {
+impl RenderPickerSelect for VNodeSelectPage {
     fn render_table(&self) -> Markup {
         let target = if self.target_input.is_empty() {
             "ParentID"
@@ -1811,7 +1825,7 @@ impl RenderPickerSelect<VNodeSelectTableKey, VNodeSelectModalKey> for VNodeSelec
         let root_select = row_attr_select(target, "0", "Filesystem root");
         let create_href = modal_create_href_for_picker(
             &vnode_create_get_url(self.parent_id),
-            VNodeCreateModalKey::FORM_NAME,
+            V_NODE_CREATE.form_name,
             &self.target_input,
         );
         let actions = html! {
@@ -1821,7 +1835,7 @@ impl RenderPickerSelect<VNodeSelectTableKey, VNodeSelectModalKey> for VNodeSelec
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_picker_url::<VNodeSelectModalKey>(
+                    attrs: form_hx_get_picker_url(V_NODE_SELECT_MODAL,
                         &self.browse_route_url(self.parent_id),
                     ),
                     apply_label: "Apply",
@@ -1841,13 +1855,14 @@ impl RenderPickerSelect<VNodeSelectTableKey, VNodeSelectModalKey> for VNodeSelec
                 name: "",
                 href: &create_href,
                 form_post_url: "",
-                modal_uid: VNodeCreateModalKey::ID,
+                modal_uid: V_NODE_CREATE_MODAL.id(),
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
             }))
         };
-        let pagination = render_picker_pagination::<VNodeSelectModalKey>(
+        let pagination = render_picker_pagination(
+            V_NODE_SELECT_MODAL,
             &self.path_and_query,
             self.items.number,
             self.items.num_pages,
@@ -1880,7 +1895,7 @@ impl RenderPickerSelect<VNodeSelectTableKey, VNodeSelectModalKey> for VNodeSelec
                     }
                 }
             }
-            (data_table_filtered::<VNodeSelectTableKey>(
+            (data_table_filtered(V_NODE_SELECT_TABLE,
                 self.title(),
                 actions,
                 &headers,
@@ -1895,7 +1910,7 @@ impl RenderPickerSelect<VNodeSelectTableKey, VNodeSelectModalKey> for VNodeSelec
 
 impl RenderTemplate for VNodeSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(V_NODE_SELECT_MODAL).into_inner()
     }
 }
 
@@ -1912,12 +1927,12 @@ pub struct VNodeConfirmDeletePage {
 impl RenderTemplate for VNodeConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = if self.modal_uid.is_empty() {
-            format!("#{}", VNodeDeleteModalKey::ID)
+            format!("#{}", V_NODE_DELETE_MODAL.id())
         } else {
             format!("#{}", self.modal_uid)
         };
         let uid = if self.modal_uid.is_empty() {
-            VNodeDeleteModalKey::ID
+            V_NODE_DELETE_MODAL.id()
         } else {
             self.modal_uid.as_str()
         };
@@ -1953,12 +1968,12 @@ pub struct VNodeConfirmBulkDeletePage {
 impl RenderTemplate for VNodeConfirmBulkDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = if self.modal_uid.is_empty() {
-            format!("#{}", VNodeBulkDeleteModalKey::ID)
+            format!("#{}", V_NODE_BULK_DELETE_MODAL.id())
         } else {
             format!("#{}", self.modal_uid)
         };
         let uid = if self.modal_uid.is_empty() {
-            VNodeBulkDeleteModalKey::ID
+            V_NODE_BULK_DELETE_MODAL.id()
         } else {
             self.modal_uid.as_str()
         };

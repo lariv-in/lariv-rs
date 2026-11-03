@@ -41,42 +41,32 @@ impl ModalFormQuery {
     }
 
     /// True when `refresh` matches the typed table key id.
-    pub fn refreshes_table<T: SwapKey>(&self) -> bool {
-        self.refresh.as_deref() == Some(T::ID)
+    pub fn refreshes_table(&self, table: SwapKey) -> bool {
+        self.refresh.as_deref() == Some(table.id())
     }
 }
 
-/// Create-modal swap key with typed GET/POST routes and form identity.
+/// Create-modal wiring: swap key, form identity, and typed GET/POST routes.
 ///
 /// Table refresh is chosen at the call site via [`modal_create_get_url`] /
 /// [`modal_create_post_url_for_table`], not on the route — the same create modal may refresh
 /// different tables (list vs FK picker).
-pub trait CreateModal: SwapKey {
-    type Get: ModalGet + RouteUrl + Copy + Default;
-    type Post: RouteUrl + Copy + Default;
-    const FORM_NAME: &'static str;
+#[derive(Debug, Clone, Copy)]
+pub struct CreateModal<G, P> {
+    pub key: SwapKey,
+    pub form_name: &'static str,
+    pub get: G,
+    pub post: P,
 }
 
-/// Implement [`CreateModal`] for a swap key with typed GET/POST routes and form identity.
-#[macro_export]
-macro_rules! impl_create_modal {
-    ($modal:ty, $get:ty, $post:ty, $form:expr) => {
-        impl $crate::web::CreateModal for $modal {
-            type Get = $get;
-            type Post = $post;
-            const FORM_NAME: &'static str = $form;
-        }
-    };
-}
-
-/// Append `name` and `refresh=<T::ID>` to an existing create-modal GET URL.
+/// Append `name` and `refresh=<table.id()>` to an existing create-modal GET URL.
 ///
 /// Use when the GET URL already has extra query params (e.g. account `ParentID`) that
 /// [`modal_create_get_for`] would drop.
-pub fn modal_create_href_for_table<T: SwapKey>(href: &str, form_name: &str) -> String {
+pub fn modal_create_href_for_table(href: &str, form_name: &str, table: SwapKey) -> String {
     let mut out = href.to_string();
     append_query_if_absent(&mut out, "name", form_name);
-    append_query_if_absent(&mut out, "refresh", T::ID);
+    append_query_if_absent(&mut out, "refresh", table.id());
     out
 }
 
@@ -107,19 +97,27 @@ fn append_query_if_absent(url: &mut String, key: &str, value: &str) {
 }
 
 /// Build a create-modal GET URL with `name` and typed parent table refresh.
-pub fn modal_create_get_url<T: SwapKey>(route: impl RouteUrl, form_name: &str) -> String {
+pub fn modal_create_get_url(route: impl RouteUrl, form_name: &str, table: SwapKey) -> String {
     // Trailing slash matches other modal openers (`RouteUrl::url`) used by Lead/Contact create.
-    modal_create_url(route, form_name, T::ID, "", true)
+    modal_create_url(route, form_name, table.id(), "", true)
 }
 
-/// Build a create-modal GET URL for [`CreateModal`] `M` refreshing table `T`.
-pub fn modal_create_get_for<M: CreateModal, T: SwapKey>() -> String {
-    modal_create_get_url::<T>(M::Get::default(), M::FORM_NAME)
+/// Build a create-modal GET URL for [`CreateModal`] `m` refreshing `table`.
+pub fn modal_create_get_for<G, P>(m: CreateModal<G, P>, table: SwapKey) -> String
+where
+    G: ModalGet + RouteUrl + Copy,
+    P: Copy,
+{
+    modal_create_get_url(m.get, m.form_name, table)
 }
 
-/// Build a create-modal GET URL for [`CreateModal`] `M` that fills FK field `target_input`.
-pub fn modal_create_get_for_picker<M: CreateModal>(target_input: &str) -> String {
-    modal_create_url(M::Get::default(), M::FORM_NAME, "", target_input, true)
+/// Build a create-modal GET URL for [`CreateModal`] `m` that fills FK field `target_input`.
+pub fn modal_create_get_for_picker<G, P>(m: CreateModal<G, P>, target_input: &str) -> String
+where
+    G: ModalGet + RouteUrl + Copy,
+    P: Copy,
+{
+    modal_create_url(m.get, m.form_name, "", target_input, true)
 }
 
 /// Build a create-modal POST action URL with optional `name` and `refresh` query params.
@@ -137,17 +135,21 @@ pub fn modal_create_post_query(
     modal_create_url(route, form_name, refresh, target_input, false)
 }
 
-/// Build a create-modal POST action URL refreshing typed table `T`.
-pub fn modal_create_post_url_for_table<T: SwapKey>(
+/// Build a create-modal POST action URL refreshing typed `table`.
+pub fn modal_create_post_url_for_table(
     route: impl RouteUrl,
     form_name: &str,
+    table: SwapKey,
 ) -> String {
-    modal_create_post_url(route, form_name, T::ID)
+    modal_create_post_url(route, form_name, table.id())
 }
 
-/// Build a create-modal POST action URL for [`CreateModal`] `M` refreshing table `T`.
-pub fn modal_create_post_for<M: CreateModal, T: SwapKey>() -> String {
-    modal_create_post_url_for_table::<T>(M::Post::default(), M::FORM_NAME)
+/// Build a create-modal POST action URL for [`CreateModal`] `m` refreshing `table`.
+pub fn modal_create_post_for<G, P>(m: CreateModal<G, P>, table: SwapKey) -> String
+where
+    P: RouteUrl + Copy,
+{
+    modal_create_post_url_for_table(m.post, m.form_name, table)
 }
 
 /// Build an edit-modal POST action URL with optional `name` form identity (no table refresh).
@@ -184,10 +186,9 @@ mod tests {
     use super::*;
     use crate::components::swap::SwapKey;
     use crate::http::{ModalGet, RouteTag, RouteUrl};
-    use crate::swap_key;
 
-    swap_key!(TestCreateModalKey, "test-create-modal");
-    swap_key!(TestTableKey, "test-table");
+    const TEST_CREATE_MODAL: SwapKey = SwapKey("test-create-modal");
+    const TEST_TABLE: SwapKey = SwapKey("test-table");
 
     #[derive(Clone, Copy, Default)]
     pub struct TestCreateGetRoute;
@@ -218,20 +219,21 @@ mod tests {
         }
     }
 
-    impl CreateModal for TestCreateModalKey {
-        type Get = TestCreateGetRoute;
-        type Post = TestCreatePostRoute;
-        const FORM_NAME: &'static str = "p_test.CreateForm";
-    }
+    const TEST_CREATE: CreateModal<TestCreateGetRoute, TestCreatePostRoute> = CreateModal {
+        key: TEST_CREATE_MODAL,
+        form_name: "p_test.CreateForm",
+        get: TestCreateGetRoute,
+        post: TestCreatePostRoute,
+    };
 
     #[test]
     fn modal_create_urls_embed_table_refresh() {
-        let get = modal_create_get_for::<TestCreateModalKey, TestTableKey>();
+        let get = modal_create_get_for(TEST_CREATE, TEST_TABLE);
         assert!(get.contains("/test/create/?"), "{get}");
         assert!(get.contains("name=p_test.CreateForm"), "{get}");
         assert!(get.contains("refresh=test-table"), "{get}");
 
-        let post = modal_create_post_for::<TestCreateModalKey, TestTableKey>();
+        let post = modal_create_post_for(TEST_CREATE, TEST_TABLE);
         assert!(post.contains("/test/create?"), "{post}");
         assert!(post.contains("refresh=test-table"), "{post}");
         assert!(!post.contains("/test/create/?"), "{post}");
@@ -239,9 +241,10 @@ mod tests {
 
     #[test]
     fn modal_create_href_preserves_existing_query() {
-        let href = modal_create_href_for_table::<TestTableKey>(
+        let href = modal_create_href_for_table(
             "/test/create/?ParentID=9",
             "p_test.CreateForm",
+            TEST_TABLE,
         );
         assert!(href.contains("ParentID=9"), "{href}");
         assert!(href.contains("name=p_test.CreateForm"), "{href}");
@@ -251,7 +254,7 @@ mod tests {
 
     #[test]
     fn modal_create_get_for_picker_embeds_target_input() {
-        let get = modal_create_get_for_picker::<TestCreateModalKey>("CustomerID");
+        let get = modal_create_get_for_picker(TEST_CREATE, "CustomerID");
         assert!(get.contains("/test/create/?"), "{get}");
         assert!(get.contains("name=p_test.CreateForm"), "{get}");
         assert!(get.contains("target_input=CustomerID"), "{get}");
@@ -282,10 +285,10 @@ mod tests {
     #[test]
     fn modal_form_query_matches_table_key() {
         let q = ModalFormQuery {
-            refresh: Some(TestTableKey::ID.to_string()),
+            refresh: Some(TEST_TABLE.id().to_string()),
             ..Default::default()
         };
-        assert!(q.refreshes_table::<TestTableKey>());
-        assert!(!q.refreshes_table::<TestCreateModalKey>());
+        assert!(q.refreshes_table(TEST_TABLE));
+        assert!(!q.refreshes_table(TEST_CREATE_MODAL));
     }
 }

@@ -1,15 +1,17 @@
 //! Reusable customers table and create-modal markup.
 
+use crate::create_modals::CUSTOMER_CREATE;
+
 use maud::{Markup, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
     ButtonSubmit, DataTable, DataTableDisplay, FieldText, FilterClauseView, FormOpts,
     ListFilterBuilder, ObjectList, PaginationPage, ShellChrome, SwapKey, TableButtonFilter,
-    TableColumnHeader, TableListContent, TablePagination, TableRow, button_submit,
-    column_sort_url, data_table, field_text, filter_error_banner, form, form_hx_get_route,
-    form_hx_post_url, list_filter_builder, modal_keyed, pagination_pages, row_attr_navigate,
-    sort_indicator, table_button_filter, table_create_button, table_list_content, table_pagination,
+    TableColumnHeader, TableListContent, TablePagination, TableRow, button_submit, column_sort_url,
+    data_table, field_text, filter_error_banner, form, form_hx_get_route, form_hx_post_url,
+    list_filter_builder, modal_keyed, pagination_pages, row_attr_navigate, sort_indicator,
+    table_button_filter, table_create_button, table_list_content, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::{FragmentGet, ProvideRequestCaps, RouteUrl};
@@ -18,7 +20,7 @@ use lariv_core::template::{RenderTemplate, TemplateCapability, TemplateOf, Templ
 use lariv_core::web::modal_create_post_url;
 
 use super::forms::{CustomerForm, CustomerFormField};
-use super::keys::{CustomerCreateModalKey, CustomerTableKey};
+use super::keys::{CUSTOMER_CREATE_MODAL, CUSTOMER_TABLE};
 use super::routes::CustomerCreatePostRouteTag;
 
 define_register_items! {
@@ -34,7 +36,8 @@ define_register_items! {
     ]
 }
 
-fn filtered_data_table<K: SwapKey>(
+fn filtered_data_table(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -43,12 +46,13 @@ fn filtered_data_table<K: SwapKey>(
     refresh_url: &str,
     errors: &[FilterRowError],
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -61,7 +65,7 @@ fn filtered_data_table<K: SwapKey>(
         .filter(|key| !key.is_empty())
         .collect();
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         subtitle: "",
         classes: "w-full",
@@ -86,7 +90,8 @@ fn filtered_data_table<K: SwapKey>(
     })
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -100,7 +105,7 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -125,7 +130,7 @@ impl CustomerListPage {
     /// Render the customers data table. `R` is the host list route (filter HTMX target).
     pub fn render_table<R>(&self) -> Markup
     where
-        R: RouteUrl + FragmentGet<CustomerTableKey> + Default,
+        R: RouteUrl + FragmentGet + Default,
     {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
@@ -174,7 +179,7 @@ impl CustomerListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<CustomerTableKey, R>(R::default()),
+                    attrs: form_hx_get_route(R::default()),
                     apply_label: "Apply",
                     extra: html! {},
                 }),
@@ -186,18 +191,20 @@ impl CustomerListPage {
         ) {
             actions = html! {
                 (actions)
-                (table_create_button::<CustomerTableKey, CustomerCreateModalKey>(
+                (table_create_button(CUSTOMER_TABLE, CUSTOMER_CREATE,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        filtered_data_table::<CustomerTableKey>(
+        filtered_data_table(
+            CUSTOMER_TABLE,
             "Customers",
             actions,
             &headers,
             &rows,
-            render_pagination::<CustomerTableKey>(
+            render_pagination(
+                CUSTOMER_TABLE,
                 &self.path_and_query,
                 self.customers.number,
                 self.customers.num_pages,
@@ -225,18 +232,22 @@ impl RenderTemplate for CustomerCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed::<CustomerCreateModalKey>(
+        modal_keyed(
+            CUSTOMER_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
                 FormOpts {
                     title: "Create customer",
                     subtitle: "A customer is one company or one contact.",
-                    attrs: form_hx_post_url::<CustomerCreateModalKey>(&modal_create_post_url(
-                        CustomerCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    )),
+                    attrs: form_hx_post_url(
+                        CUSTOMER_CREATE_MODAL,
+                        &modal_create_post_url(
+                            CustomerCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|err| !err.is_empty()),
                     inputs: CustomerForm::render_inputs(
                         &FormCtx::form::<CustomerForm>(CsrfToken::current())
@@ -274,7 +285,9 @@ mod tests {
             Self::PATH.to_string()
         }
     }
-    impl FragmentGet<super::super::keys::CustomerTableKey> for TestListRoute {}
+    impl FragmentGet for TestListRoute {
+        const TARGET: lariv_core::components::SwapKey = super::super::keys::CUSTOMER_TABLE;
+    }
 
     #[test]
     fn list_shows_each_customer() {

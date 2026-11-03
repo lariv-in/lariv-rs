@@ -8,12 +8,10 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_plugin_finance_products::{
-    entities::product::Entity as ProductEntity,
-    preferences::load_product_tax_ids,
-    pricing,
-};
 use lariv_plugin_finance_common::decimal::{self, parse_decimal};
+use lariv_plugin_finance_products::{
+    entities::product::Entity as ProductEntity, preferences::load_product_tax_ids, pricing,
+};
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
 use crate::entities::{
@@ -21,9 +19,7 @@ use crate::entities::{
     posted_purchase, posted_purchase::Entity as PostedPurchaseEntity,
 };
 use crate::logic::draft_payment_term::{DraftPaymentTermLineInput, upsert_draft_payment_term};
-use crate::logic::tax_assoc::{
-    set_draft_line_taxes, set_draft_purchase_taxes,
-};
+use crate::logic::tax_assoc::{set_draft_line_taxes, set_draft_purchase_taxes};
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct DraftLinePending {
@@ -41,7 +37,6 @@ pub struct DraftLinePending {
     #[serde(default)]
     pub remarks: Option<String>,
 }
-
 
 /// Format an purchase datetime as a calendar date (`DD/MM/YYYY`) in `tz`.
 /// For preference-driven display (hub, details, PDF), use [`super::preferences::PurchaseDateFormats`].
@@ -534,7 +529,6 @@ pub async fn patch_draft_purchase(
         }
     }
 
-
     txn.commit().await.map_err(|e| e.to_string())?;
     Ok(draft)
 }
@@ -575,7 +569,6 @@ pub fn parse_lines_json(raw: &str) -> Result<Vec<DraftLinePending>, String> {
     }
     serde_json::from_str(raw).map_err(|e| format!("invalid lines data: {e}"))
 }
-
 
 fn line_is_blank(id: i64, rate: &Option<String>, remarks: &Option<String>) -> bool {
     id <= 0

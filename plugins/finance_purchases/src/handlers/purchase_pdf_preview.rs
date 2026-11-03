@@ -16,7 +16,7 @@ use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
     forms::PurchasePresentationPreferencesForm,
-    keys::PurchasePdfPreviewModalKey,
+    keys::PURCHASE_PDF_PREVIEW_MODAL,
     logic::purchase_pdf::{PurchasePdfError, render_purchase_pdf_preview},
     routes::PurchasePdfPreviewPdfRouteTag,
 };
@@ -92,7 +92,8 @@ fn cleanup_stale_previews(max_age_secs: u64) {
 
 fn render_preview_modal(pdf_url: &str, error: Option<&str>) -> Markup {
     if let Some(err) = error {
-        return modal_keyed::<PurchasePdfPreviewModalKey>(
+        return modal_keyed(
+            PURCHASE_PDF_PREVIEW_MODAL,
             "max-w-2xl",
             html! {
                 h3 class="text-lg font-semibold mb-2" { "Purchase PDF preview failed" }
@@ -100,7 +101,8 @@ fn render_preview_modal(pdf_url: &str, error: Option<&str>) -> Markup {
             },
         );
     }
-    modal_keyed::<PurchasePdfPreviewModalKey>(
+    modal_keyed(
+        PURCHASE_PDF_PREVIEW_MODAL,
         "max-w-6xl w-[95vw]",
         html! {
             h3 class="text-lg font-semibold mb-3" { "Purchase PDF preview (sample data)" }

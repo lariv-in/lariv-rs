@@ -8,7 +8,7 @@ use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::sea_query::Condition;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryFilter};
 
-use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
 use lariv_core::list_filters::{
@@ -27,8 +27,8 @@ use crate::{
     forms::CompanyForm,
     handlers::ModalNameQuery,
     keys::{
-        CompanyCreateModalKey, CompanyDeleteModalKey, CompanyEditModalKey, CompanySelectModalKey,
-        CompanySelectTableKey, CompanyTableKey,
+        COMPANY_CREATE_MODAL, COMPANY_DELETE_MODAL, COMPANY_EDIT_MODAL, COMPANY_SELECT_MODAL,
+        COMPANY_SELECT_TABLE, COMPANY_TABLE,
     },
     routes::{CompanyDefaultRouteTag, CompanyDetailRouteTag},
     scope::{apply_company_sort, find_company_scoped},
@@ -160,7 +160,7 @@ pub async fn list(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<CompanyTableKey>() {
+    if htmx.targets(COMPANY_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -253,8 +253,9 @@ pub async fn create_post(
         email: Set(opt_string(form.email.clone())),
     };
     match model.insert(&state.db).await {
-        Ok(saved) => respond_create_modal_done_fk::<CompanyCreateModalKey>(
+        Ok(saved) => respond_create_modal_done_fk(
             &htmx,
+            COMPANY_CREATE_MODAL,
             &q.refresh_table(),
             &CompanyDetailRouteTag::new(saved.id).url(),
             saved.id,
@@ -343,8 +344,9 @@ pub async fn edit_post(
     am.phone = Set(opt_string(form.phone.clone()));
     am.email = Set(opt_string(form.email.clone()));
     match am.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<CompanyEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            COMPANY_EDIT_MODAL,
             &CompanyDetailRouteTag::new(id).url(),
         ),
         Err(e) => {
@@ -377,7 +379,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: CompanyDeleteModalKey::ID.to_string(),
+        modal_uid: COMPANY_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this company?".into(),
         form_name: q
             .name
@@ -401,7 +403,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete company");
             let page = ConfirmDeletePage {
-                modal_uid: CompanyDeleteModalKey::ID.to_string(),
+                modal_uid: COMPANY_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this company?".into(),
                 form_name: "p_contacts.CompanyDeleteForm".into(),
                 id,
@@ -440,5 +442,5 @@ pub async fn select(
         target_input: q.target_input.clone().unwrap_or_else(|| "CompanyID".into()),
         page_size: q.filter.page_size.get(),
     };
-    respond_picker_select::<CompanySelectTableKey, CompanySelectModalKey, _>(&htmx, &page)
+    respond_picker_select(&htmx, COMPANY_SELECT_TABLE, COMPANY_SELECT_MODAL, &page)
 }

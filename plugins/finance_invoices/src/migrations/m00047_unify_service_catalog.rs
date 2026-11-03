@@ -95,10 +95,7 @@ impl MigrationTrait for Migration {
     }
 }
 
-async fn drop_service_fks(
-    conn: &impl sea_orm::ConnectionTrait,
-    table: &str,
-) -> Result<(), DbErr> {
+async fn drop_service_fks(conn: &impl sea_orm::ConnectionTrait, table: &str) -> Result<(), DbErr> {
     for fk in [
         format!("fk_{table}_service_id"),
         format!("{table}_service_id_fkey"),

@@ -2,7 +2,7 @@
 
 use axum::extract::Query;
 use axum::http::Uri;
-use lariv_plugin_customer::keys::CustomerTableKey;
+use lariv_plugin_customer::keys::CUSTOMER_TABLE;
 use lariv_plugin_customer::logic::{self, ListedCustomer};
 use lariv_plugin_customer::state::CustomerState;
 use lariv_plugin_customer::templates::{CustomerListPage, CustomerRow};
@@ -126,7 +126,7 @@ pub async fn list(
         },
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<CustomerTableKey>() {
+    if htmx.targets(CUSTOMER_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {

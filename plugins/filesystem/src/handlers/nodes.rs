@@ -21,9 +21,9 @@ use crate::{
         VNodePermissionsForm, VNodeZipUploadForm,
     },
     keys::{
-        VNodeBulkDeleteModalKey, VNodeCreateModalKey, VNodeDeleteModalKey, VNodeEditModalKey,
-        VNodeMultiUploadModalKey, VNodeSelectModalKey, VNodeSelectTableKey, VNodeTableKey,
-        VNodeZipUploadModalKey,
+        V_NODE_BULK_DELETE_MODAL, V_NODE_CREATE_MODAL, V_NODE_DELETE_MODAL, V_NODE_EDIT_MODAL,
+        V_NODE_MULTI_UPLOAD_MODAL, V_NODE_SELECT_MODAL, V_NODE_SELECT_TABLE, V_NODE_TABLE,
+        V_NODE_ZIP_UPLOAD_MODAL,
     },
     node,
     permissions::{AccessActor, NodePermissions},
@@ -42,7 +42,7 @@ use crate::{
     },
     zip,
 };
-use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{CsrfToken, HtmlForm, HtmlFormBody};
 use lariv_core::http::Cap;
 use lariv_core::list_filters::{FilterField, apply_filters, parse_list_filters, text_column};
@@ -256,7 +256,7 @@ async fn render_list_layered(
         path_and_query: list_page.path_and_query.clone(),
         page_size: list_page.page_size,
     };
-    if htmx.targets::<VNodeTableKey>() {
+    if htmx.targets(V_NODE_TABLE) {
         return list_page.render_table().into_response();
     }
     html_built_page_or_app_layout(&list_page, &htmx, &chrome, &slot_ctx(&auth)).into_response()
@@ -504,8 +504,9 @@ async fn render_create_post(
         .await
     };
     match created {
-        Ok(created) => respond_create_modal_done_fk::<VNodeCreateModalKey>(
+        Ok(created) => respond_create_modal_done_fk(
             &htmx,
+            V_NODE_CREATE_MODAL,
             &q.refresh_table(),
             &VNodeDetailRouteTag::new(created.id).url(),
             created.id,
@@ -692,9 +693,11 @@ pub async fn edit_post(
     let has_file_before = n.file_path.as_deref().is_some_and(|p| !p.is_empty());
     let name = parsed.name;
     match node::update(&state.db, state.store.as_ref(), n, name.clone(), file).await {
-        Ok(_) => {
-            respond_edit_modal_done::<VNodeEditModalKey>(&htmx, &VNodeDetailRouteTag::new(id).url())
-        }
+        Ok(_) => respond_edit_modal_done(
+            &htmx,
+            V_NODE_EDIT_MODAL,
+            &VNodeDetailRouteTag::new(id).url(),
+        ),
         Err(e) => {
             let form = VNodeEditModalPage {
                 id,
@@ -810,7 +813,7 @@ pub async fn delete_get(
         None => "Are you sure you want to delete this item?".to_string(),
     };
     let page = VNodeConfirmDeletePage {
-        modal_uid: VNodeDeleteModalKey::ID.to_string(),
+        modal_uid: V_NODE_DELETE_MODAL.id().to_string(),
         message,
         form_name: q
             .name
@@ -845,7 +848,7 @@ pub async fn delete_post(
     };
     if let Err(e) = node::authorize_remove(&data.node, &AccessActor::from_auth(&ctx)) {
         let page = VNodeConfirmDeletePage {
-            modal_uid: VNodeDeleteModalKey::ID.to_string(),
+            modal_uid: V_NODE_DELETE_MODAL.id().to_string(),
             message,
             form_name: "p_filesystem.VNodeDeleteForm".into(),
             id,
@@ -858,7 +861,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete vnode");
             let page = VNodeConfirmDeletePage {
-                modal_uid: VNodeDeleteModalKey::ID.to_string(),
+                modal_uid: V_NODE_DELETE_MODAL.id().to_string(),
                 message,
                 form_name: "p_filesystem.VNodeDeleteForm".into(),
                 id,
@@ -1345,7 +1348,7 @@ pub async fn bulk_delete_get(
     let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
     let return_to = safe_return_to(q.return_to.as_deref().unwrap_or(&VNodeListRouteTag.path()));
     let page = VNodeConfirmBulkDeletePage {
-        modal_uid: VNodeBulkDeleteModalKey::ID.to_string(),
+        modal_uid: V_NODE_BULK_DELETE_MODAL.id().to_string(),
         message: if ids.is_empty() {
             "Select at least one item to delete.".into()
         } else {
@@ -1376,7 +1379,7 @@ pub async fn bulk_delete_post(
     let return_to = safe_return_to(&form.return_to);
     if ids.is_empty() {
         let page = VNodeConfirmBulkDeletePage {
-            modal_uid: VNodeBulkDeleteModalKey::ID.to_string(),
+            modal_uid: V_NODE_BULK_DELETE_MODAL.id().to_string(),
             message: "Select at least one item to delete.".into(),
             form_name: "p_filesystem.VNodeBulkDeleteForm".into(),
             ids: String::new(),
@@ -1394,7 +1397,7 @@ pub async fn bulk_delete_post(
         };
         if let Err(e) = node::authorize_remove(&n, &AccessActor::from_auth(&ctx)) {
             let page = VNodeConfirmBulkDeletePage {
-                modal_uid: VNodeBulkDeleteModalKey::ID.to_string(),
+                modal_uid: V_NODE_BULK_DELETE_MODAL.id().to_string(),
                 message: bulk_delete_message(ids.len()),
                 form_name: "p_filesystem.VNodeBulkDeleteForm".into(),
                 ids: ids_csv(&ids),
@@ -1407,7 +1410,7 @@ pub async fn bulk_delete_post(
         if let Err(e) = node::delete_tree(&state.db, state.store.as_ref(), &n).await {
             tracing::error!(error = %e, id, "failed to bulk-delete vnode");
             let page = VNodeConfirmBulkDeletePage {
-                modal_uid: VNodeBulkDeleteModalKey::ID.to_string(),
+                modal_uid: V_NODE_BULK_DELETE_MODAL.id().to_string(),
                 message: bulk_delete_message(ids.len()),
                 form_name: "p_filesystem.VNodeBulkDeleteForm".into(),
                 ids: ids_csv(&ids),
@@ -1681,7 +1684,12 @@ async fn render_multi_upload_post(
         Some(id) => VNodeBrowseRouteTag::new(id).url(),
         None => VNodeListRouteTag.url(),
     };
-    respond_create_modal_done::<VNodeMultiUploadModalKey>(&htmx, &q.refresh_table(), &redirect_url)
+    respond_create_modal_done(
+        &htmx,
+        V_NODE_MULTI_UPLOAD_MODAL,
+        &q.refresh_table(),
+        &redirect_url,
+    )
 }
 
 /// HTTP handler: `upload_get`.
@@ -1858,8 +1866,9 @@ async fn render_zip_upload_post(
                 Some(id) => VNodeBrowseRouteTag::new(id).url(),
                 None => VNodeListRouteTag.url(),
             };
-            respond_create_modal_done::<VNodeZipUploadModalKey>(
+            respond_create_modal_done(
                 &htmx,
+                V_NODE_ZIP_UPLOAD_MODAL,
                 &q.refresh_table(),
                 &redirect_url,
             )
@@ -2135,8 +2144,7 @@ async fn render_select(
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
-    respond_picker_select::<VNodeSelectTableKey, VNodeSelectModalKey, _>(&htmx, &page)
-        .into_response()
+    respond_picker_select(&htmx, V_NODE_SELECT_TABLE, V_NODE_SELECT_MODAL, &page).into_response()
 }
 
 /// HTTP handler: `select`.

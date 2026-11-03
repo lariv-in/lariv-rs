@@ -1,16 +1,16 @@
 //! Compile-time HTMX swap keys for the blog plugin.
 
-use lariv_core::swap_key;
+use lariv_core::components::SwapKey;
 
-swap_key!(BlogTableKey, "blogs-table");
-swap_key!(TagTableKey, "tags-table");
-swap_key!(TagSelectTableKey, "tag-selection-table");
-swap_key!(BlogCreateModalKey, "blog-create-modal");
-swap_key!(BlogEditModalKey, "blog-edit-modal");
-swap_key!(BlogDeleteModalKey, "blog-delete-modal");
-swap_key!(TagCreateModalKey, "tag-create-modal");
-swap_key!(TagEditModalKey, "tag-edit-modal");
-swap_key!(TagDeleteModalKey, "tag-delete-modal");
-swap_key!(TagSelectModalKey, "tag-selection-modal");
-swap_key!(BlogFkAuthorKey, "fk-blog-author");
-swap_key!(BlogFkTagsKey, "fk-blog-tags");
+pub const BLOG_TABLE: SwapKey = SwapKey("blogs-table");
+pub const TAG_TABLE: SwapKey = SwapKey("tags-table");
+pub const TAG_SELECT_TABLE: SwapKey = SwapKey("tag-selection-table");
+pub const BLOG_CREATE_MODAL: SwapKey = SwapKey("blog-create-modal");
+pub const BLOG_EDIT_MODAL: SwapKey = SwapKey("blog-edit-modal");
+pub const BLOG_DELETE_MODAL: SwapKey = SwapKey("blog-delete-modal");
+pub const TAG_CREATE_MODAL: SwapKey = SwapKey("tag-create-modal");
+pub const TAG_EDIT_MODAL: SwapKey = SwapKey("tag-edit-modal");
+pub const TAG_DELETE_MODAL: SwapKey = SwapKey("tag-delete-modal");
+pub const TAG_SELECT_MODAL: SwapKey = SwapKey("tag-selection-modal");
+pub const BLOG_FK_AUTHOR: SwapKey = SwapKey("fk-blog-author");
+pub const BLOG_FK_TAGS: SwapKey = SwapKey("fk-blog-tags");

@@ -10,7 +10,7 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
@@ -26,8 +26,8 @@ use crate::{
     forms::CurrencyForm,
     handlers::ModalNameQuery,
     keys::{
-        CurrencyCreateModalKey, CurrencyDeleteModalKey, CurrencyEditModalKey,
-        CurrencySelectModalKey, CurrencySelectTableKey, CurrencyTableKey,
+        CURRENCY_CREATE_MODAL, CURRENCY_DELETE_MODAL, CURRENCY_EDIT_MODAL, CURRENCY_SELECT_MODAL,
+        CURRENCY_SELECT_TABLE, CURRENCY_TABLE,
     },
     routes::{CurrencyDetailRouteTag, CurrencyListRouteTag},
     scope::find_currency_scoped,
@@ -151,7 +151,7 @@ pub async fn list(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<CurrencyTableKey>() {
+    if htmx.targets(CURRENCY_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -224,8 +224,9 @@ pub async fn create_post(
         ..Default::default()
     };
     match model.insert(&state.db).await {
-        Ok(saved) => respond_create_modal_done_fk::<CurrencyCreateModalKey>(
+        Ok(saved) => respond_create_modal_done_fk(
             &htmx,
+            CURRENCY_CREATE_MODAL,
             &q.refresh_table(),
             &CurrencyDetailRouteTag::new(saved.id).url(),
             saved.id,
@@ -284,8 +285,9 @@ pub async fn edit_post(
         ..Default::default()
     };
     match model.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<CurrencyEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            CURRENCY_EDIT_MODAL,
             &CurrencyDetailRouteTag::new(id).url(),
         ),
         Err(e) => {
@@ -310,7 +312,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: CurrencyDeleteModalKey::ID.to_string(),
+        modal_uid: CURRENCY_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this currency?".into(),
         form_name: q
             .name
@@ -337,7 +339,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete currency");
             let page = ConfirmDeletePage {
-                modal_uid: CurrencyDeleteModalKey::ID.to_string(),
+                modal_uid: CURRENCY_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this currency?".into(),
                 form_name: "p_finance_accounts.CurrencyDeleteForm".into(),
                 id,
@@ -374,5 +376,5 @@ pub async fn select(
         target_input: q.target_input.unwrap_or_else(|| "CurrencyId".into()),
         page_size: q.filter.page_size.get(),
     };
-    respond_picker_select::<CurrencySelectTableKey, CurrencySelectModalKey, _>(&htmx, &page)
+    respond_picker_select(&htmx, CURRENCY_SELECT_TABLE, CURRENCY_SELECT_MODAL, &page)
 }

@@ -60,7 +60,8 @@
 //! [`html_built_page_or_app_layout`](crate::web::html_built_page_or_app_layout) for pages that
 //! support both full loads and fragment swaps.
 //!
-//! For table filter/sort pagination, routes declare `fragment(SwapKey)` in
+//! For table filter/sort pagination, routes declare `fragment(ITEM_TABLE)` (a
+//! [`SwapKey`](crate::components::SwapKey) const) in
 //! [`define_plugin_routes!`](crate::define_plugin_routes) and return markup targeting that region.
 //!
 //! # Query string pagination

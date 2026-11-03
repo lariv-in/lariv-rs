@@ -12,7 +12,7 @@ use crate::components::swap::{
     hx_nav_app_layout_for_url,
 };
 use crate::components::text::icon;
-use crate::http::{BoostPost, FragmentPost, RouteUrl};
+use crate::http::{BoostPost, FragmentPost, ModalGet, RouteUrl};
 
 fn is_external_href(href: &str) -> bool {
     href.starts_with("http://")
@@ -203,7 +203,7 @@ pub fn button_post_route(route: impl RouteUrl, label: &str, classes: &str) -> Ma
 }
 
 /// POST button that swaps a typed HTMX fragment (inline toolbar actions).
-pub fn button_post_fragment_route<K: SwapKey, R: RouteUrl + FragmentPost<K>>(
+pub fn button_post_fragment_route<R: RouteUrl + FragmentPost>(
     route: R,
     label: &str,
     classes: &str,
@@ -212,14 +212,14 @@ pub fn button_post_fragment_route<K: SwapKey, R: RouteUrl + FragmentPost<K>>(
 }
 
 /// Like [`button_post_fragment_route`], with an explicit `hx-swap` value.
-pub fn button_post_fragment_route_swap<K: SwapKey, R: RouteUrl + FragmentPost<K>>(
+pub fn button_post_fragment_route_swap<R: RouteUrl + FragmentPost>(
     route: R,
     label: &str,
     classes: &str,
     swap: &str,
 ) -> Markup {
     let class = format!("btn {}", classes);
-    let attrs = form_hx_post_route::<K, R>(route).set("hx-swap", swap);
+    let attrs = form_hx_post_route(route).set("hx-swap", swap);
     html! {
         (PreEscaped(format!(r#"<form method="POST"{}>"#, attrs.as_string())))
         button type="submit" class=(class) { (label) }
@@ -426,7 +426,7 @@ pub fn button_modal_route(route: impl RouteUrl, label: &str, classes: &str) -> M
     })
 }
 
-/// Modal opener: GET loads a typed dialog into [`crate::components::ModalHostKey`].
+/// Modal opener: GET loads a typed dialog into `document.body`.
 ///
 /// The modal form itself must use declarative `hx-post` targeting the dialog key;
 /// there is no custom event bus or `htmx.ajax` glue.
@@ -552,31 +552,37 @@ pub fn button_modal_form_urls(
 }
 
 /// Like [`button_modal_form`] but appends `name` from a typed modal key's id for debugging.
-pub fn button_modal_form_keyed<K: SwapKey>(mut opts: ButtonModalForm<'_>) -> Markup {
+pub fn button_modal_form_keyed(key: SwapKey, mut opts: ButtonModalForm<'_>) -> Markup {
     if opts.modal_uid.is_empty() {
-        opts.modal_uid = K::ID;
+        opts.modal_uid = key.id();
     }
     button_modal_form(opts)
 }
 
-/// Plus-icon create control for a list or picker table; encodes parent refresh in the type system.
+/// Plus-icon create control for a list or picker table; encodes parent refresh.
 ///
-/// `T` is the [`.data-table-container`](crate::components::data_table) to refresh after create.
-/// `M` is the create-modal swap key and its GET/POST routes ([`CreateModal`]).
+/// `table` is the [`.data-table-container`](crate::components::data_table) to refresh after create.
+/// `m` is the create-modal wiring ([`CreateModal`]).
 ///
 /// `name` / `refresh` are already embedded in the GET URL by [`modal_create_get_for`], so they
 /// must not be passed again through [`button_modal_form`] (which would append a duplicate
 /// `name=` query param).
-pub fn table_create_button<T: SwapKey, M: CreateModal>(
+pub fn table_create_button<G, P>(
+    table: SwapKey,
+    m: CreateModal<G, P>,
     icon_name: Option<&str>,
     classes: &str,
-) -> Markup {
-    let href = modal_create_get_for::<M, T>();
+) -> Markup
+where
+    G: ModalGet + RouteUrl + Copy,
+    P: Copy,
+{
+    let href = modal_create_get_for(m, table);
     button_modal_form(ButtonModalForm {
         name: "",
         href: &href,
         form_post_url: "",
-        modal_uid: M::ID,
+        modal_uid: m.key.id(),
         icon_name,
         classes,
         ..Default::default()

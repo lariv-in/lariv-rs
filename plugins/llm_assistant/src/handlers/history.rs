@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::{
     entities::session::{self, Entity as SessionEntity},
-    keys::HistoryTableKey,
+    keys::HISTORY_TABLE,
     state::LlmAssistantState,
     templates::{HistoryListPage, HistoryRow},
 };
@@ -173,7 +173,7 @@ pub async fn list(
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
-    if htmx.targets::<HistoryTableKey>() {
+    if htmx.targets(HISTORY_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {

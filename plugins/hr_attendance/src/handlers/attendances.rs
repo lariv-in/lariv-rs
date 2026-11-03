@@ -35,7 +35,7 @@ use crate::{
     entities::attendance::{AttendanceColumns, Record, postgres, sqlite},
     forms::AttendanceForm,
     handlers::ModalNameQuery,
-    keys::{AttendanceCreateModalKey, AttendanceEditModalKey, AttendanceTableKey},
+    keys::{ATTENDANCE_CREATE_MODAL, ATTENDANCE_EDIT_MODAL, ATTENDANCE_TABLE},
     routes::{AttendanceDetailRouteTag, AttendanceEditPostRouteTag, AttendanceListRouteTag},
     state::AttendanceState,
     templates::attendances::{
@@ -361,7 +361,7 @@ where
         None
     };
     let tz = ctx.timezone.clone();
-    if htmx.targets::<AttendanceTableKey>() {
+    if htmx.targets(ATTENDANCE_TABLE) {
         let page = AttendanceListPage {
             rows,
             fields: prepared.fields,
@@ -428,8 +428,9 @@ pub async fn create_post(
         }
     };
     match create_attendance(&state.db, input).await {
-        Ok(row) => respond_create_modal_done::<AttendanceCreateModalKey>(
+        Ok(row) => respond_create_modal_done(
             &htmx,
+            ATTENDANCE_CREATE_MODAL,
             &q.refresh_table(),
             &AttendanceDetailRouteTag::new(row.id).url(),
         ),
@@ -518,8 +519,9 @@ pub async fn edit_post(
         }
     };
     match update_attendance(&state.db, id, input).await {
-        Ok(_) => respond_edit_modal_done::<AttendanceEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            ATTENDANCE_EDIT_MODAL,
             &AttendanceDetailRouteTag::new(id).url(),
         ),
         Err(e) => edit_error_response(&chrome, &ctx, id, &q, &form, &user_display, e).await,

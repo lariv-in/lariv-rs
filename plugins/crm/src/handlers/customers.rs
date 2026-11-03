@@ -23,7 +23,7 @@ use lariv_plugin_customer::logic::{self as customer, display_name};
 
 use crate::customer_ui::{CustomerCreateModalPage, CustomerRow, CustomerSelectPage};
 use crate::forms::CustomerForm;
-use crate::keys::CustomerCreateModalKey;
+use crate::keys::CUSTOMER_CREATE_MODAL;
 use crate::state::CrmState;
 
 use super::ModalNameQuery;
@@ -78,11 +78,12 @@ pub async fn select(
             .unwrap_or_else(|| "CustomerID".into()),
         page_size,
     };
-    respond_picker_select::<
-        crate::keys::CustomerSelectTableKey,
-        crate::keys::CustomerSelectModalKey,
-        _,
-    >(&htmx, &page_model)
+    respond_picker_select(
+        &htmx,
+        crate::keys::CUSTOMER_SELECT_TABLE,
+        crate::keys::CUSTOMER_SELECT_MODAL,
+        &page_model,
+    )
 }
 
 pub async fn create_get(
@@ -114,8 +115,9 @@ pub async fn create_post(
     match customer::create_for_party(&state.db, form.company_id, form.individual_id).await {
         Ok(id) => {
             let name = display_name(&state.db, id).await;
-            respond_create_modal_done_fk::<CustomerCreateModalKey>(
+            respond_create_modal_done_fk(
                 &htmx,
+                CUSTOMER_CREATE_MODAL,
                 &q.refresh_table(),
                 &crate::routes::LeadDefaultRouteTag.url(),
                 id,

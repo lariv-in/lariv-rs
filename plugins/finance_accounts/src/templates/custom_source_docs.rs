@@ -1,16 +1,16 @@
 use frunk::Generic;
 use maud::{Markup, html};
 
+use lariv_core::components::attrs::escape_attr;
 use lariv_core::components::{
     ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldLink, FieldText, FieldTextarea,
-    FilterClauseView, ListFilterBuilder, ObjectList, ShellChrome, SwapKey, TableButtonFilter,
+    FilterClauseView, ListFilterBuilder, ObjectList, ShellChrome, TableButtonFilter,
     TableColumnHeader, TableRow, breadcrumbs, button_link_route, button_modal_form, button_submit,
     column_sort_url, container_column, container_row, data_table_list, detail, detail_header,
     field_link, field_text, field_textarea, form, form_hx_get_route, form_hx_post_main_url,
     form_hx_post_route, form_hx_post_url, label, list_filter_builder, modal_keyed, sort_indicator,
     table_button_filter,
 };
-use lariv_core::components::attrs::escape_attr;
 use lariv_core::html_form::{CsrfToken, FormCtx, FormFieldKey, HtmlForm};
 use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::{RenderAppPane, RenderTemplate};
@@ -23,8 +23,8 @@ use crate::{
         CustomSourceDocIndexCreateFormField,
     },
     keys::{
-        CustomSourceDocDeleteModalKey, CustomSourceDocIndexCreateModalKey,
-        CustomSourceDocIndexTableKey, CustomSourceDocTableKey,
+        CUSTOM_SOURCE_DOC_DELETE_MODAL, CUSTOM_SOURCE_DOC_INDEX_CREATE_MODAL,
+        CUSTOM_SOURCE_DOC_INDEX_TABLE, CUSTOM_SOURCE_DOC_TABLE,
     },
     routes::{
         CustomSourceDocDeleteGetRouteTag, CustomSourceDocDeletePostRouteTag,
@@ -124,7 +124,14 @@ impl CustomSourceDocDetailPage {
                 }
             })
             .collect();
-        data_table_list::<CustomSourceDocTableKey>("Lines", html! {}, &headers, &rows, html! {})
+        data_table_list(
+            CUSTOM_SOURCE_DOC_TABLE,
+            "Lines",
+            html! {},
+            &headers,
+            &rows,
+            html! {},
+        )
     }
 
     fn body(&self) -> Markup {
@@ -150,7 +157,7 @@ impl CustomSourceDocDetailPage {
                                         name: "p_finance_accounts.CustomSourceDocDeleteForm",
                                         href: &delete_url,
                                         form_post_url: &delete_url,
-                                        modal_uid: CustomSourceDocDeleteModalKey::ID,
+                                        modal_uid: CUSTOM_SOURCE_DOC_DELETE_MODAL.id(),
                                         classes: "btn-error",
                                         ..Default::default()
                                     }))
@@ -214,7 +221,13 @@ impl RenderAppPane for CustomSourceDocDetailPage {
 
 impl RenderTemplate for CustomSourceDocDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Transaction", chrome, self.crumbs(), self.body(), &self.path())
+        app_scaffold(
+            "Transaction",
+            chrome,
+            self.crumbs(),
+            self.body(),
+            &self.path(),
+        )
     }
 }
 
@@ -304,7 +317,13 @@ impl RenderAppPane for CustomSourceDocFormPage {
 
 impl RenderTemplate for CustomSourceDocFormPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold("Transaction", chrome, self.crumbs(), self.body(), &self.path())
+        app_scaffold(
+            "Transaction",
+            chrome,
+            self.crumbs(),
+            self.body(),
+            &self.path(),
+        )
     }
 }
 
@@ -356,9 +375,7 @@ impl RenderTemplate for CustomSourceDocDeleteModalPage {
                 lariv_core::components::FormOpts {
                     title: "Delete transaction",
                     subtitle: "This cannot be undone.",
-                    attrs: form_hx_post_route::<CustomSourceDocDeleteModalKey, _>(
-                        CustomSourceDocDeletePostRouteTag::new(self.id),
-                    ),
+                    attrs: form_hx_post_route(CustomSourceDocDeletePostRouteTag::new(self.id)),
                     form_error: self.error.as_deref(),
                     inputs: item_list,
                     actions: html! {
@@ -374,7 +391,7 @@ impl RenderTemplate for CustomSourceDocDeleteModalPage {
                 },
             )
         };
-        modal_keyed::<CustomSourceDocDeleteModalKey>("", body)
+        modal_keyed(CUSTOM_SOURCE_DOC_DELETE_MODAL, "", body)
     }
 }
 
@@ -402,9 +419,7 @@ fn custom_source_doc_index_filter_form(page: &CustomSourceDocIndexPage) -> Marku
         rows: &page.filters,
         page_size: page.page_size,
         sort: &page.sort,
-        attrs: form_hx_get_route::<CustomSourceDocIndexTableKey, CustomSourceDocIndexRouteTag>(
-            CustomSourceDocIndexRouteTag,
-        ),
+        attrs: form_hx_get_route(CustomSourceDocIndexRouteTag),
         apply_label: "Apply Filters",
         extra: html! {},
     })
@@ -524,19 +539,21 @@ impl CustomSourceDocIndexPage {
                     name: "p_finance_accounts.CustomSourceDocIndexCreateForm",
                     href: &create_url,
                     form_post_url: &create_post,
-                    modal_uid: CustomSourceDocIndexCreateModalKey::ID,
+                    modal_uid: CUSTOM_SOURCE_DOC_INDEX_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
                 }))
             };
         }
-        let pagination = render_pagination::<CustomSourceDocIndexTableKey>(
+        let pagination = render_pagination(
+            CUSTOM_SOURCE_DOC_INDEX_TABLE,
             &self.path_and_query,
             self.docs.number,
             self.docs.num_pages,
         );
-        super::data_table_with_filter_errors::<CustomSourceDocIndexTableKey>(
+        super::data_table_with_filter_errors(
+            CUSTOM_SOURCE_DOC_INDEX_TABLE,
             "Transactions",
             actions,
             &headers,
@@ -649,7 +666,8 @@ impl RenderTemplate for CustomSourceDocIndexCreateModalPage {
 	}}
 }}"#,
             tid = serde_json::to_string(&self.template_id).unwrap_or_else(|_| "\"\"".into()),
-            name = serde_json::to_string(template_field).unwrap_or_else(|_| "\"TemplateID\"".into()),
+            name =
+                serde_json::to_string(template_field).unwrap_or_else(|_| "\"TemplateID\"".into()),
             vars = serde_json::to_string(&vars_url).unwrap_or_else(|_| "\"\"".into()),
             title = serde_json::to_string(title_field).unwrap_or_else(|_| "\"Title\"".into()),
             content = serde_json::to_string(content_field).unwrap_or_else(|_| "\"Content\"".into()),
@@ -692,7 +710,8 @@ impl RenderTemplate for CustomSourceDocIndexCreateModalPage {
                 )
                 .value(CustomSourceDocIndexCreateFormField::Lines, &self.lines),
         );
-        modal_keyed::<CustomSourceDocIndexCreateModalKey>(
+        modal_keyed(
+            CUSTOM_SOURCE_DOC_INDEX_CREATE_MODAL,
             "",
             html! {
                 (PreEscaped(format!(
@@ -704,7 +723,7 @@ impl RenderTemplate for CustomSourceDocIndexCreateModalPage {
                     lariv_core::components::FormOpts {
                         title: "New transaction",
                         subtitle: "",
-                        attrs: form_hx_post_url::<CustomSourceDocIndexCreateModalKey>(
+                        attrs: form_hx_post_url(CUSTOM_SOURCE_DOC_INDEX_CREATE_MODAL,
                             &modal_create_post_url(
                                 CustomSourceDocIndexCreatePostRouteTag,
                                 form_name,

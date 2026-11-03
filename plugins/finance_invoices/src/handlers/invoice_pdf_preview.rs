@@ -16,7 +16,7 @@ use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
     forms::InvoicePresentationPreferencesForm,
-    keys::InvoicePdfPreviewModalKey,
+    keys::INVOICE_PDF_PREVIEW_MODAL,
     logic::invoice_pdf::{InvoicePdfError, render_invoice_pdf_preview},
     routes::InvoicePdfPreviewPdfRouteTag,
 };
@@ -92,7 +92,8 @@ fn cleanup_stale_previews(max_age_secs: u64) {
 
 fn render_preview_modal(pdf_url: &str, error: Option<&str>) -> Markup {
     if let Some(err) = error {
-        return modal_keyed::<InvoicePdfPreviewModalKey>(
+        return modal_keyed(
+            INVOICE_PDF_PREVIEW_MODAL,
             "max-w-2xl",
             html! {
                 h3 class="text-lg font-semibold mb-2" { "Invoice PDF preview failed" }
@@ -100,7 +101,8 @@ fn render_preview_modal(pdf_url: &str, error: Option<&str>) -> Markup {
             },
         );
     }
-    modal_keyed::<InvoicePdfPreviewModalKey>(
+    modal_keyed(
+        INVOICE_PDF_PREVIEW_MODAL,
         "max-w-6xl w-[95vw]",
         html! {
             h3 class="text-lg font-semibold mb-3" { "Invoice PDF preview (sample data)" }

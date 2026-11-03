@@ -291,19 +291,28 @@ fn emit_response_traits(route: &RouteSpec) -> TokenStream2 {
         (ResponseKind::Pane, HttpMethod::Post) => quote! {
             impl ::lariv_core::http::AppPanePost for #tag {}
         },
-        (ResponseKind::Fragment(ty), HttpMethod::Get) => quote! {
+        (ResponseKind::Fragment(key), HttpMethod::Get) => quote! {
             impl ::lariv_core::http::AppPaneGet for #tag {}
-            impl ::lariv_core::http::FragmentGet<#ty> for #tag {}
+            impl ::lariv_core::http::FragmentGet for #tag {
+                const TARGET: ::lariv_core::components::SwapKey = #key;
+            }
         },
         (ResponseKind::FkSelect(table, modal), HttpMethod::Get) => quote! {
             impl ::lariv_core::http::AppPaneGet for #tag {}
-            impl ::lariv_core::http::FragmentGet<#table> for #tag {}
-            impl ::lariv_core::http::FkSelectGet<#table, #modal> for #tag {}
+            impl ::lariv_core::http::FragmentGet for #tag {
+                const TARGET: ::lariv_core::components::SwapKey = #table;
+            }
+            impl ::lariv_core::http::FkSelectGet for #tag {
+                const TABLE: ::lariv_core::components::SwapKey = #table;
+                const MODAL: ::lariv_core::components::SwapKey = #modal;
+            }
         },
         (ResponseKind::FkSelect(_, _), HttpMethod::Post) => quote! {},
-        (ResponseKind::Fragment(ty), HttpMethod::Post) => quote! {
+        (ResponseKind::Fragment(key), HttpMethod::Post) => quote! {
             impl ::lariv_core::http::AppPanePost for #tag {}
-            impl ::lariv_core::http::FragmentPost<#ty> for #tag {}
+            impl ::lariv_core::http::FragmentPost for #tag {
+                const TARGET: ::lariv_core::components::SwapKey = #key;
+            }
         },
         (ResponseKind::File, HttpMethod::Get) => quote! {
             impl ::lariv_core::http::FileDownloadGet for #tag {}

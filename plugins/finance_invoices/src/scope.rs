@@ -165,7 +165,10 @@ pub fn payments_tab_url(tab: &str) -> String {
 
 /// Draft still listed under the drafts hub tab.
 pub async fn find_active_draft(db: &DatabaseConnection, id: i64) -> Option<draft_invoice::Model> {
-    lariv_core::web::opt_or_log(DraftInvoiceEntity::find_by_id(id).one(db).await, "find by id")
+    lariv_core::web::opt_or_log(
+        DraftInvoiceEntity::find_by_id(id).one(db).await,
+        "find by id",
+    )
 }
 
 /// Posted invoice still listed under the posted hub tab.

@@ -1,16 +1,12 @@
-lariv_core::swap_key!(LeaveTableKey, "hr-leave-table");
-lariv_core::swap_key!(LeaveJournalTableKey, "hr-leave-journal-table");
-lariv_core::swap_key!(GiveLeaveModalKey, "hr-give-leave-modal");
-lariv_core::swap_key!(LeaveCreateModalKey, "hr-leave-create-modal");
-lariv_core::swap_key!(LeaveEditModalKey, "hr-leave-edit-modal");
-lariv_core::swap_key!(LeaveDeleteModalKey, "hr-leave-delete-modal");
-lariv_core::swap_key!(LeaveApproveModalKey, "hr-leave-approve-modal");
-lariv_core::swap_key!(LeaveRejectModalKey, "hr-leave-reject-modal");
-lariv_core::swap_key!(
-    LeaveRevokeApprovalModalKey,
-    "hr-leave-revoke-approval-modal"
-);
-lariv_core::swap_key!(
-    LeaveRevokeRejectionModalKey,
-    "hr-leave-revoke-rejection-modal"
-);
+use lariv_core::components::SwapKey;
+
+pub const LEAVE_TABLE: SwapKey = SwapKey("hr-leave-table");
+pub const LEAVE_JOURNAL_TABLE: SwapKey = SwapKey("hr-leave-journal-table");
+pub const GIVE_LEAVE_MODAL: SwapKey = SwapKey("hr-give-leave-modal");
+pub const LEAVE_CREATE_MODAL: SwapKey = SwapKey("hr-leave-create-modal");
+pub const LEAVE_EDIT_MODAL: SwapKey = SwapKey("hr-leave-edit-modal");
+pub const LEAVE_DELETE_MODAL: SwapKey = SwapKey("hr-leave-delete-modal");
+pub const LEAVE_APPROVE_MODAL: SwapKey = SwapKey("hr-leave-approve-modal");
+pub const LEAVE_REJECT_MODAL: SwapKey = SwapKey("hr-leave-reject-modal");
+pub const LEAVE_REVOKE_APPROVAL_MODAL: SwapKey = SwapKey("hr-leave-revoke-approval-modal");
+pub const LEAVE_REVOKE_REJECTION_MODAL: SwapKey = SwapKey("hr-leave-revoke-rejection-modal");

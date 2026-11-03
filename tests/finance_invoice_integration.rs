@@ -12,13 +12,13 @@ use lariv_rs::db::DbTag;
 use lariv_rs::http::into_axum_router;
 use lariv_rs::plugins::contacts::entities::{company as company_entity, contact as contact_entity};
 use lariv_rs::plugins::finance_invoices::entities::{
-    DraftInvoiceEntity, DraftInvoiceLineEntity, DraftPaymentTermEntity,
-    DraftPaymentTermLineEntity, draft_invoice_line, draft_payment_term_line,
+    DraftInvoiceEntity, DraftInvoiceLineEntity, DraftPaymentTermEntity, DraftPaymentTermLineEntity,
+    draft_invoice_line, draft_payment_term_line,
 };
 use lariv_rs::plugins::finance_invoices::logic::tax_assoc::load_draft_line_tax_ids;
+use lariv_rs::plugins::finance_products::ProductKind;
 use lariv_rs::plugins::finance_products::entities::product;
 use lariv_rs::plugins::finance_products::preferences::set_product_tax_ids;
-use lariv_rs::plugins::finance_products::ProductKind;
 use lariv_rs::plugins::finance_taxes::entities::tax::{self, TaxKind};
 use lariv_rs::plugins::users::{self, UsersTag, auth, entities::user::Entity as UserEntity};
 use lariv_rs::plugins::{

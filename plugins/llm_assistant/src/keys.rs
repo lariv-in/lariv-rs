@@ -1,15 +1,15 @@
 //! Compile-time HTMX swap keys for the LLM assistant plugin.
 
-use lariv_core::swap_key;
+use lariv_core::components::SwapKey;
 
-swap_key!(SkillsTableKey, "skills-table");
-swap_key!(SkillCreateModalKey, "skill-create-modal");
-swap_key!(SkillEditModalKey, "skill-edit-modal");
-swap_key!(SkillDeleteModalKey, "skill-delete-modal");
-swap_key!(SkillImportModalKey, "skill-import-modal");
-swap_key!(SkillFilesKey, "fk-llm-skill-files");
-swap_key!(HistoryTableKey, "llm-assistant-history-table");
-swap_key!(CronJobsTableKey, "llm-assistant-cron-jobs-table");
-swap_key!(CronJobCreateModalKey, "cron-job-create-modal");
-swap_key!(CronJobEditModalKey, "cron-job-edit-modal");
-swap_key!(CronJobDeleteModalKey, "cron-job-delete-modal");
+pub const SKILLS_TABLE: SwapKey = SwapKey("skills-table");
+pub const SKILL_CREATE_MODAL: SwapKey = SwapKey("skill-create-modal");
+pub const SKILL_EDIT_MODAL: SwapKey = SwapKey("skill-edit-modal");
+pub const SKILL_DELETE_MODAL: SwapKey = SwapKey("skill-delete-modal");
+pub const SKILL_IMPORT_MODAL: SwapKey = SwapKey("skill-import-modal");
+pub const SKILL_FILES: SwapKey = SwapKey("fk-llm-skill-files");
+pub const HISTORY_TABLE: SwapKey = SwapKey("llm-assistant-history-table");
+pub const CRON_JOBS_TABLE: SwapKey = SwapKey("llm-assistant-cron-jobs-table");
+pub const CRON_JOB_CREATE_MODAL: SwapKey = SwapKey("cron-job-create-modal");
+pub const CRON_JOB_EDIT_MODAL: SwapKey = SwapKey("cron-job-edit-modal");
+pub const CRON_JOB_DELETE_MODAL: SwapKey = SwapKey("cron-job-delete-modal");

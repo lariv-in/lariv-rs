@@ -51,6 +51,12 @@ mod m00045_invoice_line_catalog_snapshot;
 mod m00046_rename_crm_customers;
 mod m00047_unify_service_catalog;
 mod m00048_unify_document_lines;
+// Former finance_quotations plugin — keep so applied seaql_migrations rows still resolve.
+mod m00001_create_quotations;
+mod m00002_unify_service_catalog;
+mod m00003_unify_document_lines;
+mod m00004_quotation_status;
+mod m00049_quotations_to_draft_invoices;
 
 use super::FinanceInvoicesTag;
 
@@ -113,6 +119,11 @@ impl MigratorTrait for Migrator {
             Box::new(m00046_rename_crm_customers::Migration),
             Box::new(m00047_unify_service_catalog::Migration),
             Box::new(m00048_unify_document_lines::Migration),
+            Box::new(m00001_create_quotations::Migration),
+            Box::new(m00002_unify_service_catalog::Migration),
+            Box::new(m00003_unify_document_lines::Migration),
+            Box::new(m00004_quotation_status::Migration),
+            Box::new(m00049_quotations_to_draft_invoices::Migration),
         ]
     }
 }

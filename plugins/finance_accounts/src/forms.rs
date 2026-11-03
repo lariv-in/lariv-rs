@@ -216,6 +216,12 @@ pub struct JournalEntryForm {
 }
 
 #[html_form]
+pub struct JournalEntryLinesForm {
+    #[form(label = "Lines", required, widget = JournalLines)]
+    pub lines: String,
+}
+
+#[html_form]
 pub struct CustomSourceDocForm {
     #[form(label = "Title", required, widget = Text)]
     pub title: String,

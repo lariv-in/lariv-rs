@@ -1,5 +1,7 @@
 //! Maud page templates for blog and tag CRUD views.
 
+use crate::create_modals::TAG_CREATE;
+
 use frunk::Generic;
 use maud::{Markup, html};
 
@@ -27,8 +29,8 @@ use lariv_core::web::{modal_create_post_query, modal_create_post_url, modal_edit
 
 use super::forms::{BlogForm, BlogFormField, TagForm, TagFormField};
 use super::keys::{
-    BlogCreateModalKey, BlogDeleteModalKey, BlogEditModalKey, BlogTableKey, TagCreateModalKey,
-    TagDeleteModalKey, TagEditModalKey, TagSelectModalKey, TagSelectTableKey, TagTableKey,
+    BLOG_CREATE_MODAL, BLOG_DELETE_MODAL, BLOG_EDIT_MODAL, BLOG_TABLE, TAG_CREATE_MODAL,
+    TAG_DELETE_MODAL, TAG_EDIT_MODAL, TAG_SELECT_MODAL, TAG_SELECT_TABLE, TAG_TABLE,
 };
 use super::routes::{
     BlogCreateGetRouteTag, BlogCreatePostRouteTag, BlogDeleteGetRouteTag, BlogDeletePostRouteTag,
@@ -257,7 +259,8 @@ fn tag_detail_menu(tag_id: i64, name: &str, active: &str) -> Markup {
     })
 }
 
-fn data_table_filtered<K: SwapKey>(
+fn data_table_filtered(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -266,12 +269,13 @@ fn data_table_filtered<K: SwapKey>(
     refresh_url: &str,
     errors: &[FilterRowError],
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -292,7 +296,7 @@ fn data_table_filtered<K: SwapKey>(
         actions
     };
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         subtitle: "",
         classes: "w-full",
@@ -317,12 +321,14 @@ fn data_table_filtered<K: SwapKey>(
     })
 }
 
-fn render_pagination<K: SwapKey>(
+fn render_pagination(
+    key: SwapKey,
     path_and_query: &str,
     number: u32,
     num_pages: u32,
     push_url: bool,
 ) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, push_url);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -336,7 +342,7 @@ fn render_pagination<K: SwapKey>(
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -377,7 +383,7 @@ pub struct BlogListPage {
 }
 
 impl BlogListPage {
-    /// Fine-grained table fragment for HTMX swaps targeting [`BlogTableKey`].
+    /// Fine-grained table fragment for HTMX swaps targeting [`BLOG_TABLE`].
     pub fn render_table(&self) -> Markup {
         let title_sort = column_sort_url(&self.path_and_query, "Title", &self.sort);
         let slug_sort = column_sort_url(&self.path_and_query, "Slug", &self.sort);
@@ -446,7 +452,7 @@ impl BlogListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<BlogTableKey, BlogListRouteTag>(BlogListRouteTag),
+                    attrs: form_hx_get_route(BlogListRouteTag),
                     apply_label: "Apply Filters",
                     extra: html! {},
                 }),
@@ -456,19 +462,21 @@ impl BlogListPage {
                 name: "p_blog.BlogCreateForm",
                 href: &BlogCreateGetRouteTag.url(),
                 form_post_url: &BlogCreateGetRouteTag.path(),
-                modal_uid: BlogCreateModalKey::ID,
+                modal_uid: BLOG_CREATE_MODAL.id(),
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
             }))
         };
-        let pagination = render_pagination::<BlogTableKey>(
+        let pagination = render_pagination(
+            BLOG_TABLE,
             &self.path_and_query,
             self.blogs.number,
             self.blogs.num_pages,
             true,
         );
-        data_table_filtered::<BlogTableKey>(
+        data_table_filtered(
+            BLOG_TABLE,
             "",
             actions,
             &headers,
@@ -562,7 +570,7 @@ impl BlogDetailPage {
                             name: "p_blog.BlogEditForm",
                             href: &edit_get,
                             form_post_url: &edit_post,
-                            modal_uid: BlogEditModalKey::ID,
+                            modal_uid: BLOG_EDIT_MODAL.id(),
                             label: "Edit",
                             classes: "btn-outline",
                             ..Default::default()
@@ -633,12 +641,13 @@ impl RenderTemplate for BlogEditModalPage {
             .display(BlogFormField::CreatedById, self.author_display.as_str())
             .m2m(BlogFormField::Tags, &self.tags)
             .value(BlogFormField::Content, self.content.as_str());
-        modal_keyed::<BlogEditModalKey>(
+        modal_keyed(
+            BLOG_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit article" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<BlogEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(BLOG_EDIT_MODAL, &modal_edit_post_url(
                         BlogEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -652,7 +661,7 @@ impl RenderTemplate for BlogEditModalPage {
                             name: "p_blog.BlogDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: BlogDeleteModalKey::ID,
+                            modal_uid: BLOG_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -698,7 +707,8 @@ impl RenderTemplate for BlogCreateModalPage {
             .display(BlogFormField::CreatedById, self.author_display.as_str())
             .m2m(BlogFormField::Tags, &self.tags)
             .value(BlogFormField::Content, self.content.as_str());
-        modal_keyed::<BlogCreateModalKey>(
+        modal_keyed(
+            BLOG_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
@@ -706,11 +716,14 @@ impl RenderTemplate for BlogCreateModalPage {
                     title: "Create Article",
                     subtitle: "Publish a new article",
                     classes: "@container",
-                    attrs: form_hx_post_url::<BlogCreateModalKey>(&modal_create_post_url(
-                        BlogCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    )),
+                    attrs: form_hx_post_url(
+                        BLOG_CREATE_MODAL,
+                        &modal_create_post_url(
+                            BlogCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: BlogForm::render_inputs(&ctx),
                     actions: html! {
@@ -790,7 +803,7 @@ impl TagListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<TagTableKey, BlogTagsListRouteTag>(
+                    attrs: form_hx_get_route(
                         BlogTagsListRouteTag,
                     ),
                     apply_label: "Apply Filters",
@@ -798,18 +811,20 @@ impl TagListPage {
                 }),
                 ..Default::default()
             }))
-            (table_create_button::<TagTableKey, TagCreateModalKey>(
+            (table_create_button(TAG_TABLE, TAG_CREATE,
                 Some("plus"),
                 "btn-square btn-outline btn-sm",
             ))
         };
-        let pagination = render_pagination::<TagTableKey>(
+        let pagination = render_pagination(
+            TAG_TABLE,
             &self.path_and_query,
             self.tags.number,
             self.tags.num_pages,
             true,
         );
-        data_table_filtered::<TagTableKey>(
+        data_table_filtered(
+            TAG_TABLE,
             "",
             actions,
             &headers,
@@ -883,7 +898,7 @@ impl TagDetailPage {
                             name: "p_blog.TagEditForm",
                             href: &edit_get,
                             form_post_url: &edit_post,
-                            modal_uid: TagEditModalKey::ID,
+                            modal_uid: TAG_EDIT_MODAL.id(),
                             label: "Edit",
                             classes: "btn-outline",
                             ..Default::default()
@@ -934,12 +949,13 @@ impl RenderTemplate for TagEditModalPage {
         let delete_url = BlogTagsDeleteGetRouteTag::new(self.id).url();
         let ctx = FormCtx::form::<TagForm>(CsrfToken::current())
             .value(TagFormField::Name, self.name.as_str());
-        modal_keyed::<TagEditModalKey>(
+        modal_keyed(
+            TAG_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit tag" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<TagEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(TAG_EDIT_MODAL, &modal_edit_post_url(
                         BlogTagsEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -953,7 +969,7 @@ impl RenderTemplate for TagEditModalPage {
                             name: "p_blog.TagDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: TagDeleteModalKey::ID,
+                            modal_uid: TAG_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -981,14 +997,16 @@ impl RenderTemplate for TagCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed::<TagCreateModalKey>(
+        modal_keyed(
+            TAG_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
                 FormOpts {
                     title: "Create Tag",
                     subtitle: "Create a new blog tag",
-                    attrs: lariv_core::components::swap::form_hx_post_for_url::<TagCreateModalKey>(
+                    attrs: lariv_core::components::swap::form_hx_post_for_url(
+                        TAG_CREATE_MODAL,
                         &modal_create_post_query(
                             BlogTagsCreatePostRouteTag,
                             form_name,
@@ -1032,7 +1050,7 @@ pub struct TagSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<TagSelectTableKey, TagSelectModalKey> for TagSelectPage {
+impl RenderPickerSelect for TagSelectPage {
     fn render_table(&self) -> Markup {
         let target = if self.target_input.is_empty() {
             "Tags"
@@ -1068,7 +1086,7 @@ impl RenderPickerSelect<TagSelectTableKey, TagSelectModalKey> for TagSelectPage 
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<TagSelectTableKey, BlogTagsSelectRouteTag>(
+                    attrs: form_hx_get_route(
                         BlogTagsSelectRouteTag,
                     )
                     .set("hx-push-url", "false"),
@@ -1077,19 +1095,21 @@ impl RenderPickerSelect<TagSelectTableKey, TagSelectModalKey> for TagSelectPage 
                 }),
                 ..Default::default()
             }))
-            (picker_create_button::<TagCreateModalKey>(
+            (picker_create_button(TAG_CREATE,
                 &self.target_input,
                 Some("plus"),
                 "btn-square btn-outline btn-sm",
             ))
         };
-        let pagination = render_pagination::<TagSelectTableKey>(
+        let pagination = render_pagination(
+            TAG_SELECT_TABLE,
             &self.path_and_query,
             self.tags.number,
             self.tags.num_pages,
             false,
         );
-        data_table_filtered::<TagSelectTableKey>(
+        data_table_filtered(
+            TAG_SELECT_TABLE,
             "Select Tags",
             actions,
             &headers,
@@ -1103,7 +1123,7 @@ impl RenderPickerSelect<TagSelectTableKey, TagSelectModalKey> for TagSelectPage 
 
 impl RenderTemplate for TagSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(TAG_SELECT_MODAL).into_inner()
     }
 }
 
@@ -1119,16 +1139,16 @@ pub struct ConfirmDeletePage {
 impl RenderTemplate for ConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = if self.modal_uid.is_empty() {
-            format!("#{}", BlogDeleteModalKey::ID)
+            format!("#{}", BLOG_DELETE_MODAL.id())
         } else {
             format!("#{}", self.modal_uid)
         };
         let uid = if self.modal_uid.is_empty() {
-            BlogDeleteModalKey::ID
+            BLOG_DELETE_MODAL.id()
         } else {
             self.modal_uid.as_str()
         };
-        let post_url = if self.modal_uid == TagDeleteModalKey::ID {
+        let post_url = if self.modal_uid == TAG_DELETE_MODAL.id() {
             BlogTagsDeletePostRouteTag::new(self.id).url()
         } else {
             BlogDeletePostRouteTag::new(self.id).url()

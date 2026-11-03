@@ -24,7 +24,7 @@ use super::{
     journals::{
         JournalCreateModalPage, JournalDetailPage, JournalEditModalPage,
         JournalEntryCreateModalPage, JournalEntryDeleteModalPage, JournalEntryDetailPage,
-        JournalEntrySelectPage, JournalListPage, JournalSelectPage,
+        JournalEntryEditPage, JournalEntrySelectPage, JournalListPage, JournalSelectPage,
     },
     preferences::AccountingPreferencesPage,
     source_docs::SourceDocSelectPage,
@@ -58,6 +58,7 @@ lariv_core::define_register_items! {
         JournalSelectIdx: JournalSelectPageTag => JournalSelectPage,
         JournalEntryCreateModalIdx: JournalEntryCreateModalPageTag => JournalEntryCreateModalPage,
         JournalEntryDetailIdx: JournalEntryDetailPageTag => JournalEntryDetailPage,
+        JournalEntryEditIdx: JournalEntryEditPageTag => JournalEntryEditPage,
         JournalEntryDeleteModalIdx: JournalEntryDeleteModalPageTag => JournalEntryDeleteModalPage,
         JournalEntrySelectIdx: JournalEntrySelectPageTag => JournalEntrySelectPage,
         SourceDocSelectIdx: SourceDocSelectPageTag => SourceDocSelectPage,

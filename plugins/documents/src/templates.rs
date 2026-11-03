@@ -1,3 +1,4 @@
+use crate::create_modals::DOCUMENT_CREATE;
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
@@ -29,8 +30,8 @@ use super::forms::{
     DocumentForm, DocumentFormField, DocumentFormFlag, PreferencesForm, PreferencesFormField,
 };
 use super::keys::{
-    DocumentCreateModalKey, DocumentDeleteModalKey, DocumentEditModalKey, DocumentSelectModalKey,
-    DocumentSelectTableKey, DocumentTableKey,
+    DOCUMENT_CREATE_MODAL, DOCUMENT_DELETE_MODAL, DOCUMENT_EDIT_MODAL, DOCUMENT_SELECT_MODAL,
+    DOCUMENT_SELECT_TABLE, DOCUMENT_TABLE,
 };
 use super::logic::TypeFields;
 use super::routes::{
@@ -209,7 +210,8 @@ fn fk_value(id: i64) -> String {
     }
 }
 
-fn data_table_filtered<K: SwapKey>(
+fn data_table_filtered(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -218,12 +220,13 @@ fn data_table_filtered<K: SwapKey>(
     refresh_url: &str,
     errors: &[FilterRowError],
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -244,7 +247,7 @@ fn data_table_filtered<K: SwapKey>(
         actions
     };
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         subtitle: "",
         classes: "w-full",
@@ -269,7 +272,8 @@ fn data_table_filtered<K: SwapKey>(
     })
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -283,7 +287,7 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -363,7 +367,7 @@ fn document_type_select(
                     required
                     hx-get=(reload)
                     hx-trigger="change"
-                    hx-target=(DocumentCreateModalKey::SELECTOR)
+                    hx-target=(DOCUMENT_CREATE_MODAL.selector())
                     hx-swap="outerHTML"
                     hx-include="closest form"
                 {
@@ -457,7 +461,7 @@ impl DocumentListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<DocumentTableKey, DocumentDefaultRouteTag>(
+                    attrs: form_hx_get_route(
                         DocumentDefaultRouteTag,
                     ),
                     apply_label: "Apply Filters",
@@ -471,18 +475,20 @@ impl DocumentListPage {
         ) {
             actions = html! {
                 (actions)
-                (table_create_button::<DocumentTableKey, DocumentCreateModalKey>(
+                (table_create_button(DOCUMENT_TABLE, DOCUMENT_CREATE,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        let pagination = render_pagination::<DocumentTableKey>(
+        let pagination = render_pagination(
+            DOCUMENT_TABLE,
             &self.path_and_query,
             self.documents.number,
             self.documents.num_pages,
         );
-        data_table_filtered::<DocumentTableKey>(
+        data_table_filtered(
+            DOCUMENT_TABLE,
             "Documents",
             actions,
             &headers,
@@ -595,7 +601,7 @@ impl DocumentDetailPage {
                                 name: "p_documents.DocumentEditForm",
                                 href: &DocumentEditGetRouteTag::new(self.id).url(),
                                 form_post_url: &DocumentEditPostRouteTag::new(self.id).path(),
-                                modal_uid: DocumentEditModalKey::ID,
+                                modal_uid: DOCUMENT_EDIT_MODAL.id(),
                                 label: "Edit",
                                 classes: "btn-outline",
                                 ..Default::default()
@@ -610,7 +616,7 @@ impl DocumentDetailPage {
                                 name: "p_documents.DocumentDeleteForm",
                                 href: &DocumentDeleteGetRouteTag::new(self.id).url(),
                                 form_post_url: &DocumentDeletePostRouteTag::new(self.id).path(),
-                                modal_uid: DocumentDeleteModalKey::ID,
+                                modal_uid: DOCUMENT_DELETE_MODAL.id(),
                                 classes: "btn-error",
                                 ..Default::default()
                             }))
@@ -666,12 +672,13 @@ pub struct DocumentEditModalPage {
 impl RenderTemplate for DocumentEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = DocumentDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<DocumentEditModalKey>(
+        modal_keyed(
+            DOCUMENT_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit document" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<DocumentEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(DOCUMENT_EDIT_MODAL, &modal_edit_post_url(
                         DocumentEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -685,7 +692,7 @@ impl RenderTemplate for DocumentEditModalPage {
                             name: "p_documents.DocumentDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: DocumentDeleteModalKey::ID,
+                            modal_uid: DOCUMENT_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -714,7 +721,8 @@ impl RenderTemplate for DocumentCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed::<DocumentCreateModalKey>(
+        modal_keyed(
+            DOCUMENT_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
@@ -722,12 +730,15 @@ impl RenderTemplate for DocumentCreateModalPage {
                     title: "Add document",
                     subtitle: "Save an identity document",
                     classes: "@container",
-                    attrs: form_hx_post_url::<DocumentCreateModalKey>(&modal_create_post_query(
-                        DocumentCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                        &self.target_input,
-                    )),
+                    attrs: form_hx_post_url(
+                        DOCUMENT_CREATE_MODAL,
+                        &modal_create_post_query(
+                            DocumentCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                            &self.target_input,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: document_form_inputs(
                         &self.document_type,
@@ -765,12 +776,12 @@ pub struct ConfirmDeletePage {
 impl RenderTemplate for ConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = if self.modal_uid.is_empty() {
-            format!("#{}", DocumentDeleteModalKey::ID)
+            format!("#{}", DOCUMENT_DELETE_MODAL.id())
         } else {
             format!("#{}", self.modal_uid)
         };
         let uid = if self.modal_uid.is_empty() {
-            DocumentDeleteModalKey::ID
+            DOCUMENT_DELETE_MODAL.id()
         } else {
             self.modal_uid.as_str()
         };
@@ -871,7 +882,7 @@ pub struct DocumentSelectPage {
     pub title: String,
 }
 
-impl RenderPickerSelect<DocumentSelectTableKey, DocumentSelectModalKey> for DocumentSelectPage {
+impl RenderPickerSelect for DocumentSelectPage {
     fn render_table(&self) -> Markup {
         let rows: Vec<TableRow> = self
             .documents
@@ -889,7 +900,8 @@ impl RenderPickerSelect<DocumentSelectTableKey, DocumentSelectModalKey> for Docu
             .collect();
         let _ = self.page_size;
         let title = format!("Select {}", self.title);
-        data_table_list_refresh::<DocumentSelectTableKey>(
+        data_table_list_refresh(
+            DOCUMENT_SELECT_TABLE,
             &title,
             html! {},
             &[TableColumnHeader {
@@ -918,7 +930,7 @@ impl RenderPickerSelect<DocumentSelectTableKey, DocumentSelectModalKey> for Docu
                     .collect();
                 table_pagination_picker(TablePagination {
                     pages: &pages,
-                    hx_target: DocumentSelectTableKey::SELECTOR,
+                    hx_target: &DOCUMENT_SELECT_TABLE.selector(),
                 })
             },
             &self.path_and_query,
@@ -928,7 +940,7 @@ impl RenderPickerSelect<DocumentSelectTableKey, DocumentSelectModalKey> for Docu
 
 impl RenderTemplate for DocumentSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<DocumentSelectModalKey>("", self.render_table())
+        modal_keyed(DOCUMENT_SELECT_MODAL, "", self.render_table())
     }
 }
 

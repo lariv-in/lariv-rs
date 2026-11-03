@@ -1,3 +1,4 @@
+use crate::create_modals::TAX_CREATE;
 use frunk::Generic;
 use maud::{Markup, html};
 
@@ -33,7 +34,8 @@ use lariv_plugin_finance_accounts::templates::{
 
 use super::forms::{TaxForm, TaxFormField, tax_type_choices};
 
-fn data_table_with_filter_errors<K: SwapKey>(
+fn data_table_with_filter_errors(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -42,12 +44,13 @@ fn data_table_with_filter_errors<K: SwapKey>(
     refresh_url: &str,
     errors: &[FilterRowError],
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -68,7 +71,7 @@ fn data_table_with_filter_errors<K: SwapKey>(
         actions
     };
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         classes: "w-full",
         actions: toolbar,
@@ -89,8 +92,8 @@ fn data_table_with_filter_errors<K: SwapKey>(
     })
 }
 use super::keys::{
-    TaxCreateModalKey, TaxDeleteModalKey, TaxEditModalKey, TaxMultiSelectModalKey,
-    TaxMultiSelectTableKey, TaxTableKey,
+    TAX_CREATE_MODAL, TAX_DELETE_MODAL, TAX_EDIT_MODAL, TAX_MULTI_SELECT_MODAL,
+    TAX_MULTI_SELECT_TABLE, TAX_TABLE,
 };
 use super::routes::{
     TaxCreatePostRouteTag, TaxDefaultRouteTag, TaxDeleteGetRouteTag, TaxDeletePostRouteTag,
@@ -180,7 +183,7 @@ fn tax_list_filter(page: &TaxListPage) -> Markup {
         rows: &page.filters,
         page_size: page.page_size,
         sort: &page.sort,
-        attrs: form_hx_get_route::<TaxTableKey, TaxDefaultRouteTag>(TaxDefaultRouteTag),
+        attrs: form_hx_get_route(TaxDefaultRouteTag),
         apply_label: "Apply Filters",
         extra: html! {},
     })
@@ -200,7 +203,7 @@ fn render_pagination(path_and_query: &str, number: u32, num_pages: u32) -> Marku
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: TaxTableKey::SELECTOR,
+        hx_target: &TAX_TABLE.selector(),
     })
 }
 
@@ -287,7 +290,7 @@ impl TaxListPage {
         ) {
             actions = html! {
                 (actions)
-                (table_create_button::<TaxTableKey, TaxCreateModalKey>(
+                (table_create_button(TAX_TABLE, TAX_CREATE,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
@@ -298,7 +301,8 @@ impl TaxListPage {
             self.taxes.number,
             self.taxes.num_pages,
         );
-        data_table_with_filter_errors::<TaxTableKey>(
+        data_table_with_filter_errors(
+            TAX_TABLE,
             "Taxes",
             actions,
             &headers,
@@ -361,7 +365,7 @@ impl TaxDetailPage {
                                 name: "p_taxes.TaxEditForm",
                                 href: &TaxEditGetRouteTag::new(self.id).url(),
                                 form_post_url: &TaxEditPostRouteTag::new(self.id).path(),
-                                modal_uid: TaxEditModalKey::ID,
+                                modal_uid: TAX_EDIT_MODAL.id(),
                                 label: "Edit",
                                 classes: "btn-outline",
                                 ..Default::default()
@@ -412,12 +416,13 @@ impl RenderTemplate for TaxEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let choices = tax_type_choices();
         let delete_url = TaxDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<TaxEditModalKey>(
+        modal_keyed(
+            TAX_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit tax" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<TaxEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(TAX_EDIT_MODAL, &modal_edit_post_url(
                         TaxEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -440,7 +445,7 @@ impl RenderTemplate for TaxEditModalPage {
                             name: "p_finance_taxes.TaxDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: TaxDeleteModalKey::ID,
+                            modal_uid: TAX_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -474,7 +479,8 @@ impl RenderTemplate for TaxCreateModalPage {
             self.form_name.as_str()
         };
         let choices = tax_type_choices();
-        modal_keyed::<TaxCreateModalKey>(
+        modal_keyed(
+            TAX_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
@@ -482,12 +488,15 @@ impl RenderTemplate for TaxCreateModalPage {
                     title: "Create Tax",
                     subtitle: "Create a new tax",
                     classes: "@container",
-                    attrs: form_hx_post_url::<TaxCreateModalKey>(&modal_create_post_query(
-                        TaxCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                        &self.target_input,
-                    )),
+                    attrs: form_hx_post_url(
+                        TAX_CREATE_MODAL,
+                        &modal_create_post_query(
+                            TaxCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                            &self.target_input,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: TaxForm::render_inputs(
                         &FormCtx::form::<TaxForm>(CsrfToken::current())
@@ -527,7 +536,7 @@ pub struct TaxMultiSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxMultiSelectPage {
+impl RenderPickerSelect for TaxMultiSelectPage {
     fn render_table(&self) -> Markup {
         let target = if self.target_input.is_empty() {
             "Taxes"
@@ -592,11 +601,7 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_picker_route::<
-                        TaxMultiSelectTableKey,
-                        TaxMultiSelectModalKey,
-                        TaxMultiSelectRouteTag,
-                    >(TaxMultiSelectRouteTag),
+                    attrs: form_hx_get_picker_route(TaxMultiSelectRouteTag),
                     apply_label: "Apply",
                     extra: html! {
                         input type="hidden" name="target_input" value=(target_input) {}
@@ -611,19 +616,21 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
         ) {
             actions = html! {
                 (actions)
-                (picker_create_button::<TaxCreateModalKey>(
+                (picker_create_button(TAX_CREATE,
                     &self.target_input,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        let pagination = render_picker_pagination::<TaxMultiSelectModalKey>(
+        let pagination = render_picker_pagination(
+            TAX_MULTI_SELECT_MODAL,
             &self.path_and_query,
             self.taxes.number,
             self.taxes.num_pages,
         );
-        data_table_with_filter_errors::<TaxMultiSelectTableKey>(
+        data_table_with_filter_errors(
+            TAX_MULTI_SELECT_TABLE,
             "Select Taxes",
             actions,
             &headers,
@@ -637,7 +644,7 @@ impl RenderPickerSelect<TaxMultiSelectTableKey, TaxMultiSelectModalKey> for TaxM
 
 impl RenderTemplate for TaxMultiSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(TAX_MULTI_SELECT_MODAL).into_inner()
     }
 }
 
@@ -653,12 +660,12 @@ pub struct ConfirmDeletePage {
 impl RenderTemplate for ConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = if self.modal_uid.is_empty() {
-            format!("#{}", TaxDeleteModalKey::ID)
+            format!("#{}", TAX_DELETE_MODAL.id())
         } else {
             format!("#{}", self.modal_uid)
         };
         let uid = if self.modal_uid.is_empty() {
-            TaxDeleteModalKey::ID
+            TAX_DELETE_MODAL.id()
         } else {
             self.modal_uid.as_str()
         };

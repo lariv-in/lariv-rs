@@ -1,12 +1,13 @@
-//! Typed [`CreateModal`] / [`PickerModal`] wiring for tax swap keys.
+//! Typed [`CreateModal`] wiring for tax swap keys.
 
-use super::keys::{TaxCreateModalKey, TaxMultiSelectModalKey, TaxMultiSelectTableKey};
+use lariv_core::web::CreateModal;
+
+use super::keys::TAX_CREATE_MODAL;
 use super::routes::{TaxCreateGetRouteTag, TaxCreatePostRouteTag};
 
-lariv_core::impl_create_modal!(
-    TaxCreateModalKey,
-    TaxCreateGetRouteTag,
-    TaxCreatePostRouteTag,
-    "p_taxes.TaxCreateForm"
-);
-lariv_core::impl_picker_modal!(TaxMultiSelectModalKey, TaxMultiSelectTableKey);
+pub const TAX_CREATE: CreateModal<TaxCreateGetRouteTag, TaxCreatePostRouteTag> = CreateModal {
+    key: TAX_CREATE_MODAL,
+    form_name: "p_taxes.TaxCreateForm",
+    get: TaxCreateGetRouteTag,
+    post: TaxCreatePostRouteTag,
+};

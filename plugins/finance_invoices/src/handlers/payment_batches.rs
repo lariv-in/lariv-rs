@@ -34,7 +34,7 @@ use crate::{
         posted_invoice::{self, Entity as PostedInvoiceEntity},
     },
     forms::PaymentBatchForm,
-    keys::PaymentBatchCreateModalKey,
+    keys::PAYMENT_BATCH_CREATE_MODAL,
     logic::{
         CreatePaymentBatchInput, create_payment_batch, load_invoice_date_formats,
         parse_batch_allocations_json, parse_invoice_datetime,
@@ -341,8 +341,9 @@ pub async fn create_post(
     };
 
     match create_payment_batch(&state.db, input).await {
-        Ok(result) => respond_create_modal_done::<PaymentBatchCreateModalKey>(
+        Ok(result) => respond_create_modal_done(
             &htmx,
+            PAYMENT_BATCH_CREATE_MODAL,
             &q.modal.refresh_table(),
             &PaymentBatchDetailRouteTag::new(result.batch.id).url(),
         ),

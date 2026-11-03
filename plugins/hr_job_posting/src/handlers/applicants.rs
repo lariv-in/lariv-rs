@@ -23,9 +23,7 @@ use crate::{
     },
     forms::{ApplicantForm, HireApplicantBody},
     handlers::ModalNameQuery,
-    keys::{
-        ApplicantCreateModalKey, ApplicantEditModalKey, ApplicantTableKey, HireApplicantModalKey,
-    },
+    keys::{APPLICANT_CREATE_MODAL, APPLICANT_EDIT_MODAL, APPLICANT_TABLE, HIRE_APPLICANT_MODAL},
     logic::applicant::{
         ApplicantInput, create_applicant, delete_applicant, hire_applicant,
         parse_optional_datetime, parse_optional_fk, parse_optional_gender, parse_optional_text,
@@ -218,7 +216,7 @@ pub async fn list(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<ApplicantTableKey>() {
+    if htmx.targets(APPLICANT_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -254,8 +252,9 @@ pub async fn create_post(
 ) -> Response {
     match applicant_input_from_form(&form, &ctx) {
         Ok(input) => match create_applicant(&state.db, input).await {
-            Ok(applicant) => respond_create_modal_done::<ApplicantCreateModalKey>(
+            Ok(applicant) => respond_create_modal_done(
                 &htmx,
+                APPLICANT_CREATE_MODAL,
                 &q.refresh_table(),
                 &ApplicantDetailRouteTag::new(applicant.id).url(),
             ),
@@ -366,8 +365,9 @@ pub async fn edit_post(
     let post_url = modal_edit_post_url(ApplicantEditPostRouteTag::new(id), &form_name);
     match applicant_input_from_form(&form, &ctx) {
         Ok(input) => match update_applicant(&state.db, id, input).await {
-            Ok(_) => respond_edit_modal_done::<ApplicantEditModalKey>(
+            Ok(_) => respond_edit_modal_done(
                 &htmx,
+                APPLICANT_EDIT_MODAL,
                 &ApplicantDetailRouteTag::new(id).url(),
             ),
             Err(e) => {
@@ -445,8 +445,9 @@ pub async fn hire_post(
     HtmlFormBody(_form): HtmlFormBody<HireApplicantBody>,
 ) -> Response {
     match hire_applicant(&state.db, id, &ctx).await {
-        Ok(employee_id) => respond_create_modal_done::<HireApplicantModalKey>(
+        Ok(employee_id) => respond_create_modal_done(
             &htmx,
+            HIRE_APPLICANT_MODAL,
             &q.refresh_table(),
             &EmployeeDetailRouteTag::new(employee_id).url(),
         ),

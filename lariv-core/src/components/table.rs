@@ -7,9 +7,10 @@
 //! so the title toolbar stays put when two tables of the same key share a page.
 //!
 //! ```rust,ignore
-//! use lariv_rs::components::{data_table_list, table_pagination, TablePagination, MyTableKey};
+//! use lariv_rs::components::{data_table_list, table_pagination, TablePagination, SwapKey};
 //!
-//! data_table_list::<MyTableKey>(
+//! const MY_TABLE: SwapKey = SwapKey("my-table");
+//! data_table_list(MY_TABLE,
 //!     "Users", actions, &headers, &rows,
 //!     table_pagination(TablePagination { pages: &pages, hx_target: HX_TARGET_CLOSEST_TABLE_BODY }),
 //! )
@@ -854,7 +855,7 @@ fn data_table_x_data(view: &str, persist_key: &str, column_keys: &[&str]) -> Str
 
 /// Per-instance DOM id for a data table: `{key}--{uuid}`.
 ///
-/// The [`SwapKey::ID`] prefix is preserved so [`SwapKey::matches_id`] / [`crate::web::Htmx::targets`]
+/// The [`SwapKey::id`] prefix is preserved so [`SwapKey::matches_id`] / [`crate::web::Htmx::targets`]
 /// still recognize the region. Alpine persist keys stay on `{key}` (see [`data_table_x_data`]).
 pub fn table_instance_uid(key_id: &str) -> String {
     let key = if key_id.is_empty() {
@@ -977,20 +978,22 @@ pub fn data_table(opts: DataTable<'_>) -> Markup {
 }
 
 /// Convenience: List+Grid data table keyed by [`SwapKey`] (default view: List).
-pub fn data_table_list<K: SwapKey>(
+pub fn data_table_list(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
     rows: &[TableRow],
     pagination: Markup,
 ) -> Markup {
-    data_table_list_opts::<K>(
-        title, "", actions, headers, rows, pagination, false, "List", "",
+    data_table_list_opts(
+        key, title, "", actions, headers, rows, pagination, false, "List", "",
     )
 }
 
 /// Like [`data_table_list`] with a create-modal parent refresh URL (`path_and_query`).
-pub fn data_table_list_refresh<K: SwapKey>(
+pub fn data_table_list_refresh(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -998,7 +1001,8 @@ pub fn data_table_list_refresh<K: SwapKey>(
     pagination: Markup,
     refresh_url: &str,
 ) -> Markup {
-    data_table_list_opts::<K>(
+    data_table_list_opts(
+        key,
         title,
         "",
         actions,
@@ -1012,7 +1016,8 @@ pub fn data_table_list_refresh<K: SwapKey>(
 }
 
 /// Like [`data_table_list`] with a subtitle under the title.
-pub fn data_table_list_with_subtitle<K: SwapKey>(
+pub fn data_table_list_with_subtitle(
+    key: SwapKey,
     title: &str,
     subtitle: &str,
     actions: Markup,
@@ -1020,26 +1025,28 @@ pub fn data_table_list_with_subtitle<K: SwapKey>(
     rows: &[TableRow],
     pagination: Markup,
 ) -> Markup {
-    data_table_list_opts::<K>(
-        title, subtitle, actions, headers, rows, pagination, false, "List", "",
+    data_table_list_opts(
+        key, title, subtitle, actions, headers, rows, pagination, false, "List", "",
     )
 }
 
 /// Like [`data_table_list`], default view: Grid (defaults to grid view).
-pub fn data_table_list_grid<K: SwapKey>(
+pub fn data_table_list_grid(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
     rows: &[TableRow],
     pagination: Markup,
 ) -> Markup {
-    data_table_list_opts::<K>(
-        title, "", actions, headers, rows, pagination, false, "Grid", "",
+    data_table_list_opts(
+        key, title, "", actions, headers, rows, pagination, false, "Grid", "",
     )
 }
 
 /// Like [`data_table_list_grid`] with a subtitle under the title.
-pub fn data_table_list_grid_with_subtitle<K: SwapKey>(
+pub fn data_table_list_grid_with_subtitle(
+    key: SwapKey,
     title: &str,
     subtitle: &str,
     actions: Markup,
@@ -1047,13 +1054,14 @@ pub fn data_table_list_grid_with_subtitle<K: SwapKey>(
     rows: &[TableRow],
     pagination: Markup,
 ) -> Markup {
-    data_table_list_opts::<K>(
-        title, subtitle, actions, headers, rows, pagination, false, "Grid", "",
+    data_table_list_opts(
+        key, title, subtitle, actions, headers, rows, pagination, false, "Grid", "",
     )
 }
 
 /// Like [`data_table_list`], optionally as an OOB fragment.
-pub fn data_table_list_opts<K: SwapKey>(
+pub fn data_table_list_opts(
+    key: SwapKey,
     title: &str,
     subtitle: &str,
     actions: Markup,
@@ -1064,7 +1072,8 @@ pub fn data_table_list_opts<K: SwapKey>(
     default_view: &str,
     refresh_url: &str,
 ) -> Markup {
-    data_table_list_built::<K>(
+    data_table_list_built(
+        key,
         title,
         subtitle,
         actions,
@@ -1083,14 +1092,16 @@ pub fn data_table_list_opts<K: SwapKey>(
 ///
 /// The shell (title and toolbar) stays on the page. `instance_id` is the
 /// `.data-table-container` id already in the DOM, taken from `HX-Target`.
-pub fn data_table_rows<K: SwapKey>(
+pub fn data_table_rows(
+    key: SwapKey,
     headers: &[TableColumnHeader<'_>],
     rows: &[TableRow],
     pagination: Markup,
     instance_id: &str,
 ) -> Markup {
-    let _ = K::ID;
-    data_table_list_built::<K>(
+    let _ = key;
+    data_table_list_built(
+        key,
         "",
         "",
         Markup::default(),
@@ -1105,7 +1116,8 @@ pub fn data_table_rows<K: SwapKey>(
     )
 }
 
-fn data_table_list_built<K: SwapKey>(
+fn data_table_list_built(
+    key: SwapKey,
     title: &str,
     subtitle: &str,
     actions: Markup,
@@ -1118,10 +1130,11 @@ fn data_table_list_built<K: SwapKey>(
     instance_id: &str,
     body_only: bool,
 ) -> Markup {
+    let selector = key.selector();
     let list = table_list_content(TableListContent {
         headers,
         rows,
-        hx_target: K::SELECTOR,
+        hx_target: &selector,
     });
     let grid = table_grid_content(headers, rows);
     let column_keys: Vec<&str> = headers
@@ -1139,7 +1152,7 @@ fn data_table_list_built<K: SwapKey>(
     };
     // Go sorts view option names alphabetically: Grid, List.
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         subtitle,
         classes: "w-full",
@@ -1375,7 +1388,7 @@ mod tests {
         assert!(!name_header.contains("justify-end"));
     }
 
-    crate::swap_key!(RefreshTableKey, "refresh-table");
+    const REFRESH_TABLE: SwapKey = SwapKey("refresh-table");
 
     #[test]
     fn refresh_targets_the_row_region_not_the_title() {
@@ -1394,7 +1407,8 @@ mod tests {
             key: String::new(),
             children: Vec::new(),
         }];
-        let full = data_table_list_refresh::<RefreshTableKey>(
+        let full = data_table_list_refresh(
+            REFRESH_TABLE,
             "Tasks",
             Markup::default(),
             &headers,
@@ -1417,7 +1431,7 @@ mod tests {
         );
 
         let instance = "refresh-table--abc";
-        let body = data_table_rows::<RefreshTableKey>(&headers, &rows, Markup::default(), instance)
+        let body = data_table_rows(REFRESH_TABLE, &headers, &rows, Markup::default(), instance)
             .into_string();
         assert!(body.contains("id=\"refresh-table--abc__rows\""));
         assert!(body.contains("data-table-body"));

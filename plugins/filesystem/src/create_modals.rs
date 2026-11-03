@@ -1,25 +1,28 @@
-//! Typed [`CreateModal`] / [`PickerModal`] wiring for filesystem swap keys.
+//! Typed [`CreateModal`] wiring for filesystem swap keys.
 
-use super::keys::{VNodeCreateModalKey, VNodeSelectModalKey, VNodeSelectTableKey};
-use super::routes::{VNodeCreateGetRouteTag, VNodeCreatePostRouteTag};
+use lariv_core::web::CreateModal;
 
-lariv_core::impl_create_modal!(
-    VNodeCreateModalKey,
-    VNodeCreateGetRouteTag,
-    VNodeCreatePostRouteTag,
-    "p_filesystem.VNodeCreateForm"
-);
-lariv_core::impl_picker_modal!(VNodeSelectModalKey, VNodeSelectTableKey);
+use crate::keys::V_NODE_CREATE_MODAL;
+use crate::routes::{VNodeCreateGetRouteTag, VNodeCreatePostRouteTag};
+
+pub const V_NODE_CREATE: CreateModal<VNodeCreateGetRouteTag, VNodeCreatePostRouteTag> =
+    CreateModal {
+        key: V_NODE_CREATE_MODAL,
+        form_name: "p_filesystem.VNodeCreateForm",
+        get: VNodeCreateGetRouteTag,
+        post: VNodeCreatePostRouteTag,
+    };
 
 #[cfg(test)]
 mod tests {
-    use crate::keys::VNodeCreateModalKey;
+    use super::*;
     use lariv_core::picker::picker_create_button;
     use lariv_core::web::{CreateModal, modal_create_href_for_picker};
 
     #[test]
     fn vnode_picker_create_button_embeds_target_input() {
-        let html = picker_create_button::<VNodeCreateModalKey>(
+        let html = picker_create_button(
+            V_NODE_CREATE,
             "ParentID",
             Some("plus"),
             "btn-square btn-outline btn-sm",
@@ -39,7 +42,7 @@ mod tests {
     fn vnode_picker_create_href_keeps_parent_route() {
         let href = modal_create_href_for_picker(
             "/filesystem/create/in/7/",
-            VNodeCreateModalKey::FORM_NAME,
+            V_NODE_CREATE.form_name,
             "ParentID",
         );
         assert!(href.contains("/filesystem/create/in/7/"), "{href}");

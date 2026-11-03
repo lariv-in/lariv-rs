@@ -21,8 +21,7 @@ use crate::{
     crumbs::{attendance_crumbs, attendances_list_crumbs},
     forms::{AttendanceForm, AttendanceFormField},
     keys::{
-        AttendanceCreateModalKey, AttendanceDeleteModalKey, AttendanceEditModalKey,
-        AttendanceTableKey,
+        ATTENDANCE_CREATE_MODAL, ATTENDANCE_DELETE_MODAL, ATTENDANCE_EDIT_MODAL, ATTENDANCE_TABLE,
     },
     routes::{
         AttendanceCreateGetRouteTag, AttendanceCreatePostRouteTag, AttendanceDeleteGetRouteTag,
@@ -42,7 +41,7 @@ pub struct AttendanceRow {
     pub detail_href: String,
 }
 
-fn punch_button<K: SwapKey, R: lariv_core::http::RouteUrl + lariv_core::http::FragmentPost<K>>(
+fn punch_button<R: lariv_core::http::RouteUrl + lariv_core::http::FragmentPost>(
     route: R,
     label: &str,
     title: &str,
@@ -52,7 +51,7 @@ fn punch_button<K: SwapKey, R: lariv_core::http::RouteUrl + lariv_core::http::Fr
 ) -> Markup {
     let class = format!("btn btn-lg min-w-44 gap-2 {classes}");
     // Swap the attendance panel (buttons plus table), not the table toolbar.
-    let attrs = form_hx_post_route::<K, R>(route)
+    let attrs = form_hx_post_route(route)
         .set("hx-target", "closest .hr-attendance")
         .set("hx-select", ".hr-attendance")
         .set("hx-swap", "outerHTML");
@@ -69,7 +68,8 @@ fn punch_button<K: SwapKey, R: lariv_core::http::RouteUrl + lariv_core::http::Fr
     }
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -83,7 +83,7 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -300,7 +300,7 @@ impl AttendanceListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<AttendanceTableKey, AttendanceListRouteTag>(
+                    attrs: form_hx_get_route(
                         AttendanceListRouteTag,
                     ),
                     apply_label: "Apply",
@@ -318,7 +318,7 @@ impl AttendanceListPage {
                     name: "p_hr.AttendanceCreateForm",
                     href: &AttendanceCreateGetRouteTag.url(),
                     form_post_url: &AttendanceCreateGetRouteTag.path(),
-                    modal_uid: AttendanceCreateModalKey::ID,
+                    modal_uid: ATTENDANCE_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
@@ -359,7 +359,7 @@ impl AttendanceListPage {
                         }
                     }
                     div class="flex flex-wrap items-center gap-4" {
-                        (punch_button::<AttendanceTableKey, AttendancePunchInRouteTag>(
+                        (punch_button(
                             AttendancePunchInRouteTag,
                             "Punch in",
                             note,
@@ -367,7 +367,7 @@ impl AttendanceListPage {
                             "btn-success",
                             punch.punch_in_enabled,
                         ))
-                        (punch_button::<AttendanceTableKey, AttendancePunchOutRouteTag>(
+                        (punch_button(
                             AttendancePunchOutRouteTag,
                             "Punch out",
                             punch_out_title,
@@ -389,12 +389,14 @@ impl AttendanceListPage {
         } else {
             html! {}
         };
-        let table = lariv_plugin_hr::templates::data_table_with_filter_errors::<AttendanceTableKey>(
+        let table = lariv_plugin_hr::templates::data_table_with_filter_errors(
+            ATTENDANCE_TABLE,
             "Attendance",
             actions,
             &headers,
             &table_rows,
-            render_pagination::<AttendanceTableKey>(
+            render_pagination(
+                ATTENDANCE_TABLE,
                 &self.path_and_query,
                 self.rows.number,
                 self.rows.num_pages,
@@ -459,7 +461,7 @@ impl AttendanceDetailPage {
                     name: "p_hr.AttendanceEditForm",
                     href: &AttendanceEditGetRouteTag::new(self.id).url(),
                     form_post_url: &AttendanceEditPostRouteTag::new(self.id).path(),
-                    modal_uid: AttendanceEditModalKey::ID,
+                    modal_uid: ATTENDANCE_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline btn-sm",
                     ..Default::default()
@@ -468,7 +470,7 @@ impl AttendanceDetailPage {
                     name: "p_hr.AttendanceDeleteForm",
                     href: &AttendanceDeleteGetRouteTag::new(self.id).url(),
                     form_post_url: &AttendanceDeleteGetRouteTag::new(self.id).path(),
-                    modal_uid: AttendanceDeleteModalKey::ID,
+                    modal_uid: ATTENDANCE_DELETE_MODAL.id(),
                     label: "Delete",
                     classes: "btn-outline btn-error btn-sm",
                     ..Default::default()
@@ -601,12 +603,13 @@ impl AttendanceCreateModalPage {
 
 impl RenderTemplate for AttendanceCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<AttendanceCreateModalKey>(
+        modal_keyed(
+            ATTENDANCE_CREATE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New attendance" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<AttendanceCreateModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(ATTENDANCE_CREATE_MODAL, &modal_create_post_url(
                         AttendanceCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
@@ -641,12 +644,13 @@ pub struct AttendanceEditModalPage {
 
 impl RenderTemplate for AttendanceEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<AttendanceEditModalKey>(
+        modal_keyed(
+            ATTENDANCE_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit attendance" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<AttendanceEditModalKey>(&self.post_url),
+                    attrs: form_hx_post_url(ATTENDANCE_EDIT_MODAL, &self.post_url),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: attendance_form_inputs(
                         self.user_id,
@@ -673,10 +677,10 @@ pub struct AttendanceDeleteModalPage {
 
 impl RenderTemplate for AttendanceDeleteModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let target = format!("#{}", AttendanceDeleteModalKey::ID);
+        let target = format!("#{}", ATTENDANCE_DELETE_MODAL.id());
         let post_url = AttendanceDeletePostRouteTag::new(self.id).url();
         modal(lariv_core::components::Modal {
-            uid: AttendanceDeleteModalKey::ID,
+            uid: ATTENDANCE_DELETE_MODAL.id(),
             children: delete_confirmation(DeleteConfirmation {
                 title: "Confirm deletion",
                 message: &self.message,
@@ -696,7 +700,7 @@ pub fn outside_zone_modal(
     _distance_meters: f64,
     caption: &str,
 ) -> Markup {
-    let uid = crate::keys::AttendanceOutsideModalKey::ID;
+    let uid = crate::keys::ATTENDANCE_OUTSIDE_MODAL.id();
     html! {
         (PreEscaped(format!(
             r#"<div x-data x-init="const dialogs = document.querySelectorAll('#{uid}'); dialogs.forEach((el, index) => {{ if (index < dialogs.length - 1) el.remove() }})">"#

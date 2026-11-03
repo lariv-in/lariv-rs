@@ -29,8 +29,8 @@ use crate::{
     },
     handlers::ModalNameQuery,
     keys::{
-        LeaveApproveModalKey, LeaveCreateModalKey, LeaveEditModalKey, LeaveRejectModalKey,
-        LeaveRevokeApprovalModalKey, LeaveRevokeRejectionModalKey, LeaveTableKey,
+        LEAVE_APPROVE_MODAL, LEAVE_CREATE_MODAL, LEAVE_EDIT_MODAL, LEAVE_REJECT_MODAL,
+        LEAVE_REVOKE_APPROVAL_MODAL, LEAVE_REVOKE_REJECTION_MODAL, LEAVE_TABLE,
     },
     logic::leave::{
         ApproveLeaveInput, FILTER_PENDING, LeaveApplicationInput, RejectLeaveInput,
@@ -279,7 +279,7 @@ async fn index(
     let balances = leave_balances(&state.db, scope, ctx.user.id).await;
     let include_applicant = !scope.personal();
     let include_status = scope.locked_status().is_none();
-    if htmx.targets::<LeaveTableKey>() {
+    if htmx.targets(LEAVE_TABLE) {
         let page = LeaveListPage {
             rows,
             fields: prepared.fields,
@@ -374,8 +374,9 @@ pub async fn create_post(
         Err(e) => return create_error_response(&state, &chrome, &ctx, &q, &form, e).await,
     };
     match create_leave_application(&state.db, input).await {
-        Ok(row) => respond_create_modal_done::<LeaveCreateModalKey>(
+        Ok(row) => respond_create_modal_done(
             &htmx,
+            LEAVE_CREATE_MODAL,
             &q.refresh_table(),
             &LeaveDetailRouteTag::new(row.id).url(),
         ),
@@ -449,7 +450,7 @@ pub async fn edit_post(
     };
     match update_leave_application(&state.db, id, input).await {
         Ok(_) => {
-            respond_edit_modal_done::<LeaveEditModalKey>(&htmx, &LeaveDetailRouteTag::new(id).url())
+            respond_edit_modal_done(&htmx, LEAVE_EDIT_MODAL, &LeaveDetailRouteTag::new(id).url())
         }
         Err(e) => edit_error_response(&chrome, &ctx, id, &q, &form, e).await,
     }
@@ -544,8 +545,9 @@ pub async fn approve_post(
         approved_at: Utc::now(),
     };
     match approve_leave(&state.db, id, &ctx, input).await {
-        Ok(_) => respond_edit_modal_done::<LeaveApproveModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            LEAVE_APPROVE_MODAL,
             &LeaveDetailRouteTag::new(id).url(),
         ),
         Err(e) => approve_error_response(&chrome, &ctx, id, &q, e).await,
@@ -590,8 +592,9 @@ pub async fn reject_post(
         reason: optional_reason(&form.reason),
     };
     match reject_leave(&state.db, id, input).await {
-        Ok(_) => respond_edit_modal_done::<LeaveRejectModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            LEAVE_REJECT_MODAL,
             &LeaveDetailRouteTag::new(id).url(),
         ),
         Err(e) => reject_error_response(&chrome, &ctx, id, &q, &form, e).await,
@@ -634,8 +637,9 @@ pub async fn revoke_approval_post(
     HtmlFormBody(_form): HtmlFormBody<RevokeApprovalForm>,
 ) -> Response {
     match revoke_approval(&state.db, id, &ctx).await {
-        Ok(()) => respond_edit_modal_done::<LeaveRevokeApprovalModalKey>(
+        Ok(()) => respond_edit_modal_done(
             &htmx,
+            LEAVE_REVOKE_APPROVAL_MODAL,
             &LeaveDetailRouteTag::new(id).url(),
         ),
         Err(e) => {
@@ -687,8 +691,9 @@ pub async fn revoke_rejection_post(
     HtmlFormBody(_form): HtmlFormBody<RevokeRejectionForm>,
 ) -> Response {
     match revoke_rejection(&state.db, id, &ctx).await {
-        Ok(()) => respond_edit_modal_done::<LeaveRevokeRejectionModalKey>(
+        Ok(()) => respond_edit_modal_done(
             &htmx,
+            LEAVE_REVOKE_REJECTION_MODAL,
             &LeaveDetailRouteTag::new(id).url(),
         ),
         Err(e) => {

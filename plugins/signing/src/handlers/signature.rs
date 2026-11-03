@@ -15,7 +15,7 @@ use lariv_plugin_documents::routes::DocumentDetailRouteTag;
 use lariv_plugin_users::middleware::RequireAuth;
 
 use super::super::{
-    entities::user_signature, keys::SignatureCreateModalKey, scope::find_own_signature,
+    entities::user_signature, keys::SIGNATURE_CREATE_MODAL, scope::find_own_signature,
     state::SigningState, templates::SignatureCreateModalPage,
 };
 
@@ -93,7 +93,7 @@ pub async fn create_post(
     } else {
         DocumentDefaultRouteTag.url()
     };
-    respond_edit_modal_done::<SignatureCreateModalKey>(&htmx, &next)
+    respond_edit_modal_done(&htmx, SIGNATURE_CREATE_MODAL, &next)
 }
 
 fn modal_error(

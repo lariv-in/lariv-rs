@@ -10,7 +10,7 @@ use sea_orm::{
 };
 
 use lariv_core::components::{
-    FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
+    FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, table_rows_instance_id,
 };
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
@@ -34,8 +34,8 @@ use crate::{
     forms::TaskStatusForm,
     handlers::ModalNameQuery,
     keys::{
-        TaskStatusCreateModalKey, TaskStatusDeleteModalKey, TaskStatusEditModalKey,
-        TaskStatusTableKey, TaskStatusTasksTableKey,
+        TASK_STATUS_CREATE_MODAL, TASK_STATUS_DELETE_MODAL, TASK_STATUS_EDIT_MODAL,
+        TASK_STATUS_TABLE, TASK_STATUS_TASKS_TABLE,
     },
     logic::status::delete_status,
     routes::{TaskDetailRouteTag, TaskStatusDefaultRouteTag, TaskStatusDetailRouteTag},
@@ -131,11 +131,11 @@ pub async fn list(
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref()) {
-        if TaskStatusTableKey::matches_id(instance) {
+        if TASK_STATUS_TABLE.matches_id(instance) {
             return page.render_table_rows(instance);
         }
     }
-    if htmx.targets::<TaskStatusTableKey>() {
+    if htmx.targets(TASK_STATUS_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -192,8 +192,9 @@ pub async fn create_post(
         color: Set(color),
     };
     match model.insert(&state.db).await {
-        Ok(saved) => respond_create_modal_done::<TaskStatusCreateModalKey>(
+        Ok(saved) => respond_create_modal_done(
             &htmx,
+            TASK_STATUS_CREATE_MODAL,
             &q.refresh_table(),
             &TaskStatusDetailRouteTag::new(saved.id).url(),
         ),
@@ -287,11 +288,11 @@ pub async fn detail(
         page_size: q.page_size.get(),
     };
     if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref()) {
-        if TaskStatusTasksTableKey::matches_id(instance) {
+        if TASK_STATUS_TASKS_TABLE.matches_id(instance) {
             return page.render_tasks_table_rows(instance).into_response();
         }
     }
-    if htmx.targets::<TaskStatusTasksTableKey>() {
+    if htmx.targets(TASK_STATUS_TASKS_TABLE) {
         return page.render_tasks_table().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -348,8 +349,9 @@ pub async fn edit_post(
     am.name = Set(name);
     am.color = Set(color);
     match am.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<TaskStatusEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            TASK_STATUS_EDIT_MODAL,
             &TaskStatusDetailRouteTag::new(id).url(),
         ),
         Err(e) => {
@@ -372,7 +374,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: TaskStatusDeleteModalKey::ID.to_string(),
+        modal_uid: TASK_STATUS_DELETE_MODAL.id().to_string(),
         message:
             "Are you sure you want to delete this status? Tasks using it must be reassigned first."
                 .into(),
@@ -398,7 +400,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete task status");
             let page = ConfirmDeletePage {
-                modal_uid: TaskStatusDeleteModalKey::ID.to_string(),
+                modal_uid: TASK_STATUS_DELETE_MODAL.id().to_string(),
                 message:
                     "Are you sure you want to delete this status? Tasks using it must be reassigned first."
                         .into(),

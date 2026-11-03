@@ -11,7 +11,7 @@ use sea_orm::{
 };
 
 use lariv_core::components::{
-    FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
+    FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, table_rows_instance_id,
 };
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
@@ -35,8 +35,8 @@ use crate::{
         tasks::{parse_optional_parent, parse_priority, sees_every_task},
     },
     keys::{
-        PeriodicTaskCreateModalKey, PeriodicTaskDeleteModalKey, PeriodicTaskEditModalKey,
-        PeriodicTaskTableKey,
+        PERIODIC_TASK_CREATE_MODAL, PERIODIC_TASK_DELETE_MODAL, PERIODIC_TASK_EDIT_MODAL,
+        PERIODIC_TASK_TABLE,
     },
     logic::task::validate_parent,
     routes::{PeriodicTaskDefaultRouteTag, PeriodicTaskDetailRouteTag},
@@ -322,11 +322,11 @@ pub async fn list(
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref()) {
-        if PeriodicTaskTableKey::matches_id(instance) {
+        if PERIODIC_TASK_TABLE.matches_id(instance) {
             return page.render_table_rows(instance);
         }
     }
-    if htmx.targets::<PeriodicTaskTableKey>() {
+    if htmx.targets(PERIODIC_TASK_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -413,8 +413,9 @@ pub async fn create_post(
         last_added_at: Set(fields.last_added_at),
     };
     match model.insert(&state.db).await {
-        Ok(saved) => respond_create_modal_done::<PeriodicTaskCreateModalKey>(
+        Ok(saved) => respond_create_modal_done(
             &htmx,
+            PERIODIC_TASK_CREATE_MODAL,
             &q.refresh_table(),
             &PeriodicTaskDetailRouteTag::new(saved.id).url(),
         ),
@@ -543,8 +544,9 @@ pub async fn edit_post(
     am.frequency = Set(fields.frequency);
     am.last_added_at = Set(fields.last_added_at);
     match am.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<PeriodicTaskEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            PERIODIC_TASK_EDIT_MODAL,
             &PeriodicTaskDetailRouteTag::new(id).url(),
         ),
         Err(e) => {
@@ -569,7 +571,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: PeriodicTaskDeleteModalKey::ID.to_string(),
+        modal_uid: PERIODIC_TASK_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this periodic task?".into(),
         form_name: q
             .name
@@ -596,7 +598,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete periodic task");
             let page = ConfirmDeletePage {
-                modal_uid: PeriodicTaskDeleteModalKey::ID.to_string(),
+                modal_uid: PERIODIC_TASK_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this periodic task?".into(),
                 form_name: "p_tasks.PeriodicTaskDeleteForm".into(),
                 id,

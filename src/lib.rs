@@ -23,8 +23,7 @@ pub use lariv_core::{
 };
 pub use lariv_core::{
     define_passthrough_cap, define_plugin_install, define_register_apps, define_register_export,
-    define_register_items, define_register_migrations, define_replace_templates, impl_create_modal,
-    impl_picker_modal, swap_key,
+    define_register_items, define_register_migrations, define_replace_templates,
 };
 pub use lariv_rs_macros::{define_plugin_routes, main};
 pub use paste;
@@ -56,8 +55,6 @@ pub mod plugins {
     pub use lariv_plugin_finance_indian as finance_indian;
     #[cfg(feature = "plugin-finance-invoices")]
     pub use lariv_plugin_finance_invoices as finance_invoices;
-    #[cfg(feature = "plugin-finance-quotations")]
-    pub use lariv_plugin_finance_quotations as finance_quotations;
     #[cfg(feature = "plugin-finance-products")]
     pub use lariv_plugin_finance_products as finance_products;
     #[cfg(feature = "plugin-finance-purchases")]

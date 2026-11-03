@@ -512,7 +512,8 @@ fn preview_parts(preview: &str) -> (String, String, String, String) {
 
 /// Render the draft purchase lines editor.
 pub fn input_purchase_lines_draft(opts: InputPurchaseLinesDraft<'_>) -> Markup {
-    let product_pick_fallback = lariv_plugin_finance_products::routes::ProductFkSelectRouteTag.url();
+    let product_pick_fallback =
+        lariv_plugin_finance_products::routes::ProductFkSelectRouteTag.url();
     let tax_pick_fallback = lariv_plugin_finance_taxes::routes::TaxMultiSelectRouteTag.url();
     let product_pick_url = if opts.product_pick_url.is_empty() {
         product_pick_fallback.as_str()
@@ -593,8 +594,8 @@ $el.closest('form').addEventListener('submit', (ev) => {{
 	}});
 	h.value = JSON.stringify(d.lines.map(strip));
 }}, true);"#,
-        name_q = serde_json::to_string(opts.name)
-            .unwrap_or_else(|_| "\"PurchaseLinesJSON\"".into())
+        name_q =
+            serde_json::to_string(opts.name).unwrap_or_else(|_| "\"PurchaseLinesJSON\"".into())
     );
 
     let fk_select_handler = r#"if (!$event.detail) return;

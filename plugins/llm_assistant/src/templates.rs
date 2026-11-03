@@ -5,10 +5,10 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-    AppLayoutKey, ButtonModal, ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay,
+    APP_LAYOUT, ButtonModal, ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay,
     DeleteConfirmation, DetailHeader, FieldDuration, FieldManyToMany, FieldMarkdown, FieldText,
     FilterClauseView, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, ListFilterBuilder,
-    MainContentKey, ManyToManyItem, ObjectList, PaginationPage, RenderSlot, RightSidebarSlotTag,
+    MAIN_CONTENT, ManyToManyItem, ObjectList, PaginationPage, RenderSlot, RightSidebarSlotTag,
     ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability,
     SlotCtx, SlotOf, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
     TableListContent, TablePagination, TableRow, breadcrumbs, button_modal, button_modal_form,
@@ -31,9 +31,9 @@ use super::forms::{
     SkillFormField, SkillImportForm,
 };
 use super::keys::{
-    CronJobCreateModalKey, CronJobDeleteModalKey, CronJobEditModalKey, CronJobsTableKey,
-    HistoryTableKey, SkillCreateModalKey, SkillDeleteModalKey, SkillEditModalKey,
-    SkillImportModalKey, SkillsTableKey,
+    CRON_JOB_CREATE_MODAL, CRON_JOB_DELETE_MODAL, CRON_JOB_EDIT_MODAL, CRON_JOBS_TABLE,
+    HISTORY_TABLE, SKILL_CREATE_MODAL, SKILL_DELETE_MODAL, SKILL_EDIT_MODAL, SKILL_IMPORT_MODAL,
+    SKILLS_TABLE,
 };
 use super::preferences::mail_encryption_choices;
 use super::routes::{
@@ -330,7 +330,8 @@ fn cron_job_detail_menu(job_id: i64, label: &str, active: &str) -> Markup {
     })
 }
 
-fn data_table_filtered<K: SwapKey>(
+fn data_table_filtered(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -339,12 +340,13 @@ fn data_table_filtered<K: SwapKey>(
     refresh_url: &str,
     errors: &[FilterRowError],
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -365,7 +367,7 @@ fn data_table_filtered<K: SwapKey>(
         actions
     };
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         subtitle: "",
         classes: "w-full",
@@ -390,12 +392,14 @@ fn data_table_filtered<K: SwapKey>(
     })
 }
 
-fn render_pagination<K: SwapKey>(
+fn render_pagination(
+    key: SwapKey,
     path_and_query: &str,
     number: u32,
     num_pages: u32,
     push_url: bool,
 ) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, push_url);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -409,7 +413,7 @@ fn render_pagination<K: SwapKey>(
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -781,7 +785,7 @@ impl LlmAssistantPreferencesPage {
             &CsrfToken::current(),
             FormOpts {
                 // Same-structure prefs save: swap `#main-content` (not `#app-layout`).
-                attrs: form_hx_post_url::<MainContentKey>(&PrefsPostRouteTag.path()),
+                attrs: form_hx_post_url(MAIN_CONTENT, &PrefsPostRouteTag.path()),
                 title: "Assistant Preferences",
                 subtitle: "Configure Gemini, Google Custom Search, and email credentials used for chat",
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
@@ -941,19 +945,20 @@ impl HistoryListPage {
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: page_size_only_filter_form::<HistoryTableKey, HistoryListRouteTag>(
+                panel: page_size_only_filter_form::<HistoryListRouteTag>(
                     self.page_size,
                 ),
                 ..Default::default()
             }))
         };
-        let pagination = render_pagination::<HistoryTableKey>(
+        let pagination = render_pagination(
+            HISTORY_TABLE,
             &self.path_and_query,
             self.sessions.number,
             self.sessions.num_pages,
             true,
         );
-        data_table_list::<HistoryTableKey>("", actions, &headers, &rows, pagination)
+        data_table_list(HISTORY_TABLE, "", actions, &headers, &rows, pagination)
     }
 }
 
@@ -1048,7 +1053,7 @@ impl SkillListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<SkillsTableKey, SkillsListRouteTag>(
+                    attrs: form_hx_get_route(
                         SkillsListRouteTag,
                     ),
                     apply_label: "Apply Filters",
@@ -1061,7 +1066,7 @@ impl SkillListPage {
                     name: "p_llm_assistant.SkillCreateForm",
                     href: &SkillsCreateGetRouteTag.url(),
                     form_post_url: &SkillsCreateGetRouteTag.path(),
-                    modal_uid: SkillCreateModalKey::ID,
+                    modal_uid: SKILL_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
@@ -1075,13 +1080,15 @@ impl SkillListPage {
                 }))
             }
         };
-        let pagination = render_pagination::<SkillsTableKey>(
+        let pagination = render_pagination(
+            SKILLS_TABLE,
             &self.path_and_query,
             self.skills.number,
             self.skills.num_pages,
             true,
         );
-        data_table_filtered::<SkillsTableKey>(
+        data_table_filtered(
+            SKILLS_TABLE,
             "",
             actions,
             &headers,
@@ -1146,7 +1153,7 @@ impl SkillDetailPage {
                     name: "p_llm_assistant.SkillEditForm",
                     href: &edit_get,
                     form_post_url: &edit_post,
-                    modal_uid: SkillEditModalKey::ID,
+                    modal_uid: SKILL_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -1232,12 +1239,13 @@ impl RenderTemplate for SkillEditModalPage {
             .value(SkillFormField::Content, self.content.as_str())
             .hint(SkillFormField::Content, self.content_hint.as_str())
             .m2m(SkillFormField::Files, &self.files);
-        modal_keyed::<SkillEditModalKey>(
+        modal_keyed(
+            SKILL_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit skill" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<SkillEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(SKILL_EDIT_MODAL, &modal_edit_post_url(
                         SkillsUpdatePostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -1251,7 +1259,7 @@ impl RenderTemplate for SkillEditModalPage {
                             name: "p_llm_assistant.SkillDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: SkillDeleteModalKey::ID,
+                            modal_uid: SKILL_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -1288,7 +1296,8 @@ impl RenderTemplate for SkillCreateModalPage {
             .value(SkillFormField::Content, self.content.as_str())
             .hint(SkillFormField::Content, self.content_hint.as_str())
             .m2m(SkillFormField::Files, &self.files);
-        modal_keyed::<SkillCreateModalKey>(
+        modal_keyed(
+            SKILL_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
@@ -1296,7 +1305,8 @@ impl RenderTemplate for SkillCreateModalPage {
                     title: "Create Skill",
                     subtitle: "Define a new assistant skill",
                     classes: "@container",
-                    attrs: lariv_core::components::swap::form_hx_post_for_url::<SkillCreateModalKey>(
+                    attrs: lariv_core::components::swap::form_hx_post_for_url(
+                        SKILL_CREATE_MODAL,
                         &modal_create_post_url(
                             SkillsCreatePostRouteTag,
                             form_name,
@@ -1336,12 +1346,12 @@ pub struct ConfirmDeletePage {
 impl RenderTemplate for ConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = if self.modal_uid.is_empty() {
-            format!("#{}", SkillDeleteModalKey::ID)
+            format!("#{}", SKILL_DELETE_MODAL.id())
         } else {
             format!("#{}", self.modal_uid)
         };
         let uid = if self.modal_uid.is_empty() {
-            SkillDeleteModalKey::ID
+            SKILL_DELETE_MODAL.id()
         } else {
             self.modal_uid.as_str()
         };
@@ -1368,7 +1378,7 @@ pub struct SkillImportPage;
 impl RenderTemplate for SkillImportPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         modal(lariv_core::components::Modal {
-            uid: SkillImportModalKey::ID,
+            uid: SKILL_IMPORT_MODAL.id(),
             children: form(
                 &CsrfToken::current(),
                 FormOpts {
@@ -1376,9 +1386,9 @@ impl RenderTemplate for SkillImportPage {
                     subtitle: "Upload a skill zip file to import it",
                     attrs: form_hx_post_selector(
                         &SkillsImportPostRouteTag.path(),
-                        AppLayoutKey::SELECTOR,
+                        &APP_LAYOUT.selector(),
                     )
-                    .set("hx-select", AppLayoutKey::SELECTOR)
+                    .set("hx-select", APP_LAYOUT.selector())
                     .set("hx-push-url", "true")
                     .set("hx-encoding", "multipart/form-data"),
                     enctype: Some("multipart/form-data"),
@@ -1488,7 +1498,7 @@ impl CronJobListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<CronJobsTableKey, CronJobsListRouteTag>(
+                    attrs: form_hx_get_route(
                         CronJobsListRouteTag,
                     ),
                     apply_label: "Apply Filters",
@@ -1500,19 +1510,21 @@ impl CronJobListPage {
                 name: "p_llm_assistant.CronJobCreateForm",
                 href: &CronJobsCreateGetRouteTag.url(),
                 form_post_url: &CronJobsCreateGetRouteTag.path(),
-                modal_uid: CronJobCreateModalKey::ID,
+                modal_uid: CRON_JOB_CREATE_MODAL.id(),
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
             }))
         };
-        let pagination = render_pagination::<CronJobsTableKey>(
+        let pagination = render_pagination(
+            CRON_JOBS_TABLE,
             &self.path_and_query,
             self.jobs.number,
             self.jobs.num_pages,
             true,
         );
-        data_table_filtered::<CronJobsTableKey>(
+        data_table_filtered(
+            CRON_JOBS_TABLE,
             "",
             actions,
             &headers,
@@ -1587,7 +1599,7 @@ impl CronJobDetailPage {
                 name: "p_llm_assistant.CronJobEditForm",
                 href: &edit_get,
                 form_post_url: &edit_post,
-                modal_uid: CronJobEditModalKey::ID,
+                modal_uid: CRON_JOB_EDIT_MODAL.id(),
                 label: "Edit",
                 classes: "btn-outline",
                 ..Default::default()
@@ -1714,12 +1726,13 @@ impl RenderTemplate for CronJobEditModalPage {
         let ctx = FormCtx::form::<CronJobForm>(CsrfToken::current())
             .value(CronJobFormField::Duration, self.duration.as_str())
             .value(CronJobFormField::Prompt, self.prompt.as_str());
-        modal_keyed::<CronJobEditModalKey>(
+        modal_keyed(
+            CRON_JOB_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit cron job" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<CronJobEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(CRON_JOB_EDIT_MODAL, &modal_edit_post_url(
                         CronJobsUpdatePostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -1733,7 +1746,7 @@ impl RenderTemplate for CronJobEditModalPage {
                             name: "p_llm_assistant.CronJobDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: CronJobDeleteModalKey::ID,
+                            modal_uid: CRON_JOB_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -1764,7 +1777,8 @@ impl RenderTemplate for CronJobCreateModalPage {
         let ctx = FormCtx::form::<CronJobForm>(CsrfToken::current())
             .value(CronJobFormField::Duration, self.duration.as_str())
             .value(CronJobFormField::Prompt, self.prompt.as_str());
-        modal_keyed::<CronJobCreateModalKey>(
+        modal_keyed(
+            CRON_JOB_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
@@ -1772,13 +1786,14 @@ impl RenderTemplate for CronJobCreateModalPage {
                     title: "Create Cron Job",
                     subtitle: "Run a prompt on an interval; each firing opens a new conversation",
                     classes: "@container",
-                    attrs: lariv_core::components::swap::form_hx_post_for_url::<
-                        CronJobCreateModalKey,
-                    >(&modal_create_post_url(
-                        CronJobsCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    )),
+                    attrs: lariv_core::components::swap::form_hx_post_for_url(
+                        CRON_JOB_CREATE_MODAL,
+                        &modal_create_post_url(
+                            CronJobsCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: CronJobForm::render_inputs(&ctx),
                     actions: html! {
@@ -1812,12 +1827,12 @@ pub struct CronJobConfirmDeletePage {
 impl RenderTemplate for CronJobConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = if self.modal_uid.is_empty() {
-            format!("#{}", CronJobDeleteModalKey::ID)
+            format!("#{}", CRON_JOB_DELETE_MODAL.id())
         } else {
             format!("#{}", self.modal_uid)
         };
         let uid = if self.modal_uid.is_empty() {
-            CronJobDeleteModalKey::ID
+            CRON_JOB_DELETE_MODAL.id()
         } else {
             self.modal_uid.as_str()
         };

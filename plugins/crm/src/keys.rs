@@ -1,21 +1,24 @@
-lariv_core::swap_key!(LeadHubTableKey, "crm-lead-hub-table");
-lariv_core::swap_key!(LeadCreateModalKey, "crm-lead-create-modal");
-lariv_core::swap_key!(LeadEditModalKey, "crm-lead-edit-modal");
-lariv_core::swap_key!(LeadDeleteModalKey, "crm-lead-delete-modal");
-lariv_core::swap_key!(LeadConvertModalKey, "crm-lead-convert-modal");
-lariv_core::swap_key!(LeadFailModalKey, "crm-lead-fail-modal");
-lariv_core::swap_key!(LeadUpdatesKey, "crm-lead-updates");
+use lariv_core::components::SwapKey;
+
+pub const LEAD_HUB_TABLE: SwapKey = SwapKey("crm-lead-hub-table");
+pub const LEAD_CREATE_MODAL: SwapKey = SwapKey("crm-lead-create-modal");
+pub const LEAD_EDIT_MODAL: SwapKey = SwapKey("crm-lead-edit-modal");
+pub const LEAD_DELETE_MODAL: SwapKey = SwapKey("crm-lead-delete-modal");
+pub const LEAD_CONVERT_MODAL: SwapKey = SwapKey("crm-lead-convert-modal");
+pub const LEAD_FAIL_MODAL: SwapKey = SwapKey("crm-lead-fail-modal");
+pub const LEAD_UPDATES: SwapKey = SwapKey("crm-lead-updates");
+pub const LEAD_UPDATE_EDIT_MODAL: SwapKey = SwapKey("crm-lead-update-edit-modal");
+pub const LEAD_UPDATE_DELETE_MODAL: SwapKey = SwapKey("crm-lead-update-delete-modal");
+pub const LEAD_TAG_TABLE: SwapKey = SwapKey("crm-lead-tag-table");
+pub const LEAD_TAG_LEADS_TABLE: SwapKey = SwapKey("crm-lead-tag-leads-table");
+pub const LEAD_TAG_SELECT_TABLE: SwapKey = SwapKey("crm-lead-tag-select-table");
+pub const LEAD_TAG_SELECT_MODAL: SwapKey = SwapKey("crm-lead-tag-select-modal");
+pub const LEAD_TAG_CREATE_MODAL: SwapKey = SwapKey("crm-lead-tag-create-modal");
+pub const LEAD_TAG_EDIT_MODAL: SwapKey = SwapKey("crm-lead-tag-edit-modal");
+pub const LEAD_TAG_DELETE_MODAL: SwapKey = SwapKey("crm-lead-tag-delete-modal");
+pub const CUSTOMER_SELECT_TABLE: SwapKey = SwapKey("crm-customer-select-table");
+pub const CUSTOMER_SELECT_MODAL: SwapKey = SwapKey("crm-customer-select-modal");
+pub const CUSTOMER_CREATE_MODAL: SwapKey = SwapKey("crm-customer-create-modal");
+
 /// HTMX `HX-Trigger` / Alpine event after a lead update is saved from the detail form.
 pub const LEAD_UPDATE_SAVED_EVENT: &str = "crm-lead-update-saved";
-lariv_core::swap_key!(LeadUpdateEditModalKey, "crm-lead-update-edit-modal");
-lariv_core::swap_key!(LeadUpdateDeleteModalKey, "crm-lead-update-delete-modal");
-lariv_core::swap_key!(LeadTagTableKey, "crm-lead-tag-table");
-lariv_core::swap_key!(LeadTagLeadsTableKey, "crm-lead-tag-leads-table");
-lariv_core::swap_key!(LeadTagSelectTableKey, "crm-lead-tag-select-table");
-lariv_core::swap_key!(LeadTagSelectModalKey, "crm-lead-tag-select-modal");
-lariv_core::swap_key!(LeadTagCreateModalKey, "crm-lead-tag-create-modal");
-lariv_core::swap_key!(LeadTagEditModalKey, "crm-lead-tag-edit-modal");
-lariv_core::swap_key!(LeadTagDeleteModalKey, "crm-lead-tag-delete-modal");
-lariv_core::swap_key!(CustomerSelectTableKey, "crm-customer-select-table");
-lariv_core::swap_key!(CustomerSelectModalKey, "crm-customer-select-modal");
-lariv_core::swap_key!(CustomerCreateModalKey, "crm-customer-create-modal");

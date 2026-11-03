@@ -25,7 +25,7 @@ use crate::{
     },
     forms::GiveLeaveForm,
     handlers::ModalNameQuery,
-    keys::{GiveLeaveModalKey, LeaveJournalTableKey},
+    keys::{GIVE_LEAVE_MODAL, LEAVE_JOURNAL_TABLE},
     logic::leave::{
         format_journal_amount, give_leave, leave_journal_balances, parse_give_leave_amount,
     },
@@ -144,7 +144,7 @@ pub async fn leave_journal(
         sort,
         path_and_query: journal_path_and_query(&uri),
     };
-    if htmx.targets::<LeaveJournalTableKey>() {
+    if htmx.targets(LEAVE_JOURNAL_TABLE) {
         return page.render_table().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -180,8 +180,9 @@ pub async fn give_leave_post(
         Ok((leave_type, amount)) => {
             match give_leave(&state.db, employee.user_id, leave_type, amount).await {
                 Ok(()) => {
-                    return respond_create_modal_done::<GiveLeaveModalKey>(
+                    return respond_create_modal_done(
                         &htmx,
+                        GIVE_LEAVE_MODAL,
                         &q.refresh_table(),
                         &EmployeeLeaveJournalRouteTag::new(id).url(),
                     );

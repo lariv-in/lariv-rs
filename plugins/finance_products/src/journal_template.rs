@@ -7,7 +7,6 @@
 //! `decimal(...)` wrapper and unary minus on a variable is expanded by the
 //! formula evaluator.
 
-
 use chrono::Utc;
 use lariv_formula::{
     Measure, VariableDef, VariableSchema, VariableType, VariableValues, eval_formula, parse_values,
@@ -444,9 +443,7 @@ pub async fn save_preference_template(
     Ok(())
 }
 
-pub async fn delete_preference_template<C: ConnectionTrait>(
-    db: &C,
-) -> Result<(), String> {
+pub async fn delete_preference_template<C: ConnectionTrait>(db: &C) -> Result<(), String> {
     PreferenceItemEntity::delete_many()
         .filter(product_preference_journal_item::Column::ProductPreferencesId.eq(PREFERENCES_ID))
         .exec(db)

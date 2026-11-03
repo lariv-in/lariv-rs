@@ -2,10 +2,10 @@
 
 use maud::{Markup, html};
 
-use lariv_core::components::{ButtonModalForm, SwapKey, button_modal_form};
+use lariv_core::components::{ButtonModalForm, button_modal_form};
 use lariv_core::html_form::{CsrfToken, csrf_hidden_field};
 
-use super::keys::SignatureCreateModalKey;
+use super::keys::SIGNATURE_CREATE_MODAL;
 use super::routes::{SignDocumentPostRouteTag, SignatureCreateGetRouteTag};
 use super::scope::find_own_signature;
 use crate::pdf::is_pdf_name;
@@ -46,7 +46,7 @@ fn create_button(document_id: i64) -> Markup {
         name: "p_signing.SignatureCreateForm",
         href: &href,
         form_post_url: "",
-        modal_uid: SignatureCreateModalKey::ID,
+        modal_uid: SIGNATURE_CREATE_MODAL.id(),
         label: "Sign",
         classes: "btn-outline",
         ..Default::default()

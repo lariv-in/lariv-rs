@@ -1,3 +1,4 @@
+use crate::create_modals::{FORM_CREATE, FORM_RESPONSE_CREATE};
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
@@ -23,7 +24,7 @@ use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
 };
 use lariv_core::web::{
-    CreateModal, modal_create_href_for_table, modal_create_post_query, modal_create_post_url,
+    modal_create_href_for_table, modal_create_post_query, modal_create_post_url,
     modal_edit_post_url,
 };
 
@@ -32,10 +33,10 @@ use super::forms::{
     SurveyForm, SurveyFormField,
 };
 use super::keys::{
-    FormCreateModalKey, FormDeleteModalKey, FormDetailResponsesTableKey, FormEditModalKey,
-    FormResponseCreateModalKey, FormResponseDeleteModalKey, FormResponseEditModalKey,
-    FormResponseSelectModalKey, FormResponseSelectTableKey, FormSelectModalKey, FormSelectTableKey,
-    FormTableKey,
+    FORM_CREATE_MODAL, FORM_DELETE_MODAL, FORM_DETAIL_RESPONSES_TABLE, FORM_EDIT_MODAL,
+    FORM_RESPONSE_CREATE_MODAL, FORM_RESPONSE_DELETE_MODAL, FORM_RESPONSE_EDIT_MODAL,
+    FORM_RESPONSE_SELECT_MODAL, FORM_RESPONSE_SELECT_TABLE, FORM_SELECT_MODAL, FORM_SELECT_TABLE,
+    FORM_TABLE,
 };
 use super::logic::questions::question_type_label;
 use super::routes::{
@@ -178,7 +179,8 @@ fn form_response_create_url(form_id: i64) -> String {
         .build()
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -192,15 +194,17 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
-fn render_picker_pagination<K: SwapKey>(
+fn render_picker_pagination(
+    key: SwapKey,
     path_and_query: &str,
     number: u32,
     num_pages: u32,
 ) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, false);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -214,7 +218,7 @@ fn render_picker_pagination<K: SwapKey>(
         .collect();
     table_pagination_picker(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -227,7 +231,8 @@ pub struct FormRow {
     pub updated_at: String,
 }
 
-fn data_table_filtered<K: SwapKey>(
+fn data_table_filtered(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -236,12 +241,13 @@ fn data_table_filtered<K: SwapKey>(
     refresh_url: &str,
     errors: &[FilterRowError],
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -262,7 +268,7 @@ fn data_table_filtered<K: SwapKey>(
         actions
     };
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         subtitle: "",
         classes: "w-full",
@@ -365,23 +371,25 @@ impl FormListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<FormTableKey, FormListRouteTag>(FormListRouteTag),
+                    attrs: form_hx_get_route(FormListRouteTag),
                     apply_label: "Apply",
                     extra: html! {},
                 }),
                 ..Default::default()
             }))
-            (table_create_button::<FormTableKey, FormCreateModalKey>(
+            (table_create_button(FORM_TABLE, FORM_CREATE,
                 Some("plus"),
                 "btn-square btn-outline btn-sm",
             ))
         };
-        data_table_filtered::<FormTableKey>(
+        data_table_filtered(
+            FORM_TABLE,
             "Forms",
             actions,
             &headers,
             &rows,
-            render_pagination::<FormTableKey>(
+            render_pagination(
+                FORM_TABLE,
                 &self.path_and_query,
                 self.forms.number,
                 self.forms.num_pages,
@@ -485,7 +493,7 @@ impl FormDetailPage {
                 name: "p_forms.FormEditForm",
                 href: &edit_get,
                 form_post_url: &edit_post,
-                modal_uid: FormEditModalKey::ID,
+                modal_uid: FORM_EDIT_MODAL.id(),
                 label: "Edit",
                 classes: "btn-outline",
                 ..Default::default()
@@ -542,9 +550,10 @@ impl FormDetailPage {
                 children: Vec::new(),
             })
             .collect();
-        let create_href = modal_create_href_for_table::<FormDetailResponsesTableKey>(
+        let create_href = modal_create_href_for_table(
             &form_response_create_url(self.id),
-            FormResponseCreateModalKey::FORM_NAME,
+            FORM_RESPONSE_CREATE.form_name,
+            FORM_DETAIL_RESPONSES_TABLE,
         );
         let actions = html! {
             (table_button_filter(TableButtonFilter {
@@ -553,7 +562,7 @@ impl FormDetailPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<FormDetailResponsesTableKey, FormDetailRouteTag>(
+                    attrs: form_hx_get_route(
                         FormDetailRouteTag::new(self.id),
                     ),
                     apply_label: "Apply",
@@ -565,18 +574,20 @@ impl FormDetailPage {
                 name: "",
                 href: &create_href,
                 form_post_url: "",
-                modal_uid: FormResponseCreateModalKey::ID,
+                modal_uid: FORM_RESPONSE_CREATE_MODAL.id(),
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
             }))
         };
-        data_table_filtered::<FormDetailResponsesTableKey>(
+        data_table_filtered(
+            FORM_DETAIL_RESPONSES_TABLE,
             "Responses",
             actions,
             &headers,
             &rows,
-            render_pagination::<FormDetailResponsesTableKey>(
+            render_pagination(
+                FORM_DETAIL_RESPONSES_TABLE,
                 &self.path_and_query,
                 self.responses.number,
                 self.responses.num_pages,
@@ -701,12 +712,13 @@ impl RenderTemplate for FormEditModalPage {
             &self.author_display,
             &access_choices,
         );
-        modal_keyed::<FormEditModalKey>(
+        modal_keyed(
+            FORM_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit form" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<FormEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(FORM_EDIT_MODAL, &modal_edit_post_url(
                         FormEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -720,7 +732,7 @@ impl RenderTemplate for FormEditModalPage {
                             name: "p_forms.FormDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: FormDeleteModalKey::ID,
+                            modal_uid: FORM_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -770,18 +782,22 @@ impl RenderTemplate for FormCreateModalPage {
             &self.author_display,
             &access_choices,
         );
-        modal_keyed::<FormCreateModalKey>(
+        modal_keyed(
+            FORM_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
                 FormOpts {
                     title: "Create form",
-                    attrs: form_hx_post_url::<FormCreateModalKey>(&modal_create_post_query(
-                        FormCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                        &self.target_input,
-                    )),
+                    attrs: form_hx_post_url(
+                        FORM_CREATE_MODAL,
+                        &modal_create_post_query(
+                            FormCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                            &self.target_input,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: SurveyForm::render_inputs(&ctx),
                     actions: html! {
@@ -937,7 +953,7 @@ pub struct FormSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<FormSelectTableKey, FormSelectModalKey> for FormSelectPage {
+impl RenderPickerSelect for FormSelectPage {
     fn render_table(&self) -> Markup {
         let rows: Vec<TableRow> = self
             .forms
@@ -953,10 +969,11 @@ impl RenderPickerSelect<FormSelectTableKey, FormSelectModalKey> for FormSelectPa
                 children: Vec::new(),
             })
             .collect();
-        data_table_list_refresh::<FormSelectTableKey>(
+        data_table_list_refresh(
+            FORM_SELECT_TABLE,
             "Select form",
             html! {
-                (picker_create_button::<FormCreateModalKey>(
+                (picker_create_button(FORM_CREATE,
                     &self.target_input,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
@@ -969,7 +986,8 @@ impl RenderPickerSelect<FormSelectTableKey, FormSelectModalKey> for FormSelectPa
                 push_url: false,
             }],
             &rows,
-            render_picker_pagination::<FormSelectTableKey>(
+            render_picker_pagination(
+                FORM_SELECT_TABLE,
                 &self.path_and_query,
                 self.forms.number,
                 self.forms.num_pages,
@@ -981,7 +999,7 @@ impl RenderPickerSelect<FormSelectTableKey, FormSelectModalKey> for FormSelectPa
 
 impl RenderTemplate for FormSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<FormSelectModalKey>("", self.render_table())
+        modal_keyed(FORM_SELECT_MODAL, "", self.render_table())
     }
 }
 
@@ -999,9 +1017,7 @@ pub struct FormResponseSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<FormResponseSelectTableKey, FormResponseSelectModalKey>
-    for FormResponseSelectPage
-{
+impl RenderPickerSelect for FormResponseSelectPage {
     fn render_table(&self) -> Markup {
         let rows: Vec<TableRow> = self
             .responses
@@ -1017,7 +1033,8 @@ impl RenderPickerSelect<FormResponseSelectTableKey, FormResponseSelectModalKey>
                 children: Vec::new(),
             })
             .collect();
-        data_table_list_refresh::<FormResponseSelectTableKey>(
+        data_table_list_refresh(
+            FORM_RESPONSE_SELECT_TABLE,
             "Select form response",
             html! {},
             &[TableColumnHeader {
@@ -1027,7 +1044,8 @@ impl RenderPickerSelect<FormResponseSelectTableKey, FormResponseSelectModalKey>
                 push_url: false,
             }],
             &rows,
-            render_picker_pagination::<FormResponseSelectTableKey>(
+            render_picker_pagination(
+                FORM_RESPONSE_SELECT_TABLE,
                 &self.path_and_query,
                 self.responses.number,
                 self.responses.num_pages,
@@ -1039,7 +1057,7 @@ impl RenderPickerSelect<FormResponseSelectTableKey, FormResponseSelectModalKey>
 
 impl RenderTemplate for FormResponseSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<FormResponseSelectModalKey>("", self.render_table())
+        modal_keyed(FORM_RESPONSE_SELECT_MODAL, "", self.render_table())
     }
 }
 
@@ -1099,7 +1117,7 @@ impl FormResponseDetailPage {
                 name: "p_forms.FormResponseEditForm",
                 href: &edit_get,
                 form_post_url: &edit_post,
-                modal_uid: FormResponseEditModalKey::ID,
+                modal_uid: FORM_RESPONSE_EDIT_MODAL.id(),
                 label: "Edit",
                 classes: "btn-outline",
                 ..Default::default()
@@ -1185,12 +1203,13 @@ impl RenderTemplate for FormResponseEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = FormResponseDeleteGetRouteTag::new(self.id).url();
         let ctx = response_form_ctx(self);
-        modal_keyed::<FormResponseEditModalKey>(
+        modal_keyed(
+            FORM_RESPONSE_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit response" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<FormResponseEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(FORM_RESPONSE_EDIT_MODAL, &modal_edit_post_url(
                         FormResponseEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -1204,7 +1223,7 @@ impl RenderTemplate for FormResponseEditModalPage {
                             name: "p_forms.FormResponseDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: FormResponseDeleteModalKey::ID,
+                            modal_uid: FORM_RESPONSE_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -1239,17 +1258,21 @@ impl RenderTemplate for FormResponseCreateModalPage {
             self.form_name.as_str()
         };
         let ctx = response_form_ctx(self);
-        modal_keyed::<FormResponseCreateModalKey>(
+        modal_keyed(
+            FORM_RESPONSE_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
                 FormOpts {
                     title: "Create response",
-                    attrs: form_hx_post_url::<FormResponseCreateModalKey>(&modal_create_post_url(
-                        FormResponseCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    )),
+                    attrs: form_hx_post_url(
+                        FORM_RESPONSE_CREATE_MODAL,
+                        &modal_create_post_url(
+                            FormResponseCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: FormResponseForm::render_inputs(&ctx),
                     actions: html! {
@@ -1404,7 +1427,7 @@ pub struct ConfirmDeletePage {
 impl RenderTemplate for ConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = format!("#{}", self.modal_uid);
-        let post_url = if self.modal_uid == FormResponseDeleteModalKey::ID {
+        let post_url = if self.modal_uid == FORM_RESPONSE_DELETE_MODAL.id() {
             FormResponseDeletePostRouteTag::new(self.id).url()
         } else {
             FormDeletePostRouteTag::new(self.id).url()

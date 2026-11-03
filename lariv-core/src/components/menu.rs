@@ -5,7 +5,7 @@ use maud::{Markup, PreEscaped, html};
 use crate::components::attrs::escape_attr;
 use crate::components::button::{ButtonDeletePost, button_delete_post_route};
 use crate::components::htmx::{HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL};
-use crate::components::swap::{AppLayoutKey, MainContentKey, SwapKey};
+use crate::components::swap::{APP_LAYOUT, MAIN_CONTENT};
 use crate::components::text::icon;
 use crate::http::{BoostPost, RouteUrl};
 
@@ -28,12 +28,14 @@ impl Default for SidebarMenuItem<'_> {
 }
 
 pub fn sidebar_menu_item(opts: SidebarMenuItem<'_>) -> Markup {
-    sidebar_menu_item_target(opts, MainContentKey::SELECTOR, MainContentKey::SELECTOR)
+    let sel = MAIN_CONTENT.selector();
+    sidebar_menu_item_target(opts, &sel, &sel)
 }
 
 /// Sidebar item that replaces `#app-layout` (detail sidebar, delete page, etc.).
 pub fn sidebar_menu_item_pane(opts: SidebarMenuItem<'_>) -> Markup {
-    sidebar_menu_item_target(opts, AppLayoutKey::SELECTOR, AppLayoutKey::SELECTOR)
+    let sel = APP_LAYOUT.selector();
+    sidebar_menu_item_target(opts, &sel, &sel)
 }
 
 fn sidebar_menu_item_target(opts: SidebarMenuItem<'_>, target: &str, select: &str) -> Markup {

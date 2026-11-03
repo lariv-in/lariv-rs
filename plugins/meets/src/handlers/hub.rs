@@ -19,7 +19,7 @@ use crate::{
     entities::conference_room::{self, Entity as ConferenceRoomEntity},
     forms::CreateRoomForm,
     handlers::ModalNameQuery,
-    keys::{MeetsCreateModalKey, MeetsHubTableKey},
+    keys::{MEETS_CREATE_MODAL, MEETS_HUB_TABLE},
     logic::rooms::{CreateRoomInput, create_room, room_is_live},
     routes::RoomRouteTag,
     state::MeetsState,
@@ -103,7 +103,7 @@ pub async fn hub(
         page_size,
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<MeetsHubTableKey>() {
+    if htmx.targets(MEETS_HUB_TABLE) {
         return page.render_table();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
@@ -150,8 +150,9 @@ pub async fn create_post(
     )
     .await
     {
-        Ok(room) => respond_create_modal_done::<MeetsCreateModalKey>(
+        Ok(room) => respond_create_modal_done(
             &htmx,
+            MEETS_CREATE_MODAL,
             &q.refresh_table(),
             &RoomRouteTag::new(room.code).url(),
         ),

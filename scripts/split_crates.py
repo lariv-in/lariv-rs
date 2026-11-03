@@ -215,9 +215,6 @@ MACROS = {
     "define_register_migrations",
     "define_register_export",
     "define_plugin_routes",
-    "swap_key",
-    "impl_picker_modal",
-    "impl_create_modal",
     "main",
 }
 
@@ -433,8 +430,7 @@ def write_facade_lib() -> None:
         "pub use lariv_core::typst;",
         "pub use lariv_core::{",
         "    define_passthrough_cap, define_plugin_install, define_register_apps, define_register_export,",
-        "    define_register_items, define_register_migrations, define_replace_templates, impl_create_modal,",
-        "    impl_picker_modal, swap_key,",
+        "    define_register_items, define_register_migrations, define_replace_templates,",
         "};",
         "pub use lariv_rs_macros::{define_plugin_routes, main};",
         "pub use paste;",

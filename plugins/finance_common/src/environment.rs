@@ -7,7 +7,7 @@ use maud::{Markup, html};
 use serde::Deserialize;
 
 use crate::fiscal_year::FiscalYear;
-use lariv_core::components::{MainContentKey, SwapKey};
+use lariv_core::components::MAIN_CONTENT;
 
 /// Parsed Lariv `environment` JSON cookie (forward-compatible via [`Self::values`]).
 #[derive(Debug, Default, Deserialize)]
@@ -113,7 +113,7 @@ pub fn fiscal_year_environment_selector(
         .unwrap_or_default();
     let reload_js = format!(
         "htmx.ajax('GET',window.location.pathname+window.location.search,{{target:'{target}',select:'{target}',swap:'outerHTML',pushUrl:false}})",
-        target = MainContentKey::SELECTOR,
+        target = MAIN_CONTENT.selector(),
     );
     let on_change = format!(
         r#"(function(){{

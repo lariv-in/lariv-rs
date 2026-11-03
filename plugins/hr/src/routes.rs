@@ -1,6 +1,6 @@
 use super::{
     handlers,
-    keys::{ApplicantHubTableKey, EmployeeDeleteModalKey},
+    keys::{APPLICANT_HUB_TABLE, EMPLOYEE_DELETE_MODAL},
 };
 
 pub struct HrPeopleView;
@@ -16,7 +16,7 @@ lariv_core::define_plugin_routes! {
     plugin: HrTag;
     prefix: "/dashboard";
     routes: [
-        get PeopleHubRouteTag, "/hr/people", handlers::applicants::hub, fragment(ApplicantHubTableKey), authorize(HrPeopleView, []);
+        get PeopleHubRouteTag, "/hr/people", handlers::applicants::hub, fragment(APPLICANT_HUB_TABLE), authorize(HrPeopleView, []);
 
         get EmployeeCreateGetRouteTag, "/hr/employees/create", handlers::employees::create_get, modal, authorize(EmployeeMutate, []);
         post EmployeeCreatePostRouteTag, "/hr/employees/create", handlers::employees::create_post, authorize(EmployeeMutate, []);
@@ -24,7 +24,7 @@ lariv_core::define_plugin_routes! {
         get EmployeeEditGetRouteTag, "/hr/employees/{id}/edit", handlers::employees::edit_get, modal, authorize(EmployeeMutate, []);
         post EmployeeEditPostRouteTag, "/hr/employees/{id}/edit", handlers::employees::edit_post, authorize(EmployeeMutate, []);
         get EmployeeDeleteGetRouteTag, "/hr/employees/{id}/delete", handlers::employees::delete_get, modal, authorize(EmployeeMutate, []);
-        post EmployeeDeletePostRouteTag, "/hr/employees/{id}/delete", bare handlers::employees::delete_post, fragment(EmployeeDeleteModalKey), authorize(EmployeeMutate, []);
+        post EmployeeDeletePostRouteTag, "/hr/employees/{id}/delete", bare handlers::employees::delete_post, fragment(EMPLOYEE_DELETE_MODAL), authorize(EmployeeMutate, []);
         get TerminateEmployeeGetRouteTag, "/hr/employees/{id}/terminate", handlers::employees::terminate_get, modal, authorize(EmployeeMutate, []);
         post TerminateEmployeePostRouteTag, "/hr/employees/{id}/terminate", handlers::employees::terminate_post, authorize(EmployeeMutate, []);
         get EmployeeIdCardModalRouteTag, "/hr/employees/{id}/id-card", bare handlers::id_card::modal, modal, authorize(HrPeopleView, []);

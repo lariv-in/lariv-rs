@@ -98,7 +98,7 @@ pub fn html_form(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///         get UsersLoginGetRouteTag, "/users/login", handlers::auth::login_get;
 ///         post UsersLoginPostRouteTag, "/users/login", handlers::auth::login_post;
 ///         get UsersLogoutGetRouteTag, "/users/logout", bare handlers::auth::logout, redirect;
-///         get UsersListRouteTag, "/users", handlers::users::list, fragment(UserTableKey);
+///         get UsersListRouteTag, "/users", handlers::users::list, fragment(USER_TABLE);
 ///     ]
 /// }
 /// ```

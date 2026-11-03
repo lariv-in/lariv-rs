@@ -18,7 +18,7 @@ use lariv_core::list_filters::{
     text_column,
 };
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
@@ -34,8 +34,8 @@ use crate::{
     forms::{TaxForm, tax_type_label},
     handlers::ModalNameQuery,
     keys::{
-        TaxCreateModalKey, TaxDeleteModalKey, TaxEditModalKey, TaxMultiSelectModalKey,
-        TaxMultiSelectTableKey, TaxTableKey,
+        TAX_CREATE_MODAL, TAX_DELETE_MODAL, TAX_EDIT_MODAL, TAX_MULTI_SELECT_MODAL,
+        TAX_MULTI_SELECT_TABLE, TAX_TABLE,
     },
     routes::{TaxDefaultRouteTag, TaxDetailRouteTag},
     scope::{find_tax_scoped, model_to_row},
@@ -220,7 +220,7 @@ pub async fn list(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<TaxTableKey>() {
+    if htmx.targets(TAX_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -352,8 +352,9 @@ pub async fn create_post(
         let _ = TaxEntity::delete_by_id(saved.id).exec(&state.db).await;
         return render_error(e);
     }
-    respond_create_modal_done_fk::<TaxCreateModalKey>(
+    respond_create_modal_done_fk(
         &htmx,
+        TAX_CREATE_MODAL,
         &q.refresh_table(),
         &TaxDetailRouteTag::new(saved.id).url(),
         saved.id,
@@ -469,7 +470,7 @@ pub async fn edit_post(
         return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
             .into_response();
     }
-    respond_edit_modal_done::<TaxEditModalKey>(&htmx, &TaxDetailRouteTag::new(id).url())
+    respond_edit_modal_done(&htmx, TAX_EDIT_MODAL, &TaxDetailRouteTag::new(id).url())
 }
 
 pub async fn delete_get(
@@ -479,7 +480,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: TaxDeleteModalKey::ID.to_string(),
+        modal_uid: TAX_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this tax?".into(),
         form_name: q
             .name
@@ -506,7 +507,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete tax");
             let page = ConfirmDeletePage {
-                modal_uid: TaxDeleteModalKey::ID.to_string(),
+                modal_uid: TAX_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this tax?".into(),
                 form_name: "p_finance_taxes.TaxDeleteForm".into(),
                 id,
@@ -542,5 +543,5 @@ pub async fn multi_select(
         target_input: q.target_input.clone().unwrap_or_else(|| "TaxIds".into()),
         page_size: q.filter.page_size.get(),
     };
-    respond_picker_select::<TaxMultiSelectTableKey, TaxMultiSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(&htmx, TAX_MULTI_SELECT_TABLE, TAX_MULTI_SELECT_MODAL, &page)
 }

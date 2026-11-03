@@ -34,10 +34,7 @@ use lariv_plugin_finance_accounts::templates::{
     layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
 };
 
-use crate::components::{
-    self, field_purchase_lines,
-    fiscal_year_environment_selector,
-};
+use crate::components::{self, field_purchase_lines, fiscal_year_environment_selector};
 use crate::logic::PaymentTermLineDisplayRow;
 use crate::logic::purchase_line_editor::PurchaseLineDisplayRow;
 
@@ -46,9 +43,9 @@ use super::forms::{
     DraftPurchaseBulkEditFormField, DraftPurchaseForm, DraftPurchaseFormField,
 };
 use super::keys::{
-    DraftPurchaseBulkDeleteModalKey, DraftPurchaseBulkEditModalKey, DraftPurchaseCreateModalKey,
-    DraftPurchaseDeleteModalKey, DraftPurchaseEditModalKey, DraftPurchaseSelectModalKey,
-    DraftPurchaseSelectTableKey, PurchaseHubTableKey,
+    DRAFT_PURCHASE_BULK_DELETE_MODAL, DRAFT_PURCHASE_BULK_EDIT_MODAL, DRAFT_PURCHASE_CREATE_MODAL,
+    DRAFT_PURCHASE_DELETE_MODAL, DRAFT_PURCHASE_EDIT_MODAL, DRAFT_PURCHASE_SELECT_MODAL,
+    DRAFT_PURCHASE_SELECT_TABLE, PURCHASE_HUB_TABLE,
 };
 use super::routes::{
     CancelledPurchaseBulkNewDraftRouteTag, CancelledPurchaseDetailRouteTag,
@@ -101,7 +98,8 @@ lariv_core::define_register_items! {
     hook: SlotsHook;
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -115,7 +113,7 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -215,9 +213,7 @@ fn purchase_hub_filter_form(page: &PurchaseHubPage) -> Markup {
         rows: &page.filters,
         page_size: page.page_size,
         sort: &page.sort,
-        attrs: form_hx_get_route::<PurchaseHubTableKey, PurchaseDefaultRouteTag>(
-            PurchaseDefaultRouteTag,
-        ),
+        attrs: form_hx_get_route(PurchaseDefaultRouteTag),
         apply_label: "Apply Filters",
         extra: html! {
             input type="hidden" name="tab" value=(page.tab);
@@ -226,7 +222,8 @@ fn purchase_hub_filter_form(page: &PurchaseHubPage) -> Markup {
     })
 }
 
-fn hub_data_table<K: SwapKey>(
+fn hub_data_table(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -235,12 +232,13 @@ fn hub_data_table<K: SwapKey>(
     refresh_url: &str,
     errors: &[FilterRowError],
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -261,7 +259,7 @@ fn hub_data_table<K: SwapKey>(
         actions
     };
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         subtitle: "",
         classes: "w-full",
@@ -768,7 +766,8 @@ impl PurchaseHubPage {
             })
             .collect();
 
-        let pagination = render_pagination::<PurchaseHubTableKey>(
+        let pagination = render_pagination(
+            PURCHASE_HUB_TABLE,
             &self.path_and_query,
             self.purchases.number,
             self.purchases.num_pages,
@@ -779,7 +778,7 @@ impl PurchaseHubPage {
                 name: "p_finance_purchases.DraftPurchaseCreateForm",
                 href: &DraftPurchaseCreateGetRouteTag.url(),
                 form_post_url: &DraftPurchaseCreatePostRouteTag.path(),
-                modal_uid: DraftPurchaseCreateModalKey::ID,
+                modal_uid: DRAFT_PURCHASE_CREATE_MODAL.id(),
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
@@ -847,7 +846,8 @@ impl PurchaseHubPage {
 
         // Bare table only — selection Alpine state lives outside so pagination swaps
         // do not reset checkboxes.
-        hub_data_table::<PurchaseHubTableKey>(
+        hub_data_table(
+            PURCHASE_HUB_TABLE,
             "Purchases",
             actions,
             &headers,
@@ -916,13 +916,14 @@ pub struct DraftPurchaseEditModalPage {
 impl RenderTemplate for DraftPurchaseEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = DraftPurchaseDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<DraftPurchaseEditModalKey>(
+        modal_keyed(
+            DRAFT_PURCHASE_EDIT_MODAL,
             "!max-w-6xl w-full",
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit draft purchase" }
                 (form(&CsrfToken::current(), FormOpts {
                     classes: "@container",
-                    attrs: form_hx_post_url::<DraftPurchaseEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(DRAFT_PURCHASE_EDIT_MODAL, &modal_edit_post_url(
                         DraftPurchaseEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -952,7 +953,7 @@ impl RenderTemplate for DraftPurchaseEditModalPage {
                             name: "p_finance_purchases.DraftPurchaseDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: DraftPurchaseDeleteModalKey::ID,
+                            modal_uid: DRAFT_PURCHASE_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -982,7 +983,8 @@ impl RenderTemplate for DraftPurchaseCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed::<DraftPurchaseCreateModalKey>(
+        modal_keyed(
+            DRAFT_PURCHASE_CREATE_MODAL,
             "!max-w-6xl w-full",
             form(
                 &CsrfToken::current(),
@@ -990,11 +992,14 @@ impl RenderTemplate for DraftPurchaseCreateModalPage {
                     title: "Create draft purchase",
                     subtitle: "Create a new draft purchase",
                     classes: "@container",
-                    attrs: form_hx_post_url::<DraftPurchaseCreateModalKey>(&modal_create_post_url(
-                        DraftPurchaseCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    )),
+                    attrs: form_hx_post_url(
+                        DRAFT_PURCHASE_CREATE_MODAL,
+                        &modal_create_post_url(
+                            DraftPurchaseCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: html! {
                         (DraftPurchaseForm::render_inputs(
@@ -1088,7 +1093,8 @@ impl RenderTemplate for DraftPurchaseBulkEditModalPage {
                 self.selected_count
             )
         };
-        modal_keyed::<DraftPurchaseBulkEditModalKey>(
+        modal_keyed(
+            DRAFT_PURCHASE_BULK_EDIT_MODAL,
             "!max-w-6xl w-full",
             form(
                 &CsrfToken::current(),
@@ -1096,7 +1102,8 @@ impl RenderTemplate for DraftPurchaseBulkEditModalPage {
                     title: "Bulk edit draft purchases",
                     subtitle: &subtitle,
                     classes: "@container",
-                    attrs: form_hx_post_url::<DraftPurchaseBulkEditModalKey>(
+                    attrs: form_hx_post_url(
+                        DRAFT_PURCHASE_BULK_EDIT_MODAL,
                         &modal_create_post_url(
                             DraftPurchaseBulkEditPostRouteTag,
                             form_name,
@@ -1204,7 +1211,7 @@ impl DraftPurchaseDetailPage {
                     name: "p_finance_purchases.DraftPurchaseEditForm",
                     href: &DraftPurchaseEditGetRouteTag::new(self.id).url(),
                     form_post_url: &DraftPurchaseEditPostRouteTag::new(self.id).path(),
-                    modal_uid: DraftPurchaseEditModalKey::ID,
+                    modal_uid: DRAFT_PURCHASE_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -1537,9 +1544,7 @@ pub struct DraftPurchaseSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<DraftPurchaseSelectTableKey, DraftPurchaseSelectModalKey>
-    for DraftPurchaseSelectPage
-{
+impl RenderPickerSelect for DraftPurchaseSelectPage {
     fn render_table(&self) -> Markup {
         let target = if self.target_input.is_empty() {
             "Purchases"
@@ -1606,12 +1611,14 @@ impl RenderPickerSelect<DraftPurchaseSelectTableKey, DraftPurchaseSelectModalKey
                 children: Vec::new(),
             })
             .collect();
-        let pagination = render_pagination::<DraftPurchaseSelectTableKey>(
+        let pagination = render_pagination(
+            DRAFT_PURCHASE_SELECT_TABLE,
             &self.path_and_query,
             self.purchases.number,
             self.purchases.num_pages,
         );
-        data_table_list_refresh::<DraftPurchaseSelectTableKey>(
+        data_table_list_refresh(
+            DRAFT_PURCHASE_SELECT_TABLE,
             "Select purchases",
             html! {},
             &headers,
@@ -1624,7 +1631,7 @@ impl RenderPickerSelect<DraftPurchaseSelectTableKey, DraftPurchaseSelectModalKey
 
 impl RenderTemplate for DraftPurchaseSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(DRAFT_PURCHASE_SELECT_MODAL).into_inner()
     }
 }
 
@@ -1806,12 +1813,12 @@ pub struct ConfirmDeletePage {
 impl RenderTemplate for ConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = if self.modal_uid.is_empty() {
-            format!("#{}", DraftPurchaseDeleteModalKey::ID)
+            format!("#{}", DRAFT_PURCHASE_DELETE_MODAL.id())
         } else {
             format!("#{}", self.modal_uid)
         };
         let uid = if self.modal_uid.is_empty() {
-            DraftPurchaseDeleteModalKey::ID
+            DRAFT_PURCHASE_DELETE_MODAL.id()
         } else {
             self.modal_uid.as_str()
         };
@@ -1843,12 +1850,12 @@ pub struct ConfirmBulkDeletePage {
 impl RenderTemplate for ConfirmBulkDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = if self.modal_uid.is_empty() {
-            format!("#{}", DraftPurchaseBulkDeleteModalKey::ID)
+            format!("#{}", DRAFT_PURCHASE_BULK_DELETE_MODAL.id())
         } else {
             format!("#{}", self.modal_uid)
         };
         let uid = if self.modal_uid.is_empty() {
-            DraftPurchaseBulkDeleteModalKey::ID
+            DRAFT_PURCHASE_BULK_DELETE_MODAL.id()
         } else {
             self.modal_uid.as_str()
         };

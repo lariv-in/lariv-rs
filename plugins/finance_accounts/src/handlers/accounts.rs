@@ -11,7 +11,7 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{FormFieldKey, HtmlFormBody};
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
@@ -37,14 +37,14 @@ use crate::{
     entities::account::{self, Entity as AccountEntity},
     forms::{AccountForm, AccountFormField},
     handlers::ModalNameQuery,
-    keys::AccountCreateModalKey,
-    keys::AccountDeleteModalKey,
-    keys::AccountEditModalKey,
-    keys::AccountJournalEntriesTableKey,
-    keys::AccountJournalEntryItemsTableKey,
-    keys::AccountSelectModalKey,
-    keys::AccountSelectTableKey,
-    keys::AccountTableKey,
+    keys::ACCOUNT_CREATE_MODAL,
+    keys::ACCOUNT_DELETE_MODAL,
+    keys::ACCOUNT_EDIT_MODAL,
+    keys::ACCOUNT_JOURNAL_ENTRIES_TABLE,
+    keys::ACCOUNT_JOURNAL_ENTRY_ITEMS_TABLE,
+    keys::ACCOUNT_SELECT_MODAL,
+    keys::ACCOUNT_SELECT_TABLE,
+    keys::ACCOUNT_TABLE,
     routes::{AccountDetailRouteTag, FinanceDefaultRouteTag},
     scope::{
         CurrencyFormat, JOURNAL_FISCAL_YEAR_COOKIE, apply_account_filters, find_account_scoped,
@@ -333,7 +333,7 @@ pub async fn list(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<AccountTableKey>() {
+    if htmx.targets(ACCOUNT_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -398,7 +398,7 @@ pub async fn detail(
             >(),
         ),
     };
-    if htmx.targets::<AccountTableKey>() {
+    if htmx.targets(ACCOUNT_TABLE) {
         return page.render_children_table().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -466,7 +466,7 @@ pub async fn journal_entries(
             JOURNAL_FISCAL_YEAR_COOKIE,
         ),
     };
-    if htmx.targets::<AccountJournalEntriesTableKey>() {
+    if htmx.targets(ACCOUNT_JOURNAL_ENTRIES_TABLE) {
         return page.render_entries_table().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -528,7 +528,7 @@ pub async fn journal_entry_items(
             >(),
         ),
     };
-    if htmx.targets::<AccountJournalEntryItemsTableKey>() {
+    if htmx.targets(ACCOUNT_JOURNAL_ENTRY_ITEMS_TABLE) {
         return page.render_items_table().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -631,8 +631,9 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<AccountForm>,
 ) -> Response {
     match save_account_from_form(&state.db, &form, None).await {
-        Ok(saved) => respond_create_modal_done_fk::<AccountCreateModalKey>(
+        Ok(saved) => respond_create_modal_done_fk(
             &htmx,
+            ACCOUNT_CREATE_MODAL,
             &q.refresh_table(),
             &AccountDetailRouteTag::new(saved.id).url(),
             saved.id,
@@ -737,8 +738,9 @@ pub async fn edit_post(
                         .into_response();
                 }
             }
-            respond_edit_modal_done::<AccountEditModalKey>(
+            respond_edit_modal_done(
                 &htmx,
+                ACCOUNT_EDIT_MODAL,
                 &AccountDetailRouteTag::new(id).url(),
             )
         }
@@ -758,7 +760,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: AccountDeleteModalKey::ID.to_string(),
+        modal_uid: ACCOUNT_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this account and all of its sub-accounts?".into(),
         form_name: q
             .name
@@ -785,7 +787,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete account");
             let page = ConfirmDeletePage {
-                modal_uid: AccountDeleteModalKey::ID.to_string(),
+                modal_uid: ACCOUNT_DELETE_MODAL.id().to_string(),
                 message:
                     "Are you sure you want to delete this account and all of its sub-accounts?"
                         .into(),
@@ -878,7 +880,7 @@ pub async fn select(
     if htmx.wants_app_layout() {
         return page.render_pane().into();
     }
-    respond_picker_select::<AccountSelectTableKey, AccountSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(&htmx, ACCOUNT_SELECT_TABLE, ACCOUNT_SELECT_MODAL, &page)
 }
 
 #[cfg(test)]

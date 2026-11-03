@@ -1,8 +1,8 @@
 use super::{
     handlers,
     keys::{
-        DraftPurchaseBulkDeleteModalKey, DraftPurchaseDeleteModalKey, DraftPurchaseSelectModalKey,
-        DraftPurchaseSelectTableKey, PurchaseHubTableKey,
+        DRAFT_PURCHASE_BULK_DELETE_MODAL, DRAFT_PURCHASE_DELETE_MODAL, DRAFT_PURCHASE_SELECT_MODAL,
+        DRAFT_PURCHASE_SELECT_TABLE, PURCHASE_HUB_TABLE,
     },
 };
 
@@ -14,7 +14,7 @@ lariv_core::define_plugin_routes! {
     plugin: FinancePurchasesTag;
     prefix: "/dashboard";
     routes: [
-        get PurchaseDefaultRouteTag, "/finance-purchases", handlers::hub::hub, fragment(PurchaseHubTableKey), authorize(FinancePurchasesView, []);
+        get PurchaseDefaultRouteTag, "/finance-purchases", handlers::hub::hub, fragment(PURCHASE_HUB_TABLE), authorize(FinancePurchasesView, []);
         get PurchaseLinePriceRouteTag, "/finance-purchases/line-price", handlers::drafts::line_price, authorize(FinancePurchasesView, []);
         get DraftPurchaseCreateGetRouteTag, "/finance-purchases/create", handlers::drafts::create_get, modal, authorize(FinancePurchasesMutate, []);
         post DraftPurchaseCreatePostRouteTag, "/finance-purchases/create", handlers::drafts::create_post, authorize(FinancePurchasesMutate, []);
@@ -22,18 +22,18 @@ lariv_core::define_plugin_routes! {
         get DraftPurchaseEditGetRouteTag, "/finance-purchases/i/{id}/edit", handlers::drafts::edit_get, modal, authorize(FinancePurchasesMutate, []);
         post DraftPurchaseEditPostRouteTag, "/finance-purchases/i/{id}/edit", handlers::drafts::edit_post, authorize(FinancePurchasesMutate, []);
         get DraftPurchaseDeleteGetRouteTag, "/finance-purchases/i/{id}/delete", handlers::drafts::delete_get, modal, authorize(FinancePurchasesMutate, []);
-        post DraftPurchaseDeletePostRouteTag, "/finance-purchases/i/{id}/delete", bare handlers::drafts::delete_post, fragment(DraftPurchaseDeleteModalKey), authorize(FinancePurchasesMutate, []);
+        post DraftPurchaseDeletePostRouteTag, "/finance-purchases/i/{id}/delete", bare handlers::drafts::delete_post, fragment(DRAFT_PURCHASE_DELETE_MODAL), authorize(FinancePurchasesMutate, []);
         get DraftPurchasePostGetRouteTag, "/finance-purchases/i/{id}/post", handlers::drafts::post_confirm_get, modal, authorize(FinancePurchasesMutate, []);
         post DraftPurchasePostRouteTag, "/finance-purchases/i/{id}/post", bare handlers::drafts::post_purchase, redirect, authorize(FinancePurchasesMutate, []);
         get DraftPurchaseBulkDeleteGetRouteTag, "/finance-purchases/bulk-delete", handlers::drafts::bulk_delete_get, modal, authorize(FinancePurchasesMutate, []);
-        post DraftPurchaseBulkDeletePostRouteTag, "/finance-purchases/bulk-delete", bare handlers::drafts::bulk_delete_post, fragment(DraftPurchaseBulkDeleteModalKey), authorize(FinancePurchasesMutate, []);
+        post DraftPurchaseBulkDeletePostRouteTag, "/finance-purchases/bulk-delete", bare handlers::drafts::bulk_delete_post, fragment(DRAFT_PURCHASE_BULK_DELETE_MODAL), authorize(FinancePurchasesMutate, []);
         get DraftPurchaseBulkEditGetRouteTag, "/finance-purchases/bulk-edit", handlers::drafts::bulk_edit_get, modal, authorize(FinancePurchasesMutate, []);
         post DraftPurchaseBulkEditPostRouteTag, "/finance-purchases/bulk-edit", handlers::drafts::bulk_edit_post, authorize(FinancePurchasesMutate, []);
         get DraftPurchaseBulkPostGetRouteTag, "/finance-purchases/bulk-post", handlers::drafts::bulk_post_confirm_get, modal, authorize(FinancePurchasesMutate, []);
         post DraftPurchaseBulkPostRouteTag, "/finance-purchases/bulk-post", bare handlers::drafts::bulk_post, redirect, authorize(FinancePurchasesMutate, []);
         get DraftPurchasePdfModalRouteTag, "/finance-purchases/i/{id}/pdf", bare handlers::pdf::draft_pdf_modal, modal, authorize(FinancePurchasesView, []);
         get DraftPurchasePdfRouteTag, "/finance-purchases/i/{id}/pdf/file", bare handlers::pdf::draft_pdf, file, authorize(FinancePurchasesView, []);
-        get DraftPurchaseMultiSelectRouteTag, "/finance-purchases/pick", handlers::drafts::multi_select, multi_select(DraftPurchaseSelectTableKey, DraftPurchaseSelectModalKey), authorize(FinancePurchasesView, []);
+        get DraftPurchaseMultiSelectRouteTag, "/finance-purchases/pick", handlers::drafts::multi_select, multi_select(DRAFT_PURCHASE_SELECT_TABLE, DRAFT_PURCHASE_SELECT_MODAL), authorize(FinancePurchasesView, []);
 
         get PostedPurchaseDetailRouteTag, "/finance-purchases/posted/{id}", handlers::posted::detail, authorize(FinancePurchasesView, []);
         get PostedPurchaseCancelGetRouteTag, "/finance-purchases/posted/{id}/cancel", handlers::posted::cancel_get, authorize(FinancePurchasesMutate, []);
@@ -54,7 +54,7 @@ lariv_core::define_plugin_routes! {
 
         get PurchaseBulkPdfsRouteTag, "/finance-purchases/bulk-pdfs", bare handlers::pdf::bulk_pdfs, file, authorize(FinancePurchasesView, []);
 
-        get VendorFkSelectRouteTag, "/finance-purchases/vendors/pick", handlers::vendors::select, fk_select(crate::keys::VendorSelectTableKey, crate::keys::VendorSelectModalKey), authorize(FinancePurchasesView, []);
+        get VendorFkSelectRouteTag, "/finance-purchases/vendors/pick", handlers::vendors::select, fk_select(crate::keys::VENDOR_SELECT_TABLE, crate::keys::VENDOR_SELECT_MODAL), authorize(FinancePurchasesView, []);
         get VendorCreateGetRouteTag, "/finance-purchases/vendors/create", handlers::vendors::create_get, modal, authorize(FinancePurchasesMutate, []);
         post VendorCreatePostRouteTag, "/finance-purchases/vendors/create", handlers::vendors::create_post, authorize(FinancePurchasesMutate, []);
 

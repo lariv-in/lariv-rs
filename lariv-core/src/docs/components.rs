@@ -41,7 +41,7 @@
 //! ```ignore
 //! use lariv_rs::components::{data_table_list, TableColumnHeader, TableRow};
 //!
-//! data_table_list::<MyTableKey>(
+//! data_table_list(MyTableKey,
 //!     "Items",
 //!     actions,
 //!     &[
@@ -65,9 +65,10 @@
 //!
 //! # Swap keys
 //!
-//! HTMX target regions use typed [`SwapKey`](crate::components::SwapKey) markers declared with
-//! [`swap_key!`](crate::swap_key). Prefer `form_hx_post`, `data_table_list::<K>`, and
-//! `hx_target` over raw `hx-target` strings.
+//! HTMX target regions use [`SwapKey`](crate::components::SwapKey) newtype consts
+//! (`pub const ITEM_TABLE: SwapKey = SwapKey("item-table");`). Prefer
+//! `form_hx_post`, `data_table_list(key, …)`, and
+//! `hx_target(key)` over raw `hx-target` strings.
 //!
 //! # Forms with validation
 //!

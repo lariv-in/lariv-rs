@@ -2,7 +2,7 @@
 
 use maud::{Markup, PreEscaped, html};
 
-use crate::components::swap::{MainContentKey, SwapKey};
+use crate::components::swap::MAIN_CONTENT;
 use crate::components::text::icon;
 
 /// HTMX fragment for `<main id="main-content">` swaps (sidebar menu navigation).
@@ -285,7 +285,7 @@ pub fn layout_main(opts: LayoutMain) -> MainContentHtml {
     MainContentHtml(html! {
         (PreEscaped(format!(
             r##"<main id="{}" class="overflow-y-auto min-w-0 p-4 relative h-full bg-base-100">"##,
-            MainContentKey::ID
+            MAIN_CONTENT.id()
         )))
         div class="flex items-center gap-4 mb-2 min-w-0" {
             (PreEscaped(

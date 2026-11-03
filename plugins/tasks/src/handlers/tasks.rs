@@ -12,7 +12,7 @@ use sea_orm::{
 };
 
 use lariv_core::components::{
-    FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
+    FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, table_rows_instance_id,
 };
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
@@ -35,8 +35,8 @@ use crate::{
     forms::TaskForm,
     handlers::ModalNameQuery,
     keys::{
-        TaskChildrenTableKey, TaskCreateModalKey, TaskDeleteModalKey, TaskEditModalKey,
-        TaskSelectModalKey, TaskSelectTableKey, TaskTableKey,
+        TASK_CHILDREN_TABLE, TASK_CREATE_MODAL, TASK_DELETE_MODAL, TASK_EDIT_MODAL,
+        TASK_SELECT_MODAL, TASK_SELECT_TABLE, TASK_TABLE,
     },
     logic::task::{
         TaskFields, delete_task, set_task_priority, set_task_status, stepped_priority, update_task,
@@ -639,11 +639,11 @@ pub async fn hub(
     let page = task_list_page(&state.db, &ctx, &q, path_and_query(&uri), None).await;
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref()) {
-        if TaskTableKey::matches_id(instance) {
+        if TASK_TABLE.matches_id(instance) {
             return page.render_table_rows(instance);
         }
     }
-    if htmx.targets::<TaskTableKey>() {
+    if htmx.targets(TASK_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -670,11 +670,11 @@ pub async fn detail(
     let children = task_list_page(&state.db, &ctx, &q, path_and_query(&uri), Some(task.id)).await;
     let page = task_detail_page(&state.db, &ctx, task, children).await;
     if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref()) {
-        if TaskChildrenTableKey::matches_id(instance) {
+        if TASK_CHILDREN_TABLE.matches_id(instance) {
             return page.children.render_table_rows(instance).into_response();
         }
     }
-    if htmx.targets::<TaskChildrenTableKey>() {
+    if htmx.targets(TASK_CHILDREN_TABLE) {
         return page.children.render_table().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -740,23 +740,23 @@ async fn respond_after_inline_task_change(
     task_id: i64,
     parent_id: Option<i64>,
 ) -> Response {
-    if htmx.targets::<TaskTableKey>() {
+    if htmx.targets(TASK_TABLE) {
         let (path_and_query, q) = list_query_from_browser(htmx);
         let page = task_list_page(db, ctx, &q, path_and_query, None).await;
         if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref()) {
-            if TaskTableKey::matches_id(instance) {
+            if TASK_TABLE.matches_id(instance) {
                 return page.render_table_rows(instance).into_response();
             }
         }
         return page.render_table().into_response();
     }
-    if htmx.targets::<TaskChildrenTableKey>()
+    if htmx.targets(TASK_CHILDREN_TABLE)
         && let Some(parent_id) = parent_id
     {
         let (path_and_query, q) = list_query_from_browser(htmx);
         let page = task_list_page(db, ctx, &q, path_and_query, Some(parent_id)).await;
         if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref()) {
-            if TaskChildrenTableKey::matches_id(instance) {
+            if TASK_CHILDREN_TABLE.matches_id(instance) {
                 return page.render_table_rows(instance).into_response();
             }
         }
@@ -929,8 +929,9 @@ pub async fn create_post(
     match model.insert(&state.db).await {
         Ok(saved) => {
             crate::push::notify_assignee(&state.db, &state.push, &saved).await;
-            respond_create_modal_done::<TaskCreateModalKey>(
+            respond_create_modal_done(
                 &htmx,
+                TASK_CREATE_MODAL,
                 &q.refresh_table(),
                 &TaskDetailRouteTag::new(saved.id).url(),
             )
@@ -1082,7 +1083,7 @@ pub async fn edit_post(
             if previous_assignee != saved.assigned_to_id {
                 crate::push::notify_assignee(&state.db, &state.push, &saved).await;
             }
-            respond_edit_modal_done::<TaskEditModalKey>(&htmx, &TaskDetailRouteTag::new(id).url())
+            respond_edit_modal_done(&htmx, TASK_EDIT_MODAL, &TaskDetailRouteTag::new(id).url())
         }
         Err(e) => {
             task_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, &e.to_string()).await
@@ -1150,7 +1151,7 @@ pub async fn select(
         target_input: q.target_input.clone().unwrap_or_else(|| "ParentID".into()),
         page_size,
     };
-    respond_picker_select::<TaskSelectTableKey, TaskSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(&htmx, TASK_SELECT_TABLE, TASK_SELECT_MODAL, &page)
 }
 
 pub async fn delete_get(
@@ -1160,7 +1161,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: TaskDeleteModalKey::ID.to_string(),
+        modal_uid: TASK_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this task?".into(),
         form_name: q
             .name
@@ -1184,7 +1185,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete task");
             let page = ConfirmDeletePage {
-                modal_uid: TaskDeleteModalKey::ID.to_string(),
+                modal_uid: TASK_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this task?".into(),
                 form_name: "p_tasks.TaskDeleteForm".into(),
                 id,

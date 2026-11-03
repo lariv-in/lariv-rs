@@ -11,7 +11,7 @@ use sea_orm::{
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::list_filters::{FilterField, apply_filters, parse_list_filters, text_column};
@@ -30,8 +30,8 @@ use crate::{
     forms::FormResponseForm,
     handlers::{ModalNameQuery, forms::find_form},
     keys::{
-        FormResponseCreateModalKey, FormResponseDeleteModalKey, FormResponseEditModalKey,
-        FormResponseSelectModalKey, FormResponseSelectTableKey,
+        FORM_RESPONSE_CREATE_MODAL, FORM_RESPONSE_DELETE_MODAL, FORM_RESPONSE_EDIT_MODAL,
+        FORM_RESPONSE_SELECT_MODAL, FORM_RESPONSE_SELECT_TABLE,
     },
     logic::{
         answers::{answers_to_json, normalize_answers_json, parse_answers_json},
@@ -216,7 +216,12 @@ pub async fn select(
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
-    respond_picker_select::<FormResponseSelectTableKey, FormResponseSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(
+        &htmx,
+        FORM_RESPONSE_SELECT_TABLE,
+        FORM_RESPONSE_SELECT_MODAL,
+        &page,
+    )
 }
 
 fn response_modal_error(
@@ -402,8 +407,9 @@ pub async fn create_post(
         email: Set(opt_string(form.email.clone())),
     };
     match model.insert(&state.db).await {
-        Ok(saved) => respond_create_modal_done::<FormResponseCreateModalKey>(
+        Ok(saved) => respond_create_modal_done(
             &htmx,
+            FORM_RESPONSE_CREATE_MODAL,
             &q.refresh_table(),
             &FormResponseDetailRouteTag::new(saved.id).url(),
         ),
@@ -514,8 +520,9 @@ pub async fn edit_post(
     am.name = Set(opt_string(form.name.clone()));
     am.email = Set(opt_string(form.email.clone()));
     match am.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<FormResponseEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            FORM_RESPONSE_EDIT_MODAL,
             &FormResponseDetailRouteTag::new(id).url(),
         ),
         Err(e) => response_modal_error(
@@ -539,7 +546,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: FormResponseDeleteModalKey::ID.to_string(),
+        modal_uid: FORM_RESPONSE_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this response?".into(),
         form_name: q
             .name
@@ -567,7 +574,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete form response");
             let page = ConfirmDeletePage {
-                modal_uid: FormResponseDeleteModalKey::ID.to_string(),
+                modal_uid: FORM_RESPONSE_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this response?".into(),
                 form_name: "p_forms.FormResponseDeleteForm".into(),
                 id,

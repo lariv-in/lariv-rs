@@ -33,7 +33,6 @@ use crate::{
     },
     hub_filter::{HubFilterKind, hub_filter_fields, matches_in_memory},
     hub_filter_addon::{HubQueryParams, apply_extra_sql_filters, render_extra_filter_inputs},
-    invoice_addon_key::InvoiceAddonKey,
     hub_sort::{
         HubSortKey, expr_ar_amount, expr_customer, expr_line_product_count, expr_line_untaxed,
         expr_open_balance, expr_posted_final_due, expr_settlement_ar_amount,
@@ -44,7 +43,8 @@ use crate::{
         parse_hub_sort, sort_order,
     },
     hub_table_addon::enrich_hub_rows,
-    keys::InvoiceHubTableKey,
+    invoice_addon_key::InvoiceAddonKey,
+    keys::INVOICE_HUB_TABLE,
     logic::{
         InvoiceDateFormats, InvoiceListMetrics, cancelled_invoice_list_metrics,
         draft_invoice_list_metrics, load_invoice_date_formats, posted_invoice_list_metrics,
@@ -56,9 +56,8 @@ use crate::{
     },
     scope::{
         LarivEnvironment, list_fiscal_year_options, resolve_list_fiscal_year,
-        selected_fiscal_year_start_for_ui, sql_posted_not_cancelled,
-        sql_posted_not_fully_paid, sql_posted_not_partially_paid,
-        sql_settlement_posted_not_cancelled,
+        selected_fiscal_year_start_for_ui, sql_posted_not_cancelled, sql_posted_not_fully_paid,
+        sql_posted_not_partially_paid, sql_settlement_posted_not_cancelled,
     },
     state::InvoicesState,
     templates::{InvoiceHubPage, InvoiceRow},
@@ -285,20 +284,12 @@ fn apply_draft_sql_sort(
         }
         HubSortKey::UntaxedAmount => order_by_expr(
             query,
-            expr_line_untaxed(
-                "draft_invoice_lines",
-                "draft_invoice_id",
-                "draft_invoices",
-            ),
+            expr_line_untaxed("draft_invoice_lines", "draft_invoice_id", "draft_invoices"),
             desc,
         ),
         HubSortKey::ProductCount => order_by_expr(
             query,
-            expr_line_product_count(
-                "draft_invoice_lines",
-                "draft_invoice_id",
-                "draft_invoices",
-            ),
+            expr_line_product_count("draft_invoice_lines", "draft_invoice_id", "draft_invoices"),
             desc,
         ),
         // Metric-sorted keys and posted-only columns fall through to default.
@@ -1193,7 +1184,7 @@ pub async fn hub(
         extra_filters,
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<InvoiceHubTableKey>() {
+    if htmx.targets(INVOICE_HUB_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {

@@ -15,7 +15,7 @@ use crate::{
         job_form::Entity as JobFormEntity,
     },
     forms::{ApplicantForm, PersonForm},
-    keys::ApplicantHubTableKey,
+    keys::APPLICANT_HUB_TABLE,
     logic::{
         applicant::{
             ApplicantInput, parse_optional_datetime, parse_optional_fk, parse_optional_gender,
@@ -182,7 +182,7 @@ pub async fn hub(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<ApplicantHubTableKey>() {
+    if htmx.targets(APPLICANT_HUB_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {

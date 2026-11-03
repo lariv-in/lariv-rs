@@ -65,124 +65,122 @@ impl AccountingPreferencesAddon for PurchasesAccountingPreferencesAddon {
         let logo_display = load_vnode_display(db, inv.purchase_logo_vnode_id).await;
         let signature_display = load_vnode_display(db, inv.purchase_signature_vnode_id).await;
 
-        vec![
-            AccountingPreferenceGroup {
-                title: "Purchases",
-                inputs: html! {
-                (label_hint(
-                    "Purchase number format",
-                    Some(PURCHASE_NUMBER_FORMAT_HINT),
-                    html! {
-                        input type="text"
-                            name=(PurchasePresentationPreferencesFormField::PurchaseNumberFormat.html_name())
-                            class="input input-bordered w-full"
-                            value=(number_format) {}
-                    },
-                ))
-                (label_hint(
-                    "Purchase date format",
-                    Some(PURCHASE_DATE_FORMAT_HINT),
-                    html! {
-                        input type="text"
-                            name=(PurchasePresentationPreferencesFormField::PurchaseDateFormat.html_name())
-                            class="input input-bordered w-full"
-                            value=(date_format)
-                            placeholder="%d/%m/%Y" {}
-                    },
-                ))
-                (label_hint(
-                    "Purchase datetime format",
-                    Some(PURCHASE_DATETIME_FORMAT_HINT),
-                    html! {
-                        input type="text"
-                            name=(PurchasePresentationPreferencesFormField::PurchaseDatetimeFormat.html_name())
-                            class="input input-bordered w-full"
-                            value=(datetime_format)
-                            placeholder="%d/%m/%Y" {}
-                    },
-                ))
-                (PurchasePdfAssetPreferencesForm::render_inputs(
-                    &FormCtx::form::<PurchasePdfAssetPreferencesForm>(CsrfToken::current())
-                        .value(
-                            PurchasePdfAssetPreferencesFormField::PurchaseLogoVnodeId,
-                            fk_value(inv.purchase_logo_vnode_id),
-                        )
-                        .display(
-                            PurchasePdfAssetPreferencesFormField::PurchaseLogoVnodeId,
-                            &logo_display,
-                        )
-                        .value(
-                            PurchasePdfAssetPreferencesFormField::PurchaseSignatureVnodeId,
-                            fk_value(inv.purchase_signature_vnode_id),
-                        )
-                        .display(
-                            PurchasePdfAssetPreferencesFormField::PurchaseSignatureVnodeId,
-                            &signature_display,
-                        ),
-                ))
-                (PurchaseCompanyPreferencesForm::render_inputs(
-                    &FormCtx::form::<PurchaseCompanyPreferencesForm>(CsrfToken::current())
-                        .value(
-                            PurchaseCompanyPreferencesFormField::CompanyName,
-                            inv.company_name.as_deref().unwrap_or_default(),
-                        )
-                        .value(
-                            PurchaseCompanyPreferencesFormField::CompanyAddress,
-                            inv.company_address.as_deref().unwrap_or_default(),
-                        )
-                        .value(
-                            PurchaseCompanyPreferencesFormField::CompanyPhone,
-                            inv.company_phone.as_deref().unwrap_or_default(),
-                        )
-                        .value(
-                            PurchaseCompanyPreferencesFormField::CompanyGstin,
-                            inv.company_gstin.as_deref().unwrap_or_default(),
-                        )
-                        .value(
-                            PurchaseCompanyPreferencesFormField::PlaceOfSupply,
-                            inv.place_of_supply.as_deref().unwrap_or_default(),
-                        )
-                        .value(
-                            PurchaseCompanyPreferencesFormField::DefaultBankAccount,
-                            inv.default_bank_account.as_deref().unwrap_or_default(),
-                        ),
-                ))
-                (label_hint(
-                    "Purchase PDF template (Typst + Minijinja)",
-                    Some(PURCHASE_PDF_TEMPLATE_HINT),
-                    html! {
-                        (code_editor_input(CodeEditorInput {
-                            label: "",
-                            name: PurchasePresentationPreferencesFormField::PurchasePdfTemplate.html_name(),
-                            value: &pdf_template,
-                            id: "purchase-pdf-template-field",
-                            language: "plaintext",
-                            rows: 16,
-                            max_height: "24rem",
-                            ..Default::default()
-                        }))
-                        textarea id="default-purchase-pdf-template" hidden readonly {
-                            (DEFAULT_PURCHASE_PDF_TEMPLATE)
-                        }
-                        div class="flex justify-end gap-2 mt-2" {
-                            button type="button" class="btn btn-ghost btn-sm"
-                                onclick="if (confirm('This will overwrite the template in the field with the default example template. Continue?')) { const ta = document.getElementById('purchase-pdf-template-field'); const def = document.getElementById('default-purchase-pdf-template'); if (!ta || !def) return; ta.value = def.value; const root = ta.closest('[data-code-editor-root]'); if (root) { root.dispatchEvent(new CustomEvent('code-editor:set', { detail: { value: def.value } })); } else { ta.dispatchEvent(new Event('change', { bubbles: true })); } }" {
-                                "Use default template"
-                            }
-                            div class="fk-modal-host" {
-                                (PreEscaped(format!(
-                                    r#"<button type="button" class="btn btn-outline btn-sm" hx-post="{}" hx-target="{}" hx-swap="{}" hx-include="closest form" hx-push-url="false">Preview sample PDF</button>"#,
-                                    crate::routes::PurchasePdfPreviewPostRouteTag.path(),
-                                    escape_attr(HTMX_TARGET_BODY_MODAL),
-                                    escape_attr(HTMX_SWAP_BODY_MODAL),
-                                )))
-                            }
-                        }
-                    },
-                ))
+        vec![AccountingPreferenceGroup {
+            title: "Purchases",
+            inputs: html! {
+            (label_hint(
+                "Purchase number format",
+                Some(PURCHASE_NUMBER_FORMAT_HINT),
+                html! {
+                    input type="text"
+                        name=(PurchasePresentationPreferencesFormField::PurchaseNumberFormat.html_name())
+                        class="input input-bordered w-full"
+                        value=(number_format) {}
                 },
+            ))
+            (label_hint(
+                "Purchase date format",
+                Some(PURCHASE_DATE_FORMAT_HINT),
+                html! {
+                    input type="text"
+                        name=(PurchasePresentationPreferencesFormField::PurchaseDateFormat.html_name())
+                        class="input input-bordered w-full"
+                        value=(date_format)
+                        placeholder="%d/%m/%Y" {}
+                },
+            ))
+            (label_hint(
+                "Purchase datetime format",
+                Some(PURCHASE_DATETIME_FORMAT_HINT),
+                html! {
+                    input type="text"
+                        name=(PurchasePresentationPreferencesFormField::PurchaseDatetimeFormat.html_name())
+                        class="input input-bordered w-full"
+                        value=(datetime_format)
+                        placeholder="%d/%m/%Y" {}
+                },
+            ))
+            (PurchasePdfAssetPreferencesForm::render_inputs(
+                &FormCtx::form::<PurchasePdfAssetPreferencesForm>(CsrfToken::current())
+                    .value(
+                        PurchasePdfAssetPreferencesFormField::PurchaseLogoVnodeId,
+                        fk_value(inv.purchase_logo_vnode_id),
+                    )
+                    .display(
+                        PurchasePdfAssetPreferencesFormField::PurchaseLogoVnodeId,
+                        &logo_display,
+                    )
+                    .value(
+                        PurchasePdfAssetPreferencesFormField::PurchaseSignatureVnodeId,
+                        fk_value(inv.purchase_signature_vnode_id),
+                    )
+                    .display(
+                        PurchasePdfAssetPreferencesFormField::PurchaseSignatureVnodeId,
+                        &signature_display,
+                    ),
+            ))
+            (PurchaseCompanyPreferencesForm::render_inputs(
+                &FormCtx::form::<PurchaseCompanyPreferencesForm>(CsrfToken::current())
+                    .value(
+                        PurchaseCompanyPreferencesFormField::CompanyName,
+                        inv.company_name.as_deref().unwrap_or_default(),
+                    )
+                    .value(
+                        PurchaseCompanyPreferencesFormField::CompanyAddress,
+                        inv.company_address.as_deref().unwrap_or_default(),
+                    )
+                    .value(
+                        PurchaseCompanyPreferencesFormField::CompanyPhone,
+                        inv.company_phone.as_deref().unwrap_or_default(),
+                    )
+                    .value(
+                        PurchaseCompanyPreferencesFormField::CompanyGstin,
+                        inv.company_gstin.as_deref().unwrap_or_default(),
+                    )
+                    .value(
+                        PurchaseCompanyPreferencesFormField::PlaceOfSupply,
+                        inv.place_of_supply.as_deref().unwrap_or_default(),
+                    )
+                    .value(
+                        PurchaseCompanyPreferencesFormField::DefaultBankAccount,
+                        inv.default_bank_account.as_deref().unwrap_or_default(),
+                    ),
+            ))
+            (label_hint(
+                "Purchase PDF template (Typst + Minijinja)",
+                Some(PURCHASE_PDF_TEMPLATE_HINT),
+                html! {
+                    (code_editor_input(CodeEditorInput {
+                        label: "",
+                        name: PurchasePresentationPreferencesFormField::PurchasePdfTemplate.html_name(),
+                        value: &pdf_template,
+                        id: "purchase-pdf-template-field",
+                        language: "plaintext",
+                        rows: 16,
+                        max_height: "24rem",
+                        ..Default::default()
+                    }))
+                    textarea id="default-purchase-pdf-template" hidden readonly {
+                        (DEFAULT_PURCHASE_PDF_TEMPLATE)
+                    }
+                    div class="flex justify-end gap-2 mt-2" {
+                        button type="button" class="btn btn-ghost btn-sm"
+                            onclick="if (confirm('This will overwrite the template in the field with the default example template. Continue?')) { const ta = document.getElementById('purchase-pdf-template-field'); const def = document.getElementById('default-purchase-pdf-template'); if (!ta || !def) return; ta.value = def.value; const root = ta.closest('[data-code-editor-root]'); if (root) { root.dispatchEvent(new CustomEvent('code-editor:set', { detail: { value: def.value } })); } else { ta.dispatchEvent(new Event('change', { bubbles: true })); } }" {
+                            "Use default template"
+                        }
+                        div class="fk-modal-host" {
+                            (PreEscaped(format!(
+                                r#"<button type="button" class="btn btn-outline btn-sm" hx-post="{}" hx-target="{}" hx-swap="{}" hx-include="closest form" hx-push-url="false">Preview sample PDF</button>"#,
+                                crate::routes::PurchasePdfPreviewPostRouteTag.path(),
+                                escape_attr(HTMX_TARGET_BODY_MODAL),
+                                escape_attr(HTMX_SWAP_BODY_MODAL),
+                            )))
+                        }
+                    }
+                },
+            ))
             },
-        ]
+        }]
     }
 
     async fn save_from_form(

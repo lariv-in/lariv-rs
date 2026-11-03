@@ -1,34 +1,37 @@
-use super::keys::{
-    FormCreateModalKey, FormResponseCreateModalKey, FormSelectModalKey, FormSelectTableKey,
-};
-use super::routes::{
+use lariv_core::web::CreateModal;
+
+use crate::keys::{FORM_CREATE_MODAL, FORM_RESPONSE_CREATE_MODAL};
+use crate::routes::{
     FormCreateGetRouteTag, FormCreatePostRouteTag, FormResponseCreateGetRouteTag,
     FormResponseCreatePostRouteTag,
 };
 
-lariv_core::impl_create_modal!(
-    FormCreateModalKey,
-    FormCreateGetRouteTag,
-    FormCreatePostRouteTag,
-    "p_forms.FormCreateForm"
-);
-lariv_core::impl_picker_modal!(FormSelectModalKey, FormSelectTableKey);
+pub const FORM_CREATE: CreateModal<FormCreateGetRouteTag, FormCreatePostRouteTag> = CreateModal {
+    key: FORM_CREATE_MODAL,
+    form_name: "p_forms.FormCreateForm",
+    get: FormCreateGetRouteTag,
+    post: FormCreatePostRouteTag,
+};
 
-lariv_core::impl_create_modal!(
-    FormResponseCreateModalKey,
+pub const FORM_RESPONSE_CREATE: CreateModal<
     FormResponseCreateGetRouteTag,
     FormResponseCreatePostRouteTag,
-    "p_forms.FormResponseCreateForm"
-);
+> = CreateModal {
+    key: FORM_RESPONSE_CREATE_MODAL,
+    form_name: "p_forms.FormResponseCreateForm",
+    get: FormResponseCreateGetRouteTag,
+    post: FormResponseCreatePostRouteTag,
+};
 
 #[cfg(test)]
 mod tests {
-    use crate::keys::FormCreateModalKey;
+    use super::*;
     use lariv_core::picker::picker_create_button;
 
     #[test]
     fn form_picker_create_button_embeds_target_input() {
-        let html = picker_create_button::<FormCreateModalKey>(
+        let html = picker_create_button(
+            FORM_CREATE,
             "form_id",
             Some("plus"),
             "btn-square btn-outline btn-sm",

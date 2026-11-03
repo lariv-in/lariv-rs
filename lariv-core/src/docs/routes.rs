@@ -19,7 +19,7 @@
 //!         post CreatePostRouteTag, "/items/create", handlers::create_post, modal;
 //!
 //!         // GET with HTMX fragment swap into a table region
-//!         get ListRouteTag, "/items", handlers::list, fragment(ItemTableKey);
+//!         get ListRouteTag, "/items", handlers::list, fragment(ITEM_TABLE);
 //!
 //!         // Bare handler — you choose the response type
 //!         get LogoutRouteTag, "/logout", bare handlers::logout, redirect;
@@ -36,8 +36,9 @@
 //!
 //! - **`bare`** — skip the default view wrapper; required when specifying `file`, `redirect`,
 //!   `raw`, or custom `fragment` responses.
-//! - **Response kinds** — `modal`, `fragment(SwapKey)`, `file`, `redirect`, `generation`, `raw`.
-//!   Default for GET/POST app routes is app-pane rendering.
+//! - **Response kinds** — `modal`, `fragment(ITEM_TABLE)`, `fk_select(TABLE, MODAL)`,
+//!   `file`, `redirect`, `generation`, `raw`. Fragment/fk_select args are `SwapKey`
+//!   const paths (values), not types. Default for GET/POST app routes is app-pane rendering.
 //! - **Path params** — `{id}` → `i64`, `{slug}` → `String`, `{*tail}` → `Vec<String>`.
 //!   Override with `param id: i64`.
 //!

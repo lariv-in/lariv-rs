@@ -1,15 +1,15 @@
+use crate::create_modals::ACCOUNT_CREATE;
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
 use lariv_core::components::{
     ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldLink, FieldText, FieldTitle,
     FilterClauseView, FormOpts, ListFilterBuilder, ManyToManyItem, ObjectList, ShellChrome,
-    SwapKey, TableButtonFilter, TableColumnHeader, TableRow, breadcrumbs, button_modal_form,
-    button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
-    delete_confirmation, detail, field_link, field_text, field_title, form,
-    form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector, form_hx_post_url, label,
-    list_filter_builder, modal, modal_keyed, row_attr_navigate_route, sort_indicator,
-    table_button_filter,
+    TableButtonFilter, TableColumnHeader, TableRow, breadcrumbs, button_modal_form, button_submit,
+    column_sort_url, container_column, container_row, data_table_list_refresh, delete_confirmation,
+    detail, field_link, field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
+    form_hx_post_selector, form_hx_post_url, label, list_filter_builder, modal, modal_keyed,
+    row_attr_navigate_route, sort_indicator, table_button_filter,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::RouteQueryBuilder;
@@ -17,8 +17,8 @@ use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_core::web::{
-    CreateModal, modal_create_href_for_picker, modal_create_href_for_table,
-    modal_create_post_query, modal_edit_post_url,
+    modal_create_href_for_picker, modal_create_href_for_table, modal_create_post_query,
+    modal_edit_post_url,
 };
 
 use crate::scope::JOURNAL_FISCAL_YEAR_COOKIE;
@@ -35,10 +35,10 @@ use crate::{
     entities::account,
     forms::{AccountForm, AccountFormField, AccountFormFlag},
     keys::{
-        AccountCreateModalKey, AccountDeleteModalKey, AccountEditModalKey,
-        AccountJournalEntriesTableKey, AccountJournalEntryItemsTableKey, AccountSelectModalKey,
-        AccountSelectTableKey, AccountTableKey, CurrencyDeleteModalKey,
-        CustomSourceDocTemplateDeleteModalKey, JournalDeleteModalKey,
+        ACCOUNT_CREATE_MODAL, ACCOUNT_DELETE_MODAL, ACCOUNT_EDIT_MODAL,
+        ACCOUNT_JOURNAL_ENTRIES_TABLE, ACCOUNT_JOURNAL_ENTRY_ITEMS_TABLE, ACCOUNT_SELECT_MODAL,
+        ACCOUNT_SELECT_TABLE, ACCOUNT_TABLE, CURRENCY_DELETE_MODAL,
+        CUSTOM_SOURCE_DOC_TEMPLATE_DELETE_MODAL, JOURNAL_DELETE_MODAL,
     },
     routes::{
         AccountCreateGetRouteTag, AccountCreatePostRouteTag, AccountDeleteGetRouteTag,
@@ -168,7 +168,7 @@ fn account_filter_form(page: &AccountListPage) -> Markup {
         rows: &page.filters,
         page_size: page.page_size,
         sort: &page.sort,
-        attrs: form_hx_get_route::<AccountTableKey, FinanceDefaultRouteTag>(FinanceDefaultRouteTag),
+        attrs: form_hx_get_route(FinanceDefaultRouteTag),
         apply_label: "Apply Filters",
         extra: html! {},
     })
@@ -307,19 +307,21 @@ impl AccountListPage {
                     name: "p_finance_accounts.AccountCreateForm",
                     href: &AccountCreateGetRouteTag.url(),
                     form_post_url: &AccountCreateGetRouteTag.path(),
-                    modal_uid: AccountCreateModalKey::ID,
+                    modal_uid: ACCOUNT_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
                 }))
             };
         }
-        let pagination = render_pagination::<AccountTableKey>(
+        let pagination = render_pagination(
+            ACCOUNT_TABLE,
             &self.path_and_query,
             self.accounts.number,
             self.accounts.num_pages,
         );
-        super::data_table_with_filter_errors::<AccountTableKey>(
+        super::data_table_with_filter_errors(
+            ACCOUNT_TABLE,
             "Chart of Accounts",
             actions,
             &headers,
@@ -457,23 +459,25 @@ impl AccountDetailPage {
             .collect();
         let mut actions = html! {};
         if self.can_edit {
-            let create_href = modal_create_href_for_table::<AccountTableKey>(
+            let create_href = modal_create_href_for_table(
                 &account_create_url(self.id),
-                AccountCreateModalKey::FORM_NAME,
+                ACCOUNT_CREATE.form_name,
+                ACCOUNT_TABLE,
             );
             actions = html! {
                 (button_modal_form(ButtonModalForm {
                     name: "",
                     href: &create_href,
                     form_post_url: "",
-                    modal_uid: AccountCreateModalKey::ID,
+                    modal_uid: ACCOUNT_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
                 }))
             };
         }
-        data_table_list_refresh::<AccountTableKey>(
+        data_table_list_refresh(
+            ACCOUNT_TABLE,
             "Sub-accounts",
             actions,
             &headers,
@@ -513,7 +517,7 @@ impl AccountDetailPage {
                                 name: "p_finance_accounts.AccountEditForm",
                                 href: &AccountEditGetRouteTag::new(self.id).url(),
                                 form_post_url: &AccountEditPostRouteTag::new(self.id).path(),
-                                modal_uid: AccountEditModalKey::ID,
+                                modal_uid: ACCOUNT_EDIT_MODAL.id(),
                                 label: "Edit",
                                 classes: "btn-outline",
                                 ..Default::default()
@@ -659,12 +663,14 @@ impl AccountJournalEntriesPage {
                 }
             })
             .collect();
-        let pagination = render_pagination::<AccountJournalEntriesTableKey>(
+        let pagination = render_pagination(
+            ACCOUNT_JOURNAL_ENTRIES_TABLE,
             &self.path_and_query,
             self.entries.number,
             self.entries.num_pages,
         );
-        data_table_list_refresh::<AccountJournalEntriesTableKey>(
+        data_table_list_refresh(
+            ACCOUNT_JOURNAL_ENTRIES_TABLE,
             "Journal entries",
             html! {},
             &headers,
@@ -816,12 +822,14 @@ impl AccountJournalEntryItemsPage {
                 }
             })
             .collect();
-        let pagination = render_pagination::<AccountJournalEntryItemsTableKey>(
+        let pagination = render_pagination(
+            ACCOUNT_JOURNAL_ENTRY_ITEMS_TABLE,
             &self.path_and_query,
             self.items.number,
             self.items.num_pages,
         );
-        data_table_list_refresh::<AccountJournalEntryItemsTableKey>(
+        data_table_list_refresh(
+            ACCOUNT_JOURNAL_ENTRY_ITEMS_TABLE,
             "Journal entry items",
             html! {},
             &headers,
@@ -922,12 +930,13 @@ impl RenderTemplate for AccountEditModalPage {
         let child_picker_url = account_select_children_url(self.id);
         let bt_choices = crate::forms::balance_type_choices();
         let delete_url = AccountDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<AccountEditModalKey>(
+        modal_keyed(
+            ACCOUNT_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit account" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<AccountEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(ACCOUNT_EDIT_MODAL, &modal_edit_post_url(
                         AccountEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -964,7 +973,7 @@ impl RenderTemplate for AccountEditModalPage {
                             name: "p_finance_accounts.AccountDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: AccountDeleteModalKey::ID,
+                            modal_uid: ACCOUNT_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -998,7 +1007,8 @@ impl RenderTemplate for AccountCreateModalPage {
             self.form_name.as_str()
         };
         let bt_choices = crate::forms::balance_type_choices();
-        modal_keyed::<AccountCreateModalKey>(
+        modal_keyed(
+            ACCOUNT_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
@@ -1006,12 +1016,15 @@ impl RenderTemplate for AccountCreateModalPage {
                     title: "Create Account",
                     subtitle: "Create a new account",
                     classes: "@container",
-                    attrs: form_hx_post_url::<AccountCreateModalKey>(&modal_create_post_query(
-                        AccountCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                        &self.target_input,
-                    )),
+                    attrs: form_hx_post_url(
+                        ACCOUNT_CREATE_MODAL,
+                        &modal_create_post_query(
+                            AccountCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                            &self.target_input,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: account_form_inputs_with_balance_sync(
                         &self.balance_type,
@@ -1074,11 +1087,7 @@ impl AccountSelectPage {
             rows: &self.filters,
             page_size: self.page_size,
             sort: &self.sort,
-            attrs: form_hx_get_picker_route::<
-                AccountSelectTableKey,
-                AccountSelectModalKey,
-                AccountSelectRouteTag,
-            >(AccountSelectRouteTag),
+            attrs: form_hx_get_picker_route(AccountSelectRouteTag),
             apply_label: "Apply",
             extra: html! {
                 @if parent_id > 0 {
@@ -1186,7 +1195,7 @@ impl AccountSelectPage {
             .collect();
         let create_href = modal_create_href_for_picker(
             &account_create_url(self.parent_id),
-            AccountCreateModalKey::FORM_NAME,
+            ACCOUNT_CREATE.form_name,
             &self.target_input,
         );
         let mut actions = html! {
@@ -1202,19 +1211,21 @@ impl AccountSelectPage {
                     name: "",
                     href: &create_href,
                     form_post_url: &AccountCreateGetRouteTag.path(),
-                    modal_uid: AccountCreateModalKey::ID,
+                    modal_uid: ACCOUNT_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
                 }))
             };
         }
-        let pagination = render_picker_pagination::<AccountSelectModalKey>(
+        let pagination = render_picker_pagination(
+            ACCOUNT_SELECT_MODAL,
             &self.path_and_query,
             self.accounts.number,
             self.accounts.num_pages,
         );
-        super::data_table_with_filter_errors::<AccountSelectTableKey>(
+        super::data_table_with_filter_errors(
+            ACCOUNT_SELECT_TABLE,
             "Select Account",
             actions,
             &headers,
@@ -1230,7 +1241,7 @@ impl AccountSelectPage {
     }
 }
 
-impl RenderPickerSelect<AccountSelectTableKey, AccountSelectModalKey> for AccountSelectPage {
+impl RenderPickerSelect for AccountSelectPage {
     fn render_table(&self) -> Markup {
         AccountSelectPage::render_table(self)
     }
@@ -1247,7 +1258,7 @@ impl RenderAppPane for AccountSelectPage {
 
 impl RenderTemplate for AccountSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(ACCOUNT_SELECT_MODAL).into_inner()
     }
 }
 
@@ -1263,20 +1274,20 @@ pub struct ConfirmDeletePage {
 impl RenderTemplate for ConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = if self.modal_uid.is_empty() {
-            format!("#{}", AccountDeleteModalKey::ID)
+            format!("#{}", ACCOUNT_DELETE_MODAL.id())
         } else {
             format!("#{}", self.modal_uid)
         };
         let uid = if self.modal_uid.is_empty() {
-            AccountDeleteModalKey::ID
+            ACCOUNT_DELETE_MODAL.id()
         } else {
             self.modal_uid.as_str()
         };
-        let post_url = if self.modal_uid == CurrencyDeleteModalKey::ID {
+        let post_url = if self.modal_uid == CURRENCY_DELETE_MODAL.id() {
             CurrencyDeletePostRouteTag::new(self.id).url()
-        } else if self.modal_uid == JournalDeleteModalKey::ID {
+        } else if self.modal_uid == JOURNAL_DELETE_MODAL.id() {
             JournalDeletePostRouteTag::new(self.id).url()
-        } else if self.modal_uid == CustomSourceDocTemplateDeleteModalKey::ID {
+        } else if self.modal_uid == CUSTOM_SOURCE_DOC_TEMPLATE_DELETE_MODAL.id() {
             CustomSourceDocTemplateDeletePostRouteTag::new(self.id).url()
         } else {
             AccountDeletePostRouteTag::new(self.id).url()

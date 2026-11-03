@@ -1,3 +1,4 @@
+use crate::create_modals::MEETS_CREATE;
 use frunk::Generic;
 use maud::{Markup, html};
 
@@ -29,8 +30,8 @@ use super::forms::{
     AnonymousJoinForm, AnonymousJoinFormField, CreateRoomForm, CreateRoomFormField,
 };
 use super::keys::{
-    MeetsCreateModalKey, MeetsDeleteModalKey, MeetsEditModalKey, MeetsHubTableKey,
-    MeetsRecordingsModalKey, MeetsRoomChromeKey,
+    MEETS_CREATE_MODAL, MEETS_DELETE_MODAL, MEETS_EDIT_MODAL, MEETS_HUB_TABLE,
+    MEETS_RECORDINGS_MODAL, MEETS_ROOM_CHROME,
 };
 use super::routes::{
     HubRouteTag, JoinPostRouteTag, RecordingsRouteTag, RoomCallRouteTag, RoomCreatePostRouteTag,
@@ -152,7 +153,8 @@ fn room_crumbs(code: &str) -> Markup {
     room_crumbs_with(code, None)
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -166,7 +168,7 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -178,7 +180,8 @@ pub struct RoomRow {
     pub live: bool,
 }
 
-fn data_table_filtered<K: SwapKey>(
+fn data_table_filtered(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -187,12 +190,13 @@ fn data_table_filtered<K: SwapKey>(
     refresh_url: &str,
     errors: &[FilterRowError],
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -213,7 +217,7 @@ fn data_table_filtered<K: SwapKey>(
         actions
     };
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         subtitle: "",
         classes: "w-full",
@@ -314,23 +318,25 @@ impl MeetsHubPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<MeetsHubTableKey, HubRouteTag>(HubRouteTag),
+                    attrs: form_hx_get_route(HubRouteTag),
                     apply_label: "Apply",
                     extra: html! {},
                 }),
                 ..Default::default()
             }))
-            (table_create_button::<MeetsHubTableKey, MeetsCreateModalKey>(
+            (table_create_button(MEETS_HUB_TABLE, MEETS_CREATE,
                 Some("plus"),
                 "btn-square btn-outline btn-sm",
             ))
         };
-        data_table_filtered::<MeetsHubTableKey>(
+        data_table_filtered(
+            MEETS_HUB_TABLE,
             "Rooms",
             actions,
             &headers,
             &rows,
-            render_pagination::<MeetsHubTableKey>(
+            render_pagination(
+                MEETS_HUB_TABLE,
                 &self.path_and_query,
                 self.rooms.number,
                 self.rooms.num_pages,
@@ -386,17 +392,21 @@ impl RenderTemplate for MeetsCreateModalPage {
             )
             .checked(CreateRoomFormField::JoiningAllowed, self.joining_allowed)
             .value(CreateRoomFormField::StartAt, self.start_at.as_str());
-        modal_keyed::<MeetsCreateModalKey>(
+        modal_keyed(
+            MEETS_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
                 FormOpts {
                     title: "New meeting",
-                    attrs: form_hx_post_url::<MeetsCreateModalKey>(&modal_create_post_url(
-                        RoomCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    )),
+                    attrs: form_hx_post_url(
+                        MEETS_CREATE_MODAL,
+                        &modal_create_post_url(
+                            RoomCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: CreateRoomForm::render_inputs(&ctx),
                     actions: html! {
@@ -514,7 +524,7 @@ impl MeetsRoomPage {
                     name: "p_meets.RoomEditForm",
                     href: &RoomEditGetRouteTag::new(self.code.clone()).url(),
                     form_post_url: &RoomEditPostRouteTag::new(self.code.clone()).path(),
-                    modal_uid: MeetsEditModalKey::ID,
+                    modal_uid: MEETS_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -523,7 +533,7 @@ impl MeetsRoomPage {
             }
         };
         html! {
-            div id=(MeetsRoomChromeKey::ID) class="mb-4" {
+            div id=(MEETS_ROOM_CHROME.id()) class="mb-4" {
                 (detail_header(DetailHeader {
                     title: &format!("Meeting {}", self.code),
                     actions,
@@ -879,7 +889,8 @@ impl MeetsRecordingsPage {
     }
 
     pub fn access_denied() -> Markup {
-        modal_keyed::<MeetsRecordingsModalKey>(
+        modal_keyed(
+            MEETS_RECORDINGS_MODAL,
             "",
             html! {
                 h3 class="text-lg font-semibold mb-2" { "Recordings unavailable" }
@@ -891,7 +902,8 @@ impl MeetsRecordingsPage {
 
 impl RenderTemplate for MeetsRecordingsPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<MeetsRecordingsModalKey>(
+        modal_keyed(
+            MEETS_RECORDINGS_MODAL,
             "",
             html! {
                 h3 class="text-lg font-semibold mb-4" { "Recordings for " (self.code) }
@@ -926,12 +938,13 @@ impl RenderTemplate for MeetsEditModalPage {
             )
             .checked(CreateRoomFormField::JoiningAllowed, self.joining_allowed)
             .value(CreateRoomFormField::StartAt, self.start_at.as_str());
-        modal_keyed::<MeetsEditModalKey>(
+        modal_keyed(
+            MEETS_EDIT_MODAL,
             form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit meeting " (self.code) }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<MeetsEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(MEETS_EDIT_MODAL, &modal_edit_post_url(
                         RoomEditPostRouteTag::new(self.code.clone()),
                         form_name,
                     )),
@@ -945,7 +958,7 @@ impl RenderTemplate for MeetsEditModalPage {
                             name: "p_meets.RoomDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: MeetsDeleteModalKey::ID,
+                            modal_uid: MEETS_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -967,10 +980,10 @@ pub struct MeetsConfirmDeletePage {
 
 impl RenderTemplate for MeetsConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let target = format!("#{}", MeetsDeleteModalKey::ID);
+        let target = format!("#{}", MEETS_DELETE_MODAL.id());
         let post_url = RoomDeletePostRouteTag::new(self.code.clone()).url();
         modal(lariv_core::components::Modal {
-            uid: MeetsDeleteModalKey::ID,
+            uid: MEETS_DELETE_MODAL.id(),
             children: delete_confirmation(DeleteConfirmation {
                 title: "Confirm Deletion",
                 message: &self.message,

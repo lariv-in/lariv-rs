@@ -1,5 +1,7 @@
 //! Maud page templates for tasks, statuses, and logs.
 
+use crate::create_modals::{PERIODIC_TASK_CREATE, TASK_CREATE, TASK_STATUS_CREATE};
+
 use frunk::Generic;
 use maud::{Markup, html};
 
@@ -25,9 +27,7 @@ use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
 };
-use lariv_core::web::{
-    CreateModal, modal_create_href_for_table, modal_create_post_url, modal_edit_post_url,
-};
+use lariv_core::web::{modal_create_href_for_table, modal_create_post_url, modal_edit_post_url};
 
 use super::color::u24_to_hex;
 use super::crumbs::{
@@ -40,11 +40,11 @@ use super::forms::{
     TaskLogFormField, TaskLogQuickForm, TaskStatusForm, TaskStatusFormField,
 };
 use super::keys::{
-    PeriodicTaskCreateModalKey, PeriodicTaskDeleteModalKey, PeriodicTaskEditModalKey,
-    PeriodicTaskTableKey, TASK_LOG_SAVED_EVENT, TaskChildrenTableKey, TaskCreateModalKey,
-    TaskDeleteModalKey, TaskEditModalKey, TaskLogDeleteModalKey, TaskLogEditModalKey, TaskLogsKey,
-    TaskSelectModalKey, TaskSelectTableKey, TaskStatusCreateModalKey, TaskStatusDeleteModalKey,
-    TaskStatusEditModalKey, TaskStatusTableKey, TaskStatusTasksTableKey, TaskTableKey,
+    PERIODIC_TASK_CREATE_MODAL, PERIODIC_TASK_DELETE_MODAL, PERIODIC_TASK_EDIT_MODAL,
+    PERIODIC_TASK_TABLE, TASK_CHILDREN_TABLE, TASK_CREATE_MODAL, TASK_DELETE_MODAL,
+    TASK_EDIT_MODAL, TASK_LOG_DELETE_MODAL, TASK_LOG_EDIT_MODAL, TASK_LOG_SAVED_EVENT, TASK_LOGS,
+    TASK_SELECT_MODAL, TASK_SELECT_TABLE, TASK_STATUS_CREATE_MODAL, TASK_STATUS_DELETE_MODAL,
+    TASK_STATUS_EDIT_MODAL, TASK_STATUS_TABLE, TASK_STATUS_TASKS_TABLE, TASK_TABLE,
 };
 use super::push_ui::{TasksPushButton, TasksPushScript};
 use super::routes::{
@@ -272,7 +272,7 @@ fn task_children_create_href(parent_id: i64) -> String {
     let href = RouteQueryBuilder::new(TaskCreateGetRouteTag)
         .query("ParentID", parent_id)
         .build();
-    modal_create_href_for_table::<TaskChildrenTableKey>(&href, TaskCreateModalKey::FORM_NAME)
+    modal_create_href_for_table(&href, TASK_CREATE.form_name, TASK_CHILDREN_TABLE)
 }
 
 fn task_children_create_button(parent_id: i64) -> Markup {
@@ -281,7 +281,7 @@ fn task_children_create_button(parent_id: i64) -> Markup {
         name: "",
         href: &href,
         form_post_url: "",
-        modal_uid: TaskCreateModalKey::ID,
+        modal_uid: TASK_CREATE_MODAL.id(),
         icon_name: Some("plus"),
         classes: "btn-square btn-outline btn-sm",
         ..Default::default()
@@ -355,7 +355,8 @@ fn task_table_row(task: &TaskRow, mode: StatusButtonMode) -> TableRow {
     }
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -369,11 +370,12 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
-fn filtered_table<K: SwapKey>(
+fn filtered_table(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -383,12 +385,13 @@ fn filtered_table<K: SwapKey>(
     errors: &[FilterRowError],
     instance_id: Option<&str>,
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -409,7 +412,7 @@ fn filtered_table<K: SwapKey>(
         actions
     };
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         subtitle: "",
         classes: "w-full",
@@ -521,21 +524,23 @@ impl TaskListPage {
         };
         let rows = task_table_rows(&self.tasks.items, mode);
         if self.parent_task_id > 0 {
-            self.assemble_table::<TaskChildrenTableKey>(
+            self.assemble_table(
+                TASK_CHILDREN_TABLE,
                 "Subtasks",
-                form_hx_get_route::<TaskChildrenTableKey, TaskDetailRouteTag>(
-                    TaskDetailRouteTag::new(self.parent_task_id),
-                ),
+                form_hx_get_route(TaskDetailRouteTag::new(self.parent_task_id)),
                 task_children_create_button(self.parent_task_id),
                 &headers,
                 &rows,
                 rows_instance,
             )
         } else {
-            self.assemble_table::<TaskTableKey>(
+            self.assemble_table(
+                TASK_TABLE,
                 "Tasks",
-                form_hx_get_route::<TaskTableKey, TaskDefaultRouteTag>(TaskDefaultRouteTag),
-                table_create_button::<TaskTableKey, TaskCreateModalKey>(
+                form_hx_get_route(TaskDefaultRouteTag),
+                table_create_button(
+                    TASK_TABLE,
+                    TASK_CREATE,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ),
@@ -546,8 +551,9 @@ impl TaskListPage {
         }
     }
 
-    fn assemble_table<K: SwapKey>(
+    fn assemble_table(
         &self,
+        key: SwapKey,
         title: &str,
         filter_attrs: HtmlAttrs,
         create_button: Markup,
@@ -578,12 +584,14 @@ impl TaskListPage {
                 (create_button)
             };
         }
-        let pagination = render_pagination::<K>(
+        let pagination = render_pagination(
+            key,
             &self.path_and_query,
             self.tasks.number,
             self.tasks.num_pages,
         );
-        filtered_table::<K>(
+        filtered_table(
+            key,
             title,
             actions,
             headers,
@@ -679,7 +687,7 @@ impl TaskDetailPage {
                     name: "p_tasks.TaskEditForm",
                     href: &TaskEditGetRouteTag::new(self.id).url(),
                     form_post_url: &TaskEditPostRouteTag::new(self.id).path(),
-                    modal_uid: TaskEditModalKey::ID,
+                    modal_uid: TASK_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -763,12 +771,13 @@ pub struct TaskEditModalPage {
 impl RenderTemplate for TaskEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = TaskDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<TaskEditModalKey>(
+        modal_keyed(
+            TASK_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit task" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<TaskEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(TASK_EDIT_MODAL, &modal_edit_post_url(
                         TaskEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -791,7 +800,7 @@ impl RenderTemplate for TaskEditModalPage {
                             name: "p_tasks.TaskDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: TaskDeleteModalKey::ID,
+                            modal_uid: TASK_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -820,12 +829,13 @@ pub struct TaskCreateModalPage {
 
 impl RenderTemplate for TaskCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<TaskCreateModalKey>(
+        modal_keyed(
+            TASK_CREATE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New task" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<TaskCreateModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(TASK_CREATE_MODAL, &modal_create_post_url(
                         TaskCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
@@ -868,7 +878,7 @@ pub struct TaskSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<TaskSelectTableKey, TaskSelectModalKey> for TaskSelectPage {
+impl RenderPickerSelect for TaskSelectPage {
     fn render_table(&self) -> Markup {
         let title_sort = column_sort_url(&self.path_and_query, "Title", &self.sort);
         let title_label = format!("Title{}", sort_indicator(&self.sort, "Title"));
@@ -899,7 +909,7 @@ impl RenderPickerSelect<TaskSelectTableKey, TaskSelectModalKey> for TaskSelectPa
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<TaskSelectTableKey, TaskSelectRouteTag>(
+                    attrs: form_hx_get_route(
                         TaskSelectRouteTag,
                     )
                     .set("hx-push-url", "false"),
@@ -927,14 +937,15 @@ impl RenderPickerSelect<TaskSelectTableKey, TaskSelectModalKey> for TaskSelectPa
                 label: label.as_str(),
             })
             .collect();
-        filtered_table::<TaskSelectTableKey>(
+        filtered_table(
+            TASK_SELECT_TABLE,
             "Select task",
             actions,
             &headers,
             &rows,
             table_pagination_picker(TablePagination {
                 pages: &pages,
-                hx_target: TaskSelectTableKey::SELECTOR,
+                hx_target: &TASK_SELECT_TABLE.selector(),
             }),
             &self.path_and_query,
             &self.filter_errors,
@@ -945,7 +956,7 @@ impl RenderPickerSelect<TaskSelectTableKey, TaskSelectModalKey> for TaskSelectPa
 
 impl RenderTemplate for TaskSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<TaskSelectModalKey>("", self.render_table())
+        modal_keyed(TASK_SELECT_MODAL, "", self.render_table())
     }
 }
 
@@ -1003,7 +1014,7 @@ impl TaskStatusListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<TaskStatusTableKey, TaskStatusDefaultRouteTag>(
+                    attrs: form_hx_get_route(
                         TaskStatusDefaultRouteTag,
                     ),
                     apply_label: "Apply",
@@ -1017,18 +1028,20 @@ impl TaskStatusListPage {
         ) {
             actions = html! {
                 (actions)
-                (table_create_button::<TaskStatusTableKey, TaskStatusCreateModalKey>(
+                (table_create_button(TASK_STATUS_TABLE, TASK_STATUS_CREATE,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        let pagination = render_pagination::<TaskStatusTableKey>(
+        let pagination = render_pagination(
+            TASK_STATUS_TABLE,
             &self.path_and_query,
             self.statuses.number,
             self.statuses.num_pages,
         );
-        filtered_table::<TaskStatusTableKey>(
+        filtered_table(
+            TASK_STATUS_TABLE,
             "Statuses",
             actions,
             &headers,
@@ -1140,7 +1153,8 @@ impl TaskStatusDetailPage {
                 children: Vec::new(),
             })
             .collect();
-        let pagination = render_pagination::<TaskStatusTasksTableKey>(
+        let pagination = render_pagination(
+            TASK_STATUS_TASKS_TABLE,
             &self.path_and_query,
             self.tasks.number,
             self.tasks.num_pages,
@@ -1152,7 +1166,7 @@ impl TaskStatusDetailPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<TaskStatusTasksTableKey, TaskStatusDetailRouteTag>(
+                    attrs: form_hx_get_route(
                         TaskStatusDetailRouteTag::new(self.id),
                     ),
                     apply_label: "Apply",
@@ -1161,7 +1175,8 @@ impl TaskStatusDetailPage {
                 ..Default::default()
             }))
         };
-        filtered_table::<TaskStatusTasksTableKey>(
+        filtered_table(
+            TASK_STATUS_TASKS_TABLE,
             "Tasks",
             actions,
             &headers,
@@ -1186,7 +1201,7 @@ impl TaskStatusDetailPage {
                     name: "p_tasks.TaskStatusEditForm",
                     href: &TaskStatusEditGetRouteTag::new(self.id).url(),
                     form_post_url: &TaskStatusEditPostRouteTag::new(self.id).path(),
-                    modal_uid: TaskStatusEditModalKey::ID,
+                    modal_uid: TASK_STATUS_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -1258,12 +1273,13 @@ pub struct TaskStatusEditModalPage {
 impl RenderTemplate for TaskStatusEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = TaskStatusDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<TaskStatusEditModalKey>(
+        modal_keyed(
+            TASK_STATUS_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit status" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<TaskStatusEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(TASK_STATUS_EDIT_MODAL, &modal_edit_post_url(
                         TaskStatusEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -1281,7 +1297,7 @@ impl RenderTemplate for TaskStatusEditModalPage {
                             name: "p_tasks.TaskStatusDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: TaskStatusDeleteModalKey::ID,
+                            modal_uid: TASK_STATUS_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -1304,12 +1320,13 @@ pub struct TaskStatusCreateModalPage {
 
 impl RenderTemplate for TaskStatusCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<TaskStatusCreateModalKey>(
+        modal_keyed(
+            TASK_STATUS_CREATE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New status" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<TaskStatusCreateModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(TASK_STATUS_CREATE_MODAL, &modal_create_post_url(
                         TaskStatusCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
@@ -1356,7 +1373,7 @@ impl TaskLogsPanel {
             id = self.task_id,
             default_dt = default_dt,
         );
-        let attrs = form_hx_post_route::<TaskLogsKey, _>(TaskLogAddPostRouteTag::new(self.task_id))
+        let attrs = form_hx_post_route(TaskLogAddPostRouteTag::new(self.task_id))
             .set("x-data", x_data)
             .set(format!("@{TASK_LOG_SAVED_EVENT}"), "clearDraft()");
         form(
@@ -1379,7 +1396,7 @@ impl TaskLogsPanel {
 
     pub fn render_list(&self) -> Markup {
         html! {
-            div id=(TaskLogsKey::ID) class="max-h-96 overflow-y-auto flex flex-col divide-y divide-base-300 border border-base-300 rounded-box" {
+            div id=(TASK_LOGS.id()) class="max-h-96 overflow-y-auto flex flex-col divide-y divide-base-300 border border-base-300 rounded-box" {
                 @if self.items.is_empty() {
                     div class="text-sm opacity-60 px-3 py-4 text-center" { "No logs" }
                 } @else {
@@ -1395,7 +1412,7 @@ impl TaskLogsPanel {
                                         name: "p_tasks.TaskLogEditForm",
                                         href: &TaskLogEditGetRouteTag::new(item.id).url(),
                                         form_post_url: &TaskLogEditPostRouteTag::new(item.id).path(),
-                                        modal_uid: TaskLogEditModalKey::ID,
+                                        modal_uid: TASK_LOG_EDIT_MODAL.id(),
                                         label: "Edit",
                                         classes: "btn-ghost btn-xs",
                                         ..Default::default()
@@ -1404,7 +1421,7 @@ impl TaskLogsPanel {
                                         name: "p_tasks.TaskLogDeleteForm",
                                         href: &TaskLogDeleteGetRouteTag::new(item.id).url(),
                                         form_post_url: &TaskLogDeleteGetRouteTag::new(item.id).url(),
-                                        modal_uid: TaskLogDeleteModalKey::ID,
+                                        modal_uid: TASK_LOG_DELETE_MODAL.id(),
                                         label: "Delete",
                                         classes: "btn-ghost btn-xs text-error",
                                         ..Default::default()
@@ -1491,7 +1508,7 @@ impl TaskLogDetailPage {
                     name: "p_tasks.TaskLogEditForm",
                     href: &TaskLogEditGetRouteTag::new(self.id).url(),
                     form_post_url: &TaskLogEditPostRouteTag::new(self.id).path(),
-                    modal_uid: TaskLogEditModalKey::ID,
+                    modal_uid: TASK_LOG_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -1562,12 +1579,13 @@ pub struct TaskLogEditModalPage {
 impl RenderTemplate for TaskLogEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = TaskLogDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<TaskLogEditModalKey>(
+        modal_keyed(
+            TASK_LOG_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit log" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<TaskLogEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(TASK_LOG_EDIT_MODAL, &modal_edit_post_url(
                         TaskLogEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -1585,7 +1603,7 @@ impl RenderTemplate for TaskLogEditModalPage {
                             name: "p_tasks.TaskLogDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: TaskLogDeleteModalKey::ID,
+                            modal_uid: TASK_LOG_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -1695,7 +1713,7 @@ impl PeriodicTaskListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<PeriodicTaskTableKey, PeriodicTaskDefaultRouteTag>(
+                    attrs: form_hx_get_route(
                         PeriodicTaskDefaultRouteTag,
                     ),
                     apply_label: "Apply",
@@ -1709,18 +1727,20 @@ impl PeriodicTaskListPage {
         ) {
             actions = html! {
                 (actions)
-                (table_create_button::<PeriodicTaskTableKey, PeriodicTaskCreateModalKey>(
+                (table_create_button(PERIODIC_TASK_TABLE, PERIODIC_TASK_CREATE,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        let pagination = render_pagination::<PeriodicTaskTableKey>(
+        let pagination = render_pagination(
+            PERIODIC_TASK_TABLE,
             &self.path_and_query,
             self.tasks.number,
             self.tasks.num_pages,
         );
-        filtered_table::<PeriodicTaskTableKey>(
+        filtered_table(
+            PERIODIC_TASK_TABLE,
             "Periodic tasks",
             actions,
             &headers,
@@ -1823,7 +1843,7 @@ impl PeriodicTaskDetailPage {
                     name: "p_tasks.PeriodicTaskEditForm",
                     href: &PeriodicTaskEditGetRouteTag::new(self.id).url(),
                     form_post_url: &PeriodicTaskEditPostRouteTag::new(self.id).path(),
-                    modal_uid: PeriodicTaskEditModalKey::ID,
+                    modal_uid: PERIODIC_TASK_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -1912,12 +1932,13 @@ pub struct PeriodicTaskEditModalPage {
 impl RenderTemplate for PeriodicTaskEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = PeriodicTaskDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<PeriodicTaskEditModalKey>(
+        modal_keyed(
+            PERIODIC_TASK_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit periodic task" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<PeriodicTaskEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(PERIODIC_TASK_EDIT_MODAL, &modal_edit_post_url(
                         PeriodicTaskEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -1944,7 +1965,7 @@ impl RenderTemplate for PeriodicTaskEditModalPage {
                             name: "p_tasks.PeriodicTaskDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: PeriodicTaskDeleteModalKey::ID,
+                            modal_uid: PERIODIC_TASK_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -1977,12 +1998,13 @@ pub struct PeriodicTaskCreateModalPage {
 
 impl RenderTemplate for PeriodicTaskCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<PeriodicTaskCreateModalKey>(
+        modal_keyed(
+            PERIODIC_TASK_CREATE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New periodic task" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<PeriodicTaskCreateModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(PERIODIC_TASK_CREATE_MODAL, &modal_create_post_url(
                         PeriodicTaskCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
@@ -2024,11 +2046,11 @@ pub struct ConfirmDeletePage {
 impl RenderTemplate for ConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = format!("#{}", self.modal_uid);
-        let post_url = if self.modal_uid == TaskStatusDeleteModalKey::ID {
+        let post_url = if self.modal_uid == TASK_STATUS_DELETE_MODAL.id() {
             TaskStatusDeletePostRouteTag::new(self.id).url()
-        } else if self.modal_uid == PeriodicTaskDeleteModalKey::ID {
+        } else if self.modal_uid == PERIODIC_TASK_DELETE_MODAL.id() {
             PeriodicTaskDeletePostRouteTag::new(self.id).url()
-        } else if self.modal_uid == TaskLogDeleteModalKey::ID {
+        } else if self.modal_uid == TASK_LOG_DELETE_MODAL.id() {
             TaskLogDeletePostRouteTag::new(self.id).url()
         } else {
             TaskDeletePostRouteTag::new(self.id).url()

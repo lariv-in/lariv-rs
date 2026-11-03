@@ -11,7 +11,7 @@ use sea_orm::{
 use serde::Deserialize;
 use uuid::Uuid;
 
-use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::list_filters::{FilterField, apply_filters, parse_list_filters, text_column};
@@ -33,8 +33,8 @@ use crate::{
     handlers::ModalNameQuery,
     handlers::responses::{FormResponseListQuery, load_responses_page},
     keys::{
-        FormCreateModalKey, FormDeleteModalKey, FormDetailResponsesTableKey, FormEditModalKey,
-        FormSelectModalKey, FormSelectTableKey, FormTableKey,
+        FORM_CREATE_MODAL, FORM_DELETE_MODAL, FORM_DETAIL_RESPONSES_TABLE, FORM_EDIT_MODAL,
+        FORM_SELECT_MODAL, FORM_SELECT_TABLE, FORM_TABLE,
     },
     logic::questions::{parse_questions_json, questions_editor_json, questions_to_json},
     routes::{FormDetailRouteTag, FormListRouteTag, FormPublicGetRouteTag},
@@ -275,7 +275,7 @@ pub async fn list(
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
-    if htmx.targets::<FormTableKey>() {
+    if htmx.targets(FORM_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -305,7 +305,7 @@ pub async fn select(
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
-    respond_picker_select::<FormSelectTableKey, FormSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(&htmx, FORM_SELECT_TABLE, FORM_SELECT_MODAL, &page)
 }
 
 pub async fn detail(
@@ -354,7 +354,7 @@ pub async fn detail(
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
-    if htmx.targets::<FormDetailResponsesTableKey>() {
+    if htmx.targets(FORM_DETAIL_RESPONSES_TABLE) {
         return page.render_responses_table().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -443,8 +443,9 @@ pub async fn create_post(
         access_status: Set(access_status),
     };
     match model.insert(&state.db).await {
-        Ok(saved) => respond_create_modal_done_fk::<FormCreateModalKey>(
+        Ok(saved) => respond_create_modal_done_fk(
             &htmx,
+            FORM_CREATE_MODAL,
             &q.refresh_table(),
             &FormDetailRouteTag::new(saved.id).url(),
             saved.id,
@@ -554,7 +555,7 @@ pub async fn edit_post(
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
         Ok(_) => {
-            respond_edit_modal_done::<FormEditModalKey>(&htmx, &FormDetailRouteTag::new(id).url())
+            respond_edit_modal_done(&htmx, FORM_EDIT_MODAL, &FormDetailRouteTag::new(id).url())
         }
         Err(e) => {
             survey_modal_error(
@@ -579,7 +580,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: FormDeleteModalKey::ID.to_string(),
+        modal_uid: FORM_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this form and all its responses?".into(),
         form_name: q
             .name
@@ -603,7 +604,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete form");
             let page = ConfirmDeletePage {
-                modal_uid: FormDeleteModalKey::ID.to_string(),
+                modal_uid: FORM_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this form and all its responses?".into(),
                 form_name: "p_forms.FormDeleteForm".into(),
                 id,

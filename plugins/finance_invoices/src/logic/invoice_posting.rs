@@ -35,7 +35,9 @@ use crate::entities::{
     CancelledInvoiceEntity, DraftInvoiceEntity, DraftInvoiceLineEntity, PostedInvoiceEntity,
     PostedInvoiceLineEntity,
 };
-use crate::entities::{cancelled_invoice, draft_invoice, draft_invoice_line, posted_invoice, posted_invoice_line};
+use crate::entities::{
+    cancelled_invoice, draft_invoice, draft_invoice_line, posted_invoice, posted_invoice_line,
+};
 use crate::logic::draft_payment_term::{
     convert_draft_to_posted_payment_term, copy_posted_payment_term, posted_payment_term_to_draft,
 };
@@ -59,7 +61,6 @@ struct LineWithTaxes {
     taxes: Vec<TaxModel>,
 }
 
-
 /// Journal lines for one document line, expanded from its product or service template.
 struct ExpandedLineJournal {
     specs: Vec<JournalLineSpec>,
@@ -82,12 +83,13 @@ async fn expand_product_journal(
             "{product_name} was deleted; restore the product or replace the line before posting"
         )
     })?;
-    let Some(template) = journal_template::load_template(db, product_id).await?
-    else {
+    let Some(template) = journal_template::load_template(db, product_id).await? else {
         return Err(format!("{product_name} has no journal entry template"));
     };
     if template.items.is_empty() {
-        return Err(format!("{product_name} has no journal entry template lines"));
+        return Err(format!(
+            "{product_name} has no journal entry template lines"
+        ));
     }
     let parsed: Vec<ParsedTemplateLine> = template
         .items
@@ -124,7 +126,6 @@ async fn expand_product_journal(
         journal_id: template.journal_id,
     })
 }
-
 
 /// Append every tax template line onto the invoice journal.
 async fn append_invoice_tax_lines(
@@ -286,8 +287,8 @@ pub async fn preview_draft_journal(
 
 fn draft_journal_label(id: i64, number: &Option<String>) -> String {
     match number.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        Some(number) => format!("Draft {number}"),
-        None => format!("Draft #{id}"),
+        Some(number) => format!("Quotation {number}"),
+        None => format!("Quotation #{id}"),
     }
 }
 
@@ -309,7 +310,7 @@ async fn prepare_draft_journal(
         .one(db)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or("draft invoice required")?;
+        .ok_or("quotation required")?;
 
     let lines = DraftInvoiceLineEntity::find()
         .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft_id))
@@ -318,7 +319,7 @@ async fn prepare_draft_journal(
         .await
         .map_err(|e| e.to_string())?;
     if lines.is_empty() {
-        return Err("draft has no lines".to_string());
+        return Err("quotation has no lines".to_string());
     }
 
     let header_tax_ids = load_draft_invoice_tax_ids(db, draft_id)
@@ -364,7 +365,7 @@ async fn prepare_draft_journal(
         specs.extend(expanded.specs);
         lines_with_taxes.push(LineWithTaxes { line, taxes });
     }
-    let journal_id = journal_id.ok_or("draft has no lines")?;
+    let journal_id = journal_id.ok_or("quotation has no lines")?;
     let tax_inputs: Vec<(Decimal, Vec<TaxModel>)> = lines_with_taxes
         .iter()
         .map(|lwt| (lwt.line.pre_tax_amount, lwt.taxes.clone()))
@@ -454,7 +455,7 @@ pub async fn draft_new_posted_with_lines(
         .one(&txn)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or("draft invoice required")?;
+        .ok_or("quotation required")?;
     let draft = locked;
 
     let doc_id = create_source_doc(&txn, POSTED_INVOICE_SOURCE_DOC_TYPE)
@@ -538,7 +539,9 @@ pub async fn draft_new_posted_with_lines(
     // Trigger also deletes the term; keep this for DBs that have not applied m00021.
     if let Some(term_id) = term_id {
         use crate::entities::DraftPaymentTermEntity;
-        let _ = DraftPaymentTermEntity::delete_by_id(term_id).exec(&txn).await;
+        let _ = DraftPaymentTermEntity::delete_by_id(term_id)
+            .exec(&txn)
+            .await;
     }
 
     txn.commit().await.map_err(|e| e.to_string())?;
@@ -933,4 +936,3 @@ async fn insert_cancelled_line<C: ConnectionTrait>(
         .ok_or_else(|| "insert cancelled line failed".to_string())?;
     row.try_get("", "id").map_err(|e| e.to_string())
 }
-

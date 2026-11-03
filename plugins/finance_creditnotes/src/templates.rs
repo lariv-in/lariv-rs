@@ -22,7 +22,7 @@ use lariv_plugin_finance_accounts::templates::{
     layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
 };
 
-use super::keys::CreditNoteTableKey;
+use super::keys::CREDIT_NOTE_TABLE;
 use super::routes::{CreditNoteDefaultRouteTag, CreditNoteDetailRouteTag};
 
 fn credit_notes_list_crumbs() -> Markup {
@@ -83,7 +83,8 @@ lariv_core::define_register_items! {
     hook: SlotsHook;
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -97,7 +98,7 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -178,18 +179,18 @@ impl CreditNoteListPage {
                 children: Vec::new(),
             })
             .collect();
-        let pagination = render_pagination::<CreditNoteTableKey>(
+        let pagination = render_pagination(
+            CREDIT_NOTE_TABLE,
             &self.path_and_query,
             self.credit_notes.number,
             self.credit_notes.num_pages,
         );
         let actions = table_button_filter(TableButtonFilter {
-            panel: page_size_only_filter_form::<CreditNoteTableKey, CreditNoteDefaultRouteTag>(
-                self.page_size,
-            ),
+            panel: page_size_only_filter_form::<CreditNoteDefaultRouteTag>(self.page_size),
             ..Default::default()
         });
-        data_table_list_refresh::<CreditNoteTableKey>(
+        data_table_list_refresh(
+            CREDIT_NOTE_TABLE,
             "Credit Notes",
             actions,
             &headers,

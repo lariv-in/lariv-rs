@@ -12,7 +12,7 @@ use sea_orm::{
 };
 
 use lariv_core::components::{
-    FilterClauseView, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
+    FilterClauseView, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx,
 };
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
@@ -40,8 +40,8 @@ use crate::{
         leads::{HubQuery, query_active_leads, query_converted_leads, query_failed_leads},
     },
     keys::{
-        LeadTagCreateModalKey, LeadTagDeleteModalKey, LeadTagEditModalKey, LeadTagLeadsTableKey,
-        LeadTagSelectModalKey, LeadTagSelectTableKey, LeadTagTableKey,
+        LEAD_TAG_CREATE_MODAL, LEAD_TAG_DELETE_MODAL, LEAD_TAG_EDIT_MODAL, LEAD_TAG_LEADS_TABLE,
+        LEAD_TAG_SELECT_MODAL, LEAD_TAG_SELECT_TABLE, LEAD_TAG_TABLE,
     },
     routes::{LeadTagDefaultRouteTag, LeadTagDetailRouteTag},
     scope::find_lead_tag_scoped,
@@ -244,7 +244,7 @@ pub async fn list(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<LeadTagTableKey>() {
+    if htmx.targets(LEAD_TAG_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -285,7 +285,7 @@ pub async fn select(
         target_input: q.target_input.clone().unwrap_or_else(|| "Tags".into()),
         page_size: q.filter.page_size.get(),
     };
-    respond_picker_select::<LeadTagSelectTableKey, LeadTagSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(&htmx, LEAD_TAG_SELECT_TABLE, LEAD_TAG_SELECT_MODAL, &page)
 }
 
 pub async fn create_get(
@@ -334,8 +334,9 @@ pub async fn create_post(
         color: Set(normalize_tag_color(&form.color)),
     };
     match model.insert(&state.db).await {
-        Ok(saved) => respond_create_modal_done_fk_extra::<LeadTagCreateModalKey>(
+        Ok(saved) => respond_create_modal_done_fk_extra(
             &htmx,
+            LEAD_TAG_CREATE_MODAL,
             &q.refresh_table(),
             &LeadTagDetailRouteTag::new(saved.id).url(),
             saved.id,
@@ -420,7 +421,7 @@ pub async fn detail(
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
     };
-    if htmx.targets::<LeadTagLeadsTableKey>() {
+    if htmx.targets(LEAD_TAG_LEADS_TABLE) {
         return page.render_leads_table().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -476,8 +477,9 @@ pub async fn edit_post(
     am.name = Set(name);
     am.color = Set(normalize_tag_color(&form.color));
     match am.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<LeadTagEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            LEAD_TAG_EDIT_MODAL,
             &LeadTagDetailRouteTag::new(id).url(),
         ),
         Err(e) => {
@@ -500,7 +502,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: LeadTagDeleteModalKey::ID.to_string(),
+        modal_uid: LEAD_TAG_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this tag? It will be removed from all leads."
             .into(),
         form_name: q
@@ -525,7 +527,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete lead tag");
             let page = ConfirmDeletePage {
-                modal_uid: LeadTagDeleteModalKey::ID.to_string(),
+                modal_uid: LEAD_TAG_DELETE_MODAL.id().to_string(),
                 message:
                     "Are you sure you want to delete this tag? It will be removed from all leads."
                         .into(),

@@ -30,8 +30,8 @@ use super::forms::{
     PersonForm, PersonFormField, TerminateEmployeeForm,
 };
 use super::keys::{
-    ApplicantEditModalKey, ApplicantHubTableKey, EmployeeCreateModalKey, EmployeeDeleteModalKey,
-    ExEmployeeCreateModalKey, TerminateEmployeeModalKey,
+    APPLICANT_EDIT_MODAL, APPLICANT_HUB_TABLE, EMPLOYEE_CREATE_MODAL, EMPLOYEE_DELETE_MODAL,
+    EX_EMPLOYEE_CREATE_MODAL, TERMINATE_EMPLOYEE_MODAL,
 };
 use super::logic::dashboard::MissingHrProfile;
 use super::logic::profile::EmployeeProfileView;
@@ -517,7 +517,8 @@ fn person_fields(name: &str, mobile: &str, email: &str) -> Markup {
     }
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -531,11 +532,12 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
-pub fn data_table_with_filter_errors<K: SwapKey>(
+pub fn data_table_with_filter_errors(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -544,12 +546,13 @@ pub fn data_table_with_filter_errors<K: SwapKey>(
     refresh_url: &str,
     errors: &[FilterRowError],
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -570,7 +573,7 @@ pub fn data_table_with_filter_errors<K: SwapKey>(
         actions
     };
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         classes: "w-full",
         actions: toolbar,
@@ -591,7 +594,8 @@ pub fn data_table_with_filter_errors<K: SwapKey>(
     })
 }
 
-fn render_people_data_table<K: SwapKey>(
+fn render_people_data_table(
+    key: SwapKey,
     title: &str,
     people: &ObjectList<ApplicantRow>,
     sort: &str,
@@ -681,8 +685,9 @@ fn render_people_data_table<K: SwapKey>(
             }
         })
         .collect();
-    let pagination = render_pagination::<K>(path_and_query, people.number, people.num_pages);
-    data_table_with_filter_errors::<K>(
+    let pagination = render_pagination(key, path_and_query, people.number, people.num_pages);
+    data_table_with_filter_errors(
+        key,
         title,
         actions,
         &headers,
@@ -757,7 +762,7 @@ impl ApplicantHubPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<ApplicantHubTableKey, PeopleHubRouteTag>(
+                    attrs: form_hx_get_route(
                         PeopleHubRouteTag,
                     ),
                     apply_label: "Apply",
@@ -776,7 +781,7 @@ impl ApplicantHubPage {
                     name: "p_hr.ExEmployeeCreateForm",
                     href: &ExEmployeeCreateGetRouteTag.url(),
                     form_post_url: &ExEmployeeCreateGetRouteTag.path(),
-                    modal_uid: ExEmployeeCreateModalKey::ID,
+                    modal_uid: EX_EMPLOYEE_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
@@ -785,7 +790,7 @@ impl ApplicantHubPage {
                     name: "p_hr.EmployeeCreateForm",
                     href: &EmployeeCreateGetRouteTag.url(),
                     form_post_url: &EmployeeCreateGetRouteTag.path(),
-                    modal_uid: EmployeeCreateModalKey::ID,
+                    modal_uid: EMPLOYEE_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
@@ -796,7 +801,8 @@ impl ApplicantHubPage {
                 (create_button)
             };
         }
-        render_people_data_table::<ApplicantHubTableKey>(
+        render_people_data_table(
+            APPLICANT_HUB_TABLE,
             "People",
             &self.people,
             &self.sort,
@@ -865,7 +871,7 @@ impl EmployeeDetailPage {
                     name: "p_hr.TerminateEmployeeForm",
                     href: &TerminateEmployeeGetRouteTag::new(self.id).url(),
                     form_post_url: &TerminateEmployeeGetRouteTag::new(self.id).path(),
-                    modal_uid: TerminateEmployeeModalKey::ID,
+                    modal_uid: TERMINATE_EMPLOYEE_MODAL.id(),
                     label: "Terminate employment",
                     classes: "btn-primary",
                     ..Default::default()
@@ -874,7 +880,7 @@ impl EmployeeDetailPage {
                     name: "p_hr.ApplicantEditForm",
                     href: &EmployeeEditGetRouteTag::new(self.id).url(),
                     form_post_url: &EmployeeEditPostRouteTag::new(self.id).path(),
-                    modal_uid: ApplicantEditModalKey::ID,
+                    modal_uid: APPLICANT_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -1106,10 +1112,10 @@ impl PersonCreateModalPage {
             (form(&CsrfToken::current(), FormOpts {
                 attrs: match self.kind {
                     PersonCreateKind::Employee => {
-                        form_hx_post_multipart_url::<EmployeeCreateModalKey>(&post_url)
+                        form_hx_post_multipart_url(EMPLOYEE_CREATE_MODAL, &post_url)
                     }
                     PersonCreateKind::ExEmployee => {
-                        form_hx_post_url::<ExEmployeeCreateModalKey>(&post_url)
+                        form_hx_post_url(EX_EMPLOYEE_CREATE_MODAL, &post_url)
                     }
                 },
                 enctype: if self.kind == PersonCreateKind::Employee {
@@ -1131,10 +1137,10 @@ impl PersonCreateModalPage {
         };
         match self.kind {
             PersonCreateKind::Employee => {
-                modal_keyed::<EmployeeCreateModalKey>(&self.form_name, modal_body)
+                modal_keyed(EMPLOYEE_CREATE_MODAL, &self.form_name, modal_body)
             }
             PersonCreateKind::ExEmployee => {
-                modal_keyed::<ExEmployeeCreateModalKey>(&self.form_name, modal_body)
+                modal_keyed(EX_EMPLOYEE_CREATE_MODAL, &self.form_name, modal_body)
             }
         }
     }
@@ -1172,18 +1178,19 @@ impl RenderTemplate for PersonEditModalPage {
                     name: "p_hr.EmployeeDeleteForm",
                     href: &delete_url,
                     form_post_url: &delete_url,
-                    modal_uid: EmployeeDeleteModalKey::ID,
+                    modal_uid: EMPLOYEE_DELETE_MODAL.id(),
                     classes: "btn-error",
                     ..Default::default()
                 }))
             };
         }
-        modal_keyed::<ApplicantEditModalKey>(
+        modal_keyed(
+            APPLICANT_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit employee" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_multipart_url::<ApplicantEditModalKey>(&self.post_url),
+                    attrs: form_hx_post_multipart_url(APPLICANT_EDIT_MODAL, &self.post_url),
                     enctype: Some("multipart/form-data"),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: employee_form_inputs(&self.values, true),
@@ -1205,7 +1212,8 @@ pub struct TerminateEmployeeModalPage {
 
 impl RenderTemplate for TerminateEmployeeModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<TerminateEmployeeModalKey>(
+        modal_keyed(
+            TERMINATE_EMPLOYEE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Terminate employment" }
@@ -1213,7 +1221,7 @@ impl RenderTemplate for TerminateEmployeeModalPage {
                     "Move this employee to ex-employee status?"
                 }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<TerminateEmployeeModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(TERMINATE_EMPLOYEE_MODAL, &modal_create_post_url(
                         TerminateEmployeePostRouteTag::new(self.employee_id),
                         &self.form_name,
                         &self.refresh_table,

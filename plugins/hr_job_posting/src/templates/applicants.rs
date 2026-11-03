@@ -23,8 +23,8 @@ use crate::crumbs::{applicant_crumbs, applicants_list_crumbs};
 use crate::detail_menu::applicant_detail_menu;
 use crate::forms::{ApplicantForm, ApplicantFormField, HireApplicantForm};
 use crate::keys::{
-    ApplicantCreateModalKey, ApplicantDeleteModalKey, ApplicantEditModalKey, ApplicantTableKey,
-    HireApplicantModalKey,
+    APPLICANT_CREATE_MODAL, APPLICANT_DELETE_MODAL, APPLICANT_EDIT_MODAL, APPLICANT_TABLE,
+    HIRE_APPLICANT_MODAL,
 };
 use crate::routes::{
     ApplicantCreateGetRouteTag, ApplicantCreatePostRouteTag, ApplicantDeleteGetRouteTag,
@@ -91,7 +91,8 @@ fn person_fields(name: &str, mobile: &str, email: &str) -> Markup {
     }
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -105,7 +106,7 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -174,9 +175,14 @@ fn render_applicants_table(
             children: Vec::new(),
         })
         .collect();
-    let pagination =
-        render_pagination::<ApplicantTableKey>(path_and_query, people.number, people.num_pages);
-    data_table_with_filter_errors::<ApplicantTableKey>(
+    let pagination = render_pagination(
+        APPLICANT_TABLE,
+        path_and_query,
+        people.number,
+        people.num_pages,
+    );
+    data_table_with_filter_errors(
+        APPLICANT_TABLE,
         "Applicants",
         actions,
         &headers,
@@ -207,7 +213,7 @@ impl ApplicantListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<ApplicantTableKey, ApplicantListRouteTag>(
+                    attrs: form_hx_get_route(
                         ApplicantListRouteTag,
                     ),
                     apply_label: "Apply",
@@ -225,7 +231,7 @@ impl ApplicantListPage {
                     name: "p_hr.ApplicantCreateForm",
                     href: &ApplicantCreateGetRouteTag.url(),
                     form_post_url: &ApplicantCreateGetRouteTag.path(),
-                    modal_uid: ApplicantCreateModalKey::ID,
+                    modal_uid: APPLICANT_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
@@ -287,7 +293,7 @@ impl ApplicantDetailPage {
                     name: "p_hr.HireApplicantForm",
                     href: &HireApplicantGetRouteTag::new(self.id).url(),
                     form_post_url: &HireApplicantGetRouteTag::new(self.id).path(),
-                    modal_uid: HireApplicantModalKey::ID,
+                    modal_uid: HIRE_APPLICANT_MODAL.id(),
                     label: "Hire as employee",
                     classes: "btn-primary",
                     ..Default::default()
@@ -296,7 +302,7 @@ impl ApplicantDetailPage {
                     name: "p_hr.ApplicantEditForm",
                     href: &ApplicantEditGetRouteTag::new(self.id).url(),
                     form_post_url: &ApplicantEditPostRouteTag::new(self.id).path(),
-                    modal_uid: ApplicantEditModalKey::ID,
+                    modal_uid: APPLICANT_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -415,12 +421,13 @@ pub struct ApplicantCreateModalPage {
 
 impl RenderTemplate for ApplicantCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<ApplicantCreateModalKey>(
+        modal_keyed(
+            APPLICANT_CREATE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New applicant" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<ApplicantCreateModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(APPLICANT_CREATE_MODAL, &modal_create_post_url(
                         ApplicantCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
@@ -449,12 +456,13 @@ pub struct ApplicantEditModalPage {
 impl RenderTemplate for ApplicantEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = ApplicantDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<ApplicantEditModalKey>(
+        modal_keyed(
+            APPLICANT_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit applicant" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<ApplicantEditModalKey>(&self.post_url),
+                    attrs: form_hx_post_url(APPLICANT_EDIT_MODAL, &self.post_url),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: applicant_form_inputs(&self.values),
                     actions: html! {
@@ -465,7 +473,7 @@ impl RenderTemplate for ApplicantEditModalPage {
                             name: "p_hr.ApplicantDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: ApplicantDeleteModalKey::ID,
+                            modal_uid: APPLICANT_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -487,7 +495,8 @@ pub struct HireApplicantModalPage {
 
 impl RenderTemplate for HireApplicantModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<HireApplicantModalKey>(
+        modal_keyed(
+            HIRE_APPLICANT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Hire applicant" }
@@ -495,7 +504,7 @@ impl RenderTemplate for HireApplicantModalPage {
                     "Move this applicant into employees?"
                 }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<HireApplicantModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(HIRE_APPLICANT_MODAL, &modal_create_post_url(
                         HireApplicantPostRouteTag::new(self.applicant_id),
                         &self.form_name,
                         &self.refresh_table,
@@ -522,10 +531,10 @@ pub struct ApplicantDeleteModalPage {
 
 impl RenderTemplate for ApplicantDeleteModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let target = format!("#{}", ApplicantDeleteModalKey::ID);
+        let target = format!("#{}", APPLICANT_DELETE_MODAL.id());
         let post_url = ApplicantDeletePostRouteTag::new(self.id).url();
         modal(lariv_core::components::Modal {
-            uid: ApplicantDeleteModalKey::ID,
+            uid: APPLICANT_DELETE_MODAL.id(),
             children: delete_confirmation(DeleteConfirmation {
                 title: "Confirm deletion",
                 message: &self.message,

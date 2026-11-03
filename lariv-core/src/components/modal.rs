@@ -27,13 +27,13 @@ pub fn modal(opts: Modal<'_>) -> Markup {
 }
 
 /// Modal rooted at a compile-time [`SwapKey`] id.
-pub fn modal_keyed<K: SwapKey>(classes: &str, children: Markup) -> Markup {
-    modal_with_uid(K::ID, classes, children, true)
+pub fn modal_keyed(key: SwapKey, classes: &str, children: Markup) -> Markup {
+    modal_with_uid(key.id(), classes, children, true)
 }
 
 /// Picker/select dialog without the DaisyUI page dim (`background-color: oklch(0% 0 0/.4)`).
-pub fn modal_keyed_undimmed<K: SwapKey>(classes: &str, children: Markup) -> Markup {
-    modal_with_uid(K::ID, classes, children, false)
+pub fn modal_keyed_undimmed(key: SwapKey, classes: &str, children: Markup) -> Markup {
+    modal_with_uid(key.id(), classes, children, false)
 }
 
 fn modal_with_uid(uid: &str, classes: &str, children: Markup, dim: bool) -> Markup {

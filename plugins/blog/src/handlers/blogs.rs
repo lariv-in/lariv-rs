@@ -17,7 +17,7 @@ use crate::{
         blog_tag_link,
     },
     forms::BlogForm,
-    keys::{BlogCreateModalKey, BlogDeleteModalKey, BlogEditModalKey, BlogTableKey},
+    keys::{BLOG_CREATE_MODAL, BLOG_DELETE_MODAL, BLOG_EDIT_MODAL, BLOG_TABLE},
     routes::{BlogDetailRouteTag, BlogListRouteTag},
     slug::resolve_blog_slug,
     state::BlogState,
@@ -27,7 +27,7 @@ use crate::{
     },
 };
 use lariv_core::components::{
-    FilterClauseView, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
+    FilterClauseView, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx,
 };
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
@@ -219,7 +219,7 @@ pub async fn list(
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
-    if htmx.targets::<BlogTableKey>() {
+    if htmx.targets(BLOG_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -326,8 +326,9 @@ pub async fn create_post(
                 return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                     .into_response();
             }
-            respond_create_modal_done::<BlogCreateModalKey>(
+            respond_create_modal_done(
                 &htmx,
+                BLOG_CREATE_MODAL,
                 &q.refresh_table(),
                 &BlogDetailRouteTag::new(saved.id).url(),
             )
@@ -432,7 +433,7 @@ pub async fn edit_post(
                 return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                     .into_response();
             }
-            respond_edit_modal_done::<BlogEditModalKey>(&htmx, &BlogDetailRouteTag::new(id).url())
+            respond_edit_modal_done(&htmx, BLOG_EDIT_MODAL, &BlogDetailRouteTag::new(id).url())
         }
         Err(e) => {
             let author_display = author_display(&state.db, created_by_id).await;
@@ -462,7 +463,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: BlogDeleteModalKey::ID.to_string(),
+        modal_uid: BLOG_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this article?".into(),
         form_name: q
             .name
@@ -487,7 +488,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete blog");
             let page = ConfirmDeletePage {
-                modal_uid: BlogDeleteModalKey::ID.to_string(),
+                modal_uid: BLOG_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this article?".into(),
                 form_name: "p_blog.BlogDeleteForm".into(),
                 id,

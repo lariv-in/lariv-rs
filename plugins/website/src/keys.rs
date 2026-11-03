@@ -1,11 +1,11 @@
 //! Compile-time HTMX swap keys for the website plugin.
 
-use lariv_core::swap_key;
+use lariv_core::components::SwapKey;
 
-swap_key!(RoutesTableKey, "website-routes-table");
-swap_key!(RouteCreateModalKey, "website-route-create-modal");
-swap_key!(RouteEditModalKey, "website-route-edit-modal");
-swap_key!(RouteDeleteModalKey, "website-route-delete-modal");
-swap_key!(RouteFkPageKey, "fk-website-page");
-swap_key!(RouteFkRefsKey, "fk-website-refs");
-swap_key!(CustomThemeCssFkKey, "fk-website-custom-theme-css");
+pub const ROUTES_TABLE: SwapKey = SwapKey("website-routes-table");
+pub const ROUTE_CREATE_MODAL: SwapKey = SwapKey("website-route-create-modal");
+pub const ROUTE_EDIT_MODAL: SwapKey = SwapKey("website-route-edit-modal");
+pub const ROUTE_DELETE_MODAL: SwapKey = SwapKey("website-route-delete-modal");
+pub const ROUTE_FK_PAGE: SwapKey = SwapKey("fk-website-page");
+pub const ROUTE_FK_REFS: SwapKey = SwapKey("fk-website-refs");
+pub const CUSTOM_THEME_CSS_FK: SwapKey = SwapKey("fk-website-custom-theme-css");

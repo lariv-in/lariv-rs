@@ -1,11 +1,11 @@
 //! Compile-time HTMX swap keys for the users plugin.
 
-use lariv_core::swap_key;
+use lariv_core::components::SwapKey;
 
-swap_key!(UserTableKey, "user-table");
-swap_key!(UserSelectTableKey, "user-selection-table");
-swap_key!(UserCreateModalKey, "user-create-modal");
-swap_key!(UserEditModalKey, "user-edit-modal");
-swap_key!(UserDeleteModalKey, "user-delete-modal");
-swap_key!(UserSelectModalKey, "user-selection-modal");
-swap_key!(SelfEditModalKey, "user-self-edit-modal");
+pub const USER_TABLE: SwapKey = SwapKey("user-table");
+pub const USER_SELECT_TABLE: SwapKey = SwapKey("user-selection-table");
+pub const USER_CREATE_MODAL: SwapKey = SwapKey("user-create-modal");
+pub const USER_EDIT_MODAL: SwapKey = SwapKey("user-edit-modal");
+pub const USER_DELETE_MODAL: SwapKey = SwapKey("user-delete-modal");
+pub const USER_SELECT_MODAL: SwapKey = SwapKey("user-selection-modal");
+pub const SELF_EDIT_MODAL: SwapKey = SwapKey("user-self-edit-modal");

@@ -32,7 +32,7 @@ use crate::{
     forms::{CustomSourceDocForm, CustomSourceDocIndexCreateForm},
     journal_lines_editor::input_journal_lines,
     journal_template,
-    keys::CustomSourceDocIndexCreateModalKey,
+    keys::CUSTOM_SOURCE_DOC_INDEX_CREATE_MODAL,
     logic::{
         custom_source_doc::{
             create_custom_source_doc, delete_custom_source_doc, empty_lines_json,
@@ -130,7 +130,7 @@ pub async fn index(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<crate::keys::CustomSourceDocIndexTableKey>() {
+    if htmx.targets(crate::keys::CUSTOM_SOURCE_DOC_INDEX_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -161,7 +161,12 @@ pub async fn index_create_get(
         _ => (String::new(), String::new()),
     };
     let (template_id, template_display, variables_schema, title, content, attached_vnode_id) =
-        match q.template_id.as_deref().and_then(parse_i64).filter(|id| *id > 0) {
+        match q
+            .template_id
+            .as_deref()
+            .and_then(parse_i64)
+            .filter(|id| *id > 0)
+        {
             Some(id) => match find_custom_source_doc_template_scoped(&state.db, id).await {
                 Some(t) => (
                     t.id.to_string(),
@@ -253,7 +258,8 @@ pub async fn fill_journal_lines(
     else {
         return render_err("Select a transaction template first".into());
     };
-    let Some(template) = find_custom_source_doc_template_scoped(&state.db, template_id).await else {
+    let Some(template) = find_custom_source_doc_template_scoped(&state.db, template_id).await
+    else {
         return render_err("Transaction template not found".into());
     };
     let variable_values = values_json_from_form_map(&template.variables, &map);
@@ -262,12 +268,14 @@ pub async fn fill_journal_lines(
         Err(e) => return render_err(e),
     };
     let parsed = journal_template::parsed_lines_from_items(&items);
-    let evaluated =
-        match journal_template::evaluate_template_lines(&template.variables, &parsed, &variable_values)
-        {
-            Ok(lines) => lines,
-            Err(e) => return render_err(e),
-        };
+    let evaluated = match journal_template::evaluate_template_lines(
+        &template.variables,
+        &parsed,
+        &variable_values,
+    ) {
+        Ok(lines) => lines,
+        Err(e) => return render_err(e),
+    };
     let specs: Vec<JournalLineSpec> = evaluated
         .into_iter()
         .map(|line| JournalLineSpec {
@@ -305,7 +313,8 @@ pub async fn index_create_post(
     let journal_display = journal_picker_label(&state.db, &journal_id_raw).await;
     let (template_display, variables_schema) =
         template_picker_state(&state.db, &template_id_raw).await;
-    let attached_vnode_display = vnode_display(&state.db, optional_fk(&attached_vnode_id_raw)).await;
+    let attached_vnode_display =
+        vnode_display(&state.db, optional_fk(&attached_vnode_id_raw)).await;
     let render_err = |error: String| {
         let page = index_form_page(IndexFormDraft {
             form_name: form_name.clone(),
@@ -349,8 +358,9 @@ pub async fn index_create_post(
     )
     .await
     {
-        Ok(model) => respond_create_modal_done::<CustomSourceDocIndexCreateModalKey>(
+        Ok(model) => respond_create_modal_done(
             &htmx,
+            CUSTOM_SOURCE_DOC_INDEX_CREATE_MODAL,
             &refresh_table,
             &CustomSourceDocDetailRouteTag::new(model.id).url(),
         ),
@@ -734,10 +744,7 @@ fn index_form_page(draft: IndexFormDraft) -> CustomSourceDocIndexCreateModalPage
     }
 }
 
-async fn template_picker_state(
-    db: &sea_orm::DatabaseConnection,
-    raw: &str,
-) -> (String, String) {
+async fn template_picker_state(db: &sea_orm::DatabaseConnection, raw: &str) -> (String, String) {
     match parse_i64(raw).filter(|id| *id > 0) {
         Some(id) => match find_custom_source_doc_template_scoped(db, id).await {
             Some(t) => (t.name, t.variables),

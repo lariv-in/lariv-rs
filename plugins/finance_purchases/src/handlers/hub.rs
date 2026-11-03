@@ -35,7 +35,7 @@ use crate::{
         expr_posted_final_due, expr_tax_levied_approx, expr_vendor, parse_hub_sort, sort_order,
     },
     hub_table_addon::enrich_hub_rows,
-    keys::PurchaseHubTableKey,
+    keys::PURCHASE_HUB_TABLE,
     logic::{
         PurchaseDateFormats, PurchaseListMetrics, cancelled_purchase_list_metrics,
         draft_purchase_list_metrics, load_purchase_date_formats, posted_purchase_list_metrics,
@@ -819,7 +819,7 @@ pub async fn hub(
         extra_filters,
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<PurchaseHubTableKey>() {
+    if htmx.targets(PURCHASE_HUB_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {

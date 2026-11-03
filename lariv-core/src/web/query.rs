@@ -24,6 +24,13 @@ where
     q.apply_to(RouteQueryBuilder::new(route)).build()
 }
 
+/// Path plus query string from a request [`Uri`].
+pub fn path_and_query(uri: &Uri) -> String {
+    uri.path_and_query()
+        .map(|pq| pq.as_str().to_string())
+        .unwrap_or_else(|| uri.path().to_string())
+}
+
 fn path_and_query_uri(path_and_query: &str) -> Uri {
     let s = if path_and_query.starts_with('/') {
         format!("http://local{path_and_query}")

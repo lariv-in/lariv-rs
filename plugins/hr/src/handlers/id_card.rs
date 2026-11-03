@@ -15,7 +15,7 @@ use lariv_plugin_filesystem::state::FilesystemState;
 use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::forms::LeaveCalcPreferencesForm;
-use crate::keys::{EmployeeIdCardModalKey, IdCardPreviewModalKey};
+use crate::keys::{EMPLOYEE_ID_CARD_MODAL, ID_CARD_PREVIEW_MODAL};
 use crate::logic::id_card::{id_card_jwks_json, render_employee_id_card, render_id_card_preview};
 use crate::logic::preferences::ensure_id_card_signing_key;
 use crate::routes::{EmployeeIdCardPdfRouteTag, HrIdCardPreviewPdfRouteTag};
@@ -38,7 +38,8 @@ fn pdf_error_html(status: StatusCode, message: &str) -> Response {
 }
 
 fn render_pdf_modal(title: &str, pdf_url: &str) -> Markup {
-    modal_keyed::<EmployeeIdCardModalKey>(
+    modal_keyed(
+        EMPLOYEE_ID_CARD_MODAL,
         "max-w-3xl w-[95vw]",
         html! {
             div class="flex items-center justify-between gap-3 mb-3 pr-10" {
@@ -70,7 +71,8 @@ fn render_pdf_modal(title: &str, pdf_url: &str) -> Markup {
 }
 
 fn render_pdf_modal_error(message: &str) -> Markup {
-    modal_keyed::<EmployeeIdCardModalKey>(
+    modal_keyed(
+        EMPLOYEE_ID_CARD_MODAL,
         "max-w-2xl",
         html! {
             h3 class="text-lg font-semibold mb-2" { "ID card failed" }
@@ -202,7 +204,8 @@ fn cleanup_stale_previews(max_age_secs: u64) {
 
 fn render_preview_modal(pdf_url: &str, error: Option<&str>) -> Markup {
     if let Some(err) = error {
-        return modal_keyed::<IdCardPreviewModalKey>(
+        return modal_keyed(
+            ID_CARD_PREVIEW_MODAL,
             "max-w-2xl",
             html! {
                 h3 class="text-lg font-semibold mb-2" { "ID card preview failed" }
@@ -210,7 +213,8 @@ fn render_preview_modal(pdf_url: &str, error: Option<&str>) -> Markup {
             },
         );
     }
-    modal_keyed::<IdCardPreviewModalKey>(
+    modal_keyed(
+        ID_CARD_PREVIEW_MODAL,
         "max-w-3xl w-[95vw]",
         html! {
             h3 class="text-lg font-semibold mb-3" { "ID card preview" }

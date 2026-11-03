@@ -61,8 +61,9 @@
 //!
 //! # HTMX swap keys
 //!
-//! Swappable DOM regions use compile-time [`swap::SwapKey`] types (via [`crate::swap_key!`]).
-//! Prefer typed helpers (`form_hx_post`, `hx_target`, `data_table_list::<K>`, `modal_keyed`)
+//! Swappable DOM regions use [`swap::SwapKey`] newtype consts
+//! (`pub const ITEM_TABLE: SwapKey = SwapKey("item-table");`).
+//! Prefer typed helpers (`form_hx_post`, `hx_target(key)`, `data_table_list(key, …)`, `modal_keyed`)
 //! over free-form `hx-target` strings or `htmx.ajax` glue. The shell is HTMX 4 only
 //! (`outerHTML` for `#app-layout` navigations and form POSTs, `outerMorph` for
 //! same-structure fragments such as tables; swap/indicator use `:inherited`,
@@ -71,10 +72,10 @@
 //! (theme, sidebar, search, table view toggle, FK display) via `hx-alpine-compat`.
 //!
 //! ```rust,ignore
-//! use lariv_rs::components::{form_hx_post_route, hx_target, MainContentKey};
+//! use lariv_rs::components::{form_hx_post_route, hx_target, MAIN_CONTENT};
 //!
 //! // POST replaces only the main content region.
-//! let attrs = form_hx_post_route::<MainContentKey, _>(save_route);
+//! let attrs = form_hx_post_route(save_route);
 //! ```
 
 pub mod attrs;
@@ -191,14 +192,13 @@ pub use static_cache::{
     IMMUTABLE_CACHE_CONTROL, MUST_REVALIDATE_CACHE_CONTROL, static_asset_cache_middleware,
 };
 pub use swap::{
-    AppLayoutKey, HX_TARGET_CLOSEST_TABLE, MainContentKey, ModalHostKey, SwapKey,
-    TABLE_INSTANCE_SEP, form_hx_boost_post_main, form_hx_get_picker_route, form_hx_get_route,
-    form_hx_get_url, form_hx_post_main, form_hx_post_main_url, form_hx_post_multipart_url,
-    form_hx_post_redirect, form_hx_post_route, form_hx_post_selector, form_hx_post_url,
-    form_post_download, form_post_download_route, form_post_multipart, fragment_response,
-    hx_nav_app_layout, hx_nav_app_layout_for_url, hx_nav_app_layout_url, hx_target, hx_target_swap,
-    nav_content_attrs, nav_main_attrs, oob_attrs, oob_attrs_swap, oob_delete, oob_fragment,
-    region_attrs,
+    APP_LAYOUT, HX_TARGET_CLOSEST_TABLE, MAIN_CONTENT, SwapKey, TABLE_INSTANCE_SEP,
+    form_hx_boost_post_main, form_hx_get_picker_route, form_hx_get_route, form_hx_get_url,
+    form_hx_post_main, form_hx_post_main_url, form_hx_post_multipart_url, form_hx_post_redirect,
+    form_hx_post_route, form_hx_post_selector, form_hx_post_url, form_post_download,
+    form_post_download_route, form_post_multipart, fragment_response, hx_nav_app_layout,
+    hx_nav_app_layout_for_url, hx_nav_app_layout_url, hx_target, hx_target_swap, nav_content_attrs,
+    nav_main_attrs, oob_attrs, oob_attrs_swap, oob_delete, oob_fragment, region_attrs,
 };
 pub use table::{
     DEFAULT_PAGE_SIZE, DataTable, DataTableDisplay, ObjectList, PAGE_SIZE_CHOICES, PaginationPage,

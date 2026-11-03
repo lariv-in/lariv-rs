@@ -14,7 +14,7 @@ use lariv_plugin_users::middleware::RequireAuth;
 use crate::{
     forms::PersonForm,
     handlers::{ModalNameQuery, applicants::person_input_from_form},
-    keys::ExEmployeeCreateModalKey,
+    keys::EX_EMPLOYEE_CREATE_MODAL,
     logic::ex_employee::create_ex_employee,
     routes::{ExEmployeeDetailRouteTag, PeopleHubRouteTag},
     scope::{ex_employee_display_name, find_ex_employee_scoped, format_timestamp},
@@ -46,8 +46,9 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<PersonForm>,
 ) -> Response {
     match create_ex_employee(&state.db, person_input_from_form(&form)).await {
-        Ok(ex_employee) => respond_create_modal_done::<ExEmployeeCreateModalKey>(
+        Ok(ex_employee) => respond_create_modal_done(
             &htmx,
+            EX_EMPLOYEE_CREATE_MODAL,
             &q.refresh_table(),
             &ExEmployeeDetailRouteTag::new(ex_employee.id).url(),
         ),

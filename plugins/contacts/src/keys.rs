@@ -1,12 +1,14 @@
-lariv_core::swap_key!(ContactTableKey, "contact-table");
-lariv_core::swap_key!(ContactCreateModalKey, "contact-create-modal");
-lariv_core::swap_key!(ContactEditModalKey, "contact-edit-modal");
-lariv_core::swap_key!(ContactDeleteModalKey, "contact-delete-modal");
-lariv_core::swap_key!(ContactSelectTableKey, "contact-select-table");
-lariv_core::swap_key!(ContactSelectModalKey, "contact-select-modal");
-lariv_core::swap_key!(CompanyTableKey, "company-table");
-lariv_core::swap_key!(CompanyCreateModalKey, "company-create-modal");
-lariv_core::swap_key!(CompanyEditModalKey, "company-edit-modal");
-lariv_core::swap_key!(CompanyDeleteModalKey, "company-delete-modal");
-lariv_core::swap_key!(CompanySelectTableKey, "company-select-table");
-lariv_core::swap_key!(CompanySelectModalKey, "company-select-modal");
+use lariv_core::components::SwapKey;
+
+pub const CONTACT_TABLE: SwapKey = SwapKey("contact-table");
+pub const CONTACT_CREATE_MODAL: SwapKey = SwapKey("contact-create-modal");
+pub const CONTACT_EDIT_MODAL: SwapKey = SwapKey("contact-edit-modal");
+pub const CONTACT_DELETE_MODAL: SwapKey = SwapKey("contact-delete-modal");
+pub const CONTACT_SELECT_TABLE: SwapKey = SwapKey("contact-select-table");
+pub const CONTACT_SELECT_MODAL: SwapKey = SwapKey("contact-select-modal");
+pub const COMPANY_TABLE: SwapKey = SwapKey("company-table");
+pub const COMPANY_CREATE_MODAL: SwapKey = SwapKey("company-create-modal");
+pub const COMPANY_EDIT_MODAL: SwapKey = SwapKey("company-edit-modal");
+pub const COMPANY_DELETE_MODAL: SwapKey = SwapKey("company-delete-modal");
+pub const COMPANY_SELECT_TABLE: SwapKey = SwapKey("company-select-table");
+pub const COMPANY_SELECT_MODAL: SwapKey = SwapKey("company-select-modal");

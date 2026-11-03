@@ -1,8 +1,8 @@
 //! Tooltip copy for invoice preference fields patched onto `/finance/preferences`.
 
 pub const INVOICE_NUMBER_FORMAT_HINT: &str = "\
-Applied when posting a draft that has no invoice number (blank or unset). \
-If the draft already has a number, that value is kept unchanged.
+Applied when posting a quotation that has no invoice number (blank or unset). \
+If the quotation already has a number, that value is kept unchanged.
 
 This is not a template engine — only these literal placeholders are replaced at post time:
 • {{FISCAL_CODE}} — Indian fiscal year code for the invoice date (Apr–Mar, e.g. 24-25)

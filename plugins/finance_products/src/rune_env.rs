@@ -92,13 +92,7 @@ fn search_products(
     let limit = trigram::clamp_search_limit(parsed.limit);
     let db = ctx.db.clone();
     let rows = block_on_async(async move {
-        trigram::search::<ProductEntity, _>(
-            &db,
-            &[product::Column::Name],
-            &query,
-            limit,
-        )
-        .await
+        trigram::search::<ProductEntity, _>(&db, &[product::Column::Name], &query, limit).await
     })
     .map_err(|e| e.to_string())?;
     json_to_rune(json!({
@@ -162,11 +156,7 @@ mod args {
     }
 
     fn optional_code(raw: i64) -> Option<i64> {
-        if raw <= 0 {
-            None
-        } else {
-            Some(raw)
-        }
+        if raw <= 0 { None } else { Some(raw) }
     }
 
     fn parse_product_kind(raw: &str) -> ProductKind {

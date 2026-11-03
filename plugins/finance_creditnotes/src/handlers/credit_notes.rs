@@ -20,7 +20,7 @@ use lariv_plugin_finance_accounts::entities::{JournalEntryEntity, journal_entry}
 
 use crate::{
     entities::credit_note::{self, Entity as CreditNoteEntity},
-    keys::CreditNoteTableKey,
+    keys::CREDIT_NOTE_TABLE,
     routes::CreditNoteDefaultRouteTag,
     scope::find_credit_note_scoped,
     state::CreditnotesState,
@@ -143,7 +143,7 @@ pub async fn list(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<CreditNoteTableKey>() {
+    if htmx.targets(CREDIT_NOTE_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {

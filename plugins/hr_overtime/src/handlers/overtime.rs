@@ -32,9 +32,9 @@ use crate::{
     },
     handlers::ModalNameQuery,
     keys::{
-        ApprovedOvertimeCreateModalKey, ApprovedOvertimeTableKey, OvertimeApproveModalKey,
-        OvertimeCreateModalKey, OvertimeEditModalKey, OvertimeRejectModalKey,
-        OvertimeRevokeApprovalModalKey, OvertimeRevokeRejectionModalKey, OvertimeTableKey,
+        APPROVED_OVERTIME_CREATE_MODAL, APPROVED_OVERTIME_TABLE, OVERTIME_APPROVE_MODAL,
+        OVERTIME_CREATE_MODAL, OVERTIME_EDIT_MODAL, OVERTIME_REJECT_MODAL,
+        OVERTIME_REVOKE_APPROVAL_MODAL, OVERTIME_REVOKE_REJECTION_MODAL, OVERTIME_TABLE,
     },
     logic::overtime::{
         ApproveOvertimeInput, ApprovedOvertimeInput, FILTER_APPROVED, FILTER_PENDING,
@@ -321,7 +321,7 @@ async fn index(
     let tab = status.to_string();
     let filter_path = scope.filter_path();
     let approved_href = OvertimeApprovedRouteTag.url();
-    if htmx.targets::<OvertimeTableKey>() {
+    if htmx.targets(OVERTIME_TABLE) {
         let page = OvertimeListPage {
             rows,
             fields: prepared.fields,
@@ -462,7 +462,7 @@ pub async fn approved(
     let path_and_query = path_and_query(&uri);
     let section_base = overtime_fallback(&ctx);
     let tz = ctx.timezone.clone();
-    if htmx.targets::<ApprovedOvertimeTableKey>() {
+    if htmx.targets(APPROVED_OVERTIME_TABLE) {
         let page = ApprovedOvertimeListPage {
             rows,
             fields: prepared.fields,
@@ -565,8 +565,9 @@ pub async fn create_post(
         Err(e) => return create_error_response(&state, &chrome, &ctx, &q, &form, e).await,
     };
     match create_overtime_application(&state.db, input).await {
-        Ok(row) => respond_create_modal_done::<OvertimeCreateModalKey>(
+        Ok(row) => respond_create_modal_done(
             &htmx,
+            OVERTIME_CREATE_MODAL,
             &q.refresh_table(),
             &OvertimeDetailRouteTag::new(row.id).url(),
         ),
@@ -598,8 +599,9 @@ pub async fn approved_create_post(
         }
     };
     match create_approved_overtime(&state.db, input).await {
-        Ok(_) => respond_create_modal_done::<ApprovedOvertimeCreateModalKey>(
+        Ok(_) => respond_create_modal_done(
             &htmx,
+            APPROVED_OVERTIME_CREATE_MODAL,
             &q.refresh_table(),
             &OvertimeApprovedRouteTag.url(),
         ),
@@ -678,8 +680,9 @@ pub async fn edit_post(
         Err(e) => return edit_error_response(&state, &chrome, &ctx, id, &q, &form, e).await,
     };
     match update_overtime_application(&state.db, id, input).await {
-        Ok(_) => respond_edit_modal_done::<OvertimeEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            OVERTIME_EDIT_MODAL,
             &OvertimeDetailRouteTag::new(id).url(),
         ),
         Err(e) => edit_error_response(&state, &chrome, &ctx, id, &q, &form, e).await,
@@ -774,8 +777,9 @@ pub async fn approve_post(
         approved_at: Utc::now(),
     };
     match approve_overtime(&state.db, id, &ctx, input).await {
-        Ok(_) => respond_edit_modal_done::<OvertimeApproveModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            OVERTIME_APPROVE_MODAL,
             &OvertimeDetailRouteTag::new(id).url(),
         ),
         Err(e) => approve_error_response(&chrome, &ctx, id, &q, e).await,
@@ -828,8 +832,9 @@ pub async fn reject_post(
         rejected_at: Utc::now(),
     };
     match reject_overtime(&state.db, id, &ctx, input).await {
-        Ok(_) => respond_edit_modal_done::<OvertimeRejectModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            OVERTIME_REJECT_MODAL,
             &OvertimeDetailRouteTag::new(id).url(),
         ),
         Err(e) => reject_error_response(&chrome, &ctx, id, &q, e).await,
@@ -872,8 +877,9 @@ pub async fn revoke_approval_post(
     HtmlFormBody(_form): HtmlFormBody<RevokeOvertimeApprovalForm>,
 ) -> Response {
     match revoke_approval(&state.db, id, &ctx).await {
-        Ok(()) => respond_edit_modal_done::<OvertimeRevokeApprovalModalKey>(
+        Ok(()) => respond_edit_modal_done(
             &htmx,
+            OVERTIME_REVOKE_APPROVAL_MODAL,
             &OvertimeDetailRouteTag::new(id).url(),
         ),
         Err(e) => {
@@ -927,8 +933,9 @@ pub async fn revoke_rejection_post(
     HtmlFormBody(_form): HtmlFormBody<RevokeOvertimeRejectionForm>,
 ) -> Response {
     match revoke_rejection(&state.db, id, &ctx).await {
-        Ok(()) => respond_edit_modal_done::<OvertimeRevokeRejectionModalKey>(
+        Ok(()) => respond_edit_modal_done(
             &htmx,
+            OVERTIME_REVOKE_REJECTION_MODAL,
             &OvertimeDetailRouteTag::new(id).url(),
         ),
         Err(e) => {

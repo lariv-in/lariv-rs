@@ -23,10 +23,9 @@ use crate::{
         RejectOvertimeForm, RevokeOvertimeApprovalForm, RevokeOvertimeRejectionForm,
     },
     keys::{
-        ApprovedOvertimeCreateModalKey, ApprovedOvertimeTableKey, OvertimeApproveModalKey,
-        OvertimeCreateModalKey, OvertimeDeleteModalKey, OvertimeEditModalKey,
-        OvertimeRejectModalKey, OvertimeRevokeApprovalModalKey, OvertimeRevokeRejectionModalKey,
-        OvertimeTableKey,
+        APPROVED_OVERTIME_CREATE_MODAL, APPROVED_OVERTIME_TABLE, OVERTIME_APPROVE_MODAL,
+        OVERTIME_CREATE_MODAL, OVERTIME_DELETE_MODAL, OVERTIME_EDIT_MODAL, OVERTIME_REJECT_MODAL,
+        OVERTIME_REVOKE_APPROVAL_MODAL, OVERTIME_REVOKE_REJECTION_MODAL, OVERTIME_TABLE,
     },
     logic::overtime::{FILTER_APPROVED, FILTER_PENDING, FILTER_REJECTED, STATUS_PENDING},
     routes::{
@@ -73,7 +72,8 @@ pub struct OvertimeRow {
     pub detail_href: String,
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -87,7 +87,7 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -222,7 +222,7 @@ impl OvertimeListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_url::<OvertimeTableKey>(&self.filter_path),
+                    attrs: form_hx_get_url(OVERTIME_TABLE, &self.filter_path),
                     apply_label: "Apply",
                     extra: html! {
                         @if show_tabs {
@@ -246,19 +246,21 @@ impl OvertimeListPage {
                     name: "p_hr.OvertimeCreateForm",
                     href: &OvertimeCreateGetRouteTag.url(),
                     form_post_url: &OvertimeCreateGetRouteTag.path(),
-                    modal_uid: OvertimeCreateModalKey::ID,
+                    modal_uid: OVERTIME_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
                 }))
             };
         }
-        data_table_with_filter_errors::<OvertimeTableKey>(
+        data_table_with_filter_errors(
+            OVERTIME_TABLE,
             &self.title,
             actions,
             &headers,
             &table_rows,
-            render_pagination::<OvertimeTableKey>(
+            render_pagination(
+                OVERTIME_TABLE,
                 &self.path_and_query,
                 self.rows.number,
                 self.rows.num_pages,
@@ -334,7 +336,7 @@ impl OvertimeDetailPage {
                     name: "p_hr.OvertimeApproveForm",
                     href: &OvertimeApproveGetRouteTag::new(self.id).url(),
                     form_post_url: &OvertimeApprovePostRouteTag::new(self.id).path(),
-                    modal_uid: OvertimeApproveModalKey::ID,
+                    modal_uid: OVERTIME_APPROVE_MODAL.id(),
                     label: "Approve",
                     classes: "btn-outline btn-sm",
                     ..Default::default()
@@ -343,7 +345,7 @@ impl OvertimeDetailPage {
                     name: "p_hr.OvertimeRejectForm",
                     href: &OvertimeRejectGetRouteTag::new(self.id).url(),
                     form_post_url: &OvertimeRejectPostRouteTag::new(self.id).path(),
-                    modal_uid: OvertimeRejectModalKey::ID,
+                    modal_uid: OVERTIME_REJECT_MODAL.id(),
                     label: "Reject",
                     classes: "btn-outline btn-error btn-sm",
                     ..Default::default()
@@ -354,7 +356,7 @@ impl OvertimeDetailPage {
                     name: "p_hr.OvertimeRevokeApprovalForm",
                     href: &OvertimeRevokeApprovalGetRouteTag::new(self.id).url(),
                     form_post_url: &OvertimeRevokeApprovalPostRouteTag::new(self.id).path(),
-                    modal_uid: OvertimeRevokeApprovalModalKey::ID,
+                    modal_uid: OVERTIME_REVOKE_APPROVAL_MODAL.id(),
                     label: "Revoke approval",
                     classes: "btn-outline btn-sm",
                     ..Default::default()
@@ -365,7 +367,7 @@ impl OvertimeDetailPage {
                     name: "p_hr.OvertimeRevokeRejectionForm",
                     href: &OvertimeRevokeRejectionGetRouteTag::new(self.id).url(),
                     form_post_url: &OvertimeRevokeRejectionPostRouteTag::new(self.id).path(),
-                    modal_uid: OvertimeRevokeRejectionModalKey::ID,
+                    modal_uid: OVERTIME_REVOKE_REJECTION_MODAL.id(),
                     label: "Revoke rejection",
                     classes: "btn-outline btn-error btn-sm",
                     ..Default::default()
@@ -376,7 +378,7 @@ impl OvertimeDetailPage {
                     name: "p_hr.OvertimeEditForm",
                     href: &OvertimeEditGetRouteTag::new(self.id).url(),
                     form_post_url: &OvertimeEditPostRouteTag::new(self.id).path(),
-                    modal_uid: OvertimeEditModalKey::ID,
+                    modal_uid: OVERTIME_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline btn-sm",
                     ..Default::default()
@@ -385,7 +387,7 @@ impl OvertimeDetailPage {
                     name: "p_hr.OvertimeDeleteForm",
                     href: &OvertimeDeleteGetRouteTag::new(self.id).url(),
                     form_post_url: &OvertimeDeleteGetRouteTag::new(self.id).path(),
-                    modal_uid: OvertimeDeleteModalKey::ID,
+                    modal_uid: OVERTIME_DELETE_MODAL.id(),
                     label: "Delete",
                     classes: "btn-outline btn-error btn-sm",
                     ..Default::default()
@@ -499,12 +501,13 @@ impl OvertimeCreateModalPage {
 
 impl RenderTemplate for OvertimeCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<OvertimeCreateModalKey>(
+        modal_keyed(
+            OVERTIME_CREATE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New overtime" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<OvertimeCreateModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(OVERTIME_CREATE_MODAL, &modal_create_post_url(
                         OvertimeCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
@@ -543,12 +546,13 @@ pub struct OvertimeEditModalPage {
 
 impl RenderTemplate for OvertimeEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<OvertimeEditModalKey>(
+        modal_keyed(
+            OVERTIME_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit overtime" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<OvertimeEditModalKey>(&self.post_url),
+                    attrs: form_hx_post_url(OVERTIME_EDIT_MODAL, &self.post_url),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: overtime_form_inputs(
                         &self.user_id,
@@ -577,10 +581,10 @@ pub struct OvertimeDeleteModalPage {
 
 impl RenderTemplate for OvertimeDeleteModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let target = format!("#{}", OvertimeDeleteModalKey::ID);
+        let target = format!("#{}", OVERTIME_DELETE_MODAL.id());
         let post_url = OvertimeDeletePostRouteTag::new(self.id).url();
         modal(lariv_core::components::Modal {
-            uid: OvertimeDeleteModalKey::ID,
+            uid: OVERTIME_DELETE_MODAL.id(),
             children: delete_confirmation(DeleteConfirmation {
                 title: "Confirm deletion",
                 message: &self.message,
@@ -602,13 +606,14 @@ pub struct OvertimeApproveModalPage {
 
 impl RenderTemplate for OvertimeApproveModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<OvertimeApproveModalKey>(
+        modal_keyed(
+            OVERTIME_APPROVE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg" { "Approve overtime" }
                 p class="text-sm opacity-80 mb-4" { "This records the approval in your name at the current time." }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<OvertimeApproveModalKey>(&self.post_url),
+                    attrs: form_hx_post_url(OVERTIME_APPROVE_MODAL, &self.post_url),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: ApproveOvertimeForm::render_inputs(
                         &FormCtx::form::<ApproveOvertimeForm>(CsrfToken::current()),
@@ -632,13 +637,14 @@ pub struct OvertimeRejectModalPage {
 
 impl RenderTemplate for OvertimeRejectModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<OvertimeRejectModalKey>(
+        modal_keyed(
+            OVERTIME_REJECT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg" { "Reject overtime" }
                 p class="text-sm opacity-80 mb-4" { "This records the rejection in your name at the current time." }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<OvertimeRejectModalKey>(&self.post_url),
+                    attrs: form_hx_post_url(OVERTIME_REJECT_MODAL, &self.post_url),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: RejectOvertimeForm::render_inputs(
                         &FormCtx::form::<RejectOvertimeForm>(CsrfToken::current()),
@@ -662,13 +668,14 @@ pub struct OvertimeRevokeApprovalModalPage {
 
 impl RenderTemplate for OvertimeRevokeApprovalModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<OvertimeRevokeApprovalModalKey>(
+        modal_keyed(
+            OVERTIME_REVOKE_APPROVAL_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg" { "Revoke approval" }
                 p class="text-sm opacity-80 mb-4" { "This removes the approval and returns the overtime to pending." }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<OvertimeRevokeApprovalModalKey>(&self.post_url),
+                    attrs: form_hx_post_url(OVERTIME_REVOKE_APPROVAL_MODAL, &self.post_url),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: RevokeOvertimeApprovalForm::render_inputs(
                         &FormCtx::form::<RevokeOvertimeApprovalForm>(CsrfToken::current()),
@@ -692,13 +699,14 @@ pub struct OvertimeRevokeRejectionModalPage {
 
 impl RenderTemplate for OvertimeRevokeRejectionModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<OvertimeRevokeRejectionModalKey>(
+        modal_keyed(
+            OVERTIME_REVOKE_REJECTION_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg" { "Revoke rejection" }
                 p class="text-sm opacity-80 mb-4" { "This removes the rejection and returns the overtime to pending." }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<OvertimeRevokeRejectionModalKey>(&self.post_url),
+                    attrs: form_hx_post_url(OVERTIME_REVOKE_REJECTION_MODAL, &self.post_url),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: RevokeOvertimeRejectionForm::render_inputs(
                         &FormCtx::form::<RevokeOvertimeRejectionForm>(CsrfToken::current()),
@@ -821,7 +829,7 @@ impl ApprovedOvertimeListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_url::<ApprovedOvertimeTableKey>(
+                    attrs: form_hx_get_url(APPROVED_OVERTIME_TABLE,
                         &OvertimeApprovedRouteTag.path(),
                     ),
                     apply_label: "Apply",
@@ -837,19 +845,21 @@ impl ApprovedOvertimeListPage {
                     name: "p_hr.ApprovedOvertimeCreateForm",
                     href: &OvertimeApprovedCreateGetRouteTag.url(),
                     form_post_url: &OvertimeApprovedCreateGetRouteTag.path(),
-                    modal_uid: ApprovedOvertimeCreateModalKey::ID,
+                    modal_uid: APPROVED_OVERTIME_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
                 }))
             };
         }
-        data_table_with_filter_errors::<ApprovedOvertimeTableKey>(
+        data_table_with_filter_errors(
+            APPROVED_OVERTIME_TABLE,
             "Approved overtime",
             actions,
             &headers,
             &table_rows,
-            render_pagination::<ApprovedOvertimeTableKey>(
+            render_pagination(
+                APPROVED_OVERTIME_TABLE,
                 &self.path_and_query,
                 self.rows.number,
                 self.rows.num_pages,
@@ -958,12 +968,13 @@ fn positive_id(id: i64) -> String {
 
 impl RenderTemplate for ApprovedOvertimeCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<ApprovedOvertimeCreateModalKey>(
+        modal_keyed(
+            APPROVED_OVERTIME_CREATE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New approved overtime" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<ApprovedOvertimeCreateModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(APPROVED_OVERTIME_CREATE_MODAL, &modal_create_post_url(
                         OvertimeApprovedCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,

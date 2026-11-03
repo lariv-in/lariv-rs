@@ -10,7 +10,7 @@ use chrono::Utc;
 use maud::Markup;
 use sea_orm::{DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder};
 
-use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{CsrfToken, HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
@@ -20,12 +20,12 @@ use lariv_core::web::{
 };
 use lariv_plugin_users::middleware::RequireAuth;
 
-use lariv_plugin_finance_products::{entities::product::Entity as ProductEntity, pricing};
 use lariv_plugin_finance_accounts::journal_lines_editor::{PostJournalSection, post_journal_modal};
 use lariv_plugin_finance_accounts::logic::custom_source_doc::{
     ensure_posting_accounts, parse_submitted_journal_lines,
 };
 use lariv_plugin_finance_common::decimal;
+use lariv_plugin_finance_products::{entities::product::Entity as ProductEntity, pricing};
 use lariv_plugin_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
 use crate::{
@@ -37,10 +37,10 @@ use crate::{
     entities::draft_purchase::{self, Entity as DraftPurchaseEntity},
     forms::{DraftPurchaseBulkEditForm, DraftPurchaseForm},
     keys::{
-        DraftPurchaseBulkDeleteModalKey, DraftPurchaseBulkEditModalKey,
-        DraftPurchaseBulkPostModalKey, DraftPurchaseCreateModalKey, DraftPurchaseDeleteModalKey,
-        DraftPurchaseEditModalKey, DraftPurchasePostModalKey, DraftPurchaseSelectModalKey,
-        DraftPurchaseSelectTableKey, PurchaseHubTableKey,
+        DRAFT_PURCHASE_BULK_DELETE_MODAL, DRAFT_PURCHASE_BULK_EDIT_MODAL,
+        DRAFT_PURCHASE_BULK_POST_MODAL, DRAFT_PURCHASE_CREATE_MODAL, DRAFT_PURCHASE_DELETE_MODAL,
+        DRAFT_PURCHASE_EDIT_MODAL, DRAFT_PURCHASE_POST_MODAL, DRAFT_PURCHASE_SELECT_MODAL,
+        DRAFT_PURCHASE_SELECT_TABLE, PURCHASE_HUB_TABLE,
     },
     logic::bill_to::{self, PartyLabels},
     logic::draft_payment_term::draft_payment_term_display_rows,
@@ -54,8 +54,8 @@ use crate::{
         default_payment_term_lines_json, delete_draft, format_delivery_date, format_purchase_date,
         load_purchase_date_formats, load_purchase_preferences, optional_display,
         optional_trimmed_text, parse_delivery_date, parse_lines_json,
-        parse_payment_term_lines_json, parse_purchase_datetime,
-        patch_draft_purchase, payment_term_lines_form_json, update_draft_purchase,
+        parse_payment_term_lines_json, parse_purchase_datetime, patch_draft_purchase,
+        payment_term_lines_form_json, update_draft_purchase,
     },
     routes::{
         DraftPurchaseBulkPostRouteTag, DraftPurchaseDetailRouteTag, DraftPurchasePostRouteTag,
@@ -445,8 +445,9 @@ pub async fn create_post(
                     return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                         .into_response();
                 }
-                respond_create_modal_done::<DraftPurchaseCreateModalKey>(
+                respond_create_modal_done(
                     &htmx,
+                    DRAFT_PURCHASE_CREATE_MODAL,
                     &q.refresh_table(),
                     &DraftPurchaseDetailRouteTag::new(d.id).url(),
                 )
@@ -605,8 +606,9 @@ pub async fn edit_post(
                         )
                         .into_response();
                     }
-                    respond_edit_modal_done::<DraftPurchaseEditModalKey>(
+                    respond_edit_modal_done(
                         &htmx,
+                        DRAFT_PURCHASE_EDIT_MODAL,
                         &DraftPurchaseDetailRouteTag::new(id).url(),
                     )
                 }
@@ -634,7 +636,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: DraftPurchaseDeleteModalKey::ID.to_string(),
+        modal_uid: DRAFT_PURCHASE_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this draft purchase?".into(),
         form_name: q
             .name
@@ -661,7 +663,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete draft purchase");
             let page = ConfirmDeletePage {
-                modal_uid: DraftPurchaseDeleteModalKey::ID.to_string(),
+                modal_uid: DRAFT_PURCHASE_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this draft purchase?".into(),
                 form_name: "p_finance_purchases.DraftPurchaseDeleteForm".into(),
                 id,
@@ -755,7 +757,7 @@ pub async fn post_confirm_get(
         &[id],
         true,
         &DraftPurchasePostRouteTag::new(id).path(),
-        DraftPurchasePostModalKey::ID,
+        DRAFT_PURCHASE_POST_MODAL.id(),
         "Post purchase",
         "Post purchase",
         &HashMap::new(),
@@ -788,7 +790,7 @@ pub async fn post_purchase(
                 &[id],
                 true,
                 &post_url,
-                DraftPurchasePostModalKey::ID,
+                DRAFT_PURCHASE_POST_MODAL.id(),
                 "Post purchase",
                 "Post purchase",
                 &overrides,
@@ -804,7 +806,7 @@ pub async fn post_purchase(
             &[id],
             true,
             &post_url,
-            DraftPurchasePostModalKey::ID,
+            DRAFT_PURCHASE_POST_MODAL.id(),
             "Post purchase",
             "Post purchase",
             &overrides,
@@ -828,7 +830,7 @@ pub async fn post_purchase(
             &[id],
             true,
             &post_url,
-            DraftPurchasePostModalKey::ID,
+            DRAFT_PURCHASE_POST_MODAL.id(),
             "Post purchase",
             "Post purchase",
             &overrides,
@@ -846,7 +848,7 @@ pub async fn bulk_delete_get(
 ) -> maud::Markup {
     let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
     let page = ConfirmBulkDeletePage {
-        modal_uid: DraftPurchaseBulkDeleteModalKey::ID.to_string(),
+        modal_uid: DRAFT_PURCHASE_BULK_DELETE_MODAL.id().to_string(),
         message: if ids.is_empty() {
             "Select at least one draft purchase to delete.".into()
         } else {
@@ -878,7 +880,7 @@ pub async fn bulk_delete_post(
     let ids = parse_bulk_ids(&form.ids);
     if ids.is_empty() {
         let page = ConfirmBulkDeletePage {
-            modal_uid: DraftPurchaseBulkDeleteModalKey::ID.to_string(),
+            modal_uid: DRAFT_PURCHASE_BULK_DELETE_MODAL.id().to_string(),
             message: "Select at least one draft purchase to delete.".into(),
             form_name: "p_finance_purchases.DraftPurchaseBulkDeleteForm".into(),
             ids: String::new(),
@@ -895,7 +897,7 @@ pub async fn bulk_delete_post(
         if let Err(e) = delete_draft(&state.db, *id).await {
             tracing::error!(error = %e, id, "failed to bulk-delete draft purchase");
             let page = ConfirmBulkDeletePage {
-                modal_uid: DraftPurchaseBulkDeleteModalKey::ID.to_string(),
+                modal_uid: DRAFT_PURCHASE_BULK_DELETE_MODAL.id().to_string(),
                 message: bulk_ids_message(ids.len()),
                 form_name: "p_finance_purchases.DraftPurchaseBulkDeleteForm".into(),
                 ids: ids
@@ -1048,12 +1050,13 @@ pub async fn bulk_edit_post(
     }
 
     let refresh = if modal.refresh_table().is_empty() {
-        PurchaseHubTableKey::ID.to_string()
+        PURCHASE_HUB_TABLE.id().to_string()
     } else {
         modal.refresh_table()
     };
-    respond_create_modal_done::<DraftPurchaseBulkEditModalKey>(
+    respond_create_modal_done(
         &htmx,
+        DRAFT_PURCHASE_BULK_EDIT_MODAL,
         &refresh,
         &hub_tab_url("drafts"),
     )
@@ -1075,7 +1078,7 @@ pub async fn bulk_post_confirm_get(
         &ids,
         false,
         &post_url,
-        DraftPurchaseBulkPostModalKey::ID,
+        DRAFT_PURCHASE_BULK_POST_MODAL.id(),
         "Post selected purchases",
         "Post selected",
         &HashMap::new(),
@@ -1108,7 +1111,7 @@ pub async fn bulk_post(
             &ids,
             false,
             &post_url,
-            DraftPurchaseBulkPostModalKey::ID,
+            DRAFT_PURCHASE_BULK_POST_MODAL.id(),
             "Post selected purchases",
             "Post selected",
             &HashMap::new(),
@@ -1138,7 +1141,7 @@ pub async fn bulk_post(
                     &ids,
                     false,
                     &post_url,
-                    DraftPurchaseBulkPostModalKey::ID,
+                    DRAFT_PURCHASE_BULK_POST_MODAL.id(),
                     "Post selected purchases",
                     "Post selected",
                     &overrides,
@@ -1154,7 +1157,7 @@ pub async fn bulk_post(
                 &ids,
                 false,
                 &post_url,
-                DraftPurchaseBulkPostModalKey::ID,
+                DRAFT_PURCHASE_BULK_POST_MODAL.id(),
                 "Post selected purchases",
                 "Post selected",
                 &overrides,
@@ -1181,7 +1184,7 @@ pub async fn bulk_post(
                 &ids,
                 false,
                 &post_url,
-                DraftPurchaseBulkPostModalKey::ID,
+                DRAFT_PURCHASE_BULK_POST_MODAL.id(),
                 "Post selected purchases",
                 "Post selected",
                 &overrides,
@@ -1251,7 +1254,10 @@ pub async fn multi_select(
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
-    respond_picker_select::<DraftPurchaseSelectTableKey, DraftPurchaseSelectModalKey, _>(
-        &htmx, &page,
+    respond_picker_select(
+        &htmx,
+        DRAFT_PURCHASE_SELECT_TABLE,
+        DRAFT_PURCHASE_SELECT_MODAL,
+        &page,
     )
 }

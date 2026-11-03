@@ -1596,6 +1596,8 @@ mod tests {
         assert!(out.contains("08/02/2026"));
         assert!(!out.contains("```"));
         assert!(out.contains("Mumbai 400001"));
+        assert!(out.contains("Phone: +91 98765 43210"));
+        assert!(out.contains("Email: billing@example.com"));
         assert!(out.contains("GSTIN/UIN: 27AAAAA0000A1Z5"));
         assert!(out.contains("Place of Supply: Maharashtra"));
         assert!(out.contains("dict-sum-prefix(tax-totals, \"SGST\")"));
@@ -1626,7 +1628,9 @@ mod tests {
         )
         .expect("render draft");
         let _ = std::fs::remove_dir_all(&asset_dir);
-        assert!(draft.contains("*PROFORMA INVOICE*"), "{draft}");
+        assert!(draft.contains("*QUOTATION*"), "{draft}");
+        assert!(draft.contains("*Quotation No.:*"), "{draft}");
+        assert!(draft.contains("This is a Computer Generated Quotation"), "{draft}");
 
         root.invoice_type = InvoiceState::Cancelled.as_str().to_string();
         let asset_dir = std::env::temp_dir().join("lariv-invoice-pdf-test-type-cancelled");

@@ -1,9 +1,9 @@
 use super::{
     handlers,
     keys::{
-        DraftInvoiceBulkDeleteModalKey, DraftInvoiceDeleteModalKey, DraftInvoiceSelectModalKey,
-        DraftInvoiceSelectTableKey, InvoiceHubTableKey, PaymentTableKey,
-        PostedInvoiceSelectModalKey, PostedInvoiceSelectTableKey,
+        DRAFT_INVOICE_BULK_DELETE_MODAL, DRAFT_INVOICE_DELETE_MODAL, DRAFT_INVOICE_SELECT_MODAL,
+        DRAFT_INVOICE_SELECT_TABLE, INVOICE_HUB_TABLE, PAYMENT_TABLE, POSTED_INVOICE_SELECT_MODAL,
+        POSTED_INVOICE_SELECT_TABLE,
     },
 };
 
@@ -15,7 +15,7 @@ lariv_core::define_plugin_routes! {
     plugin: FinanceInvoicesTag;
     prefix: "/dashboard";
     routes: [
-        get InvoiceDefaultRouteTag, "/finance-invoices", handlers::hub::hub, fragment(InvoiceHubTableKey), authorize(FinanceInvoicesView, []);
+        get InvoiceDefaultRouteTag, "/finance-invoices", handlers::hub::hub, fragment(INVOICE_HUB_TABLE), authorize(FinanceInvoicesView, []);
         get InvoiceLinePriceRouteTag, "/finance-invoices/line-price", handlers::drafts::line_price, authorize(FinanceInvoicesView, []);
         get DraftInvoiceCreateGetRouteTag, "/finance-invoices/create", handlers::drafts::create_get, modal, authorize(FinanceInvoicesMutate, []);
         post DraftInvoiceCreatePostRouteTag, "/finance-invoices/create", handlers::drafts::create_post, authorize(FinanceInvoicesMutate, []);
@@ -23,18 +23,18 @@ lariv_core::define_plugin_routes! {
         get DraftInvoiceEditGetRouteTag, "/finance-invoices/i/{id}/edit", handlers::drafts::edit_get, modal, authorize(FinanceInvoicesMutate, []);
         post DraftInvoiceEditPostRouteTag, "/finance-invoices/i/{id}/edit", handlers::drafts::edit_post, authorize(FinanceInvoicesMutate, []);
         get DraftInvoiceDeleteGetRouteTag, "/finance-invoices/i/{id}/delete", handlers::drafts::delete_get, modal, authorize(FinanceInvoicesMutate, []);
-        post DraftInvoiceDeletePostRouteTag, "/finance-invoices/i/{id}/delete", bare handlers::drafts::delete_post, fragment(DraftInvoiceDeleteModalKey), authorize(FinanceInvoicesMutate, []);
+        post DraftInvoiceDeletePostRouteTag, "/finance-invoices/i/{id}/delete", bare handlers::drafts::delete_post, fragment(DRAFT_INVOICE_DELETE_MODAL), authorize(FinanceInvoicesMutate, []);
         get DraftInvoicePostGetRouteTag, "/finance-invoices/i/{id}/post", handlers::drafts::post_confirm_get, modal, authorize(FinanceInvoicesMutate, []);
         post DraftInvoicePostRouteTag, "/finance-invoices/i/{id}/post", bare handlers::drafts::post_invoice, redirect, authorize(FinanceInvoicesMutate, []);
         get DraftInvoiceBulkDeleteGetRouteTag, "/finance-invoices/bulk-delete", handlers::drafts::bulk_delete_get, modal, authorize(FinanceInvoicesMutate, []);
-        post DraftInvoiceBulkDeletePostRouteTag, "/finance-invoices/bulk-delete", bare handlers::drafts::bulk_delete_post, fragment(DraftInvoiceBulkDeleteModalKey), authorize(FinanceInvoicesMutate, []);
+        post DraftInvoiceBulkDeletePostRouteTag, "/finance-invoices/bulk-delete", bare handlers::drafts::bulk_delete_post, fragment(DRAFT_INVOICE_BULK_DELETE_MODAL), authorize(FinanceInvoicesMutate, []);
         get DraftInvoiceBulkEditGetRouteTag, "/finance-invoices/bulk-edit", handlers::drafts::bulk_edit_get, modal, authorize(FinanceInvoicesMutate, []);
         post DraftInvoiceBulkEditPostRouteTag, "/finance-invoices/bulk-edit", handlers::drafts::bulk_edit_post, authorize(FinanceInvoicesMutate, []);
         get DraftInvoiceBulkPostGetRouteTag, "/finance-invoices/bulk-post", handlers::drafts::bulk_post_confirm_get, modal, authorize(FinanceInvoicesMutate, []);
         post DraftInvoiceBulkPostRouteTag, "/finance-invoices/bulk-post", bare handlers::drafts::bulk_post, redirect, authorize(FinanceInvoicesMutate, []);
         get DraftInvoicePdfModalRouteTag, "/finance-invoices/i/{id}/pdf", bare handlers::pdf::draft_pdf_modal, modal, authorize(FinanceInvoicesView, []);
         get DraftInvoicePdfRouteTag, "/finance-invoices/i/{id}/pdf/file", bare handlers::pdf::draft_pdf, file, authorize(FinanceInvoicesView, []);
-        get DraftInvoiceMultiSelectRouteTag, "/finance-invoices/pick", handlers::drafts::multi_select, multi_select(DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey), authorize(FinanceInvoicesView, []);
+        get DraftInvoiceMultiSelectRouteTag, "/finance-invoices/pick", handlers::drafts::multi_select, multi_select(DRAFT_INVOICE_SELECT_TABLE, DRAFT_INVOICE_SELECT_MODAL), authorize(FinanceInvoicesView, []);
 
         get PostedInvoiceDetailRouteTag, "/finance-invoices/posted/{id}", handlers::posted::detail, authorize(FinanceInvoicesView, []);
         get PostedInvoiceCancelGetRouteTag, "/finance-invoices/posted/{id}/cancel", handlers::posted::cancel_get, authorize(FinanceInvoicesMutate, []);
@@ -47,7 +47,7 @@ lariv_core::define_plugin_routes! {
         post PostedInvoiceBulkCancelPostRouteTag, "/finance-invoices/bulk-cancel", bare handlers::posted::bulk_cancel_post, redirect, authorize(FinanceInvoicesMutate, []);
         get PostedInvoicePdfModalRouteTag, "/finance-invoices/posted/{id}/pdf", bare handlers::pdf::posted_pdf_modal, modal, authorize(FinanceInvoicesView, []);
         get PostedInvoicePdfRouteTag, "/finance-invoices/posted/{id}/pdf/file", bare handlers::pdf::posted_pdf, file, authorize(FinanceInvoicesView, []);
-        get PostedInvoiceFkSelectRouteTag, "/finance-invoices/posted/pick", handlers::payments::posted_fk_select, fk_select(PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey), authorize(FinanceInvoicesView, []);
+        get PostedInvoiceFkSelectRouteTag, "/finance-invoices/posted/pick", handlers::payments::posted_fk_select, fk_select(POSTED_INVOICE_SELECT_TABLE, POSTED_INVOICE_SELECT_MODAL), authorize(FinanceInvoicesView, []);
 
         get CancelledInvoiceDetailRouteTag, "/finance-invoices/cancelled/{id}", handlers::cancelled::detail, authorize(FinanceInvoicesView, []);
         get CancelledInvoiceNewDraftGetRouteTag, "/finance-invoices/cancelled/{id}/new-draft", handlers::cancelled::new_draft_confirm_get, modal, authorize(FinanceInvoicesMutate, []);
@@ -60,7 +60,7 @@ lariv_core::define_plugin_routes! {
         get PaidInvoiceDetailRouteTag, "/finance-invoices/paid/{id}", handlers::settlements::paid_detail, authorize(FinanceInvoicesView, []);
         get PartiallyPaidInvoiceDetailRouteTag, "/finance-invoices/partial/{id}", handlers::settlements::partial_detail, authorize(FinanceInvoicesView, []);
 
-        get PaymentListRouteTag, "/finance-invoices/payments", handlers::payments::list, fragment(PaymentTableKey), authorize(FinanceInvoicesView, []);
+        get PaymentListRouteTag, "/finance-invoices/payments", handlers::payments::list, fragment(PAYMENT_TABLE), authorize(FinanceInvoicesView, []);
         get PaymentCreateGetRouteTag, "/finance-invoices/payments/create", handlers::payments::create_get, modal, authorize(FinanceInvoicesMutate, []);
         post PaymentCreatePostRouteTag, "/finance-invoices/payments/create", handlers::payments::create_post, authorize(FinanceInvoicesMutate, []);
         post PaymentJournalLinesRouteTag, "/finance-invoices/payment-journal-lines", bare handlers::payments::fill_journal_lines, raw, authorize(FinanceInvoicesMutate, []);

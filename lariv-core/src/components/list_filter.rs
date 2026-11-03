@@ -17,7 +17,7 @@ use crate::components::input::{
     input_many_to_many, input_number, input_select, input_single_choice_combobox, input_text,
     input_time,
 };
-use crate::components::swap::{SwapKey, form_hx_get_route};
+use crate::components::swap::form_hx_get_route;
 use crate::components::table::{clamp_page_size, page_size_choice_pairs};
 use crate::components::text::icon;
 use crate::html_form::{CsrfToken, FormCtx, HtmlForm, html_form, widgets::Select};
@@ -69,15 +69,14 @@ fn filter_form_actions(apply_label: &str) -> Markup {
 /// Page-size-only filter panel for list views that have no other filters.
 ///
 /// `extra_inputs` can carry hidden fields (e.g. `tab`) that must survive Apply.
-pub fn page_size_only_filter_form_with_extras<K, R>(page_size: u32, extra_inputs: Markup) -> Markup
+pub fn page_size_only_filter_form_with_extras<R>(page_size: u32, extra_inputs: Markup) -> Markup
 where
-    K: SwapKey,
-    R: FragmentGet<K> + RouteUrl + Copy + Default,
+    R: FragmentGet + RouteUrl + Copy + Default,
 {
     form(
         &CsrfToken::current(),
         FormOpts {
-            attrs: form_hx_get_route::<K, R>(R::default()),
+            attrs: form_hx_get_route(R::default()),
             inputs: html! {
                 (list_filter_common_inputs(page_size))
                 (extra_inputs)
@@ -89,24 +88,22 @@ where
 }
 
 /// Page-size-only filter panel for list views that have no other filters.
-pub fn page_size_only_filter_form<K, R>(page_size: u32) -> Markup
+pub fn page_size_only_filter_form<R>(page_size: u32) -> Markup
 where
-    K: SwapKey,
-    R: FragmentGet<K> + RouteUrl + Copy + Default,
+    R: FragmentGet + RouteUrl + Copy + Default,
 {
-    page_size_only_filter_form_with_extras::<K, R>(page_size, Markup::default())
+    page_size_only_filter_form_with_extras::<R>(page_size, Markup::default())
 }
 
 /// Page-size-only filter panel for FK picker modals (`hx-push-url=false`).
-pub fn page_size_only_picker_filter_form<K, R>(page_size: u32) -> Markup
+pub fn page_size_only_picker_filter_form<R>(page_size: u32) -> Markup
 where
-    K: SwapKey,
-    R: FragmentGet<K> + RouteUrl + Copy + Default,
+    R: FragmentGet + RouteUrl + Copy + Default,
 {
     form(
         &CsrfToken::current(),
         FormOpts {
-            attrs: form_hx_get_route::<K, R>(R::default()).set("hx-push-url", "false"),
+            attrs: form_hx_get_route(R::default()).set("hx-push-url", "false"),
             inputs: list_filter_common_inputs(page_size),
             actions: filter_form_actions("Apply"),
             ..Default::default()

@@ -12,7 +12,7 @@ use sea_orm::{DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter, Quer
 
 use lariv_core::list_filters::apply_filters;
 
-use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{CsrfToken, HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
@@ -41,10 +41,10 @@ use crate::{
     hub_filter::{HubFilterKind, hub_filter_fields, invoice_picker_clauses, matches_in_memory},
     hub_filter_addon::{HubQueryParams, apply_extra_sql_filters, render_extra_filter_inputs},
     keys::{
-        DraftInvoiceBulkDeleteModalKey, DraftInvoiceBulkEditModalKey, DraftInvoiceBulkPostModalKey,
-        DraftInvoiceCreateModalKey, DraftInvoiceDeleteModalKey, DraftInvoiceEditModalKey,
-        DraftInvoicePostModalKey, DraftInvoiceSelectModalKey, DraftInvoiceSelectTableKey,
-        InvoiceHubTableKey,
+        DRAFT_INVOICE_BULK_DELETE_MODAL, DRAFT_INVOICE_BULK_EDIT_MODAL,
+        DRAFT_INVOICE_BULK_POST_MODAL, DRAFT_INVOICE_CREATE_MODAL, DRAFT_INVOICE_DELETE_MODAL,
+        DRAFT_INVOICE_EDIT_MODAL, DRAFT_INVOICE_POST_MODAL, DRAFT_INVOICE_SELECT_MODAL,
+        DRAFT_INVOICE_SELECT_TABLE, INVOICE_HUB_TABLE,
     },
     logic::bill_to::{self, PartyLabels},
     logic::draft_payment_term::draft_payment_term_display_rows,
@@ -59,8 +59,7 @@ use crate::{
         format_delivery_date, format_invoice_date, load_invoice_date_formats,
         load_invoice_preferences, optional_display, optional_trimmed_text, parse_delivery_date,
         parse_invoice_datetime, parse_lines_json, parse_payment_term_lines_json,
-        patch_draft_invoice, payment_term_lines_form_json,
-        update_draft_invoice,
+        patch_draft_invoice, payment_term_lines_form_json, update_draft_invoice,
     },
     routes::{
         DraftInvoiceBulkPostRouteTag, DraftInvoiceDetailRouteTag, DraftInvoicePostRouteTag,
@@ -148,9 +147,9 @@ fn parse_bulk_ids(raw: &str) -> Vec<i64> {
 
 fn bulk_ids_message(count: usize) -> String {
     if count == 1 {
-        "Are you sure you want to delete the selected draft invoice?".into()
+        "Are you sure you want to delete the selected quotation?".into()
     } else {
-        format!("Are you sure you want to delete {count} selected draft invoices?")
+        format!("Are you sure you want to delete {count} selected quotations?")
     }
 }
 
@@ -293,10 +292,10 @@ fn bulk_form_to_patch(
         customer_id,
         payment_term_lines,
         header_tax_ids,
-        lines
+        lines,
     };
     if patch.is_empty() {
-        return Err("fill at least one field to update the selected drafts".to_string());
+        return Err("fill at least one field to update the selected quotations".to_string());
     }
     Ok(patch)
 }
@@ -457,8 +456,9 @@ pub async fn create_post(
                     return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                         .into_response();
                 }
-                respond_create_modal_done::<DraftInvoiceCreateModalKey>(
+                respond_create_modal_done(
                     &htmx,
+                    DRAFT_INVOICE_CREATE_MODAL,
                     &q.refresh_table(),
                     &DraftInvoiceDetailRouteTag::new(d.id).url(),
                 )
@@ -600,7 +600,6 @@ pub async fn edit_post(
                 payment_term_lines: input.payment_term_lines,
                 header_tax_ids: input.header_tax_ids,
                 lines: input.lines,
-                
             };
             match update_draft_invoice(&state.db, id, update, &ctx.timezone).await {
                 Ok(_) => {
@@ -621,8 +620,9 @@ pub async fn edit_post(
                         )
                         .into_response();
                     }
-                    respond_edit_modal_done::<DraftInvoiceEditModalKey>(
+                    respond_edit_modal_done(
                         &htmx,
+                        DRAFT_INVOICE_EDIT_MODAL,
                         &DraftInvoiceDetailRouteTag::new(id).url(),
                     )
                 }
@@ -650,8 +650,8 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: DraftInvoiceDeleteModalKey::ID.to_string(),
-        message: "Are you sure you want to delete this draft invoice?".into(),
+        modal_uid: DRAFT_INVOICE_DELETE_MODAL.id().to_string(),
+        message: "Are you sure you want to delete this quotation?".into(),
         form_name: q
             .name
             .clone()
@@ -677,8 +677,8 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete draft invoice");
             let page = ConfirmDeletePage {
-                modal_uid: DraftInvoiceDeleteModalKey::ID.to_string(),
-                message: "Are you sure you want to delete this draft invoice?".into(),
+                modal_uid: DRAFT_INVOICE_DELETE_MODAL.id().to_string(),
+                message: "Are you sure you want to delete this quotation?".into(),
                 form_name: "p_finance_invoices.DraftInvoiceDeleteForm".into(),
                 id,
                 error: e,
@@ -712,10 +712,10 @@ async fn render_invoice_post_modal(
     let mut sections = Vec::new();
     if ids.is_empty() {
         sections.push(PostJournalSection {
-            title: "No drafts selected".into(),
+            title: "No quotations selected".into(),
             field_name: "JournalLines".into(),
             lines_json: String::new(),
-            error: "Select at least one draft invoice to post.".into(),
+            error: "Select at least one quotation to post.".into(),
         });
     }
     for id in ids {
@@ -735,7 +735,7 @@ async fn render_invoice_post_modal(
             }),
             Err(error) if error == "draft already posted" => {}
             Err(error) => sections.push(PostJournalSection {
-                title: format!("Draft #{id}"),
+                title: format!("Quotation #{id}"),
                 field_name,
                 lines_json: String::new(),
                 error,
@@ -747,7 +747,7 @@ async fn render_invoice_post_modal(
             title: "Nothing to post".into(),
             field_name: "JournalLines".into(),
             lines_json: String::new(),
-            error: "These drafts are already posted.".into(),
+            error: "These quotations are already posted.".into(),
         });
     }
     post_journal_modal(
@@ -771,7 +771,7 @@ pub async fn post_confirm_get(
         &[id],
         true,
         &DraftInvoicePostRouteTag::new(id).path(),
-        DraftInvoicePostModalKey::ID,
+        DRAFT_INVOICE_POST_MODAL.id(),
         "Post invoice",
         "Post invoice",
         &HashMap::new(),
@@ -803,7 +803,7 @@ pub async fn post_invoice(
                 &[id],
                 true,
                 &DraftInvoicePostRouteTag::new(id).path(),
-                DraftInvoicePostModalKey::ID,
+                DRAFT_INVOICE_POST_MODAL.id(),
                 "Post invoice",
                 "Post invoice",
                 &overrides,
@@ -819,7 +819,7 @@ pub async fn post_invoice(
             &[id],
             true,
             &DraftInvoicePostRouteTag::new(id).path(),
-            DraftInvoicePostModalKey::ID,
+            DRAFT_INVOICE_POST_MODAL.id(),
             "Post invoice",
             "Post invoice",
             &overrides,
@@ -843,7 +843,7 @@ pub async fn post_invoice(
             &[id],
             true,
             &DraftInvoicePostRouteTag::new(id).path(),
-            DraftInvoicePostModalKey::ID,
+            DRAFT_INVOICE_POST_MODAL.id(),
             "Post invoice",
             "Post invoice",
             &overrides,
@@ -861,9 +861,9 @@ pub async fn bulk_delete_get(
 ) -> maud::Markup {
     let ids = parse_bulk_ids(q.ids.as_deref().unwrap_or(""));
     let page = ConfirmBulkDeletePage {
-        modal_uid: DraftInvoiceBulkDeleteModalKey::ID.to_string(),
+        modal_uid: DRAFT_INVOICE_BULK_DELETE_MODAL.id().to_string(),
         message: if ids.is_empty() {
-            "Select at least one draft invoice to delete.".into()
+            "Select at least one quotation to delete.".into()
         } else {
             bulk_ids_message(ids.len())
         },
@@ -874,7 +874,7 @@ pub async fn bulk_delete_get(
             .collect::<Vec<_>>()
             .join(","),
         error: if ids.is_empty() {
-            "No invoices selected.".into()
+            "No quotations selected.".into()
         } else {
             String::new()
         },
@@ -893,11 +893,11 @@ pub async fn bulk_delete_post(
     let ids = parse_bulk_ids(&form.ids);
     if ids.is_empty() {
         let page = ConfirmBulkDeletePage {
-            modal_uid: DraftInvoiceBulkDeleteModalKey::ID.to_string(),
-            message: "Select at least one draft invoice to delete.".into(),
+            modal_uid: DRAFT_INVOICE_BULK_DELETE_MODAL.id().to_string(),
+            message: "Select at least one quotation to delete.".into(),
             form_name: "p_finance_invoices.DraftInvoiceBulkDeleteForm".into(),
             ids: String::new(),
-            error: "No invoices selected.".into(),
+            error: "No quotations selected.".into(),
             can_submit: false,
         };
         return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -910,7 +910,7 @@ pub async fn bulk_delete_post(
         if let Err(e) = delete_draft(&state.db, *id).await {
             tracing::error!(error = %e, id, "failed to bulk-delete draft invoice");
             let page = ConfirmBulkDeletePage {
-                modal_uid: DraftInvoiceBulkDeleteModalKey::ID.to_string(),
+                modal_uid: DRAFT_INVOICE_BULK_DELETE_MODAL.id().to_string(),
                 message: bulk_ids_message(ids.len()),
                 form_name: "p_finance_invoices.DraftInvoiceBulkDeleteForm".into(),
                 ids: ids
@@ -918,7 +918,7 @@ pub async fn bulk_delete_post(
                     .map(|id| id.to_string())
                     .collect::<Vec<_>>()
                     .join(","),
-                error: format!("Failed to delete draft #{id}: {e}"),
+                error: format!("Failed to delete quotation #{id}: {e}"),
                 can_submit: true,
             };
             return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -942,7 +942,7 @@ pub async fn bulk_edit_get(
         .join(",");
     let (error, can_submit) = if ids.is_empty() {
         (
-            "Select at least one draft invoice to edit.".to_string(),
+            "Select at least one quotation to edit.".to_string(),
             false,
         )
     } else {
@@ -987,7 +987,7 @@ pub async fn bulk_edit_post(
             &ids_str,
             0,
             form,
-            "Select at least one draft invoice to edit.".into(),
+            "Select at least one quotation to edit.".into(),
             false,
             Some(&fields),
         )
@@ -1036,7 +1036,7 @@ pub async fn bulk_edit_post(
                     &ids_str,
                     ids.len(),
                     form,
-                    format!("Failed to update draft #{id}: {e}"),
+                    format!("Failed to update quotation #{id}: {e}"),
                     true,
                     Some(&fields),
                 )
@@ -1052,7 +1052,7 @@ pub async fn bulk_edit_post(
                 &ids_str,
                 ids.len(),
                 form,
-                format!("Failed to update draft #{id}: {e}"),
+                format!("Failed to update quotation #{id}: {e}"),
                 true,
                 Some(&fields),
             )
@@ -1063,12 +1063,13 @@ pub async fn bulk_edit_post(
     }
 
     let refresh = if modal.refresh_table().is_empty() {
-        InvoiceHubTableKey::ID.to_string()
+        INVOICE_HUB_TABLE.id().to_string()
     } else {
         modal.refresh_table()
     };
-    respond_create_modal_done::<DraftInvoiceBulkEditModalKey>(
+    respond_create_modal_done(
         &htmx,
+        DRAFT_INVOICE_BULK_EDIT_MODAL,
         &refresh,
         &hub_tab_url("drafts"),
     )
@@ -1090,7 +1091,7 @@ pub async fn bulk_post_confirm_get(
         &ids,
         false,
         &post_url,
-        DraftInvoiceBulkPostModalKey::ID,
+        DRAFT_INVOICE_BULK_POST_MODAL.id(),
         "Post selected invoices",
         "Post selected",
         &HashMap::new(),
@@ -1123,11 +1124,11 @@ pub async fn bulk_post(
             &ids,
             false,
             &post_url,
-            DraftInvoiceBulkPostModalKey::ID,
+            DRAFT_INVOICE_BULK_POST_MODAL.id(),
             "Post selected invoices",
             "Post selected",
             &HashMap::new(),
-            "Select at least one draft invoice to post.",
+            "Select at least one quotation to post.",
         )
         .await
         .into_response();
@@ -1153,11 +1154,11 @@ pub async fn bulk_post(
                     &ids,
                     false,
                     &post_url,
-                    DraftInvoiceBulkPostModalKey::ID,
+                    DRAFT_INVOICE_BULK_POST_MODAL.id(),
                     "Post selected invoices",
                     "Post selected",
                     &overrides,
-                    &format!("Draft #{id}: {error}"),
+                    &format!("Quotation #{id}: {error}"),
                 )
                 .await
                 .into_response();
@@ -1169,11 +1170,11 @@ pub async fn bulk_post(
                 &ids,
                 false,
                 &post_url,
-                DraftInvoiceBulkPostModalKey::ID,
+                DRAFT_INVOICE_BULK_POST_MODAL.id(),
                 "Post selected invoices",
                 "Post selected",
                 &overrides,
-                &format!("Draft #{id}: {error}"),
+                &format!("Quotation #{id}: {error}"),
             )
             .await
             .into_response();
@@ -1196,11 +1197,11 @@ pub async fn bulk_post(
                 &ids,
                 false,
                 &post_url,
-                DraftInvoiceBulkPostModalKey::ID,
+                DRAFT_INVOICE_BULK_POST_MODAL.id(),
                 "Post selected invoices",
                 "Post selected",
                 &overrides,
-                &format!("Draft #{id}: {error}"),
+                &format!("Quotation #{id}: {error}"),
             )
             .await
             .into_response();
@@ -1322,5 +1323,10 @@ pub async fn multi_select(
         path_and_query: path_and_query(&uri),
         page_size,
     };
-    respond_picker_select::<DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(
+        &htmx,
+        DRAFT_INVOICE_SELECT_TABLE,
+        DRAFT_INVOICE_SELECT_MODAL,
+        &page,
+    )
 }

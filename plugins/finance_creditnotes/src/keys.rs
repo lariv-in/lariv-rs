@@ -1,1 +1,3 @@
-lariv_core::swap_key!(CreditNoteTableKey, "finance-credit-notes-table");
+use lariv_core::components::SwapKey;
+
+pub const CREDIT_NOTE_TABLE: SwapKey = SwapKey("finance-credit-notes-table");

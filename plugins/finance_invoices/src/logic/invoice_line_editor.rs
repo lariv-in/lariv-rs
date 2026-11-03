@@ -344,7 +344,7 @@ pub async fn draft_invoice_line_display_rows(
         if ln.product_id > 0 {
             if let Ok(Some(template)) =
                 lariv_plugin_finance_products::journal_template::load_template(db, ln.product_id)
-                .await
+                    .await
             {
                 match journal_id {
                     Some(existing) if existing != template.journal_id => mixed_journals = true,

@@ -1,1 +1,3 @@
-lariv_core::swap_key!(SignatureCreateModalKey, "signature-create-modal");
+use lariv_core::components::SwapKey;
+
+pub const SIGNATURE_CREATE_MODAL: SwapKey = SwapKey("signature-create-modal");

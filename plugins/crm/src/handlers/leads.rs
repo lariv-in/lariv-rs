@@ -8,7 +8,7 @@ use sea_orm::sea_query::{Condition, IntoColumnRef};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
 use lariv_core::components::{
-    FilterClauseView, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey,
+    FilterClauseView, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx,
 };
 use lariv_core::db::trigram::text_match_condition;
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
@@ -39,8 +39,8 @@ use crate::{
         lead_updates::load_updates_panel,
     },
     keys::{
-        LeadConvertModalKey, LeadCreateModalKey, LeadDeleteModalKey, LeadEditModalKey,
-        LeadFailModalKey, LeadHubTableKey, LeadUpdatesKey,
+        LEAD_CONVERT_MODAL, LEAD_CREATE_MODAL, LEAD_DELETE_MODAL, LEAD_EDIT_MODAL, LEAD_FAIL_MODAL,
+        LEAD_HUB_TABLE, LEAD_UPDATES,
     },
     lead_source::LeadSource,
     logic::{
@@ -515,7 +515,7 @@ pub async fn hub(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<LeadHubTableKey>() {
+    if htmx.targets(LEAD_HUB_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -595,8 +595,9 @@ pub async fn create_post(
         }
     };
     match create_lead(&state.db, input).await {
-        Ok(saved) => respond_create_modal_done::<LeadCreateModalKey>(
+        Ok(saved) => respond_create_modal_done(
             &htmx,
+            LEAD_CREATE_MODAL,
             &q.refresh_table(),
             &LeadDetailRouteTag::new(saved.id).url(),
         ),
@@ -669,7 +670,7 @@ pub async fn detail(
         tags: lead_tag_chips(&state.db, lead.id).await,
         updates: load_updates_panel(&state.db, &ctx, lead.id).await,
     };
-    if htmx.targets::<LeadUpdatesKey>() {
+    if htmx.targets(LEAD_UPDATES) {
         return page.updates.render_list().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -800,7 +801,11 @@ pub async fn edit_post(
             return lead_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, &e).await;
         }
     }
-    respond_edit_modal_done::<LeadEditModalKey>(&htmx, &lead_return_url(&state.db, id).await)
+    respond_edit_modal_done(
+        &htmx,
+        LEAD_EDIT_MODAL,
+        &lead_return_url(&state.db, id).await,
+    )
 }
 
 pub async fn delete_get(
@@ -810,7 +815,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: LeadDeleteModalKey::ID.to_string(),
+        modal_uid: LEAD_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this lead?".into(),
         form_name: q
             .name
@@ -834,7 +839,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete lead");
             let page = ConfirmDeletePage {
-                modal_uid: LeadDeleteModalKey::ID.to_string(),
+                modal_uid: LEAD_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this lead?".into(),
                 form_name: "p_crm.LeadDeleteForm".into(),
                 id,
@@ -874,8 +879,9 @@ pub async fn convert_post(
     HtmlFormBody(_form): HtmlFormBody<ConvertLeadBody>,
 ) -> Response {
     match convert_lead(&state.db, id, &ctx).await {
-        Ok(result) => respond_create_modal_done::<LeadConvertModalKey>(
+        Ok(result) => respond_create_modal_done(
             &htmx,
+            LEAD_CONVERT_MODAL,
             &q.refresh_table(),
             &ConvertedLeadDetailRouteTag::new(result.converted_id).url(),
         ),
@@ -927,8 +933,9 @@ pub async fn fail_post(
     HtmlFormBody(form): HtmlFormBody<FailLeadForm>,
 ) -> Response {
     match fail_lead(&state.db, id, &ctx, opt_string(form.reason.clone())).await {
-        Ok(failed_id) => respond_create_modal_done::<LeadFailModalKey>(
+        Ok(failed_id) => respond_create_modal_done(
             &htmx,
+            LEAD_FAIL_MODAL,
             &q.refresh_table(),
             &FailedLeadDetailRouteTag::new(failed_id).url(),
         ),
@@ -995,7 +1002,7 @@ pub async fn converted_detail(
         tags: lead_tag_chips(&state.db, converted.lead_id).await,
         updates: load_updates_panel(&state.db, &ctx, converted.lead_id).await,
     };
-    if htmx.targets::<LeadUpdatesKey>() {
+    if htmx.targets(LEAD_UPDATES) {
         return page.updates.render_list().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -1049,7 +1056,7 @@ pub async fn failed_detail(
         tags: lead_tag_chips(&state.db, failed.lead_id).await,
         updates: load_updates_panel(&state.db, &ctx, failed.lead_id).await,
     };
-    if htmx.targets::<LeadUpdatesKey>() {
+    if htmx.targets(LEAD_UPDATES) {
         return page.updates.render_list().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()

@@ -13,7 +13,7 @@ use serde::Deserialize;
 use crate::entities::todo::{self, Entity as TodoEntity};
 use crate::entities::todo_page::{self, Entity as TodoPageEntity};
 use crate::forms::TodoPageForm;
-use crate::keys::{TodoPageCreateModalKey, TodoPageEditModalKey, TodoPageTableKey};
+use crate::keys::{TODO_PAGE_CREATE_MODAL, TODO_PAGE_EDIT_MODAL, TODO_PAGE_TABLE};
 use crate::routes::{TodoListRouteTag, TodoPageDetailRouteTag};
 use crate::state::TodoState;
 use crate::sync;
@@ -68,7 +68,7 @@ pub async fn list(
         sort: q.sort.clone().unwrap_or_default(),
         path_and_query: path_and_query(&uri),
     };
-    if htmx.targets::<TodoPageTableKey>() {
+    if htmx.targets(TODO_PAGE_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -124,8 +124,9 @@ pub async fn create_post(
         ..Default::default()
     };
     match model.insert(&state.db).await {
-        Ok(page) => respond_create_modal_done::<TodoPageCreateModalKey>(
+        Ok(page) => respond_create_modal_done(
             &htmx,
+            TODO_PAGE_CREATE_MODAL,
             &q.refresh_table(),
             &TodoPageDetailRouteTag::new(page.id).url(),
         ),
@@ -197,8 +198,9 @@ pub async fn edit_post(
     model.title = Set(title);
     model.updated_at = Set(Some(Utc::now()));
     match model.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<TodoPageEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            TODO_PAGE_EDIT_MODAL,
             &TodoPageDetailRouteTag::new(id).url(),
         ),
         Err(err) => {

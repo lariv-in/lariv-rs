@@ -12,7 +12,7 @@ use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 use crate::{
     entities::{employee::Entity as EmployeeEntity, ex_employee::Entity as ExEmployeeEntity},
     forms::PersonForm,
-    keys::PeopleHubTableKey,
+    keys::APPLICANT_HUB_TABLE,
     logic::person::PersonInput,
     scope::{
         apply_employee_sort, apply_ex_employee_sort, employee_display_name,
@@ -182,7 +182,7 @@ pub async fn hub(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<PeopleHubTableKey>() {
+    if htmx.targets(APPLICANT_HUB_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {

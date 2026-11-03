@@ -9,7 +9,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
 };
 
-use lariv_core::components::{SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::web::{
@@ -21,7 +21,7 @@ use crate::{
     entities::task_log::{self, Entity as TaskLogEntity},
     forms::{TaskLogForm, TaskLogQuickForm},
     handlers::ModalNameQuery,
-    keys::{TASK_LOG_SAVED_EVENT, TaskLogDeleteModalKey, TaskLogEditModalKey, TaskLogsKey},
+    keys::{TASK_LOG_DELETE_MODAL, TASK_LOG_EDIT_MODAL, TASK_LOG_SAVED_EVENT, TASK_LOGS},
     logic::task::append_task_log,
     routes::{TaskDefaultRouteTag, TaskLogsRouteTag},
     scope::{find_log_scoped, find_task_scoped},
@@ -79,7 +79,7 @@ pub async fn list(
         task_title: task.title,
         logs: load_logs_panel(&state.db, &ctx, task.id).await,
     };
-    if htmx.targets::<TaskLogsKey>() {
+    if htmx.targets(TASK_LOGS) {
         return page.logs.render_list().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -208,7 +208,7 @@ pub async fn edit_post(
     am.datetime = Set(datetime);
     am.description = Set(form.description.trim().to_string());
     match am.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<TaskLogEditModalKey>(&htmx, &logs_url(task_id)),
+        Ok(_) => respond_edit_modal_done(&htmx, TASK_LOG_EDIT_MODAL, &logs_url(task_id)),
         Err(e) => edit_modal_error(&chrome, &ctx, id, &q, &form, &e.to_string()).await,
     }
 }
@@ -220,7 +220,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: TaskLogDeleteModalKey::ID.to_string(),
+        modal_uid: TASK_LOG_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this log?".into(),
         form_name: q
             .name
@@ -248,7 +248,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete task log");
             let page = ConfirmDeletePage {
-                modal_uid: TaskLogDeleteModalKey::ID.to_string(),
+                modal_uid: TASK_LOG_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this log?".into(),
                 form_name: "p_tasks.TaskLogDeleteForm".into(),
                 id,

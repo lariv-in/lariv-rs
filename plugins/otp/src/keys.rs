@@ -1,5 +1,5 @@
 //! Compile-time HTMX swap keys for the OTP plugin.
 
-use lariv_core::swap_key;
+use lariv_core::components::SwapKey;
 
-swap_key!(OtpPreferencesFormKey, "otp-preferences-form");
+pub const OTP_PREFERENCES_FORM: SwapKey = SwapKey("otp-preferences-form");

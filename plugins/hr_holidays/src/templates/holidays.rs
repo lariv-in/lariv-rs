@@ -20,8 +20,8 @@ use crate::{
     crumbs::{holiday_crumbs, holidays_list_crumbs},
     forms::{HolidayForm, HolidayFormField, HolidayImportForm, HolidayImportFormField},
     keys::{
-        HolidayCreateModalKey, HolidayDeleteModalKey, HolidayEditModalKey, HolidayImportModalKey,
-        HolidayTableKey,
+        HOLIDAY_CREATE_MODAL, HOLIDAY_DELETE_MODAL, HOLIDAY_EDIT_MODAL, HOLIDAY_IMPORT_MODAL,
+        HOLIDAY_TABLE,
     },
     routes::{
         HolidayCreateGetRouteTag, HolidayCreatePostRouteTag, HolidayDeleteGetRouteTag,
@@ -40,7 +40,8 @@ pub struct HolidayRow {
     pub detail_href: String,
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -54,7 +55,7 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -135,7 +136,7 @@ impl HolidayListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<HolidayTableKey, HolidayListRouteTag>(
+                    attrs: form_hx_get_route(
                         HolidayListRouteTag,
                     ),
                     apply_label: "Apply",
@@ -153,7 +154,7 @@ impl HolidayListPage {
                     name: "p_hr.HolidayCreateForm",
                     href: &HolidayCreateGetRouteTag.url(),
                     form_post_url: &HolidayCreateGetRouteTag.path(),
-                    modal_uid: HolidayCreateModalKey::ID,
+                    modal_uid: HOLIDAY_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
@@ -169,7 +170,7 @@ impl HolidayListPage {
                     name: "p_hr.HolidayImportForm",
                     href: &HolidayImportGetRouteTag.url(),
                     form_post_url: &HolidayImportPostRouteTag.path(),
-                    modal_uid: HolidayImportModalKey::ID,
+                    modal_uid: HOLIDAY_IMPORT_MODAL.id(),
                     icon_name: Some("calendar"),
                     classes: "btn-square btn-outline btn-sm",
                     attrs: HtmlAttrs::new()
@@ -179,12 +180,14 @@ impl HolidayListPage {
                 }))
             };
         }
-        lariv_plugin_hr::templates::data_table_with_filter_errors::<HolidayTableKey>(
+        lariv_plugin_hr::templates::data_table_with_filter_errors(
+            HOLIDAY_TABLE,
             "Holidays",
             actions,
             &headers,
             &table_rows,
-            render_pagination::<HolidayTableKey>(
+            render_pagination(
+                HOLIDAY_TABLE,
                 &self.path_and_query,
                 self.rows.number,
                 self.rows.num_pages,
@@ -238,7 +241,7 @@ impl HolidayDetailPage {
                     name: "p_hr.HolidayEditForm",
                     href: &HolidayEditGetRouteTag::new(self.id).url(),
                     form_post_url: &HolidayEditPostRouteTag::new(self.id).path(),
-                    modal_uid: HolidayEditModalKey::ID,
+                    modal_uid: HOLIDAY_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline btn-sm",
                     ..Default::default()
@@ -247,7 +250,7 @@ impl HolidayDetailPage {
                     name: "p_hr.HolidayDeleteForm",
                     href: &HolidayDeleteGetRouteTag::new(self.id).url(),
                     form_post_url: &HolidayDeleteGetRouteTag::new(self.id).path(),
-                    modal_uid: HolidayDeleteModalKey::ID,
+                    modal_uid: HOLIDAY_DELETE_MODAL.id(),
                     label: "Delete",
                     classes: "btn-outline btn-error btn-sm",
                     ..Default::default()
@@ -337,12 +340,13 @@ impl HolidayCreateModalPage {
 
 impl RenderTemplate for HolidayCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<HolidayCreateModalKey>(
+        modal_keyed(
+            HOLIDAY_CREATE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New holiday" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<HolidayCreateModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(HOLIDAY_CREATE_MODAL, &modal_create_post_url(
                         HolidayCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
@@ -371,12 +375,13 @@ pub struct HolidayEditModalPage {
 
 impl RenderTemplate for HolidayEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<HolidayEditModalKey>(
+        modal_keyed(
+            HOLIDAY_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit holiday" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<HolidayEditModalKey>(&self.post_url),
+                    attrs: form_hx_post_url(HOLIDAY_EDIT_MODAL, &self.post_url),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: holiday_form_inputs(&self.title, &self.description, &self.date),
                     actions: html! {
@@ -409,12 +414,13 @@ impl HolidayImportModalPage {
 
 impl RenderTemplate for HolidayImportModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<HolidayImportModalKey>(
+        modal_keyed(
+            HOLIDAY_IMPORT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Import holidays" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<HolidayImportModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(HOLIDAY_IMPORT_MODAL, &modal_create_post_url(
                         HolidayImportPostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
@@ -444,10 +450,10 @@ pub struct HolidayDeleteModalPage {
 
 impl RenderTemplate for HolidayDeleteModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let target = format!("#{}", HolidayDeleteModalKey::ID);
+        let target = format!("#{}", HOLIDAY_DELETE_MODAL.id());
         let post_url = HolidayDeletePostRouteTag::new(self.id).url();
         modal(lariv_core::components::Modal {
-            uid: HolidayDeleteModalKey::ID,
+            uid: HOLIDAY_DELETE_MODAL.id(),
             children: delete_confirmation(DeleteConfirmation {
                 title: "Confirm deletion",
                 message: &self.message,

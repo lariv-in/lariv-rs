@@ -1,20 +1,27 @@
 //! Typed [`CreateModal`] wiring for HR swap keys.
 
-use super::keys::{EmployeeCreateModalKey, ExEmployeeCreateModalKey};
+use lariv_core::web::CreateModal;
+
+use super::keys::{EMPLOYEE_CREATE_MODAL, EX_EMPLOYEE_CREATE_MODAL};
 use super::routes::{
     EmployeeCreateGetRouteTag, EmployeeCreatePostRouteTag, ExEmployeeCreateGetRouteTag,
     ExEmployeeCreatePostRouteTag,
 };
 
-lariv_core::impl_create_modal!(
-    EmployeeCreateModalKey,
-    EmployeeCreateGetRouteTag,
-    EmployeeCreatePostRouteTag,
-    "p_hr.EmployeeCreateForm"
-);
-lariv_core::impl_create_modal!(
-    ExEmployeeCreateModalKey,
+pub const EMPLOYEE_CREATE: CreateModal<EmployeeCreateGetRouteTag, EmployeeCreatePostRouteTag> =
+    CreateModal {
+        key: EMPLOYEE_CREATE_MODAL,
+        form_name: "p_hr.EmployeeCreateForm",
+        get: EmployeeCreateGetRouteTag,
+        post: EmployeeCreatePostRouteTag,
+    };
+
+pub const EX_EMPLOYEE_CREATE: CreateModal<
     ExEmployeeCreateGetRouteTag,
     ExEmployeeCreatePostRouteTag,
-    "p_hr.ExEmployeeCreateForm"
-);
+> = CreateModal {
+    key: EX_EMPLOYEE_CREATE_MODAL,
+    form_name: "p_hr.ExEmployeeCreateForm",
+    get: ExEmployeeCreateGetRouteTag,
+    post: ExEmployeeCreatePostRouteTag,
+};

@@ -11,7 +11,7 @@ use lariv_core::http::ProvideRequestCaps;
 use lariv_core::template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
 use lariv_core::web::modal_create_post_query;
 
-use super::keys::SignatureCreateModalKey;
+use super::keys::SIGNATURE_CREATE_MODAL;
 use super::routes::SignatureCreatePostRouteTag;
 
 lariv_core::define_register_items! {
@@ -45,7 +45,8 @@ impl RenderTemplate for SignatureCreateModalPage {
         if self.document_id > 0 {
             post_url.push_str(&format!("&document={}", self.document_id));
         }
-        modal_keyed::<SignatureCreateModalKey>(
+        modal_keyed(
+            SIGNATURE_CREATE_MODAL,
             "",
             html! {
                 h3 class="font-bold text-lg mb-4" { "Create signature" }
@@ -54,7 +55,7 @@ impl RenderTemplate for SignatureCreateModalPage {
                     p class="mb-4 text-warning" { "This server stores signing keys on disk. Use that backend only for debugging." }
                 }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<SignatureCreateModalKey>(&post_url),
+                    attrs: form_hx_post_url(SIGNATURE_CREATE_MODAL, &post_url),
                     form_error: Some(self.error.as_str()).filter(|err| !err.is_empty()),
                     actions: button_submit(ButtonSubmit { label: "Generate", ..Default::default() }),
                     ..Default::default()

@@ -602,8 +602,7 @@ $el.closest('form').addEventListener('submit', (ev) => {{
 	}});
 	h.value = JSON.stringify(d.lines.map(strip));
 }}, true);"#,
-        name_q =
-            serde_json::to_string(opts.name).unwrap_or_else(|_| "\"InvoiceLinesJSON\"".into())
+        name_q = serde_json::to_string(opts.name).unwrap_or_else(|_| "\"InvoiceLinesJSON\"".into())
     );
 
     let fk_select_handler = r#"if (!$event.detail) return;

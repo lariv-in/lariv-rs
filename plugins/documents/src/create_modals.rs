@@ -1,11 +1,14 @@
 //! Typed [`CreateModal`] wiring for the document create button.
 
-use super::keys::DocumentCreateModalKey;
+use lariv_core::web::CreateModal;
+
+use super::keys::DOCUMENT_CREATE_MODAL;
 use super::routes::{DocumentCreateGetRouteTag, DocumentCreatePostRouteTag};
 
-lariv_core::impl_create_modal!(
-    DocumentCreateModalKey,
-    DocumentCreateGetRouteTag,
-    DocumentCreatePostRouteTag,
-    "p_documents.DocumentCreateForm"
-);
+pub const DOCUMENT_CREATE: CreateModal<DocumentCreateGetRouteTag, DocumentCreatePostRouteTag> =
+    CreateModal {
+        key: DOCUMENT_CREATE_MODAL,
+        form_name: "p_documents.DocumentCreateForm",
+        get: DocumentCreateGetRouteTag,
+        post: DocumentCreatePostRouteTag,
+    };

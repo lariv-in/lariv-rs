@@ -1,33 +1,21 @@
-lariv_core::swap_key!(StockTableKey, "inventory-stocks-table");
-lariv_core::swap_key!(StockCreateModalKey, "inventory-stock-create-modal");
-lariv_core::swap_key!(StockEditModalKey, "inventory-stock-edit-modal");
-lariv_core::swap_key!(StockDeleteModalKey, "inventory-stock-delete-modal");
-lariv_core::swap_key!(StockSelectTableKey, "inventory-stock-select-table");
-lariv_core::swap_key!(StockSelectModalKey, "inventory-stock-select-modal");
-lariv_core::swap_key!(StockLinesTableKey, "inventory-stock-lines-table");
+use lariv_core::components::SwapKey;
 
-lariv_core::swap_key!(MovementTableKey, "inventory-movements-table");
-lariv_core::swap_key!(
-    MovementInSelectTableKey,
-    "inventory-movement-in-select-table"
-);
-lariv_core::swap_key!(
-    MovementInSelectModalKey,
-    "inventory-movement-in-select-modal"
-);
-lariv_core::swap_key!(
-    MovementProcessSelectTableKey,
-    "inventory-movement-process-select-table"
-);
-lariv_core::swap_key!(
-    MovementProcessSelectModalKey,
-    "inventory-movement-process-select-modal"
-);
-lariv_core::swap_key!(MovementCreateModalKey, "inventory-movement-create-modal");
-lariv_core::swap_key!(MovementEditModalKey, "inventory-movement-edit-modal");
-lariv_core::swap_key!(MovementDeleteModalKey, "inventory-movement-delete-modal");
-lariv_core::swap_key!(MovementPdfModalKey, "inventory-movement-pdf-modal");
-lariv_core::swap_key!(
-    MovementPdfPreviewModalKey,
-    "inventory-movement-pdf-preview-modal"
-);
+pub const STOCK_TABLE: SwapKey = SwapKey("inventory-stocks-table");
+pub const STOCK_CREATE_MODAL: SwapKey = SwapKey("inventory-stock-create-modal");
+pub const STOCK_EDIT_MODAL: SwapKey = SwapKey("inventory-stock-edit-modal");
+pub const STOCK_DELETE_MODAL: SwapKey = SwapKey("inventory-stock-delete-modal");
+pub const STOCK_SELECT_TABLE: SwapKey = SwapKey("inventory-stock-select-table");
+pub const STOCK_SELECT_MODAL: SwapKey = SwapKey("inventory-stock-select-modal");
+pub const STOCK_LINES_TABLE: SwapKey = SwapKey("inventory-stock-lines-table");
+pub const MOVEMENT_TABLE: SwapKey = SwapKey("inventory-movements-table");
+pub const MOVEMENT_IN_SELECT_TABLE: SwapKey = SwapKey("inventory-movement-in-select-table");
+pub const MOVEMENT_IN_SELECT_MODAL: SwapKey = SwapKey("inventory-movement-in-select-modal");
+pub const MOVEMENT_PROCESS_SELECT_TABLE: SwapKey =
+    SwapKey("inventory-movement-process-select-table");
+pub const MOVEMENT_PROCESS_SELECT_MODAL: SwapKey =
+    SwapKey("inventory-movement-process-select-modal");
+pub const MOVEMENT_CREATE_MODAL: SwapKey = SwapKey("inventory-movement-create-modal");
+pub const MOVEMENT_EDIT_MODAL: SwapKey = SwapKey("inventory-movement-edit-modal");
+pub const MOVEMENT_DELETE_MODAL: SwapKey = SwapKey("inventory-movement-delete-modal");
+pub const MOVEMENT_PDF_MODAL: SwapKey = SwapKey("inventory-movement-pdf-modal");
+pub const MOVEMENT_PDF_PREVIEW_MODAL: SwapKey = SwapKey("inventory-movement-pdf-preview-modal");

@@ -15,7 +15,7 @@ use lariv_plugin_filesystem::state::FilesystemState;
 use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::forms::InventoryPreferencesForm;
-use crate::keys::MovementPdfPreviewModalKey;
+use crate::keys::MOVEMENT_PDF_PREVIEW_MODAL;
 use crate::logic::pdf::{MovementPdfError, MovementPdfInput, render_movement_pdf, sample_lines};
 use crate::logic::preferences::parse_optional_id;
 use crate::movement_type::MovementKind;
@@ -90,7 +90,8 @@ fn cleanup_stale_previews(max_age_secs: u64) {
 
 fn render_preview_modal(pdf_url: &str, error: Option<&str>) -> Markup {
     if let Some(err) = error {
-        return modal_keyed::<MovementPdfPreviewModalKey>(
+        return modal_keyed(
+            MOVEMENT_PDF_PREVIEW_MODAL,
             "max-w-2xl",
             html! {
                 h3 class="text-lg font-semibold mb-2" { "Stock movement PDF preview failed" }
@@ -98,7 +99,8 @@ fn render_preview_modal(pdf_url: &str, error: Option<&str>) -> Markup {
             },
         );
     }
-    modal_keyed::<MovementPdfPreviewModalKey>(
+    modal_keyed(
+        MOVEMENT_PDF_PREVIEW_MODAL,
         "max-w-6xl w-[95vw]",
         html! {
             h3 class="text-lg font-semibold mb-3" { "Stock movement PDF preview (sample data)" }

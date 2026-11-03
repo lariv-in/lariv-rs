@@ -14,7 +14,7 @@ use crate::{
     },
     forms::CreateRoomForm,
     handlers::ModalNameQuery,
-    keys::{MeetsEditModalKey, MeetsRoomChromeKey},
+    keys::{MEETS_EDIT_MODAL, MEETS_ROOM_CHROME},
     logic::{
         join::{
             display_name_for_joined, find_anonymous_join, find_registered_join, join_registered,
@@ -256,7 +256,7 @@ pub async fn room(
                 .unwrap_or("Asia/Kolkata");
             let page = room_page_from_access(&state, &access, tz).await;
             let ctx = slot_ctx(auth.as_ref());
-            if htmx.targets::<MeetsRoomChromeKey>() {
+            if htmx.targets(MEETS_ROOM_CHROME) {
                 return page.render_chrome().into_response();
             }
             html_built_page_or_app_layout(&page, &htmx, &chrome, &ctx).into_response()
@@ -412,7 +412,7 @@ pub async fn lock(
                     Ok(access) => {
                         let page =
                             room_page_from_access(&state, &access, ctx.timezone.as_str()).await;
-                        if htmx.targets::<MeetsRoomChromeKey>() {
+                        if htmx.targets(MEETS_ROOM_CHROME) {
                             return page.render_chrome().into_response();
                         }
                         html_built_page_or_app_layout(
@@ -521,10 +521,9 @@ pub async fn edit_post(
             )
             .await
             {
-                Ok(_) => respond_edit_modal_done::<MeetsEditModalKey>(
-                    &htmx,
-                    &RoomRouteTag::new(code).url(),
-                ),
+                Ok(_) => {
+                    respond_edit_modal_done(&htmx, MEETS_EDIT_MODAL, &RoomRouteTag::new(code).url())
+                }
                 Err(e) => {
                     let page = MeetsEditModalPage {
                         code,

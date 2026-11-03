@@ -47,11 +47,10 @@ use super::forms::{
     PaymentPreferencesFormField,
 };
 use super::keys::{
-    DraftInvoiceBulkDeleteModalKey, DraftInvoiceBulkEditModalKey, DraftInvoiceCreateModalKey,
-    DraftInvoiceDeleteModalKey, DraftInvoiceEditModalKey, DraftInvoiceSelectModalKey,
-    DraftInvoiceSelectTableKey, InvoiceHubTableKey, PaymentBatchCreateModalKey,
-    PaymentCreateModalKey, PaymentTableKey, PostedInvoiceSelectModalKey,
-    PostedInvoiceSelectTableKey,
+    DRAFT_INVOICE_BULK_DELETE_MODAL, DRAFT_INVOICE_BULK_EDIT_MODAL, DRAFT_INVOICE_CREATE_MODAL,
+    DRAFT_INVOICE_DELETE_MODAL, DRAFT_INVOICE_EDIT_MODAL, DRAFT_INVOICE_SELECT_MODAL,
+    DRAFT_INVOICE_SELECT_TABLE, INVOICE_HUB_TABLE, PAYMENT_BATCH_CREATE_MODAL,
+    PAYMENT_CREATE_MODAL, PAYMENT_TABLE, POSTED_INVOICE_SELECT_MODAL, POSTED_INVOICE_SELECT_TABLE,
 };
 use super::routes::{
     CancelledInvoiceBulkNewDraftRouteTag, CancelledInvoiceDetailRouteTag,
@@ -117,7 +116,8 @@ lariv_core::define_register_items! {
     hook: SlotsHook;
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -131,7 +131,7 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -197,9 +197,9 @@ fn invoice_number_label(id: i64, number: &str) -> String {
 
 fn draft_invoice_label(id: i64, number: &str) -> String {
     if number.is_empty() {
-        format!("Draft #{id}")
+        format!("Quotation #{id}")
     } else {
-        format!("Draft {number}")
+        format!("Quotation {number}")
     }
 }
 
@@ -267,7 +267,7 @@ fn tab_href(tab: &str) -> String {
         .build()
 }
 
-fn invoice_select_filter_form<K, M, R>(
+fn invoice_select_filter_form<R>(
     fields: &[FilterField],
     rows: &[FilterClauseView],
     page_size: u32,
@@ -277,16 +277,14 @@ fn invoice_select_filter_form<K, M, R>(
     extra_filters: &str,
 ) -> Markup
 where
-    K: SwapKey,
-    M: SwapKey,
-    R: RouteUrl + FkSelectGet<K, M>,
+    R: RouteUrl + FkSelectGet,
 {
     list_filter_builder(ListFilterBuilder {
         fields,
         rows,
         page_size,
         sort,
-        attrs: form_hx_get_picker_route::<K, M, R>(route),
+        attrs: form_hx_get_picker_route(route),
         apply_label: "Apply Filters",
         extra: html! {
             input type="hidden" name="target_input" value=(target_input);
@@ -301,9 +299,7 @@ fn invoice_hub_filter_form(page: &InvoiceHubPage) -> Markup {
         rows: &page.filters,
         page_size: page.page_size,
         sort: &page.sort,
-        attrs: form_hx_get_route::<InvoiceHubTableKey, InvoiceDefaultRouteTag>(
-            InvoiceDefaultRouteTag,
-        ),
+        attrs: form_hx_get_route(InvoiceDefaultRouteTag),
         apply_label: "Apply Filters",
         extra: html! {
             input type="hidden" name="tab" value=(page.tab);
@@ -312,7 +308,8 @@ fn invoice_hub_filter_form(page: &InvoiceHubPage) -> Markup {
     })
 }
 
-fn hub_data_table<K: SwapKey>(
+fn hub_data_table(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -321,12 +318,13 @@ fn hub_data_table<K: SwapKey>(
     refresh_url: &str,
     errors: &[FilterRowError],
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -347,7 +345,7 @@ fn hub_data_table<K: SwapKey>(
         actions
     };
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         subtitle: "",
         classes: "w-full",
@@ -380,17 +378,17 @@ fn payment_tab_href(tab: &str) -> String {
 
 fn draft_invoice_detail_menu(id: i64, number: &str) -> Markup {
     let label = if number.is_empty() {
-        format!("Draft #{id}")
+        format!("#{id}")
     } else {
-        format!("Draft {number}")
+        number.to_string()
     };
     let detail_url = DraftInvoiceDetailRouteTag::new(id).url();
     let nav = vec![DetailMenuNavItem {
-        title: "Draft Invoice Detail",
+        title: "Quotation Detail",
         url: detail_url,
         active: true,
     }];
-    detail_sidebar_menu(format!("Invoice: {label}"), &nav, None, html! {})
+    detail_sidebar_menu(format!("Quotation: {label}"), &nav, None, html! {})
 }
 
 fn posted_invoice_detail_menu(id: i64, number: &str) -> Markup {
@@ -939,7 +937,8 @@ impl InvoiceHubPage {
             })
             .collect();
 
-        let pagination = render_pagination::<InvoiceHubTableKey>(
+        let pagination = render_pagination(
+            INVOICE_HUB_TABLE,
             &self.path_and_query,
             self.invoices.number,
             self.invoices.num_pages,
@@ -950,7 +949,7 @@ impl InvoiceHubPage {
                 name: "p_finance_invoices.DraftInvoiceCreateForm",
                 href: &DraftInvoiceCreateGetRouteTag.url(),
                 form_post_url: &DraftInvoiceCreatePostRouteTag.path(),
-                modal_uid: DraftInvoiceCreateModalKey::ID,
+                modal_uid: DRAFT_INVOICE_CREATE_MODAL.id(),
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
@@ -986,7 +985,7 @@ impl InvoiceHubPage {
             }
             if posted_hub {
                 items.push_str(&item(
-                    "New draft from posted",
+                    "New quotation from posted",
                     "btn-ghost",
                     "requestBulkNewDraftFromPosted",
                 ));
@@ -999,7 +998,7 @@ impl InvoiceHubPage {
             }
             if cancelled_hub {
                 items.push_str(&item(
-                    "New draft from cancelled",
+                    "New quotation from cancelled",
                     "btn-ghost",
                     "requestBulkNewDraft",
                 ));
@@ -1034,8 +1033,10 @@ impl InvoiceHubPage {
 
         // Bare table only — selection Alpine state lives outside so pagination swaps
         // do not reset checkboxes.
-        hub_data_table::<InvoiceHubTableKey>(
-            "Invoices",
+        let table_title = if drafts_hub { "Quotations" } else { "Invoices" };
+        hub_data_table(
+            INVOICE_HUB_TABLE,
+            table_title,
             actions,
             &headers,
             &rows,
@@ -1056,7 +1057,7 @@ impl InvoiceHubPage {
             (container_column("", html! {
                 (fiscal_year_environment_selector(&self.fiscal_years, self.selected_fiscal_year_start))
                 div class="tabs tabs-boxed mb-4" {
-                    (self.tab_link("drafts", "Drafts"))
+                    (self.tab_link("drafts", "Quotations"))
                     (self.tab_link("posted", "Posted"))
                     (self.tab_link("cancelled", "Cancelled"))
                     (self.tab_link("paid", "Paid"))
@@ -1105,13 +1106,14 @@ pub struct DraftInvoiceEditModalPage {
 impl RenderTemplate for DraftInvoiceEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = DraftInvoiceDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<DraftInvoiceEditModalKey>(
+        modal_keyed(
+            DRAFT_INVOICE_EDIT_MODAL,
             "!max-w-6xl w-full",
             html! {
-                h3 class="font-bold text-lg mb-4" { "Edit draft invoice" }
+                h3 class="font-bold text-lg mb-4" { "Edit quotation" }
                 (form(&CsrfToken::current(), FormOpts {
                     classes: "@container",
-                    attrs: form_hx_post_url::<DraftInvoiceEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(DRAFT_INVOICE_EDIT_MODAL, &modal_edit_post_url(
                         DraftInvoiceEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -1142,7 +1144,7 @@ impl RenderTemplate for DraftInvoiceEditModalPage {
                             name: "p_finance_invoices.DraftInvoiceDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: DraftInvoiceDeleteModalKey::ID,
+                            modal_uid: DRAFT_INVOICE_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -1172,19 +1174,23 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed::<DraftInvoiceCreateModalKey>(
+        modal_keyed(
+            DRAFT_INVOICE_CREATE_MODAL,
             "!max-w-6xl w-full",
             form(
                 &CsrfToken::current(),
                 FormOpts {
-                    title: "Create draft invoice",
-                    subtitle: "Create a new draft invoice",
+                    title: "Create quotation",
+                    subtitle: "Create a new quotation",
                     classes: "@container",
-                    attrs: form_hx_post_url::<DraftInvoiceCreateModalKey>(&modal_create_post_url(
-                        DraftInvoiceCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    )),
+                    attrs: form_hx_post_url(
+                        DRAFT_INVOICE_CREATE_MODAL,
+                        &modal_create_post_url(
+                            DraftInvoiceCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: html! {
                         (DraftInvoiceForm::render_inputs(
@@ -1270,22 +1276,24 @@ impl RenderTemplate for DraftInvoiceBulkEditModalPage {
             self.form_name.as_str()
         };
         let subtitle = if self.selected_count == 1 {
-            "Update the selected draft invoice. Only non-empty fields are applied.".to_string()
+            "Update the selected quotation. Only non-empty fields are applied.".to_string()
         } else {
             format!(
-                "Update {} selected draft invoices. Only non-empty fields are applied to every selected draft.",
+                "Update {} selected quotations. Only non-empty fields are applied to every selected quotation.",
                 self.selected_count
             )
         };
-        modal_keyed::<DraftInvoiceBulkEditModalKey>(
+        modal_keyed(
+            DRAFT_INVOICE_BULK_EDIT_MODAL,
             "!max-w-6xl w-full",
             form(
                 &CsrfToken::current(),
                 FormOpts {
-                    title: "Bulk edit draft invoices",
+                    title: "Bulk edit quotations",
                     subtitle: &subtitle,
                     classes: "@container",
-                    attrs: form_hx_post_url::<DraftInvoiceBulkEditModalKey>(
+                    attrs: form_hx_post_url(
+                        DRAFT_INVOICE_BULK_EDIT_MODAL,
                         &modal_create_post_url(
                             DraftInvoiceBulkEditPostRouteTag,
                             form_name,
@@ -1390,7 +1398,7 @@ impl DraftInvoiceDetailPage {
                     name: "p_finance_invoices.DraftInvoiceEditForm",
                     href: &DraftInvoiceEditGetRouteTag::new(self.id).url(),
                     form_post_url: &DraftInvoiceEditPostRouteTag::new(self.id).path(),
-                    modal_uid: DraftInvoiceEditModalKey::ID,
+                    modal_uid: DRAFT_INVOICE_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -1406,7 +1414,7 @@ impl DraftInvoiceDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (detail_header(DetailHeader {
-                        title: &format!("Draft invoice #{}", self.id),
+                        title: &format!("Quotation #{}", self.id),
                         actions,
                     }))
                     @if let Some(e) = &self.error {
@@ -1458,7 +1466,7 @@ impl RenderTemplate for DraftInvoiceDetailPage {
         let label = draft_invoice_label(self.id, &self.number);
         let detail_url = DraftInvoiceDetailRouteTag::new(self.id).url();
         let crumbs = invoice_section_crumbs(&label, &detail_url, None);
-        app_scaffold_with_sidebar("Draft Invoice", chrome, self.menu(), crumbs, self.body())
+        app_scaffold_with_sidebar("Quotation", chrome, self.menu(), crumbs, self.body())
     }
 }
 
@@ -1495,7 +1503,7 @@ impl PostedInvoiceDetailPage {
             @if self.can_edit {
                 (button_modal_route(
                     PostedInvoiceNewDraftGetRouteTag::new(self.id),
-                    "New draft",
+                    "New quotation",
                     "btn-outline",
                 ))
             }
@@ -1505,7 +1513,7 @@ impl PostedInvoiceDetailPage {
                     label: "Pay",
                     href: &pay_href,
                     form_post_url: &PaymentCreateGetRouteTag.path(),
-                    modal_uid: PaymentCreateModalKey::ID,
+                    modal_uid: PAYMENT_CREATE_MODAL.id(),
                     classes: "btn-primary",
                     ..Default::default()
                 }))
@@ -1646,7 +1654,7 @@ fn settlement_detail_body(
                 label: "Pay",
                 href: &pay_href,
                 form_post_url: &PaymentCreateGetRouteTag.path(),
-                modal_uid: PaymentCreateModalKey::ID,
+                modal_uid: PAYMENT_CREATE_MODAL.id(),
                 classes: "btn-primary",
                 ..Default::default()
             }))
@@ -1846,7 +1854,7 @@ impl CancelledInvoiceDetailPage {
             @if self.can_edit {
                 (button_modal_route(
                     CancelledInvoiceNewDraftGetRouteTag::new(self.id),
-                    "New draft from cancelled",
+                    "New quotation from cancelled",
                     "btn-primary",
                 ))
             }
@@ -2072,13 +2080,14 @@ impl PaymentListPage {
                     children: Vec::new(),
                 })
                 .collect();
-            let pagination = render_pagination::<PaymentTableKey>(
+            let pagination = render_pagination(
+                PAYMENT_TABLE,
                 &self.path_and_query,
                 self.batches.number,
                 self.batches.num_pages,
             );
             let page_size_filter = table_button_filter(TableButtonFilter {
-                panel: page_size_only_filter_form_with_extras::<PaymentTableKey, PaymentListRouteTag>(
+                panel: page_size_only_filter_form_with_extras::<PaymentListRouteTag>(
                     self.page_size,
                     html! {
                         input type="hidden" name="tab" value=(self.tab.as_str()) {}
@@ -2086,7 +2095,8 @@ impl PaymentListPage {
                 ),
                 ..Default::default()
             });
-            return data_table_list_refresh::<PaymentTableKey>(
+            return data_table_list_refresh(
+                PAYMENT_TABLE,
                 "Batch payments",
                 page_size_filter,
                 &headers,
@@ -2144,13 +2154,14 @@ impl PaymentListPage {
                 children: Vec::new(),
             })
             .collect();
-        let pagination = render_pagination::<PaymentTableKey>(
+        let pagination = render_pagination(
+            PAYMENT_TABLE,
             &self.path_and_query,
             self.payments.number,
             self.payments.num_pages,
         );
         let page_size_filter = table_button_filter(TableButtonFilter {
-            panel: page_size_only_filter_form_with_extras::<PaymentTableKey, PaymentListRouteTag>(
+            panel: page_size_only_filter_form_with_extras::<PaymentListRouteTag>(
                 self.page_size,
                 html! {
                     input type="hidden" name="tab" value=(self.tab.as_str()) {}
@@ -2165,7 +2176,7 @@ impl PaymentListPage {
                     name: "p_finance_invoices.PaymentCreateForm",
                     href: &PaymentCreateGetRouteTag.url(),
                     form_post_url: &PaymentCreateGetRouteTag.path(),
-                    modal_uid: PaymentCreateModalKey::ID,
+                    modal_uid: PAYMENT_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
@@ -2174,7 +2185,8 @@ impl PaymentListPage {
         } else {
             page_size_filter
         };
-        data_table_list_refresh::<PaymentTableKey>(
+        data_table_list_refresh(
+            PAYMENT_TABLE,
             "Single payments",
             actions,
             &headers,
@@ -2235,7 +2247,8 @@ impl RenderTemplate for PaymentCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed::<PaymentCreateModalKey>(
+        modal_keyed(
+            PAYMENT_CREATE_MODAL,
             "!max-w-6xl w-full",
             form(
                 &CsrfToken::current(),
@@ -2243,11 +2256,14 @@ impl RenderTemplate for PaymentCreateModalPage {
                     title: "Record payment",
                     subtitle: "Create a payment against a posted invoice",
                     classes: "@container",
-                    attrs: form_hx_post_url::<PaymentCreateModalKey>(&modal_create_post_url(
-                        PaymentCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    )),
+                    attrs: form_hx_post_url(
+                        PAYMENT_CREATE_MODAL,
+                        &modal_create_post_url(
+                            PaymentCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: PaymentForm::render_inputs(
                         &FormCtx::form::<PaymentForm>(CsrfToken::current())
@@ -2367,7 +2383,8 @@ impl RenderTemplate for PaymentBatchCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed::<PaymentBatchCreateModalKey>(
+        modal_keyed(
+            PAYMENT_BATCH_CREATE_MODAL,
             "!max-w-6xl w-full",
             form(
                 &CsrfToken::current(),
@@ -2375,11 +2392,14 @@ impl RenderTemplate for PaymentBatchCreateModalPage {
                     title: "Batch payment",
                     subtitle: "Record payments against multiple posted invoices",
                     classes: "@container",
-                    attrs: form_hx_post_url::<PaymentBatchCreateModalKey>(&modal_create_post_url(
-                        PaymentBatchCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    )),
+                    attrs: form_hx_post_url(
+                        PAYMENT_BATCH_CREATE_MODAL,
+                        &modal_create_post_url(
+                            PaymentBatchCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: PaymentBatchForm::render_inputs(
                         &FormCtx::form::<PaymentBatchForm>(CsrfToken::current())
@@ -2524,9 +2544,7 @@ pub struct PostedInvoiceSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey>
-    for PostedInvoiceSelectPage
-{
+impl RenderPickerSelect for PostedInvoiceSelectPage {
     fn render_table(&self) -> Markup {
         let id_sort = column_sort_url(&self.path_and_query, "ID", &self.sort);
         let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
@@ -2587,11 +2605,7 @@ impl RenderPickerSelect<PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: invoice_select_filter_form::<
-                    PostedInvoiceSelectTableKey,
-                    PostedInvoiceSelectModalKey,
-                    PostedInvoiceFkSelectRouteTag,
-                >(
+                panel: invoice_select_filter_form(
                     &self.fields,
                     &self.filters,
                     self.page_size,
@@ -2603,12 +2617,14 @@ impl RenderPickerSelect<PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey
                 ..Default::default()
             }))
         };
-        let pagination = render_picker_pagination::<PostedInvoiceSelectModalKey>(
+        let pagination = render_picker_pagination(
+            POSTED_INVOICE_SELECT_MODAL,
             &self.path_and_query,
             self.invoices.number,
             self.invoices.num_pages,
         );
-        data_table_with_filter_errors::<PostedInvoiceSelectTableKey>(
+        data_table_with_filter_errors(
+            POSTED_INVOICE_SELECT_TABLE,
             "Select Posted Invoice",
             actions,
             &headers,
@@ -2622,7 +2638,7 @@ impl RenderPickerSelect<PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey
 
 impl RenderTemplate for PostedInvoiceSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(POSTED_INVOICE_SELECT_MODAL).into_inner()
     }
 }
 
@@ -2648,9 +2664,7 @@ pub struct DraftInvoiceSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey>
-    for DraftInvoiceSelectPage
-{
+impl RenderPickerSelect for DraftInvoiceSelectPage {
     fn render_table(&self) -> Markup {
         let target = if self.target_input.is_empty() {
             "Invoices"
@@ -2719,11 +2733,7 @@ impl RenderPickerSelect<DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey>
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: invoice_select_filter_form::<
-                    DraftInvoiceSelectTableKey,
-                    DraftInvoiceSelectModalKey,
-                    DraftInvoiceMultiSelectRouteTag,
-                >(
+                panel: invoice_select_filter_form(
                     &self.fields,
                     &self.filters,
                     self.page_size,
@@ -2735,13 +2745,15 @@ impl RenderPickerSelect<DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey>
                 ..Default::default()
             }))
         };
-        let pagination = render_picker_pagination::<DraftInvoiceSelectModalKey>(
+        let pagination = render_picker_pagination(
+            DRAFT_INVOICE_SELECT_MODAL,
             &self.path_and_query,
             self.invoices.number,
             self.invoices.num_pages,
         );
-        data_table_with_filter_errors::<DraftInvoiceSelectTableKey>(
-            "Select invoices",
+        data_table_with_filter_errors(
+            DRAFT_INVOICE_SELECT_TABLE,
+            "Select quotations",
             actions,
             &headers,
             &rows,
@@ -2754,7 +2766,7 @@ impl RenderPickerSelect<DraftInvoiceSelectTableKey, DraftInvoiceSelectModalKey>
 
 impl RenderTemplate for DraftInvoiceSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(DRAFT_INVOICE_SELECT_MODAL).into_inner()
     }
 }
 
@@ -3021,12 +3033,12 @@ pub struct ConfirmDeletePage {
 impl RenderTemplate for ConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = if self.modal_uid.is_empty() {
-            format!("#{}", DraftInvoiceDeleteModalKey::ID)
+            format!("#{}", DRAFT_INVOICE_DELETE_MODAL.id())
         } else {
             format!("#{}", self.modal_uid)
         };
         let uid = if self.modal_uid.is_empty() {
-            DraftInvoiceDeleteModalKey::ID
+            DRAFT_INVOICE_DELETE_MODAL.id()
         } else {
             self.modal_uid.as_str()
         };
@@ -3058,12 +3070,12 @@ pub struct ConfirmBulkDeletePage {
 impl RenderTemplate for ConfirmBulkDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = if self.modal_uid.is_empty() {
-            format!("#{}", DraftInvoiceBulkDeleteModalKey::ID)
+            format!("#{}", DRAFT_INVOICE_BULK_DELETE_MODAL.id())
         } else {
             format!("#{}", self.modal_uid)
         };
         let uid = if self.modal_uid.is_empty() {
-            DraftInvoiceBulkDeleteModalKey::ID
+            DRAFT_INVOICE_BULK_DELETE_MODAL.id()
         } else {
             self.modal_uid.as_str()
         };
@@ -3111,7 +3123,7 @@ mod transition_confirm_tests {
         let html = confirm_invoice_transition(ConfirmInvoiceTransition {
             modal_uid: "draft-invoice-post-modal",
             title: "Post invoice",
-            message: "Post this draft invoice? This will create a posted invoice.",
+            message: "Post this quotation? This will create a posted invoice.",
             submit_label: "Post invoice",
             post_url: "/dashboard/finance-invoices/i/4/post",
             can_submit: true,
@@ -3119,7 +3131,7 @@ mod transition_confirm_tests {
         .into_string();
 
         assert!(html.contains(r#"<dialog id="draft-invoice-post-modal""#));
-        assert!(html.contains("Post this draft invoice? This will create a posted invoice."));
+        assert!(html.contains("Post this quotation? This will create a posted invoice."));
         assert!(html.contains(r#"hx-post="/dashboard/finance-invoices/i/4/post""#));
         assert!(html.contains(">Post invoice</button>"));
         assert!(html.contains(">Cancel</button>"));

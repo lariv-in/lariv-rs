@@ -3,12 +3,13 @@ use maud::{Markup, html};
 
 use lariv_core::components::{
     ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldLink, FieldText, FieldTitle,
-    FilterClauseView, FormOpts, ListFilterBuilder, ObjectList, ShellChrome, SwapKey,
-    TableButtonFilter, TableColumnHeader, TableRow, breadcrumbs, button_modal_form, button_submit,
+    FilterClauseView, FormOpts, ListFilterBuilder, ObjectList, ShellChrome, TableButtonFilter,
+    TableColumnHeader, TableRow, breadcrumbs, button_link_route, button_modal_form, button_submit,
     column_sort_url, container_column, container_row, data_table_list, data_table_list_refresh,
     detail, detail_header, field_link, field_text, field_title, form, form_hx_get_picker_route,
-    form_hx_get_route, form_hx_post_route, form_hx_post_url, label, list_filter_builder,
-    modal_keyed, row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
+    form_hx_get_route, form_hx_post_main_url, form_hx_post_route, form_hx_post_url, label,
+    list_filter_builder, modal_keyed, row_attr_navigate_route, row_attr_select, sort_indicator,
+    table_button_filter,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::list_filters::{FilterField, FilterRowError};
@@ -25,21 +26,20 @@ use crate::{
     entities::journal,
     forms::{
         JournalCreateForm, JournalCreateFormField, JournalEntryForm, JournalEntryFormField,
-        JournalForm, JournalFormField,
+        JournalEntryLinesForm, JournalEntryLinesFormField, JournalForm, JournalFormField,
     },
     keys::{
-        JournalCreateModalKey, JournalDeleteModalKey, JournalEditModalKey,
-        JournalEntryCreateModalKey, JournalEntryDeleteModalKey, JournalEntrySelectModalKey,
-        JournalEntrySelectTableKey, JournalGenerateModalKey, JournalSelectModalKey,
-        JournalSelectTableKey, JournalTableKey,
+        JOURNAL_CREATE_MODAL, JOURNAL_DELETE_MODAL, JOURNAL_EDIT_MODAL, JOURNAL_ENTRY_CREATE_MODAL,
+        JOURNAL_ENTRY_DELETE_MODAL, JOURNAL_ENTRY_SELECT_MODAL, JOURNAL_ENTRY_SELECT_TABLE,
+        JOURNAL_GENERATE_MODAL, JOURNAL_SELECT_MODAL, JOURNAL_SELECT_TABLE, JOURNAL_TABLE,
     },
     routes::{
         AccountDetailRouteTag, JournalCreateGetRouteTag, JournalCreatePostRouteTag,
         JournalDeleteGetRouteTag, JournalDetailRouteTag, JournalEditGetRouteTag,
         JournalEditPostRouteTag, JournalEntryCreateGetRouteTag, JournalEntryCreatePostRouteTag,
         JournalEntryDeleteGetRouteTag, JournalEntryDeletePostRouteTag, JournalEntryDetailRouteTag,
-        JournalGenerateGetRouteTag, JournalGeneratePostRouteTag, JournalListRouteTag,
-        JournalSelectRouteTag,
+        JournalEntryEditGetRouteTag, JournalEntryEditPostRouteTag, JournalGenerateGetRouteTag,
+        JournalGeneratePostRouteTag, JournalListRouteTag, JournalSelectRouteTag,
     },
 };
 
@@ -86,6 +86,36 @@ fn journal_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
             },
         ]),
     }
+}
+
+fn journal_entry_crumbs_with_action(
+    journal_id: i64,
+    journal_label: &str,
+    entry_id: i64,
+    action: &str,
+) -> Markup {
+    let list_url = JournalListRouteTag.url();
+    let journal_url = JournalDetailRouteTag::new(journal_id).url();
+    let entry_url = JournalEntryDetailRouteTag::new(entry_id).url();
+    let entry_label = format!("#{entry_id}");
+    breadcrumbs(&[
+        Crumb {
+            label: "Journals",
+            href: Some(&list_url),
+        },
+        Crumb {
+            label: journal_label,
+            href: Some(&journal_url),
+        },
+        Crumb {
+            label: &entry_label,
+            href: Some(&entry_url),
+        },
+        Crumb {
+            label: action,
+            href: None,
+        },
+    ])
 }
 
 fn journal_entry_crumbs(journal_id: i64, journal_label: &str, entry_label: &str) -> Markup {
@@ -180,7 +210,7 @@ fn journal_filter_form(page: &JournalListPage) -> Markup {
         rows: &page.filters,
         page_size: page.page_size,
         sort: &page.sort,
-        attrs: form_hx_get_route::<JournalTableKey, JournalListRouteTag>(JournalListRouteTag),
+        attrs: form_hx_get_route(JournalListRouteTag),
         apply_label: "Apply Filters",
         extra: html! {},
     })
@@ -264,7 +294,7 @@ impl JournalListPage {
                     name: "p_finance_accounts.JournalCreateForm",
                     href: &JournalGenerateGetRouteTag.url(),
                     form_post_url: &JournalGenerateGetRouteTag.path(),
-                    modal_uid: JournalGenerateModalKey::ID,
+                    modal_uid: JOURNAL_GENERATE_MODAL.id(),
                     icon_name: Some("document-plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
@@ -273,19 +303,21 @@ impl JournalListPage {
                     name: "p_finance_accounts.JournalCreateForm",
                     href: &JournalCreateGetRouteTag.url(),
                     form_post_url: &JournalCreateGetRouteTag.path(),
-                    modal_uid: JournalCreateModalKey::ID,
+                    modal_uid: JOURNAL_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
                 }))
             };
         }
-        let pagination = render_pagination::<JournalTableKey>(
+        let pagination = render_pagination(
+            JOURNAL_TABLE,
             &self.path_and_query,
             self.journals.number,
             self.journals.num_pages,
         );
-        super::data_table_with_filter_errors::<JournalTableKey>(
+        super::data_table_with_filter_errors(
+            JOURNAL_TABLE,
             "Journals",
             actions,
             &headers,
@@ -416,14 +448,15 @@ impl JournalDetailPage {
                     name: "p_finance_accounts.JournalEntryCreateForm",
                     href: &JournalEntryCreateGetRouteTag::new(self.id).url(),
                     form_post_url: &JournalEntryCreateGetRouteTag::new(self.id).path(),
-                    modal_uid: JournalEntryCreateModalKey::ID,
+                    modal_uid: JOURNAL_ENTRY_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
                 }))
             };
         }
-        data_table_list_refresh::<JournalTableKey>(
+        data_table_list_refresh(
+            JOURNAL_TABLE,
             "Journal entries",
             actions,
             &headers,
@@ -455,7 +488,7 @@ impl JournalDetailPage {
                                 name: "p_finance_accounts.JournalEditForm",
                                 href: &JournalEditGetRouteTag::new(self.id).url(),
                                 form_post_url: &JournalEditPostRouteTag::new(self.id).path(),
-                                modal_uid: JournalEditModalKey::ID,
+                                modal_uid: JOURNAL_EDIT_MODAL.id(),
                                 label: "Edit",
                                 classes: "btn-outline",
                                 ..Default::default()
@@ -527,12 +560,13 @@ impl JournalEditModalPage {
 impl RenderTemplate for JournalEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = JournalDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<JournalEditModalKey>(
+        modal_keyed(
+            JOURNAL_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit journal" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<JournalEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(JOURNAL_EDIT_MODAL, &modal_edit_post_url(
                         JournalEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -553,7 +587,7 @@ impl RenderTemplate for JournalEditModalPage {
                             name: "p_finance_accounts.JournalDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: JournalDeleteModalKey::ID,
+                            modal_uid: JOURNAL_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -583,18 +617,22 @@ impl RenderTemplate for JournalCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed::<JournalCreateModalKey>(
+        modal_keyed(
+            JOURNAL_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
                 FormOpts {
                     title: "Create Journal",
                     subtitle: "Create a new journal",
-                    attrs: form_hx_post_url::<JournalCreateModalKey>(&modal_create_post_url(
-                        JournalCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    )),
+                    attrs: form_hx_post_url(
+                        JOURNAL_CREATE_MODAL,
+                        &modal_create_post_url(
+                            JournalCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: JournalCreateForm::render_inputs(
                         &FormCtx::form::<JournalCreateForm>(CsrfToken::current())
@@ -637,18 +675,22 @@ impl RenderTemplate for JournalGenerateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed::<JournalGenerateModalKey>(
+        modal_keyed(
+            JOURNAL_GENERATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
                 FormOpts {
                     title: "Migrate to new journal",
                     subtitle: "Create a journal and move every source document onto its new entries",
-                    attrs: form_hx_post_url::<JournalGenerateModalKey>(&modal_create_post_url(
-                        JournalGeneratePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                    )),
+                    attrs: form_hx_post_url(
+                        JOURNAL_GENERATE_MODAL,
+                        &modal_create_post_url(
+                            JournalGeneratePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: JournalCreateForm::render_inputs(
                         &FormCtx::form::<JournalCreateForm>(CsrfToken::current())
@@ -685,7 +727,7 @@ pub struct JournalSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for JournalSelectPage {
+impl RenderPickerSelect for JournalSelectPage {
     fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
@@ -731,11 +773,7 @@ impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for Journa
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_picker_route::<
-                        JournalSelectTableKey,
-                        JournalSelectModalKey,
-                        JournalSelectRouteTag,
-                    >(JournalSelectRouteTag),
+                    attrs: form_hx_get_picker_route(JournalSelectRouteTag),
                     apply_label: "Apply",
                     extra: html! {
                         input type="hidden" name="target_input" value=(target_input) {}
@@ -744,12 +782,14 @@ impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for Journa
                 ..Default::default()
             }))
         };
-        let pagination = render_picker_pagination::<JournalSelectModalKey>(
+        let pagination = render_picker_pagination(
+            JOURNAL_SELECT_MODAL,
             &self.path_and_query,
             self.journals.number,
             self.journals.num_pages,
         );
-        super::data_table_with_filter_errors::<JournalSelectTableKey>(
+        super::data_table_with_filter_errors(
+            JOURNAL_SELECT_TABLE,
             "Select Journal",
             actions,
             &headers,
@@ -763,7 +803,7 @@ impl RenderPickerSelect<JournalSelectTableKey, JournalSelectModalKey> for Journa
 
 impl RenderTemplate for JournalSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(JOURNAL_SELECT_MODAL).into_inner()
     }
 }
 
@@ -804,18 +844,22 @@ impl RenderTemplate for JournalEntryCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed::<JournalEntryCreateModalKey>(
+        modal_keyed(
+            JOURNAL_ENTRY_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
                 FormOpts {
                     title: "Create Journal Entry",
                     subtitle: &format!("New entry — {}", self.journal_name),
-                    attrs: form_hx_post_url::<JournalEntryCreateModalKey>(&modal_create_post_url(
-                        JournalEntryCreatePostRouteTag::new(self.journal_id),
-                        form_name,
-                        &self.refresh_table,
-                    )),
+                    attrs: form_hx_post_url(
+                        JOURNAL_ENTRY_CREATE_MODAL,
+                        &modal_create_post_url(
+                            JournalEntryCreatePostRouteTag::new(self.journal_id),
+                            form_name,
+                            &self.refresh_table,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: JournalEntryForm::render_inputs(
                         &FormCtx::form::<JournalEntryForm>(CsrfToken::current())
@@ -848,7 +892,7 @@ pub struct JournalEntryDetailPage {
     pub source_doc_instance_name: String,
     pub source_doc_url: String,
     pub items: Vec<JournalEntryItemRow>,
-    pub can_delete: bool,
+    pub can_mutate: bool,
 }
 
 impl JournalEntryDetailPage {
@@ -910,22 +954,36 @@ impl JournalEntryDetailPage {
                 }
             })
             .collect();
-        data_table_list::<JournalTableKey>("Line items", html! {}, &headers, &rows, html! {})
+        data_table_list(
+            JOURNAL_TABLE,
+            "Line items",
+            html! {},
+            &headers,
+            &rows,
+            html! {},
+        )
     }
 
     fn body(&self) -> Markup {
         let delete_url = JournalEntryDeleteGetRouteTag::new(self.id).url();
-        let actions = if self.can_delete {
+        let actions = if self.can_mutate {
             html! {
-                (button_modal_form(ButtonModalForm {
-                    label: "Delete",
-                    icon_name: Some("trash"),
-                    name: "p_finance_accounts.JournalEntryDeleteForm",
-                    href: &delete_url,
-                    form_post_url: &delete_url,
-                    modal_uid: JournalEntryDeleteModalKey::ID,
-                    classes: "btn-error",
-                    ..Default::default()
+                (container_row("flex gap-2", html! {
+                    (button_link_route(
+                        JournalEntryEditGetRouteTag::new(self.id),
+                        "Edit",
+                        "btn-outline",
+                    ))
+                    (button_modal_form(ButtonModalForm {
+                        label: "Delete",
+                        icon_name: Some("trash"),
+                        name: "p_finance_accounts.JournalEntryDeleteForm",
+                        href: &delete_url,
+                        form_post_url: &delete_url,
+                        modal_uid: JOURNAL_ENTRY_DELETE_MODAL.id(),
+                        classes: "btn-error",
+                        ..Default::default()
+                    }))
                 }))
             }
         } else {
@@ -984,6 +1042,88 @@ impl RenderTemplate for JournalEntryDetailPage {
     }
 }
 
+#[derive(Generic)]
+pub struct JournalEntryEditPage {
+    pub id: i64,
+    pub journal_id: i64,
+    pub journal_label: String,
+    pub lines: String,
+    pub error: String,
+    pub can_save: bool,
+}
+
+impl JournalEntryEditPage {
+    fn body(&self) -> Markup {
+        let post_path = JournalEntryEditPostRouteTag::new(self.id).path();
+        let inputs = JournalEntryLinesForm::render_inputs(
+            &FormCtx::form::<JournalEntryLinesForm>(CsrfToken::current())
+                .value(JournalEntryLinesFormField::Lines, &self.lines),
+        );
+        html! {
+            (detail(html! {
+                (container_column("", html! {
+                    @if self.can_save {
+                        (form(&CsrfToken::current(), FormOpts {
+                            title: &format!("Edit journal entry #{}", self.id),
+                            subtitle: &self.journal_label,
+                            attrs: form_hx_post_main_url(&post_path),
+                            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                            inputs,
+                            actions: html! {
+                                (container_row("flex gap-2 mt-2", html! {
+                                    (button_submit(ButtonSubmit {
+                                        label: "Save",
+                                        classes: "btn-primary",
+                                        ..Default::default()
+                                    }))
+                                }))
+                            },
+                            ..Default::default()
+                        }))
+                    } @else {
+                        div class="alert alert-warning" {
+                            @if self.error.is_empty() {
+                                "This journal is immutable."
+                            } @else {
+                                (self.error)
+                            }
+                        }
+                    }
+                }))
+            }))
+        }
+    }
+
+    fn menu(&self) -> Markup {
+        journal_entry_detail_menu(self.id)
+    }
+
+    fn crumbs(&self) -> Markup {
+        journal_entry_crumbs_with_action(self.journal_id, &self.journal_label, self.id, "Edit")
+    }
+}
+
+impl RenderAppPane for JournalEntryEditPage {
+    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
+        layout_with_entity_sidebar_crumbs(self.menu(), self.crumbs(), self.body())
+    }
+    fn render_main(&self) -> lariv_core::components::MainContentHtml {
+        layout_main_with_crumbs(self.crumbs(), self.body())
+    }
+}
+
+impl RenderTemplate for JournalEntryEditPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold_with_sidebar(
+            "Journal Entry",
+            chrome,
+            self.menu(),
+            self.crumbs(),
+            self.body(),
+        )
+    }
+}
+
 #[derive(Clone)]
 pub struct JournalEntryDeleteItem {
     pub kind: String,
@@ -1024,9 +1164,7 @@ impl RenderTemplate for JournalEntryDeleteModalPage {
                 FormOpts {
                     title: "Delete journal entry",
                     subtitle: "This cannot be undone.",
-                    attrs: form_hx_post_route::<JournalEntryDeleteModalKey, _>(
-                        JournalEntryDeletePostRouteTag::new(self.id),
-                    ),
+                    attrs: form_hx_post_route(JournalEntryDeletePostRouteTag::new(self.id)),
                     form_error: self.error.as_deref(),
                     inputs: item_list,
                     actions: html! {
@@ -1040,7 +1178,7 @@ impl RenderTemplate for JournalEntryDeleteModalPage {
                 },
             )
         };
-        modal_keyed::<JournalEntryDeleteModalKey>("", body)
+        modal_keyed(JOURNAL_ENTRY_DELETE_MODAL, "", body)
     }
 }
 
@@ -1053,9 +1191,7 @@ pub struct JournalEntrySelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<JournalEntrySelectTableKey, JournalEntrySelectModalKey>
-    for JournalEntrySelectPage
-{
+impl RenderPickerSelect for JournalEntrySelectPage {
     fn render_table(&self) -> Markup {
         let id_sort = column_sort_url(&self.path_and_query, "ID", &self.sort);
         let datetime_sort = column_sort_url(&self.path_and_query, "DateTime", &self.sort);
@@ -1112,12 +1248,14 @@ impl RenderPickerSelect<JournalEntrySelectTableKey, JournalEntrySelectModalKey>
                 }
             })
             .collect();
-        let pagination = render_picker_pagination::<JournalEntrySelectModalKey>(
+        let pagination = render_picker_pagination(
+            JOURNAL_ENTRY_SELECT_MODAL,
             &self.path_and_query,
             self.entries.number,
             self.entries.num_pages,
         );
-        data_table_list_refresh::<JournalEntrySelectTableKey>(
+        data_table_list_refresh(
+            JOURNAL_ENTRY_SELECT_TABLE,
             "Select Journal Entry",
             html! {},
             &headers,
@@ -1130,7 +1268,7 @@ impl RenderPickerSelect<JournalEntrySelectTableKey, JournalEntrySelectModalKey>
 
 impl RenderTemplate for JournalEntrySelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(JOURNAL_ENTRY_SELECT_MODAL).into_inner()
     }
 }
 
@@ -1155,7 +1293,7 @@ mod tests {
                 debit: "10.00".into(),
                 credit: String::new(),
             }],
-            can_delete: false,
+            can_mutate: false,
         };
         let html = page.items_table().into_string();
         let href = AccountDetailRouteTag::new(42).url();

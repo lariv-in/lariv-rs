@@ -10,7 +10,7 @@ pub struct UsersPick;
 
 use super::{
     handlers,
-    keys::{UserDeleteModalKey, UserSelectModalKey, UserSelectTableKey, UserTableKey},
+    keys::{USER_DELETE_MODAL, USER_SELECT_MODAL, USER_SELECT_TABLE, USER_TABLE},
 };
 
 define_plugin_routes! {
@@ -30,15 +30,15 @@ define_plugin_routes! {
         post UsersSelfChangePasswordPostRouteTag, "/users/self/change-password", handlers::self_profile::change_password_post;
         get UsersEffectiveUserGetRouteTag, "/users/effective-user", bare handlers::effective_user::options, raw;
         post UsersEffectiveUserPostRouteTag, "/users/effective-user", bare handlers::effective_user::set, raw;
-        get UsersListRouteTag, "/users", handlers::users::list, fragment(UserTableKey), authorize(UsersAdmin, []);
-        get UsersSelectRouteTag, "/users/select", handlers::users::select, fk_select(UserSelectTableKey, UserSelectModalKey), authorize(UsersPick, []);
+        get UsersListRouteTag, "/users", handlers::users::list, fragment(USER_TABLE), authorize(UsersAdmin, []);
+        get UsersSelectRouteTag, "/users/select", handlers::users::select, fk_select(USER_SELECT_TABLE, USER_SELECT_MODAL), authorize(UsersPick, []);
         get UsersCreateGetRouteTag, "/users/create", handlers::users::create_get, modal, authorize(UsersAdmin, []);
         post UsersCreatePostRouteTag, "/users/create", handlers::users::create_post, authorize(UsersAdmin, []);
         get UsersDetailRouteTag, "/users/u/{id}", handlers::users::detail, authorize(UsersAdmin, []);
         get UsersEditGetRouteTag, "/users/u/{id}/edit", handlers::users::edit_get, modal, authorize(UsersAdmin, []);
         post UsersEditPostRouteTag, "/users/u/{id}/edit", handlers::users::edit_post, authorize(UsersAdmin, []);
         get UsersDeleteGetRouteTag, "/users/u/{id}/delete", handlers::users::delete_get, modal, authorize(UsersAdmin, []);
-        post UsersDeletePostRouteTag, "/users/u/{id}/delete", bare handlers::users::delete_post, fragment(UserDeleteModalKey), authorize(UsersAdmin, []);
+        post UsersDeletePostRouteTag, "/users/u/{id}/delete", bare handlers::users::delete_post, fragment(USER_DELETE_MODAL), authorize(UsersAdmin, []);
         get UsersChangePasswordGetRouteTag, "/users/u/{id}/change-password", handlers::users::change_password_get, authorize(UsersAdmin, []);
         post UsersChangePasswordPostRouteTag, "/users/u/{id}/change-password", handlers::users::change_password_post, authorize(UsersAdmin, []);
     ]

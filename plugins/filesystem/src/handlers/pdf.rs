@@ -8,7 +8,7 @@ use axum::{
 };
 use maud::{Markup, html};
 
-use crate::keys::VNodePdfModalKey;
+use crate::keys::V_NODE_PDF_MODAL;
 use crate::node;
 use crate::permissions::AccessActor;
 use crate::routes::VNodePdfRouteTag;
@@ -28,7 +28,8 @@ fn pdf_filename(typ_name: &str) -> String {
 }
 
 fn render_pdf_modal(title: &str, pdf_url: &str) -> Markup {
-    modal_keyed::<VNodePdfModalKey>(
+    modal_keyed(
+        V_NODE_PDF_MODAL,
         "max-w-6xl w-[95vw]",
         html! {
             div class="flex items-center justify-between gap-3 mb-3 pr-10" {
@@ -60,7 +61,8 @@ fn render_pdf_modal(title: &str, pdf_url: &str) -> Markup {
 }
 
 fn render_pdf_modal_error(message: &str) -> Markup {
-    modal_keyed::<VNodePdfModalKey>(
+    modal_keyed(
+        V_NODE_PDF_MODAL,
         "max-w-2xl",
         html! {
             h3 class="text-lg font-semibold mb-2" { "Typst PDF failed" }

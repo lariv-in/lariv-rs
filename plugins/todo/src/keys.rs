@@ -1,8 +1,8 @@
 //! Compile-time HTMX swap keys for the to-do plugin.
 
-use lariv_core::swap_key;
+use lariv_core::components::SwapKey;
 
-swap_key!(TodoPageTableKey, "todo-pages-table");
-swap_key!(TodoPageCreateModalKey, "todo-page-create-modal");
-swap_key!(TodoPageEditModalKey, "todo-page-edit-modal");
-swap_key!(TodoPageDeleteModalKey, "todo-page-delete-modal");
+pub const TODO_PAGE_TABLE: SwapKey = SwapKey("todo-pages-table");
+pub const TODO_PAGE_CREATE_MODAL: SwapKey = SwapKey("todo-page-create-modal");
+pub const TODO_PAGE_EDIT_MODAL: SwapKey = SwapKey("todo-page-edit-modal");
+pub const TODO_PAGE_DELETE_MODAL: SwapKey = SwapKey("todo-page-delete-modal");

@@ -20,7 +20,7 @@ use crate::logic::purchase_pdf::{
     render_posted_purchase_pdf,
 };
 use crate::{
-    keys::PurchasePdfModalKey,
+    keys::PURCHASE_PDF_MODAL,
     routes::{CancelledPurchasePdfRouteTag, DraftPurchasePdfRouteTag, PostedPurchasePdfRouteTag},
     scope::{find_active_draft, find_active_posted, hub_tab_url},
     state::PurchasesState,
@@ -78,7 +78,8 @@ fn pdf_ok_response(result: crate::logic::purchase_pdf::PurchasePdfResult) -> Res
 }
 
 fn render_pdf_modal(title: &str, pdf_url: &str) -> Markup {
-    modal_keyed::<PurchasePdfModalKey>(
+    modal_keyed(
+        PURCHASE_PDF_MODAL,
         "max-w-6xl w-[95vw]",
         html! {
             div class="flex items-center justify-between gap-3 mb-3 pr-10" {
@@ -110,7 +111,8 @@ fn render_pdf_modal(title: &str, pdf_url: &str) -> Markup {
 }
 
 fn render_pdf_modal_error(message: &str) -> Markup {
-    modal_keyed::<PurchasePdfModalKey>(
+    modal_keyed(
+        PURCHASE_PDF_MODAL,
         "max-w-2xl",
         html! {
             h3 class="text-lg font-semibold mb-2" { "Purchase PDF failed" }

@@ -3,8 +3,8 @@
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
-    EntityTrait, QueryFilter, QueryOrder, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, TransactionTrait,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -21,7 +21,7 @@ use crate::{
     },
     logic::journal::{
         JournalLineSpec, create_source_doc, delete_journal_entry_recursive, insert_journal_entry,
-        update_source_doc_id,
+        replace_journal_entry_lines, update_source_doc_id,
     },
 };
 
@@ -339,7 +339,9 @@ pub async fn update_custom_source_doc(
     }
     let now = Utc::now();
     let txn = db.begin().await.map_err(|e| e.to_string())?;
-    replace_lines(&txn, &entry, lines).await?;
+    replace_journal_entry_lines(&txn, &entry, lines)
+        .await
+        .map_err(|e| e.to_string())?;
     let mut am: custom_source_doc::ActiveModel = model.into();
     am.title = Set(title.to_string());
     am.content = Set(content.to_string());
@@ -379,37 +381,6 @@ async fn load_journal(db: &DatabaseConnection, journal_id: i64) -> Result<journa
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Journal not found".to_string())
-}
-
-async fn replace_lines<C: ConnectionTrait>(
-    db: &C,
-    entry: &journal_entry::Model,
-    lines: &[JournalLineSpec],
-) -> Result<(), String> {
-    if lines.is_empty() {
-        return Err("At least one journal line is required".into());
-    }
-    JournalEntryItemEntity::delete_many()
-        .filter(journal_entry_item::Column::JournalEntryId.eq(entry.id))
-        .exec(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    let now = Utc::now();
-    for line in lines {
-        journal_entry_item::ActiveModel {
-            datetime: Set(entry.datetime),
-            account_id: Set(line.account_id),
-            amount: Set(decimal::normalize(line.amount)),
-            journal_entry_id: Set(entry.id),
-            created_at: Set(Some(now)),
-            updated_at: Set(Some(now)),
-            ..Default::default()
-        }
-        .insert(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    }
-    Ok(())
 }
 
 fn parse_amount(label: &str, raw: &str) -> Result<Decimal, String> {

@@ -1,6 +1,8 @@
-lariv_core::swap_key!(DocumentCreateModalKey, "document-create-modal");
-lariv_core::swap_key!(DocumentEditModalKey, "document-edit-modal");
-lariv_core::swap_key!(DocumentTableKey, "document-table");
-lariv_core::swap_key!(DocumentDeleteModalKey, "document-delete-modal");
-lariv_core::swap_key!(DocumentSelectTableKey, "document-select-table");
-lariv_core::swap_key!(DocumentSelectModalKey, "document-select-modal");
+use lariv_core::components::SwapKey;
+
+pub const DOCUMENT_CREATE_MODAL: SwapKey = SwapKey("document-create-modal");
+pub const DOCUMENT_EDIT_MODAL: SwapKey = SwapKey("document-edit-modal");
+pub const DOCUMENT_TABLE: SwapKey = SwapKey("document-table");
+pub const DOCUMENT_DELETE_MODAL: SwapKey = SwapKey("document-delete-modal");
+pub const DOCUMENT_SELECT_TABLE: SwapKey = SwapKey("document-select-table");
+pub const DOCUMENT_SELECT_MODAL: SwapKey = SwapKey("document-select-modal");

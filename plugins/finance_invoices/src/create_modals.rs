@@ -1,5 +1,2 @@
-//! Typed [`PickerModal`] wiring for invoice swap keys.
-
-use super::keys::{DraftInvoiceSelectModalKey, DraftInvoiceSelectTableKey};
-
-lariv_core::impl_picker_modal!(DraftInvoiceSelectModalKey, DraftInvoiceSelectTableKey);
+//! Picker modal keys are plain [`SwapKey`](lariv_core::components::SwapKey) consts;
+//! pairing lives at `fk_select` / `respond_picker_select`.

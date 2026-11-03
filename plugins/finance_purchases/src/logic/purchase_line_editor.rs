@@ -7,15 +7,13 @@ use sea_orm::{
 use serde::Serialize;
 
 use crate::logic::bill_to::{BillTo, PartyLabels};
-use lariv_plugin_finance_products::{
-    entities::product::Entity as ProductEntity,
-    preferences::load_product_tax_ids,
-    pricing,
-};
 use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_format,
 };
 use lariv_plugin_finance_common::decimal;
+use lariv_plugin_finance_products::{
+    entities::product::Entity as ProductEntity, preferences::load_product_tax_ids, pricing,
+};
 use lariv_plugin_finance_taxes::{
     entities::tax::TaxKind,
     scope::{load_all_taxes, load_taxes_by_ids, tax_label},
@@ -65,10 +63,7 @@ struct PurchaseLineEditorPreview {
 }
 
 pub async fn purchase_line_editor_preview_json(db: &DatabaseConnection) -> String {
-    let products = ProductEntity::find()
-        .all(db)
-        .await
-        .unwrap_or_default();
+    let products = ProductEntity::find().all(db).await.unwrap_or_default();
 
     let mut product_opts = Vec::with_capacity(products.len());
     for p in products {
@@ -360,8 +355,7 @@ pub async fn draft_purchase_line_display_rows(
     let mut mixed_journals = false;
     for ln in &lines {
         if let Ok(Some(template)) =
-            lariv_plugin_finance_products::journal_template::load_template(db, ln.product_id)
-                .await
+            lariv_plugin_finance_products::journal_template::load_template(db, ln.product_id).await
         {
             match journal_id {
                 Some(existing) if existing != template.journal_id => mixed_journals = true,

@@ -32,13 +32,12 @@
 //! for optional ID filter fields, and [`QueryStr`](crate::web::QueryStr) for optional text
 //! filters — see [`crate::web::query`].
 
-use std::marker::PhantomData;
-
 use maud::Markup;
 
 use crate::components::modal::modal_keyed;
 use crate::components::swap::SwapKey;
 use crate::components::{ButtonModalForm, button_modal_form};
+use crate::http::{ModalGet, RouteUrl};
 use crate::web::{CreateModal, Htmx, modal_create_get_for_picker};
 
 pub use crate::components::htmx::FK_DROPDOWN_ID_PREFIX;
@@ -55,8 +54,8 @@ pub struct ModalHtml(Markup);
 
 impl ModalHtml {
     /// Wrap `inner` in a keyed `<dialog class="modal …">`.
-    pub fn wrap<M: SwapKey>(inner: Markup) -> Self {
-        Self(modal_keyed::<M>("", inner))
+    pub fn wrap(modal: SwapKey, inner: Markup) -> Self {
+        Self(modal_keyed(modal, "", inner))
     }
 
     pub fn into_inner(self) -> Markup {
@@ -65,11 +64,11 @@ impl ModalHtml {
 }
 
 /// HTMX response: table fragment for picker pagination/filter swaps.
-pub struct TableFragmentHtml<K: SwapKey>(Markup, PhantomData<K>);
+pub struct TableFragmentHtml(Markup);
 
-impl<K: SwapKey> TableFragmentHtml<K> {
+impl TableFragmentHtml {
     pub fn new(inner: Markup) -> Self {
-        Self(inner, PhantomData)
+        Self(inner)
     }
 
     pub fn into_inner(self) -> Markup {
@@ -80,56 +79,46 @@ impl<K: SwapKey> TableFragmentHtml<K> {
 /// Page type for FK or M2M picker routes.
 ///
 /// Implementors provide `render_table` only; `render_modal` wraps it by default.
-pub trait RenderPickerSelect<K: SwapKey, M: SwapKey> {
+pub trait RenderPickerSelect {
     fn render_table(&self) -> Markup;
 
-    fn render_modal(&self) -> ModalHtml {
-        ModalHtml::wrap::<M>(self.render_table())
+    fn render_modal(&self, modal: SwapKey) -> ModalHtml {
+        ModalHtml::wrap(modal, self.render_table())
     }
 }
 
-/// FK / M2M picker modal swap key paired with its inner table fragment key.
-pub trait PickerModal: SwapKey {
-    type Table: SwapKey;
-}
-
-/// Implement [`PickerModal`] pairing a picker dialog key with its inner table key.
-#[macro_export]
-macro_rules! impl_picker_modal {
-    ($modal:ty, $table:ty) => {
-        impl $crate::picker::PickerModal for $modal {
-            type Table = $table;
-        }
-    };
-}
-
-/// Dispatch picker HTMX response: table fragment when targeting `K` or an FK
+/// Dispatch picker HTMX response: table fragment when targeting `table` or an FK
 /// typeahead dropdown, modal otherwise.
-pub fn respond_picker_select<K, M, P>(htmx: &Htmx, page: &P) -> Markup
-where
-    K: SwapKey,
-    M: SwapKey,
-    P: RenderPickerSelect<K, M>,
-{
-    if htmx.targets::<K>() || htmx.sourced_from::<K>() || targets_fk_search_dropdown(htmx) {
+pub fn respond_picker_select(
+    htmx: &Htmx,
+    table: SwapKey,
+    modal: SwapKey,
+    page: &impl RenderPickerSelect,
+) -> Markup {
+    if htmx.targets(table) || htmx.sourced_from(table) || targets_fk_search_dropdown(htmx) {
         page.render_table()
     } else {
-        page.render_modal().into_inner()
+        page.render_modal(modal).into_inner()
     }
 }
 
 /// Create button for an FK picker modal; fills field `target_input` after create.
-pub fn picker_create_button<M: CreateModal>(
+pub fn picker_create_button<G, P>(
+    m: CreateModal<G, P>,
     target_input: &str,
     icon_name: Option<&str>,
     classes: &str,
-) -> maud::Markup {
-    let href = modal_create_get_for_picker::<M>(target_input);
+) -> maud::Markup
+where
+    G: ModalGet + RouteUrl + Copy,
+    P: Copy,
+{
+    let href = modal_create_get_for_picker(m, target_input);
     button_modal_form(ButtonModalForm {
         name: "",
         href: &href,
         form_post_url: "",
-        modal_uid: M::ID,
+        modal_uid: m.key.id(),
         icon_name,
         classes,
         ..Default::default()
@@ -143,12 +132,12 @@ mod tests {
     use super::*;
     use crate::components::swap::SwapKey;
 
-    crate::swap_key!(TestPickerTableKey, "test-picker-table");
-    crate::swap_key!(TestPickerModalKey, "test-picker-modal");
+    const TEST_PICKER_TABLE: SwapKey = SwapKey("test-picker-table");
+    const TEST_PICKER_MODAL: SwapKey = SwapKey("test-picker-modal");
 
     struct DummyPicker;
 
-    impl RenderPickerSelect<TestPickerTableKey, TestPickerModalKey> for DummyPicker {
+    impl RenderPickerSelect for DummyPicker {
         fn render_table(&self) -> Markup {
             html! { p { "pick me" } }
         }
@@ -156,7 +145,7 @@ mod tests {
 
     #[test]
     fn modal_wrap_contains_dialog() {
-        let m = ModalHtml::wrap::<TestPickerModalKey>(html! { "x" });
+        let m = ModalHtml::wrap(TEST_PICKER_MODAL, html! { "x" });
         let s = m.into_inner().into_string();
         assert!(s.contains("<dialog"));
         assert!(s.contains("modal"));
@@ -165,8 +154,7 @@ mod tests {
     #[test]
     fn respond_picker_select_open_returns_modal() {
         let htmx = Htmx::default();
-        let out =
-            respond_picker_select::<TestPickerTableKey, TestPickerModalKey, _>(&htmx, &DummyPicker);
+        let out = respond_picker_select(&htmx, TEST_PICKER_TABLE, TEST_PICKER_MODAL, &DummyPicker);
         assert!(out.into_string().contains("<dialog"));
     }
 
@@ -174,9 +162,8 @@ mod tests {
     fn respond_picker_select_table_refresh_from_source_id() {
         let mut htmx = Htmx::default();
         htmx.request = true;
-        htmx.source_id = Some(TestPickerTableKey::ID.to_string());
-        let out =
-            respond_picker_select::<TestPickerTableKey, TestPickerModalKey, _>(&htmx, &DummyPicker);
+        htmx.source_id = Some(TEST_PICKER_TABLE.id().to_string());
+        let out = respond_picker_select(&htmx, TEST_PICKER_TABLE, TEST_PICKER_MODAL, &DummyPicker);
         let s = out.into_string();
         assert!(s.contains("pick me"));
         assert!(!s.contains("<dialog"));
@@ -186,9 +173,8 @@ mod tests {
     fn respond_picker_select_table_refresh_from_instance_source_id() {
         let mut htmx = Htmx::default();
         htmx.request = true;
-        htmx.source_id = Some(format!("{}--abc123", TestPickerTableKey::ID));
-        let out =
-            respond_picker_select::<TestPickerTableKey, TestPickerModalKey, _>(&htmx, &DummyPicker);
+        htmx.source_id = Some(format!("{}--abc123", TEST_PICKER_TABLE.id()));
+        let out = respond_picker_select(&htmx, TEST_PICKER_TABLE, TEST_PICKER_MODAL, &DummyPicker);
         let s = out.into_string();
         assert!(s.contains("pick me"));
         assert!(!s.contains("<dialog"));
@@ -199,8 +185,7 @@ mod tests {
         let mut htmx = Htmx::default();
         htmx.request = true;
         htmx.target_id = Some(format!("{FK_DROPDOWN_ID_PREFIX}role_id"));
-        let out =
-            respond_picker_select::<TestPickerTableKey, TestPickerModalKey, _>(&htmx, &DummyPicker);
+        let out = respond_picker_select(&htmx, TEST_PICKER_TABLE, TEST_PICKER_MODAL, &DummyPicker);
         let s = out.into_string();
         assert!(s.contains("pick me"));
         assert!(!s.contains("<dialog"));

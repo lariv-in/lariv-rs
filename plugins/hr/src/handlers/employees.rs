@@ -3,7 +3,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 
-use lariv_core::components::{SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{CsrfToken, HtmlForm, HtmlFormBody};
 use lariv_core::http::Cap;
 use lariv_core::web::{
@@ -17,8 +17,8 @@ use crate::{
     forms::{EmployeeForm, TerminateEmployeeBody},
     handlers::ModalNameQuery,
     keys::{
-        ApplicantEditModalKey, EmployeeCreateModalKey, EmployeeDeleteModalKey,
-        TerminateEmployeeModalKey,
+        APPLICANT_EDIT_MODAL, EMPLOYEE_CREATE_MODAL, EMPLOYEE_DELETE_MODAL,
+        TERMINATE_EMPLOYEE_MODAL,
     },
     logic::{
         employee::{
@@ -379,8 +379,9 @@ pub async fn create_post(
         }
     };
     match create_employee_for_user(&state.db, user_id, input).await {
-        Ok(employee) => respond_create_modal_done::<EmployeeCreateModalKey>(
+        Ok(employee) => respond_create_modal_done(
             &htmx,
+            EMPLOYEE_CREATE_MODAL,
             &q.refresh_table(),
             &EmployeeDetailRouteTag::new(employee.id).url(),
         ),
@@ -562,8 +563,9 @@ pub async fn edit_post(
         }
     };
     match update_employee(&state.db, id, input).await {
-        Ok(_) => respond_edit_modal_done::<ApplicantEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            APPLICANT_EDIT_MODAL,
             &EmployeeDetailRouteTag::new(id).url(),
         ),
         Err(e) => {
@@ -591,7 +593,7 @@ pub async fn delete_get(
         return Redirect::to(&PeopleHubRouteTag.url()).into_response();
     }
     let page = ConfirmDeletePage {
-        modal_uid: EmployeeDeleteModalKey::ID.to_string(),
+        modal_uid: EMPLOYEE_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this employee record?".into(),
         form_name: q
             .name
@@ -619,7 +621,7 @@ pub async fn delete_post(
         ),
         Err(e) => {
             let page = ConfirmDeletePage {
-                modal_uid: EmployeeDeleteModalKey::ID.to_string(),
+                modal_uid: EMPLOYEE_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this employee record?".into(),
                 form_name: "p_hr.EmployeeDeleteForm".into(),
                 id,
@@ -660,8 +662,9 @@ pub async fn terminate_post(
     HtmlFormBody(_form): HtmlFormBody<TerminateEmployeeBody>,
 ) -> Response {
     match terminate_employee(&state.db, id, &ctx).await {
-        Ok(ex_employee_id) => respond_create_modal_done::<TerminateEmployeeModalKey>(
+        Ok(ex_employee_id) => respond_create_modal_done(
             &htmx,
+            TERMINATE_EMPLOYEE_MODAL,
             &q.refresh_table(),
             &ExEmployeeDetailRouteTag::new(ex_employee_id).url(),
         ),

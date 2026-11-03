@@ -6,7 +6,7 @@ use axum::{
 use sea_orm::{ColumnTrait, DatabaseBackend, EntityTrait, QueryFilter};
 
 use lariv_core::components::{
-    FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey, table_rows_instance_id,
+    FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, table_rows_instance_id,
 };
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
@@ -27,8 +27,8 @@ use crate::{
     forms::StockForm,
     handlers::{ModalNameQuery, path_and_query},
     keys::{
-        StockCreateModalKey, StockDeleteModalKey, StockEditModalKey, StockLinesTableKey,
-        StockSelectModalKey, StockSelectTableKey, StockTableKey,
+        STOCK_CREATE_MODAL, STOCK_DELETE_MODAL, STOCK_EDIT_MODAL, STOCK_LINES_TABLE,
+        STOCK_SELECT_MODAL, STOCK_SELECT_TABLE, STOCK_TABLE,
     },
     logic::{
         party,
@@ -169,11 +169,11 @@ pub async fn list(
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
     if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref())
-        && StockTableKey::matches_id(instance)
+        && STOCK_TABLE.matches_id(instance)
     {
         return page.render_table_rows(instance);
     }
-    if htmx.targets::<StockTableKey>() {
+    if htmx.targets(STOCK_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -257,7 +257,7 @@ pub async fn select(
         limit_sources,
         page_size: q.filter.page_size.get(),
     };
-    respond_picker_select::<StockSelectTableKey, StockSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(&htmx, STOCK_SELECT_TABLE, STOCK_SELECT_MODAL, &page)
 }
 
 /// Customer who currently holds `stock`, when exactly one customer does.
@@ -305,8 +305,9 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<StockForm>,
 ) -> Response {
     match create_stock(&state.db, stock_input(&form)).await {
-        Ok(saved) => respond_create_modal_done_fk_extra::<StockCreateModalKey>(
+        Ok(saved) => respond_create_modal_done_fk_extra(
             &htmx,
+            STOCK_CREATE_MODAL,
             &q.refresh_table(),
             &StockDetailRouteTag::new(saved.id).url(),
             saved.id,
@@ -362,11 +363,11 @@ pub async fn detail(
         page_size: q.page_size.get(),
     };
     if let Some(instance) = table_rows_instance_id(htmx.target_id.as_deref())
-        && StockLinesTableKey::matches_id(instance)
+        && STOCK_LINES_TABLE.matches_id(instance)
     {
         return page.render_lines_rows(instance).into_response();
     }
-    if htmx.targets::<StockLinesTableKey>() {
+    if htmx.targets(STOCK_LINES_TABLE) {
         return page.render_lines().into_response();
     }
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -573,7 +574,7 @@ pub async fn edit_post(
 ) -> Response {
     match update_stock(&state.db, id, stock_input(&form)).await {
         Ok(_) => {
-            respond_edit_modal_done::<StockEditModalKey>(&htmx, &StockDetailRouteTag::new(id).url())
+            respond_edit_modal_done(&htmx, STOCK_EDIT_MODAL, &StockDetailRouteTag::new(id).url())
         }
         Err(error) => {
             let page = StockEditModalPage {
@@ -596,7 +597,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: StockDeleteModalKey::ID.to_string(),
+        modal_uid: STOCK_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this stock? It cannot be deleted while movement lines reference it.".into(),
         form_name: q.name.clone().unwrap_or_else(|| "p_inventory.StockDeleteForm".into()),
         id,
@@ -618,7 +619,7 @@ pub async fn delete_post(
         Err(error) => {
             tracing::error!(error = %error, id, "failed to delete stock");
             let page = ConfirmDeletePage {
-                modal_uid: StockDeleteModalKey::ID.to_string(),
+                modal_uid: STOCK_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this stock? It cannot be deleted while movement lines reference it.".into(),
                 form_name: "p_inventory.StockDeleteForm".into(),
                 id,

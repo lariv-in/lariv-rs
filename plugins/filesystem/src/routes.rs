@@ -6,8 +6,8 @@ use lariv_plugin_users::roles::Admin;
 use super::{
     handlers,
     keys::{
-        VNodeBulkDeleteModalKey, VNodeDeleteModalKey, VNodeSelectModalKey, VNodeSelectTableKey,
-        VNodeTableKey,
+        V_NODE_BULK_DELETE_MODAL, V_NODE_DELETE_MODAL, V_NODE_SELECT_MODAL, V_NODE_SELECT_TABLE,
+        V_NODE_TABLE,
     },
 };
 
@@ -19,8 +19,8 @@ define_plugin_routes! {
     plugin: FilesystemTag;
     prefix: "/dashboard";
     routes: [
-        get VNodeListRouteTag, "/filesystem", handlers::nodes::list, fragment(VNodeTableKey);
-        get VNodeBrowseRouteTag, "/filesystem/browse/{parent_id}", handlers::nodes::browse, fragment(VNodeTableKey);
+        get VNodeListRouteTag, "/filesystem", handlers::nodes::list, fragment(V_NODE_TABLE);
+        get VNodeBrowseRouteTag, "/filesystem/browse/{parent_id}", handlers::nodes::browse, fragment(V_NODE_TABLE);
         get VNodeCreateGetRouteTag, "/filesystem/create", handlers::nodes::create_get, modal;
         get VNodeCreateGetInRouteTag, "/filesystem/create/in/{parent_id}", handlers::nodes::create_get_in, modal;
         post VNodeCreatePostRouteTag, "/filesystem/create", handlers::nodes::create_post;
@@ -33,17 +33,17 @@ define_plugin_routes! {
         get VNodeZipUploadGetInRouteTag, "/filesystem/zip-upload/in/{parent_id}", handlers::nodes::zip_upload_get_in, modal;
         post VNodeZipUploadPostRouteTag, "/filesystem/zip-upload", handlers::nodes::zip_upload_post;
         post VNodeZipUploadPostInRouteTag, "/filesystem/zip-upload/in/{parent_id}", handlers::nodes::zip_upload_post_in;
-        get VNodeSelectRouteTag, "/filesystem/select", handlers::nodes::select, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
-        get VNodeSelectInRouteTag, "/filesystem/select/in/{parent_id}", handlers::nodes::select_in, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
-        get VNodeFileSelectRouteTag, "/filesystem/file-select", handlers::nodes::file_select, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
-        get VNodeFileSelectInRouteTag, "/filesystem/file-select/in/{parent_id}", handlers::nodes::file_select_in, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
-        get VNodeNodeSelectRouteTag, "/filesystem/node-select", handlers::nodes::node_select, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
-        get VNodeNodeSelectInRouteTag, "/filesystem/node-select/in/{parent_id}", handlers::nodes::node_select_in, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
-        get VNodeMoveSelectRouteTag, "/filesystem/move-select", handlers::nodes::move_select, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
-        get VNodeMoveSelectInRouteTag, "/filesystem/move-select/in/{parent_id}", handlers::nodes::move_select_in, fk_select(VNodeSelectTableKey, VNodeSelectModalKey);
+        get VNodeSelectRouteTag, "/filesystem/select", handlers::nodes::select, fk_select(V_NODE_SELECT_TABLE, V_NODE_SELECT_MODAL);
+        get VNodeSelectInRouteTag, "/filesystem/select/in/{parent_id}", handlers::nodes::select_in, fk_select(V_NODE_SELECT_TABLE, V_NODE_SELECT_MODAL);
+        get VNodeFileSelectRouteTag, "/filesystem/file-select", handlers::nodes::file_select, fk_select(V_NODE_SELECT_TABLE, V_NODE_SELECT_MODAL);
+        get VNodeFileSelectInRouteTag, "/filesystem/file-select/in/{parent_id}", handlers::nodes::file_select_in, fk_select(V_NODE_SELECT_TABLE, V_NODE_SELECT_MODAL);
+        get VNodeNodeSelectRouteTag, "/filesystem/node-select", handlers::nodes::node_select, fk_select(V_NODE_SELECT_TABLE, V_NODE_SELECT_MODAL);
+        get VNodeNodeSelectInRouteTag, "/filesystem/node-select/in/{parent_id}", handlers::nodes::node_select_in, fk_select(V_NODE_SELECT_TABLE, V_NODE_SELECT_MODAL);
+        get VNodeMoveSelectRouteTag, "/filesystem/move-select", handlers::nodes::move_select, fk_select(V_NODE_SELECT_TABLE, V_NODE_SELECT_MODAL);
+        get VNodeMoveSelectInRouteTag, "/filesystem/move-select/in/{parent_id}", handlers::nodes::move_select_in, fk_select(V_NODE_SELECT_TABLE, V_NODE_SELECT_MODAL);
         get VNodeDownloadRootRouteTag, "/filesystem/download", bare handlers::nodes::download_root, file;
         get VNodeBulkDeleteGetRouteTag, "/filesystem/bulk-delete", handlers::nodes::bulk_delete_get, modal;
-        post VNodeBulkDeletePostRouteTag, "/filesystem/bulk-delete", bare handlers::nodes::bulk_delete_post, fragment(VNodeBulkDeleteModalKey);
+        post VNodeBulkDeletePostRouteTag, "/filesystem/bulk-delete", bare handlers::nodes::bulk_delete_post, fragment(V_NODE_BULK_DELETE_MODAL);
         get VNodeBulkMoveGetRouteTag, "/filesystem/bulk-move", handlers::nodes::bulk_move_get;
         post VNodeBulkMovePostRouteTag, "/filesystem/bulk-move", handlers::nodes::bulk_move_post;
         get VNodeBulkDownloadRouteTag, "/filesystem/bulk-download", bare handlers::nodes::bulk_download, file;
@@ -54,7 +54,7 @@ define_plugin_routes! {
         post VNodeEditPostRouteTag, "/filesystem/{id}/edit", handlers::nodes::edit_post;
         post VNodeContentPostRouteTag, "/filesystem/{id}/content", handlers::nodes::content_post;
         get VNodeDeleteGetRouteTag, "/filesystem/{id}/delete", handlers::nodes::delete_get, modal;
-        post VNodeDeletePostRouteTag, "/filesystem/{id}/delete", bare handlers::nodes::delete_post, fragment(VNodeDeleteModalKey);
+        post VNodeDeletePostRouteTag, "/filesystem/{id}/delete", bare handlers::nodes::delete_post, fragment(V_NODE_DELETE_MODAL);
         get VNodeMoveGetRouteTag, "/filesystem/{id}/move", handlers::nodes::move_get;
         post VNodeMovePostRouteTag, "/filesystem/{id}/move", handlers::nodes::move_post;
         get VNodePermissionsGetRouteTag, "/filesystem/{id}/permissions", handlers::nodes::permissions_get, authorize(FilesystemPermissions, [Admin]);

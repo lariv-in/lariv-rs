@@ -1,3 +1,4 @@
+use crate::create_modals::{COMPANY_CREATE, CONTACT_CREATE};
 use frunk::Generic;
 use maud::{Markup, html};
 
@@ -27,9 +28,9 @@ use lariv_core::web::{modal_create_post_query, modal_edit_post_url};
 
 use super::forms::{CompanyForm, CompanyFormField, ContactForm, ContactFormField};
 use super::keys::{
-    CompanyCreateModalKey, CompanyDeleteModalKey, CompanyEditModalKey, CompanySelectModalKey,
-    CompanySelectTableKey, CompanyTableKey, ContactCreateModalKey, ContactDeleteModalKey,
-    ContactEditModalKey, ContactSelectModalKey, ContactSelectTableKey, ContactTableKey,
+    COMPANY_CREATE_MODAL, COMPANY_DELETE_MODAL, COMPANY_EDIT_MODAL, COMPANY_SELECT_MODAL,
+    COMPANY_SELECT_TABLE, COMPANY_TABLE, CONTACT_CREATE_MODAL, CONTACT_DELETE_MODAL,
+    CONTACT_EDIT_MODAL, CONTACT_SELECT_MODAL, CONTACT_SELECT_TABLE, CONTACT_TABLE,
 };
 use super::routes::{
     CompanyCreatePostRouteTag, CompanyDefaultRouteTag, CompanyDeleteGetRouteTag,
@@ -40,7 +41,8 @@ use super::routes::{
     ContactFkSelectRouteTag,
 };
 
-fn filtered_data_table<K: SwapKey>(
+fn filtered_data_table(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -49,12 +51,13 @@ fn filtered_data_table<K: SwapKey>(
     refresh_url: &str,
     errors: &[FilterRowError],
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -75,7 +78,7 @@ fn filtered_data_table<K: SwapKey>(
         actions
     };
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         subtitle: "",
         classes: "w-full",
@@ -273,7 +276,8 @@ fn mailto_href(email: &str) -> Option<String> {
     Some(format!("mailto:{email}"))
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -287,15 +291,17 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
-fn render_picker_pagination<M: SwapKey>(
+fn render_picker_pagination(
+    key: SwapKey,
     path_and_query: &str,
     number: u32,
     num_pages: u32,
 ) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, false);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -309,7 +315,7 @@ fn render_picker_pagination<M: SwapKey>(
         .collect();
     table_pagination_picker(TablePagination {
         pages: &pages,
-        hx_target: M::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -426,7 +432,7 @@ impl ContactListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<ContactTableKey, ContactDefaultRouteTag>(
+                    attrs: form_hx_get_route(
                         ContactDefaultRouteTag,
                     ),
                     apply_label: "Apply",
@@ -440,18 +446,20 @@ impl ContactListPage {
         ) {
             actions = html! {
                 (actions)
-                (table_create_button::<ContactTableKey, ContactCreateModalKey>(
+                (table_create_button(CONTACT_TABLE, CONTACT_CREATE,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        filtered_data_table::<ContactTableKey>(
+        filtered_data_table(
+            CONTACT_TABLE,
             "Contacts",
             actions,
             &headers,
             &rows,
-            render_pagination::<ContactTableKey>(
+            render_pagination(
+                CONTACT_TABLE,
                 &self.path_and_query,
                 self.contacts.number,
                 self.contacts.num_pages,
@@ -540,7 +548,7 @@ impl ContactDetailPage {
                     name: "p_contacts.ContactEditForm",
                     href: &edit_get,
                     form_post_url: &edit_post,
-                    modal_uid: ContactEditModalKey::ID,
+                    modal_uid: CONTACT_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -618,12 +626,13 @@ impl RenderTemplate for ContactEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = ContactDeleteGetRouteTag::new(self.id).url();
         let company_id_s = fk_value(self.company_id);
-        modal_keyed::<ContactEditModalKey>(
+        modal_keyed(
+            CONTACT_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit contact" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<ContactEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(CONTACT_EDIT_MODAL, &modal_edit_post_url(
                         ContactEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -645,7 +654,7 @@ impl RenderTemplate for ContactEditModalPage {
                             name: "p_contacts.ContactDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: ContactDeleteModalKey::ID,
+                            modal_uid: CONTACT_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -674,12 +683,13 @@ pub struct ContactCreateModalPage {
 impl RenderTemplate for ContactCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let company_id_s = fk_value(self.company_id);
-        modal_keyed::<ContactCreateModalKey>(
+        modal_keyed(
+            CONTACT_CREATE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New contact" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<ContactCreateModalKey>(&modal_create_post_query(
+                    attrs: form_hx_post_url(CONTACT_CREATE_MODAL, &modal_create_post_query(
                         ContactCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
@@ -716,7 +726,7 @@ pub struct ContactSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for ContactSelectPage {
+impl RenderPickerSelect for ContactSelectPage {
     fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let email_sort = column_sort_url(&self.path_and_query, "Email", &self.sort);
@@ -774,11 +784,7 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_picker_route::<
-                        ContactSelectTableKey,
-                        ContactSelectModalKey,
-                        ContactFkSelectRouteTag,
-                    >(ContactFkSelectRouteTag)
+                    attrs: form_hx_get_picker_route(ContactFkSelectRouteTag)
                     .set("hx-push-url", "false"),
                     apply_label: "Apply",
                     extra: html! {
@@ -793,19 +799,21 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
         ) {
             actions = html! {
                 (actions)
-                (picker_create_button::<ContactCreateModalKey>(
+                (picker_create_button(CONTACT_CREATE,
                     &self.target_input,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        filtered_data_table::<ContactSelectTableKey>(
+        filtered_data_table(
+            CONTACT_SELECT_TABLE,
             "Select contact",
             actions,
             &headers,
             &rows,
-            render_picker_pagination::<ContactSelectModalKey>(
+            render_picker_pagination(
+                CONTACT_SELECT_MODAL,
                 &self.path_and_query,
                 self.contacts.number,
                 self.contacts.num_pages,
@@ -818,7 +826,7 @@ impl RenderPickerSelect<ContactSelectTableKey, ContactSelectModalKey> for Contac
 
 impl RenderTemplate for ContactSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(CONTACT_SELECT_MODAL).into_inner()
     }
 }
 
@@ -870,7 +878,7 @@ impl CompanyListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<CompanyTableKey, CompanyDefaultRouteTag>(
+                    attrs: form_hx_get_route(
                         CompanyDefaultRouteTag,
                     ),
                     apply_label: "Apply",
@@ -884,18 +892,20 @@ impl CompanyListPage {
         ) {
             actions = html! {
                 (actions)
-                (table_create_button::<CompanyTableKey, CompanyCreateModalKey>(
+                (table_create_button(COMPANY_TABLE, COMPANY_CREATE,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        filtered_data_table::<CompanyTableKey>(
+        filtered_data_table(
+            COMPANY_TABLE,
             "Companies",
             actions,
             &headers,
             &rows,
-            render_pagination::<CompanyTableKey>(
+            render_pagination(
+                COMPANY_TABLE,
                 &self.path_and_query,
                 self.companies.number,
                 self.companies.num_pages,
@@ -968,7 +978,7 @@ impl CompanyDetailPage {
                                 name: "p_contacts.CompanyEditForm",
                                 href: &CompanyEditGetRouteTag::new(self.id).url(),
                                 form_post_url: &CompanyEditPostRouteTag::new(self.id).path(),
-                                modal_uid: CompanyEditModalKey::ID,
+                                modal_uid: COMPANY_EDIT_MODAL.id(),
                                 label: "Edit",
                                 classes: "btn-outline",
                                 ..Default::default()
@@ -1029,12 +1039,13 @@ pub struct CompanyEditModalPage {
 impl RenderTemplate for CompanyEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = CompanyDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<CompanyEditModalKey>(
+        modal_keyed(
+            COMPANY_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit company" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<CompanyEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(COMPANY_EDIT_MODAL, &modal_edit_post_url(
                         CompanyEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -1062,7 +1073,7 @@ impl RenderTemplate for CompanyEditModalPage {
                             name: "p_contacts.CompanyDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: CompanyDeleteModalKey::ID,
+                            modal_uid: COMPANY_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -1096,12 +1107,13 @@ pub struct CompanyCreateModalPage {
 
 impl RenderTemplate for CompanyCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<CompanyCreateModalKey>(
+        modal_keyed(
+            COMPANY_CREATE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New company" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<CompanyCreateModalKey>(&modal_create_post_query(
+                    attrs: form_hx_post_url(COMPANY_CREATE_MODAL, &modal_create_post_query(
                         CompanyCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
@@ -1144,7 +1156,7 @@ pub struct CompanySelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for CompanySelectPage {
+impl RenderPickerSelect for CompanySelectPage {
     fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
@@ -1175,11 +1187,7 @@ impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for Compan
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_picker_route::<
-                        CompanySelectTableKey,
-                        CompanySelectModalKey,
-                        CompanyFkSelectRouteTag,
-                    >(CompanyFkSelectRouteTag)
+                    attrs: form_hx_get_picker_route(CompanyFkSelectRouteTag)
                     .set("hx-push-url", "false"),
                     apply_label: "Apply",
                     extra: html! {
@@ -1194,19 +1202,21 @@ impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for Compan
         ) {
             actions = html! {
                 (actions)
-                (picker_create_button::<CompanyCreateModalKey>(
+                (picker_create_button(COMPANY_CREATE,
                     &self.target_input,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        filtered_data_table::<CompanySelectTableKey>(
+        filtered_data_table(
+            COMPANY_SELECT_TABLE,
             "Select company",
             actions,
             &headers,
             &rows,
-            render_picker_pagination::<CompanySelectModalKey>(
+            render_picker_pagination(
+                COMPANY_SELECT_MODAL,
                 &self.path_and_query,
                 self.companies.number,
                 self.companies.num_pages,
@@ -1219,7 +1229,7 @@ impl RenderPickerSelect<CompanySelectTableKey, CompanySelectModalKey> for Compan
 
 impl RenderTemplate for CompanySelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(COMPANY_SELECT_MODAL).into_inner()
     }
 }
 
@@ -1235,16 +1245,16 @@ pub struct ConfirmDeletePage {
 impl RenderTemplate for ConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = if self.modal_uid.is_empty() {
-            format!("#{}", ContactDeleteModalKey::ID)
+            format!("#{}", CONTACT_DELETE_MODAL.id())
         } else {
             format!("#{}", self.modal_uid)
         };
         let uid = if self.modal_uid.is_empty() {
-            ContactDeleteModalKey::ID
+            CONTACT_DELETE_MODAL.id()
         } else {
             self.modal_uid.as_str()
         };
-        let post_url = if self.modal_uid == CompanyDeleteModalKey::ID {
+        let post_url = if self.modal_uid == COMPANY_DELETE_MODAL.id() {
             CompanyDeletePostRouteTag::new(self.id).url()
         } else {
             ContactDeletePostRouteTag::new(self.id).url()

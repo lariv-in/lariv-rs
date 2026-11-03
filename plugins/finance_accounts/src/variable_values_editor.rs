@@ -124,7 +124,8 @@ fn render_row(row: &VariableInputRow) -> Markup {
             name: &vname,
             value: &row.value,
             required: true,
-            attrs: HtmlAttrs::new().set("placeholder", VariableType::Quantity.default_placeholder()),
+            attrs: HtmlAttrs::new()
+                .set("placeholder", VariableType::Quantity.default_placeholder()),
             ..Default::default()
         }),
         Some(VariableType::Percent) => {
@@ -152,7 +153,8 @@ fn render_row(row: &VariableInputRow) -> Markup {
             name: &vname,
             value: &row.value,
             required: true,
-            attrs: HtmlAttrs::new().set("placeholder", VariableType::Duration.default_placeholder()),
+            attrs: HtmlAttrs::new()
+                .set("placeholder", VariableType::Duration.default_placeholder()),
             ..Default::default()
         }),
         Some(VariableType::Decimal) | None => input_text(InputText {

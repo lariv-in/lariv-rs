@@ -30,7 +30,7 @@ use lariv_core::template::{
 };
 use lariv_core::web::{modal_create_post_url, modal_edit_post_url};
 
-use super::keys::{RouteCreateModalKey, RouteDeleteModalKey, RouteEditModalKey, RoutesTableKey};
+use super::keys::{ROUTE_CREATE_MODAL, ROUTE_DELETE_MODAL, ROUTE_EDIT_MODAL, ROUTES_TABLE};
 use super::routes::{
     WebsiteBuilderRouteTag, WebsitePrefsGetRouteTag, WebsitePrefsPostRouteTag,
     WebsiteRoutesCreateGetRouteTag, WebsiteRoutesCreatePostRouteTag,
@@ -206,12 +206,14 @@ fn route_detail_menu(id: i64, path: &str, active: &str) -> Markup {
     })
 }
 
-fn render_pagination<K: SwapKey>(
+fn render_pagination(
+    key: SwapKey,
     path_and_query: &str,
     number: u32,
     num_pages: u32,
     push_url: bool,
 ) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, push_url);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -225,7 +227,7 @@ fn render_pagination<K: SwapKey>(
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -237,7 +239,8 @@ pub struct RouteRow {
     pub is_active: bool,
 }
 
-fn data_table_filtered<K: SwapKey>(
+fn data_table_filtered(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -246,12 +249,13 @@ fn data_table_filtered<K: SwapKey>(
     refresh_url: &str,
     errors: &[FilterRowError],
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -272,7 +276,7 @@ fn data_table_filtered<K: SwapKey>(
         actions
     };
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         subtitle: "",
         classes: "w-full",
@@ -365,7 +369,7 @@ impl RouteListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<RoutesTableKey, WebsiteRoutesListRouteTag>(
+                    attrs: form_hx_get_route(
                         WebsiteRoutesListRouteTag,
                     ),
                     apply_label: "Apply Filters",
@@ -377,19 +381,21 @@ impl RouteListPage {
                 name: "p_website.RouteCreateForm",
                 href: &WebsiteRoutesCreateGetRouteTag.url(),
                 form_post_url: &WebsiteRoutesCreateGetRouteTag.path(),
-                modal_uid: RouteCreateModalKey::ID,
+                modal_uid: ROUTE_CREATE_MODAL.id(),
                 icon_name: Some("plus"),
                 classes: "btn-square btn-outline btn-sm",
                 ..Default::default()
             }))
         };
-        let pagination = render_pagination::<RoutesTableKey>(
+        let pagination = render_pagination(
+            ROUTES_TABLE,
             &self.path_and_query,
             self.routes.number,
             self.routes.num_pages,
             true,
         );
-        data_table_filtered::<RoutesTableKey>(
+        data_table_filtered(
+            ROUTES_TABLE,
             "",
             actions,
             &headers,
@@ -468,7 +474,7 @@ impl RouteDetailPage {
                         name: "p_website.RouteEditForm",
                         href: &edit_get,
                         form_post_url: &edit_post,
-                        modal_uid: RouteEditModalKey::ID,
+                        modal_uid: ROUTE_EDIT_MODAL.id(),
                         label: "Edit",
                         classes: "btn-outline",
                         ..Default::default()
@@ -543,12 +549,13 @@ impl RenderTemplate for RouteEditModalPage {
             .checked(RouteEditFormField::IsActive, self.is_active)
             .value(RouteEditFormField::Theme, self.theme.as_str())
             .choices(RouteEditFormField::Theme, &self.theme_choices);
-        modal_keyed::<RouteEditModalKey>(
+        modal_keyed(
+            ROUTE_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit route" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<RouteEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(ROUTE_EDIT_MODAL, &modal_edit_post_url(
                         WebsiteRoutesEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -561,7 +568,7 @@ impl RenderTemplate for RouteEditModalPage {
                             name: "p_website.RoutesDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: RouteDeleteModalKey::ID,
+                            modal_uid: ROUTE_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -627,13 +634,15 @@ impl RenderTemplate for RouteCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed::<RouteCreateModalKey>(
+        modal_keyed(
+            ROUTE_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
                 FormOpts {
                     title: "Create route",
-                    attrs: lariv_core::components::swap::form_hx_post_for_url::<RouteCreateModalKey>(
+                    attrs: lariv_core::components::swap::form_hx_post_for_url(
+                        ROUTE_CREATE_MODAL,
                         &modal_create_post_url(
                             WebsiteRoutesCreatePostRouteTag,
                             form_name,
@@ -668,13 +677,11 @@ pub struct ConfirmDeletePage {
 impl RenderTemplate for ConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         modal(Modal {
-            uid: RouteDeleteModalKey::ID,
+            uid: ROUTE_DELETE_MODAL.id(),
             children: delete_confirmation(DeleteConfirmation {
                 title: "Confirm deletion",
                 message: "Are you sure you want to delete this route? This action cannot be undone.",
-                attrs: form_hx_post_route::<RouteDeleteModalKey, WebsiteRoutesDeletePostRouteTag>(
-                    WebsiteRoutesDeletePostRouteTag::new(self.id),
-                ),
+                attrs: form_hx_post_route(WebsiteRoutesDeletePostRouteTag::new(self.id)),
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 ..Default::default()
             }),

@@ -8,7 +8,7 @@ use lariv_core::components::{
 use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::RenderTemplate;
 
-use crate::keys::{SourceDocSelectModalKey, SourceDocSelectTableKey};
+use crate::keys::{SOURCE_DOC_SELECT_MODAL, SOURCE_DOC_SELECT_TABLE};
 
 use super::common::render_picker_pagination;
 
@@ -29,7 +29,7 @@ pub struct SourceDocSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<SourceDocSelectTableKey, SourceDocSelectModalKey> for SourceDocSelectPage {
+impl RenderPickerSelect for SourceDocSelectPage {
     fn render_table(&self) -> Markup {
         let type_sort = column_sort_url(&self.path_and_query, "Type", &self.sort);
         let reference_sort = column_sort_url(&self.path_and_query, "Reference", &self.sort);
@@ -79,12 +79,14 @@ impl RenderPickerSelect<SourceDocSelectTableKey, SourceDocSelectModalKey> for So
                 children: Vec::new(),
             })
             .collect();
-        let pagination = render_picker_pagination::<SourceDocSelectModalKey>(
+        let pagination = render_picker_pagination(
+            SOURCE_DOC_SELECT_MODAL,
             &self.path_and_query,
             self.docs.number,
             self.docs.num_pages,
         );
-        data_table_list_refresh::<SourceDocSelectTableKey>(
+        data_table_list_refresh(
+            SOURCE_DOC_SELECT_TABLE,
             "Select Source Document",
             html! {},
             &headers,
@@ -97,6 +99,6 @@ impl RenderPickerSelect<SourceDocSelectTableKey, SourceDocSelectModalKey> for So
 
 impl RenderTemplate for SourceDocSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(SOURCE_DOC_SELECT_MODAL).into_inner()
     }
 }

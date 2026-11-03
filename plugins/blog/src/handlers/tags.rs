@@ -17,8 +17,8 @@ use crate::{
     },
     forms::TagForm,
     keys::{
-        TagCreateModalKey, TagDeleteModalKey, TagEditModalKey, TagSelectModalKey,
-        TagSelectTableKey, TagTableKey,
+        TAG_CREATE_MODAL, TAG_DELETE_MODAL, TAG_EDIT_MODAL, TAG_SELECT_MODAL, TAG_SELECT_TABLE,
+        TAG_TABLE,
     },
     routes::{BlogTagsDetailRouteTag, BlogTagsListRouteTag},
     state::BlogState,
@@ -27,7 +27,7 @@ use crate::{
         TagOption, TagRow, TagSelectPage,
     },
 };
-use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::list_filters::{FilterField, apply_filters, parse_list_filters, text_column};
@@ -169,7 +169,7 @@ pub async fn list(
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
-    if htmx.targets::<TagTableKey>() {
+    if htmx.targets(TAG_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -204,7 +204,7 @@ pub async fn select(
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
-    respond_picker_select::<TagSelectTableKey, TagSelectModalKey, _>(&htmx, &page)
+    respond_picker_select(&htmx, TAG_SELECT_TABLE, TAG_SELECT_MODAL, &page)
 }
 
 /// HTTP handler: `detail`.
@@ -263,8 +263,9 @@ pub async fn create_post(
         name: Set(form.name.clone()),
     };
     match model.insert(&state.db).await {
-        Ok(tag) => respond_create_modal_done_fk::<TagCreateModalKey>(
+        Ok(tag) => respond_create_modal_done_fk(
             &htmx,
+            TAG_CREATE_MODAL,
             &q.refresh_table(),
             &BlogTagsDetailRouteTag::new(tag.id).url(),
             tag.id,
@@ -327,8 +328,9 @@ pub async fn edit_post(
     am.name = Set(form.name.clone());
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<TagEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            TAG_EDIT_MODAL,
             &BlogTagsDetailRouteTag::new(id).url(),
         ),
         Err(e) => {
@@ -351,7 +353,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: TagDeleteModalKey::ID.to_string(),
+        modal_uid: TAG_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this tag?".into(),
         form_name: q
             .name
@@ -376,7 +378,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete blog tag");
             let page = ConfirmDeletePage {
-                modal_uid: TagDeleteModalKey::ID.to_string(),
+                modal_uid: TAG_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this tag?".into(),
                 form_name: "p_blog.TagDeleteForm".into(),
                 id,

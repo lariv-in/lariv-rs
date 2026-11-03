@@ -19,13 +19,17 @@ use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
     entities::{journal, journal_entry},
-    forms::JournalEntryForm,
+    forms::{JournalEntryForm, JournalEntryLinesForm},
     handlers::ModalNameQuery,
-    keys::{JournalEntryCreateModalKey, JournalEntrySelectModalKey, JournalEntrySelectTableKey},
+    keys::{JOURNAL_ENTRY_CREATE_MODAL, JOURNAL_ENTRY_SELECT_MODAL, JOURNAL_ENTRY_SELECT_TABLE},
+    logic::custom_source_doc::{
+        empty_lines_json, ensure_posting_accounts, lines_form_value, parse_journal_lines,
+    },
     logic::journal::{
         cascade_delete_preview, collect_journal_entry_cascade, delete_journal_entry_recursive,
+        update_journal_entry_lines,
     },
-    routes::{JournalDetailRouteTag, JournalListRouteTag},
+    routes::{JournalDetailRouteTag, JournalEntryDetailRouteTag, JournalListRouteTag},
     scope::{
         find_journal_entry_scoped, find_journal_scoped, journal_entry_sort,
         load_journal_currency_format, load_journal_entry_items, query_journal_entries_for_select,
@@ -36,7 +40,8 @@ use crate::{
     state::AccountsState,
     templates::{
         JournalEntryCreateModalPage, JournalEntryDeleteItem, JournalEntryDeleteModalPage,
-        JournalEntryDetailPage, JournalEntryItemRow, JournalEntryRow, JournalEntrySelectPage,
+        JournalEntryDetailPage, JournalEntryEditPage, JournalEntryItemRow, JournalEntryRow,
+        JournalEntrySelectPage,
     },
 };
 
@@ -118,8 +123,9 @@ pub async fn create_post(
         ..Default::default()
     };
     match model.insert(&state.db).await {
-        Ok(_) => respond_create_modal_done::<JournalEntryCreateModalKey>(
+        Ok(_) => respond_create_modal_done(
             &htmx,
+            JOURNAL_ENTRY_CREATE_MODAL,
             &q.refresh_table(),
             &JournalDetailRouteTag::new(journal_id).url(),
         ),
@@ -193,13 +199,99 @@ pub async fn detail(
         source_doc_instance_name: source_doc.instance_name,
         source_doc_url: source_doc.detail_url,
         items,
-        can_delete: lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<
-                crate::routes::FinanceAccountsMutate,
-            >(),
-        ) && journal_mutable,
+        can_mutate: can_mutate() && journal_mutable,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn edit_get(
+    Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+) -> Response {
+    let Some(entry) = find_journal_entry_scoped(&state.db, id).await else {
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
+    };
+    let Some(journal) = find_journal_scoped(&state.db, entry.journal_id).await else {
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
+    };
+    let lines = lines_form_value(&state.db, entry.id)
+        .await
+        .unwrap_or_else(|_err| empty_lines_json());
+    let mutable = can_mutate() && journal.is_mutable;
+    let page = JournalEntryEditPage {
+        id: entry.id,
+        journal_id: journal.id,
+        journal_label: format!("{} (#{})", journal.name, journal.id),
+        lines,
+        error: if mutable {
+            String::new()
+        } else {
+            "This journal is immutable. Enable Mutable on the journal edit page before editing entries.".into()
+        },
+        can_save: mutable,
+    };
+    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+pub async fn edit_post(
+    Cap(state): Cap<AccountsState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+    HtmlFormBody(form): HtmlFormBody<JournalEntryLinesForm>,
+) -> Response {
+    let Some(entry) = find_journal_entry_scoped(&state.db, id).await else {
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
+    };
+    let Some(journal) = find_journal_scoped(&state.db, entry.journal_id).await else {
+        return Redirect::to(&JournalListRouteTag.url()).into_response();
+    };
+    let journal_label = format!("{} (#{})", journal.name, journal.id);
+    let mutable = can_mutate() && journal.is_mutable;
+    let submitted = if form.lines.trim().is_empty() {
+        empty_lines_json()
+    } else {
+        form.lines.clone()
+    };
+    let render_err = |error: String| {
+        let page = JournalEntryEditPage {
+            id,
+            journal_id: journal.id,
+            journal_label: journal_label.clone(),
+            lines: submitted.clone(),
+            error,
+            can_save: mutable,
+        };
+        html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+            .into_response()
+    };
+    if !mutable {
+        return render_err(
+            "This journal is immutable. Enable Mutable on the journal edit page before editing entries."
+                .into(),
+        );
+    }
+    let lines = match parse_journal_lines(&form.lines) {
+        Ok(lines) => lines,
+        Err(e) => return render_err(e),
+    };
+    if let Err(e) = ensure_posting_accounts(&state.db, &lines).await {
+        return render_err(e);
+    }
+    match update_journal_entry_lines(&state.db, entry.id, &lines).await {
+        Ok(()) => Redirect::to(&JournalEntryDetailRouteTag::new(id).url()).into_response(),
+        Err(e) => render_err(e),
+    }
+}
+
+fn can_mutate() -> bool {
+    lariv_core::components::role_permitted(
+        &lariv_plugin_users::role_authorization::roles_for::<crate::routes::FinanceAccountsMutate>(),
+    )
 }
 
 pub async fn delete_get(
@@ -336,6 +428,11 @@ pub async fn select(
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
-    respond_picker_select::<JournalEntrySelectTableKey, JournalEntrySelectModalKey, _>(&htmx, &page)
-        .into_response()
+    respond_picker_select(
+        &htmx,
+        JOURNAL_ENTRY_SELECT_TABLE,
+        JOURNAL_ENTRY_SELECT_MODAL,
+        &page,
+    )
+    .into_response()
 }

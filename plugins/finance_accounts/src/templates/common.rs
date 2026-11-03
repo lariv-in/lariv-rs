@@ -47,11 +47,13 @@ pub fn app_scaffold_with_sidebar(
     })
 }
 
-pub fn render_pagination<K: lariv_core::components::SwapKey>(
+pub fn render_pagination(
+    key: lariv_core::components::SwapKey,
     path_and_query: &str,
     number: u32,
     num_pages: u32,
 ) -> Markup {
+    let hx_target = key.selector();
     use lariv_core::components::{
         PaginationPage, TablePagination, pagination_pages, table_pagination,
     };
@@ -69,16 +71,18 @@ pub fn render_pagination<K: lariv_core::components::SwapKey>(
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
 /// Pagination for FK picker modals — swaps the closest table (`outerHTML`).
-pub fn render_picker_pagination<M: lariv_core::components::SwapKey>(
+pub fn render_picker_pagination(
+    key: lariv_core::components::SwapKey,
     path_and_query: &str,
     number: u32,
     num_pages: u32,
 ) -> Markup {
+    let hx_target = key.selector();
     use lariv_core::components::{
         PaginationPage, TablePagination, pagination_pages, table_pagination_picker,
     };
@@ -96,7 +100,7 @@ pub fn render_picker_pagination<M: lariv_core::components::SwapKey>(
         .collect();
     table_pagination_picker(TablePagination {
         pages: &pages,
-        hx_target: M::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -143,7 +147,8 @@ pub fn layout_with_entity_sidebar_crumbs(
     })
 }
 
-pub fn data_table_with_filter_errors<K: SwapKey>(
+pub fn data_table_with_filter_errors(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -152,12 +157,13 @@ pub fn data_table_with_filter_errors<K: SwapKey>(
     refresh_url: &str,
     errors: &[FilterRowError],
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -178,7 +184,7 @@ pub fn data_table_with_filter_errors<K: SwapKey>(
         actions
     };
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         classes: "w-full",
         actions: toolbar,

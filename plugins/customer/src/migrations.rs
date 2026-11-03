@@ -2,6 +2,7 @@ use sea_orm_migration::prelude::*;
 
 use super::CustomerTag;
 
+mod consolidate_crm_customers;
 mod m00001_create_customers;
 mod m00002_split_customer_address;
 mod m00003_add_customer_type;
@@ -11,7 +12,6 @@ mod m00006_customer_pg_trgm;
 mod m00007_customer_pg_trgm_lower;
 mod m00008_create_crm_customers;
 mod m00009_rename_crm_customers;
-mod consolidate_crm_customers;
 mod m00010_consolidate_customers_rename;
 mod m00011_consolidate_customers_rename;
 

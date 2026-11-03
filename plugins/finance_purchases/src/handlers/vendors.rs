@@ -6,12 +6,11 @@ use axum::{
 use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
-use lariv_core::list_filters::{
-    CmpOp, FilterClause, FilterField, JoinOp, parse_list_filters, text_column,
-};
+use lariv_core::list_filters::{FilterClause, FilterField, clauses_from_query, text_column};
 use lariv_core::picker::respond_picker_select;
 use lariv_core::web::{
-    Htmx, QueryPage, QueryPageSize, html_built_page_with_slots, respond_create_modal_done_fk,
+    Htmx, QueryPage, QueryPageSize, html_built_page_with_slots, path_and_query,
+    respond_create_modal_done_fk,
 };
 use lariv_plugin_contacts::entities::{
     company::Entity as CompanyEntity, contact::Entity as ContactEntity,
@@ -20,7 +19,7 @@ use lariv_plugin_users::middleware::RequireAuth;
 use sea_orm::EntityTrait;
 
 use crate::forms::VendorForm;
-use crate::keys::VendorCreateModalKey;
+use crate::keys::VENDOR_CREATE_MODAL;
 use crate::logic::vendor::{self, display_name};
 use crate::routes::PurchaseDefaultRouteTag;
 use crate::state::PurchasesState;
@@ -47,7 +46,7 @@ pub async fn select(
     Query(q): Query<SelectQuery>,
 ) -> maud::Markup {
     let query = uri.query().unwrap_or("");
-    let clauses = clauses_from_query(query);
+    let clauses = clauses_from_query(query, Some("name"));
     let needle = name_needle(&clauses, query);
     let page_size = q.page_size.get();
     let page = q.page.get();
@@ -75,8 +74,10 @@ pub async fn select(
         target_input: q.target_input.clone().unwrap_or_else(|| "VendorID".into()),
         page_size,
     };
-    respond_picker_select::<crate::keys::VendorSelectTableKey, crate::keys::VendorSelectModalKey, _>(
+    respond_picker_select(
         &htmx,
+        crate::keys::VENDOR_SELECT_TABLE,
+        crate::keys::VENDOR_SELECT_MODAL,
         &page_model,
     )
 }
@@ -110,8 +111,9 @@ pub async fn create_post(
     match vendor::create_for_party(&state.db, form.company_id, form.individual_id).await {
         Ok(id) => {
             let name = display_name(&state.db, id).await;
-            respond_create_modal_done_fk::<VendorCreateModalKey>(
+            respond_create_modal_done_fk(
                 &htmx,
+                VENDOR_CREATE_MODAL,
                 &q.refresh_table(),
                 &PurchaseDefaultRouteTag.url(),
                 id,
@@ -145,28 +147,6 @@ fn vendor_fields() -> Vec<FilterField> {
     )]
 }
 
-fn clauses_from_query(query: &str) -> Vec<FilterClause> {
-    let mut clauses = parse_list_filters(query);
-    if !clauses.is_empty() {
-        return clauses;
-    }
-    let Some(name) = UrlencodedFields::parse(query.as_bytes())
-        .ok()
-        .and_then(|fields| fields.get_first("Name").map(str::to_string))
-        .filter(|name| !name.trim().is_empty())
-    else {
-        return clauses;
-    };
-    clauses.push(FilterClause {
-        index: 0,
-        join: JoinOp::And,
-        field: "name".into(),
-        op: CmpOp::Eq,
-        values: vec![name.trim().to_string()],
-    });
-    clauses
-}
-
 fn name_needle(clauses: &[FilterClause], query: &str) -> String {
     if let Some(clause) = clauses.iter().find(|clause| clause.field == "name") {
         return clause
@@ -179,12 +159,6 @@ fn name_needle(clauses: &[FilterClause], query: &str) -> String {
         .ok()
         .and_then(|fields| fields.get_first("Name").map(|name| name.trim().to_string()))
         .unwrap_or_default()
-}
-
-fn path_and_query(uri: &Uri) -> String {
-    uri.path_and_query()
-        .map(|pq| pq.as_str().to_string())
-        .unwrap_or_else(|| uri.path().to_string())
 }
 
 async fn party_displays(

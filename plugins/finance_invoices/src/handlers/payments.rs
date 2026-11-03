@@ -41,8 +41,8 @@ use crate::{
     hub_filter::{HubFilterKind, hub_filter_fields, invoice_picker_clauses},
     hub_filter_addon::{HubQueryParams, apply_extra_sql_filters, render_extra_filter_inputs},
     keys::{
-        PaymentCreateModalKey, PaymentTableKey, PostedInvoiceSelectModalKey,
-        PostedInvoiceSelectTableKey,
+        PAYMENT_CREATE_MODAL, PAYMENT_TABLE, POSTED_INVOICE_SELECT_MODAL,
+        POSTED_INVOICE_SELECT_TABLE,
     },
     logic::{
         CreatePaymentInput, InvoiceDateFormats, create_payment,
@@ -353,7 +353,7 @@ pub async fn list(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<PaymentTableKey>() {
+    if htmx.targets(PAYMENT_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -455,8 +455,9 @@ pub async fn create_post(
             } else {
                 PartiallyPaidInvoiceDetailRouteTag::new(result.settlement_id).url()
             };
-            respond_create_modal_done::<PaymentCreateModalKey>(
+            respond_create_modal_done(
                 &htmx,
+                PAYMENT_CREATE_MODAL,
                 &q.modal.refresh_table(),
                 &detail_url,
             )
@@ -478,13 +479,8 @@ pub async fn fill_journal_lines(
     } else {
         match parse_payment_amount(&form.amount) {
             Ok(amount) => {
-                suggest_payment_lines_json(
-                    &state.db,
-                    form.posted_invoice_id,
-                    amount,
-                    &form.taxes,
-                )
-                .await
+                suggest_payment_lines_json(&state.db, form.posted_invoice_id, amount, &form.taxes)
+                    .await
             }
             Err(error) => Err(error.to_string()),
         }
@@ -622,7 +618,10 @@ pub async fn posted_fk_select(
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
-    respond_picker_select::<PostedInvoiceSelectTableKey, PostedInvoiceSelectModalKey, _>(
-        &htmx, &page,
+    respond_picker_select(
+        &htmx,
+        POSTED_INVOICE_SELECT_TABLE,
+        POSTED_INVOICE_SELECT_MODAL,
+        &page,
     )
 }

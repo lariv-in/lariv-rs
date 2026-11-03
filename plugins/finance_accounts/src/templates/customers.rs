@@ -34,7 +34,11 @@ impl CustomersListPage {
 
 impl RenderAppPane for CustomersListPage {
     fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
-        layout_with_sidebar_crumbs(&self.inner.path_and_query, customers_list_crumbs(), self.body())
+        layout_with_sidebar_crumbs(
+            &self.inner.path_and_query,
+            customers_list_crumbs(),
+            self.body(),
+        )
     }
 
     fn render_main(&self) -> lariv_core::components::MainContentHtml {

@@ -256,7 +256,7 @@ async fn set_draft_invoice_term_id<C: ConnectionTrait>(
         .one(conn)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "draft not found".to_string())?
+        .ok_or_else(|| "quotation not found".to_string())?
         .into();
     am.draft_payment_term_id = Set(Some(term_id));
     am.update(conn).await.map_err(|e| e.to_string())?;

@@ -1,8 +1,7 @@
 //! Compile-time HTMX swap region keys.
 //!
-//! Every swappable DOM region is a Rust type implementing [`SwapKey`]. Call sites
-//! use the type for `id`, `hx-target`, and out-of-band swaps — never free-form
-//! selector strings.
+//! Every swappable DOM region is a [`SwapKey`] const. Call sites use the value for
+//! `id`, `hx-target`, and out-of-band swaps — never free-form selector strings.
 
 use maud::{Markup, PreEscaped, html};
 
@@ -13,7 +12,7 @@ use crate::http::{
 
 /// HTMX target for controls that replace a whole data table (picker filters, drill-in).
 ///
-/// Prefer this over [`SwapKey::SELECTOR`] when two tables of the same key can appear
+/// Prefer this over [`SwapKey::selector`] when two tables of the same key can appear
 /// on one page — `closest` resolves to the instance that contains the control.
 pub const HX_TARGET_CLOSEST_TABLE: &str = "closest .data-table-container";
 
@@ -29,51 +28,39 @@ pub const HX_TARGET_NEXT_TABLE_BODY: &str = "next .data-table-body";
 /// are reduced to the body before the swap.
 pub const HX_SELECT_TABLE_BODY: &str = ".data-table-body";
 
-/// Separator between a [`SwapKey::ID`] and a per-instance suffix on data tables.
+/// Separator between a [`SwapKey::id`] and a per-instance suffix on data tables.
 pub const TABLE_INSTANCE_SEP: &str = "--";
 
 /// A named DOM region that HTMX can target or swap out-of-band.
-///
-/// Implement via [`swap_key!`](crate::swap_key) so `ID` and `SELECTOR` stay in sync.
-pub trait SwapKey {
-    /// Element `id` attribute value (without `#`).
-    const ID: &'static str;
-    /// CSS selector for HTMX (`#` + [`ID`](Self::ID)).
-    const SELECTOR: &'static str;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SwapKey(pub &'static str);
 
-    /// True for this region's id or a table instance id (`{ID}--…`).
-    fn matches_id(id: &str) -> bool {
-        id == Self::ID
+impl SwapKey {
+    /// Element `id` attribute value (without `#`).
+    pub const fn id(self) -> &'static str {
+        self.0
+    }
+
+    /// CSS selector for HTMX (`#` + [`id`](Self::id)).
+    pub fn selector(self) -> String {
+        format!("#{}", self.0)
+    }
+
+    /// True for this region's id or a table instance id (`{id}--…`).
+    pub fn matches_id(self, id: &str) -> bool {
+        id == self.0
             || id
-                .strip_prefix(Self::ID)
+                .strip_prefix(self.0)
                 .is_some_and(|rest| rest.starts_with(TABLE_INSTANCE_SEP))
     }
 }
 
-/// Declare a [`SwapKey`] type with a literal id.
-///
-/// ```ignore
-/// swap_key!(UserTableKey, "user-table");
-/// ```
-#[macro_export]
-macro_rules! swap_key {
-    ($name:ident, $id:literal) => {
-        #[derive(Debug, Clone, Copy, Default)]
-        pub struct $name;
+/// Page pane under persistent topbar (sidebar + main). Prefer this for in-app
+/// navigation and form re-renders instead of full-document morphs.
+pub const APP_LAYOUT: SwapKey = SwapKey("app-layout");
 
-        impl $crate::components::swap::SwapKey for $name {
-            const ID: &'static str = $id;
-            const SELECTOR: &'static str = concat!("#", $id);
-        }
-    };
-}
-
-// Page pane under persistent topbar (sidebar + main). Prefer this for in-app
-// navigation and form re-renders instead of full-document morphs.
-swap_key!(AppLayoutKey, "app-layout");
-
-// Inner content column (`<main>`) inside the app layout scaffold.
-swap_key!(MainContentKey, "main-content");
+/// Inner content column (`<main>`) inside the app layout scaffold.
+pub const MAIN_CONTENT: SwapKey = SwapKey("main-content");
 
 /// `id="app-layout" hx-history-elt` — HTMX 4 swaps this on back/forward navigation.
 ///
@@ -83,10 +70,10 @@ pub fn app_layout_history_attrs() -> String {
     if crate::components::nav_origin::from_dashboard() {
         format!(
             r#"id="{}" hx-history-elt hx-vals:inherited='{{"from":"dashboard"}}'"#,
-            AppLayoutKey::ID
+            APP_LAYOUT.id()
         )
     } else {
-        format!(r#"id="{}" hx-history-elt"#, AppLayoutKey::ID)
+        format!(r#"id="{}" hx-history-elt"#, APP_LAYOUT.id())
     }
 }
 
@@ -97,8 +84,8 @@ pub fn hx_nav_app_layout_for_url(url: &str) -> HtmlAttrs {
     let url = crate::components::nav_origin::with_nav_origin(url);
     HtmlAttrs::new()
         .set("hx-get", &url)
-        .set("hx-target", AppLayoutKey::SELECTOR)
-        .set("hx-select", AppLayoutKey::SELECTOR)
+        .set("hx-target", APP_LAYOUT.selector())
+        .set("hx-select", APP_LAYOUT.selector())
         .set("hx-swap", "outerHTML")
         .set("hx-push-url", "true")
 }
@@ -126,77 +113,71 @@ pub fn form_hx_boost_post_main(action: &str) -> HtmlAttrs {
     HtmlAttrs::new()
         .set("method", "POST")
         .set("hx-boost", "true")
-        .set("hx-target", AppLayoutKey::SELECTOR)
-        .set("hx-select", AppLayoutKey::SELECTOR)
+        .set("hx-target", APP_LAYOUT.selector())
+        .set("hx-select", APP_LAYOUT.selector())
         .set("hx-swap", "outerHTML")
         .set("hx-push-url", "true")
         .set("action", action)
 }
 
-/// Sidebar menu-style navigation into [`MainContentKey`] only.
+/// Sidebar menu-style navigation into [`MAIN_CONTENT`] only.
 pub fn nav_content_attrs(url: &str) -> HtmlAttrs {
     let url = crate::components::nav_origin::with_nav_origin(url);
     HtmlAttrs::new()
         .set("hx-get", &url)
-        .set("hx-target", MainContentKey::SELECTOR)
-        .set("hx-select", MainContentKey::SELECTOR)
+        .set("hx-target", MAIN_CONTENT.selector())
+        .set("hx-select", MAIN_CONTENT.selector())
         .set("hx-swap", "outerHTML")
         .set("hx-push-url", "true")
 }
 
-/// Portal where modal dialogs are appended (`document.body`).
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ModalHostKey;
-
-impl SwapKey for ModalHostKey {
-    const ID: &'static str = "";
-    /// HTMX target for appending modals as children of `body`.
-    const SELECTOR: &'static str = "body";
-}
-
 /// `id="…"` for a region root element.
-pub fn region_attrs<K: SwapKey>() -> HtmlAttrs {
-    HtmlAttrs::new().set("id", K::ID)
+pub fn region_attrs(key: SwapKey) -> HtmlAttrs {
+    HtmlAttrs::new().set("id", key.id())
 }
 
 /// Declarative HTMX targeting attrs for a keyed region (`hx-target` + outerHTML).
 ///
 /// Prefer [`hx_target_swap`] with `"outerMorph"` for same-structure fragments (tables).
-pub fn hx_target<K: SwapKey>() -> HtmlAttrs {
-    hx_target_swap::<K>("outerHTML")
+pub fn hx_target(key: SwapKey) -> HtmlAttrs {
+    hx_target_swap(key, "outerHTML")
 }
 
 /// Like [`hx_target`] with an explicit swap strategy.
-pub fn hx_target_swap<K: SwapKey>(swap: &str) -> HtmlAttrs {
+pub fn hx_target_swap(key: SwapKey, swap: &str) -> HtmlAttrs {
     HtmlAttrs::new()
-        .set("hx-target", K::SELECTOR)
+        .set("hx-target", key.selector())
         .set("hx-swap", swap)
 }
 
-/// Attrs for an out-of-band fragment rooted at `K` (`id` + `hx-swap-oob`).
-pub fn oob_attrs<K: SwapKey>() -> HtmlAttrs {
-    HtmlAttrs::new().set("id", K::ID).set("hx-swap-oob", "true")
+/// Attrs for an out-of-band fragment rooted at `key` (`id` + `hx-swap-oob`).
+pub fn oob_attrs(key: SwapKey) -> HtmlAttrs {
+    HtmlAttrs::new()
+        .set("id", key.id())
+        .set("hx-swap-oob", "true")
 }
 
 /// Attrs for OOB with an explicit swap strategy (e.g. `"outerHTML"`, `"innerHTML"`).
-pub fn oob_attrs_swap<K: SwapKey>(swap: &str) -> HtmlAttrs {
-    HtmlAttrs::new().set("id", K::ID).set("hx-swap-oob", swap)
+pub fn oob_attrs_swap(key: SwapKey, swap: &str) -> HtmlAttrs {
+    HtmlAttrs::new()
+        .set("id", key.id())
+        .set("hx-swap-oob", swap)
 }
 
 /// Markup that deletes the keyed element via HTMX OOB (`hx-swap-oob="delete"`).
-pub fn oob_delete<K: SwapKey>() -> Markup {
-    if K::ID.is_empty() {
+pub fn oob_delete(key: SwapKey) -> Markup {
+    if key.id().is_empty() {
         return Markup::default();
     }
     html! {
         (PreEscaped(format!(
             r#"<div id="{}" hx-swap-oob="delete"></div>"#,
-            escape_attr(K::ID)
+            escape_attr(key.id())
         )))
     }
 }
 
-/// Wrap `inner` as an OOB swap for `K` (default OOB style).
+/// Wrap `inner` as an OOB swap for a region (default OOB style).
 ///
 /// `inner` must be the full replacement element including matching `id`.
 pub fn oob_fragment(inner: Markup) -> Markup {
@@ -216,26 +197,26 @@ pub fn fragment_response(parts: impl IntoIterator<Item = Markup>) -> Markup {
 ///
 /// Prefer [`form_hx_post_route`] for typed fragment POST routes.
 /// Internal escape hatch for query-param or non-standard route kinds.
-pub fn form_hx_post_for_url<K: SwapKey>(url: &str) -> HtmlAttrs {
-    form_hx_post_selector(url, K::SELECTOR)
+pub fn form_hx_post_for_url(key: SwapKey, url: &str) -> HtmlAttrs {
+    form_hx_post_selector(url, &key.selector())
 }
 
 /// Multipart HTMX POST into a typed region (file uploads).
 ///
 /// Sets `hx-encoding` so HTMX 4 keeps `FormData` instead of converting to
 /// urlencoded (which silently drops file parts).
-pub fn form_hx_post_multipart_url<K: SwapKey>(url: &str) -> HtmlAttrs {
-    form_hx_post_for_url::<K>(url).set("hx-encoding", "multipart/form-data")
+pub fn form_hx_post_multipart_url(key: SwapKey, url: &str) -> HtmlAttrs {
+    form_hx_post_for_url(key, url).set("hx-encoding", "multipart/form-data")
 }
 
 /// Typed POST form targeting a fragment route value.
-pub fn form_hx_post_route<K: SwapKey, R: RouteUrl + FragmentPost<K>>(route: R) -> HtmlAttrs {
-    form_hx_post_for_url::<K>(&route.path())
+pub fn form_hx_post_route<R: RouteUrl + FragmentPost>(route: R) -> HtmlAttrs {
+    form_hx_post_for_url(R::TARGET, &route.path())
 }
 
 /// Typed POST form with query string from a [`RouteQueryBuilder`](crate::http::route_tag::RouteQueryBuilder) result URL.
-pub fn form_hx_post_url<K: SwapKey>(url: &str) -> HtmlAttrs {
-    form_hx_post_for_url::<K>(url)
+pub fn form_hx_post_url(key: SwapKey, url: &str) -> HtmlAttrs {
+    form_hx_post_for_url(key, url)
 }
 
 /// HTMX attrs for a form that POSTs into a selector (when the key is dynamic).
@@ -252,12 +233,12 @@ pub fn form_hx_post_selector(action: &str, target: &str) -> HtmlAttrs {
         .set("hx-push-url", "false")
 }
 
-/// POST into [`AppLayoutKey`] with an explicit URL (e.g. redirect-only POST routes).
+/// POST into [`APP_LAYOUT`] with an explicit URL (e.g. redirect-only POST routes).
 ///
 /// Prefer [`form_hx_post_main`] or [`form_hx_post_main_url`].
 pub fn form_hx_post_main_for_url(url: &str) -> HtmlAttrs {
-    form_hx_post_for_url::<AppLayoutKey>(url)
-        .set("hx-select", AppLayoutKey::SELECTOR)
+    form_hx_post_for_url(APP_LAYOUT, url)
+        .set("hx-select", APP_LAYOUT.selector())
         .set("hx-push-url", "true")
 }
 
@@ -316,7 +297,8 @@ pub fn form_hx_get_for_url(url: &str) -> HtmlAttrs {
 }
 
 /// Typed GET filter form targeting a fragment route value.
-pub fn form_hx_get_route<K: SwapKey, R: RouteUrl + FragmentGet<K>>(route: R) -> HtmlAttrs {
+pub fn form_hx_get_route<R: RouteUrl + FragmentGet>(route: R) -> HtmlAttrs {
+    let _ = R::TARGET;
     form_hx_get_for_url(&route.path())
 }
 
@@ -325,9 +307,8 @@ pub fn form_hx_get_route<K: SwapKey, R: RouteUrl + FragmentGet<K>>(route: R) -> 
 /// Targets [`HX_TARGET_CLOSEST_TABLE`] (overriding `dialog[hx-target=this]` inheritance)
 /// so pagination and filters swap the picker table instance, not a shared modal id.
 /// Uses `outerHTML` so Alpine `@click` row attrs are not morphed in place.
-pub fn form_hx_get_picker_route<K: SwapKey, M: SwapKey, R: RouteUrl + FkSelectGet<K, M>>(
-    route: R,
-) -> HtmlAttrs {
+pub fn form_hx_get_picker_route<R: RouteUrl + FkSelectGet>(route: R) -> HtmlAttrs {
+    let _ = (R::TABLE, R::MODAL);
     HtmlAttrs::new()
         .set("method", "GET")
         .set("hx-get", route.path())
@@ -337,19 +318,21 @@ pub fn form_hx_get_picker_route<K: SwapKey, M: SwapKey, R: RouteUrl + FkSelectGe
 }
 
 /// GET filter form with an explicit URL.
-pub fn form_hx_get_url<K: SwapKey>(url: &str) -> HtmlAttrs {
-    let _ = K::ID;
+pub fn form_hx_get_url(key: SwapKey, url: &str) -> HtmlAttrs {
+    let _ = key;
     form_hx_get_for_url(url)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::http::{AppPanePost, FileDownloadPost, FkSelectGet, RouteTag, RouteUrl};
+    use crate::http::{
+        AppPanePost, FileDownloadPost, FkSelectGet, FragmentGet, RouteTag, RouteUrl,
+    };
 
-    swap_key!(TestTableKey, "test-table");
-    swap_key!(TestPickerTableKey, "test-picker-table");
-    swap_key!(TestPickerModalKey, "test-picker-modal");
+    const TEST_TABLE: SwapKey = SwapKey("test-table");
+    const TEST_PICKER_TABLE: SwapKey = SwapKey("test-picker-table");
+    const TEST_PICKER_MODAL: SwapKey = SwapKey("test-picker-modal");
 
     #[derive(Clone, Copy, Default)]
     struct TestAppPanePostRoute;
@@ -357,7 +340,13 @@ mod tests {
         const PATH: &'static str = "/test/create";
     }
     impl AppPanePost for TestAppPanePostRoute {}
-    impl FkSelectGet<TestPickerTableKey, TestPickerModalKey> for TestAppPanePostRoute {}
+    impl FragmentGet for TestAppPanePostRoute {
+        const TARGET: SwapKey = TEST_PICKER_TABLE;
+    }
+    impl FkSelectGet for TestAppPanePostRoute {
+        const TABLE: SwapKey = TEST_PICKER_TABLE;
+        const MODAL: SwapKey = TEST_PICKER_MODAL;
+    }
     impl RouteUrl for TestAppPanePostRoute {
         fn path(self) -> String {
             Self::PATH.to_owned()
@@ -384,35 +373,34 @@ mod tests {
 
     #[test]
     fn swap_key_id_and_selector() {
-        assert_eq!(TestTableKey::ID, "test-table");
-        assert_eq!(TestTableKey::SELECTOR, "#test-table");
-        assert_eq!(MainContentKey::SELECTOR, "#main-content");
-        assert_eq!(AppLayoutKey::SELECTOR, "#app-layout");
-        assert_eq!(ModalHostKey::SELECTOR, "body");
-        assert!(TestTableKey::matches_id("test-table"));
-        assert!(TestTableKey::matches_id("test-table--abc123"));
-        assert!(!TestTableKey::matches_id("test-table-select"));
-        assert!(!TestTableKey::matches_id("test-picker-table"));
+        assert_eq!(TEST_TABLE.id(), "test-table");
+        assert_eq!(TEST_TABLE.selector(), "#test-table");
+        assert_eq!(MAIN_CONTENT.selector(), "#main-content");
+        assert_eq!(APP_LAYOUT.selector(), "#app-layout");
+        assert!(TEST_TABLE.matches_id("test-table"));
+        assert!(TEST_TABLE.matches_id("test-table--abc123"));
+        assert!(!TEST_TABLE.matches_id("test-table-select"));
+        assert!(!TEST_TABLE.matches_id("test-picker-table"));
     }
 
     #[test]
     fn region_and_target_attrs() {
-        let r = region_attrs::<TestTableKey>().as_string();
+        let r = region_attrs(TEST_TABLE).as_string();
         assert!(r.contains(r#"id="test-table""#));
 
-        let t = hx_target::<TestTableKey>().as_string();
+        let t = hx_target(TEST_TABLE).as_string();
         assert!(t.contains("hx-target=\"#test-table\""));
         assert!(!t.contains("hx-select"));
         assert!(t.contains("hx-swap=\"outerHTML\""));
 
-        let o = oob_attrs::<TestTableKey>().as_string();
+        let o = oob_attrs(TEST_TABLE).as_string();
         assert!(o.contains("hx-swap-oob=\"true\""));
         assert!(o.contains("id=\"test-table\""));
     }
 
     #[test]
     fn oob_delete_emits_marker() {
-        let html = oob_delete::<TestTableKey>().into_string();
+        let html = oob_delete(TEST_TABLE).into_string();
         assert!(html.contains("id=\"test-table\""));
         assert!(html.contains("hx-swap-oob=\"delete\""));
     }
@@ -436,7 +424,7 @@ mod tests {
 
     #[test]
     fn form_hx_helpers() {
-        let post = form_hx_post_for_url::<TestTableKey>("/users/create/").as_string();
+        let post = form_hx_post_for_url(TEST_TABLE, "/users/create/").as_string();
         assert!(post.contains("hx-post=\"/users/create/\""));
         assert!(post.contains("hx-target=\"#test-table\""));
         assert!(post.contains("hx-swap=\"outerHTML\""));
@@ -449,10 +437,7 @@ mod tests {
         assert!(get.contains(&format!("hx-target=\"{HX_TARGET_NEXT_TABLE_BODY}\"")));
         assert!(get.contains(&format!("hx-select=\"{HX_SELECT_TABLE_BODY}\"")));
 
-        let picker = form_hx_get_picker_route::<TestPickerTableKey, TestPickerModalKey, _>(
-            TestAppPanePostRoute,
-        )
-        .as_string();
+        let picker = form_hx_get_picker_route(TestAppPanePostRoute).as_string();
         assert!(picker.contains("hx-get=\"/test/create\""));
         assert!(picker.contains(&format!("hx-target=\"{HX_TARGET_CLOSEST_TABLE}\"")));
         assert!(picker.contains("hx-swap=\"outerHTML\""));

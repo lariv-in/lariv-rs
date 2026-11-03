@@ -8,8 +8,8 @@ use lariv_plugin_finance_common::decimal::{self, dec_is_zero};
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::sea_query::Condition;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, DatabaseBackend, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, DatabaseBackend, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder,
 };
 
 use lariv_core::components::FilterClauseView;
@@ -18,7 +18,7 @@ use lariv_core::list_filters::{
 };
 use serde::Deserialize;
 
-use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
@@ -36,8 +36,8 @@ use crate::{
     forms::ProductForm,
     handlers::ModalNameQuery,
     keys::{
-        ProductCreateModalKey, ProductDeleteModalKey, ProductEditModalKey, ProductSelectModalKey,
-        ProductSelectTableKey, ProductTableKey,
+        PRODUCT_CREATE_MODAL, PRODUCT_DELETE_MODAL, PRODUCT_EDIT_MODAL, PRODUCT_SELECT_MODAL,
+        PRODUCT_SELECT_TABLE, PRODUCT_TABLE,
     },
     preferences::{load_default_product_tax_ids, load_product_tax_ids, set_product_tax_ids},
     pricing,
@@ -206,7 +206,7 @@ pub async fn list(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<ProductTableKey>() {
+    if htmx.targets(PRODUCT_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -421,11 +421,7 @@ fn optional_text(value: &str) -> Option<String> {
 }
 
 fn optional_code(raw: i64) -> Option<i64> {
-    if raw <= 0 {
-        None
-    } else {
-        Some(raw)
-    }
+    if raw <= 0 { None } else { Some(raw) }
 }
 
 fn format_optional_code(code: Option<i64>) -> String {
@@ -535,8 +531,9 @@ pub async fn create_post(
                     .map(|amount| decimal::decimal_display(amount))
                     .unwrap_or_default()
             };
-            respond_create_modal_done_fk_extra::<ProductCreateModalKey>(
+            respond_create_modal_done_fk_extra(
                 &htmx,
+                PRODUCT_CREATE_MODAL,
                 &q.refresh_table(),
                 &ProductDetailRouteTag::new(id).url(),
                 id,
@@ -606,8 +603,9 @@ pub async fn edit_post(
     HtmlFormBody(form): HtmlFormBody<ProductForm>,
 ) -> Response {
     match save_product_from_form(&state.db, &form, Some(id)).await {
-        Ok(_) => respond_edit_modal_done::<ProductEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            PRODUCT_EDIT_MODAL,
             &ProductDetailRouteTag::new(id).url(),
         ),
         Err(e) => {
@@ -625,7 +623,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: ProductDeleteModalKey::ID.to_string(),
+        modal_uid: PRODUCT_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this product?".into(),
         form_name: q
             .name
@@ -652,7 +650,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete product");
             let page = ConfirmDeletePage {
-                modal_uid: ProductDeleteModalKey::ID.to_string(),
+                modal_uid: PRODUCT_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this product?".into(),
                 form_name: "p_finance_products.ProductDeleteForm".into(),
                 id,
@@ -689,6 +687,5 @@ pub async fn select(
         path_and_query: path_and_query(&uri),
         page_size: q.filter.page_size.get(),
     };
-    respond_picker_select::<ProductSelectTableKey, ProductSelectModalKey, _>(&htmx, &page)
-        .into_response()
+    respond_picker_select(&htmx, PRODUCT_SELECT_TABLE, PRODUCT_SELECT_MODAL, &page).into_response()
 }

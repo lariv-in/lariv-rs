@@ -1,27 +1,20 @@
-lariv_core::swap_key!(PurchaseHubTableKey, "purchase-hub-table");
-lariv_core::swap_key!(DraftPurchaseTableKey, "draft-purchase-table");
-lariv_core::swap_key!(DraftPurchaseCreateModalKey, "draft-purchase-create-modal");
-lariv_core::swap_key!(DraftPurchaseEditModalKey, "draft-purchase-edit-modal");
-lariv_core::swap_key!(DraftPurchaseDeleteModalKey, "draft-purchase-delete-modal");
-lariv_core::swap_key!(DraftPurchasePostModalKey, "draft-purchase-post-modal");
-lariv_core::swap_key!(
-    DraftPurchaseBulkPostModalKey,
-    "draft-purchase-bulk-post-modal"
-);
-lariv_core::swap_key!(
-    DraftPurchaseBulkDeleteModalKey,
-    "draft-purchase-bulk-delete-modal"
-);
-lariv_core::swap_key!(
-    DraftPurchaseBulkEditModalKey,
-    "draft-purchase-bulk-edit-modal"
-);
-lariv_core::swap_key!(PostedPurchaseTableKey, "posted-purchase-table");
-lariv_core::swap_key!(DraftPurchaseSelectTableKey, "draft-purchase-select-table");
-lariv_core::swap_key!(DraftPurchaseSelectModalKey, "draft-purchase-select-modal");
-lariv_core::swap_key!(PurchasePdfPreviewModalKey, "purchase-pdf-preview-modal");
-lariv_core::swap_key!(PurchasePdfModalKey, "purchase-pdf-modal");
-lariv_core::swap_key!(VendorSelectTableKey, "purchase-vendor-select-table");
-lariv_core::swap_key!(VendorSelectModalKey, "purchase-vendor-select-modal");
-lariv_core::swap_key!(VendorCreateModalKey, "purchase-vendor-create-modal");
-lariv_core::swap_key!(CancelledPurchaseTableKey, "cancelled-purchase-table");
+use lariv_core::components::SwapKey;
+
+pub const PURCHASE_HUB_TABLE: SwapKey = SwapKey("purchase-hub-table");
+pub const DRAFT_PURCHASE_TABLE: SwapKey = SwapKey("draft-purchase-table");
+pub const DRAFT_PURCHASE_CREATE_MODAL: SwapKey = SwapKey("draft-purchase-create-modal");
+pub const DRAFT_PURCHASE_EDIT_MODAL: SwapKey = SwapKey("draft-purchase-edit-modal");
+pub const DRAFT_PURCHASE_DELETE_MODAL: SwapKey = SwapKey("draft-purchase-delete-modal");
+pub const DRAFT_PURCHASE_POST_MODAL: SwapKey = SwapKey("draft-purchase-post-modal");
+pub const DRAFT_PURCHASE_BULK_POST_MODAL: SwapKey = SwapKey("draft-purchase-bulk-post-modal");
+pub const DRAFT_PURCHASE_BULK_DELETE_MODAL: SwapKey = SwapKey("draft-purchase-bulk-delete-modal");
+pub const DRAFT_PURCHASE_BULK_EDIT_MODAL: SwapKey = SwapKey("draft-purchase-bulk-edit-modal");
+pub const POSTED_PURCHASE_TABLE: SwapKey = SwapKey("posted-purchase-table");
+pub const DRAFT_PURCHASE_SELECT_TABLE: SwapKey = SwapKey("draft-purchase-select-table");
+pub const DRAFT_PURCHASE_SELECT_MODAL: SwapKey = SwapKey("draft-purchase-select-modal");
+pub const PURCHASE_PDF_PREVIEW_MODAL: SwapKey = SwapKey("purchase-pdf-preview-modal");
+pub const PURCHASE_PDF_MODAL: SwapKey = SwapKey("purchase-pdf-modal");
+pub const VENDOR_SELECT_TABLE: SwapKey = SwapKey("purchase-vendor-select-table");
+pub const VENDOR_SELECT_MODAL: SwapKey = SwapKey("purchase-vendor-select-modal");
+pub const VENDOR_CREATE_MODAL: SwapKey = SwapKey("purchase-vendor-create-modal");
+pub const CANCELLED_PURCHASE_TABLE: SwapKey = SwapKey("cancelled-purchase-table");

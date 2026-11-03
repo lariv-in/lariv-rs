@@ -1,26 +1,36 @@
 //! Typed [`CreateModal`] wiring for tasks swap keys.
 
-use super::keys::{PeriodicTaskCreateModalKey, TaskCreateModalKey, TaskStatusCreateModalKey};
+use lariv_core::web::CreateModal;
+
+use super::keys::{PERIODIC_TASK_CREATE_MODAL, TASK_CREATE_MODAL, TASK_STATUS_CREATE_MODAL};
 use super::routes::{
     PeriodicTaskCreateGetRouteTag, PeriodicTaskCreatePostRouteTag, TaskCreateGetRouteTag,
     TaskCreatePostRouteTag, TaskStatusCreateGetRouteTag, TaskStatusCreatePostRouteTag,
 };
 
-lariv_core::impl_create_modal!(
-    TaskCreateModalKey,
-    TaskCreateGetRouteTag,
-    TaskCreatePostRouteTag,
-    "p_tasks.TaskCreateForm"
-);
-lariv_core::impl_create_modal!(
-    TaskStatusCreateModalKey,
+pub const TASK_CREATE: CreateModal<TaskCreateGetRouteTag, TaskCreatePostRouteTag> = CreateModal {
+    key: TASK_CREATE_MODAL,
+    form_name: "p_tasks.TaskCreateForm",
+    get: TaskCreateGetRouteTag,
+    post: TaskCreatePostRouteTag,
+};
+
+pub const TASK_STATUS_CREATE: CreateModal<
     TaskStatusCreateGetRouteTag,
     TaskStatusCreatePostRouteTag,
-    "p_tasks.TaskStatusCreateForm"
-);
-lariv_core::impl_create_modal!(
-    PeriodicTaskCreateModalKey,
+> = CreateModal {
+    key: TASK_STATUS_CREATE_MODAL,
+    form_name: "p_tasks.TaskStatusCreateForm",
+    get: TaskStatusCreateGetRouteTag,
+    post: TaskStatusCreatePostRouteTag,
+};
+
+pub const PERIODIC_TASK_CREATE: CreateModal<
     PeriodicTaskCreateGetRouteTag,
     PeriodicTaskCreatePostRouteTag,
-    "p_tasks.PeriodicTaskCreateForm"
-);
+> = CreateModal {
+    key: PERIODIC_TASK_CREATE_MODAL,
+    form_name: "p_tasks.PeriodicTaskCreateForm",
+    get: PeriodicTaskCreateGetRouteTag,
+    post: PeriodicTaskCreatePostRouteTag,
+};

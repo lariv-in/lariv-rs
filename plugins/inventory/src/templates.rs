@@ -1,5 +1,7 @@
 //! Maud pages for stocks, movements, and movement lines.
 
+use crate::create_modals::STOCK_CREATE;
+
 use frunk::Generic;
 use lariv_formula::VariableType;
 use maud::{Markup, PreEscaped, html};
@@ -44,7 +46,8 @@ use super::forms::{
     StockFormField,
 };
 
-fn data_table_with_filter_errors<K: SwapKey>(
+fn data_table_with_filter_errors(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -54,12 +57,13 @@ fn data_table_with_filter_errors<K: SwapKey>(
     errors: &[FilterRowError],
     instance_id: Option<&str>,
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -81,7 +85,7 @@ fn data_table_with_filter_errors<K: SwapKey>(
     };
     let body_only = instance_id.is_some();
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title: if body_only { "" } else { title },
         classes: "w-full",
         actions: if body_only {
@@ -108,10 +112,10 @@ fn data_table_with_filter_errors<K: SwapKey>(
     })
 }
 use super::keys::{
-    MovementCreateModalKey, MovementDeleteModalKey, MovementEditModalKey, MovementInSelectModalKey,
-    MovementInSelectTableKey, MovementProcessSelectModalKey, MovementProcessSelectTableKey,
-    MovementTableKey, StockCreateModalKey, StockDeleteModalKey, StockEditModalKey,
-    StockLinesTableKey, StockSelectModalKey, StockSelectTableKey, StockTableKey,
+    MOVEMENT_CREATE_MODAL, MOVEMENT_DELETE_MODAL, MOVEMENT_EDIT_MODAL, MOVEMENT_IN_SELECT_MODAL,
+    MOVEMENT_IN_SELECT_TABLE, MOVEMENT_PROCESS_SELECT_MODAL, MOVEMENT_PROCESS_SELECT_TABLE,
+    MOVEMENT_TABLE, STOCK_CREATE_MODAL, STOCK_DELETE_MODAL, STOCK_EDIT_MODAL, STOCK_LINES_TABLE,
+    STOCK_SELECT_MODAL, STOCK_SELECT_TABLE, STOCK_TABLE,
 };
 use super::routes::{
     InventoryMutate, MovementCreateGetRouteTag, MovementCreateInPostRouteTag,
@@ -235,7 +239,8 @@ fn qty_type_choices() -> Vec<(String, String)> {
         .collect()
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -249,15 +254,17 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
-fn render_picker_pagination<M: SwapKey>(
+fn render_picker_pagination(
+    key: SwapKey,
     path_and_query: &str,
     number: u32,
     num_pages: u32,
 ) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, false);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -271,7 +278,7 @@ fn render_picker_pagination<M: SwapKey>(
         .collect();
     table_pagination_picker(TablePagination {
         pages: &pages,
-        hx_target: M::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -473,13 +480,15 @@ impl StockListPage {
                 children: Vec::new(),
             })
             .collect();
-        let pagination = render_pagination::<StockTableKey>(
+        let pagination = render_pagination(
+            STOCK_TABLE,
             &self.path_and_query,
             self.stocks.number,
             self.stocks.num_pages,
         );
         if let Some(instance_id) = rows_instance {
-            return data_table_with_filter_errors::<StockTableKey>(
+            return data_table_with_filter_errors(
+                STOCK_TABLE,
                 "",
                 html! {},
                 &headers,
@@ -497,7 +506,7 @@ impl StockListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<StockTableKey, StockDefaultRouteTag>(
+                    attrs: form_hx_get_route(
                         StockDefaultRouteTag,
                     ),
                     apply_label: "Apply",
@@ -509,13 +518,14 @@ impl StockListPage {
         if can_mutate() {
             actions = html! {
                 (actions)
-                (table_create_button::<StockTableKey, StockCreateModalKey>(
+                (table_create_button(STOCK_TABLE, STOCK_CREATE,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        data_table_with_filter_errors::<StockTableKey>(
+        data_table_with_filter_errors(
+            STOCK_TABLE,
             "Stocks",
             actions,
             &headers,
@@ -646,15 +656,17 @@ impl StockDetailPage {
                 children: Vec::new(),
             })
             .collect();
-        let pagination = render_pagination::<StockLinesTableKey>(
+        let pagination = render_pagination(
+            STOCK_LINES_TABLE,
             &self.path_and_query,
             self.lines.number,
             self.lines.num_pages,
         );
         if let Some(instance_id) = rows_instance {
-            return data_table_rows::<StockLinesTableKey>(&headers, &rows, pagination, instance_id);
+            return data_table_rows(STOCK_LINES_TABLE, &headers, &rows, pagination, instance_id);
         }
-        data_table_list_refresh::<StockLinesTableKey>(
+        data_table_list_refresh(
+            STOCK_LINES_TABLE,
             "Movements",
             html! {},
             &headers,
@@ -671,7 +683,7 @@ impl StockDetailPage {
                     name: "p_inventory.StockEditForm",
                     href: &StockEditGetRouteTag::new(self.id).url(),
                     form_post_url: &StockEditPostRouteTag::new(self.id).path(),
-                    modal_uid: StockEditModalKey::ID,
+                    modal_uid: STOCK_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -739,12 +751,13 @@ pub struct StockCreateModalPage {
 
 impl RenderTemplate for StockCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<StockCreateModalKey>(
+        modal_keyed(
+            STOCK_CREATE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New stock" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<StockCreateModalKey>(&lariv_core::web::modal_create_post_query(
+                    attrs: form_hx_post_url(STOCK_CREATE_MODAL, &lariv_core::web::modal_create_post_query(
                         StockCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
@@ -775,12 +788,13 @@ pub struct StockEditModalPage {
 impl RenderTemplate for StockEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = StockDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<StockEditModalKey>(
+        modal_keyed(
+            STOCK_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit stock" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<StockEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(STOCK_EDIT_MODAL, &modal_edit_post_url(
                         StockEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -794,7 +808,7 @@ impl RenderTemplate for StockEditModalPage {
                             name: "p_inventory.StockDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: StockDeleteModalKey::ID,
+                            modal_uid: STOCK_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -819,7 +833,7 @@ pub struct StockSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<StockSelectTableKey, StockSelectModalKey> for StockSelectPage {
+impl RenderPickerSelect for StockSelectPage {
     fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
@@ -869,11 +883,7 @@ impl RenderPickerSelect<StockSelectTableKey, StockSelectModalKey> for StockSelec
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_picker_route::<
-                        StockSelectTableKey,
-                        StockSelectModalKey,
-                        StockFkSelectRouteTag,
-                    >(StockFkSelectRouteTag)
+                    attrs: form_hx_get_picker_route(StockFkSelectRouteTag)
                     .set("hx-push-url", "false"),
                     apply_label: "Apply",
                     extra: html! {
@@ -886,15 +896,17 @@ impl RenderPickerSelect<StockSelectTableKey, StockSelectModalKey> for StockSelec
         if can_mutate() && !self.limit_sources {
             actions = html! {
                 (actions)
-                (picker_create_button::<StockCreateModalKey>(&self.target_input, Some("plus"), "btn-square btn-outline btn-sm"))
+                (picker_create_button(STOCK_CREATE, &self.target_input, Some("plus"), "btn-square btn-outline btn-sm"))
             };
         }
-        data_table_with_filter_errors::<StockSelectTableKey>(
+        data_table_with_filter_errors(
+            STOCK_SELECT_TABLE,
             "Select stock",
             actions,
             &headers,
             &rows,
-            render_picker_pagination::<StockSelectModalKey>(
+            render_picker_pagination(
+                STOCK_SELECT_MODAL,
                 &self.path_and_query,
                 self.stocks.number,
                 self.stocks.num_pages,
@@ -908,7 +920,7 @@ impl RenderPickerSelect<StockSelectTableKey, StockSelectModalKey> for StockSelec
 
 impl RenderTemplate for StockSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(STOCK_SELECT_MODAL).into_inner()
     }
 }
 
@@ -930,15 +942,16 @@ pub struct MovementRow {
 fn movement_create_opener(href: &str) -> Markup {
     table_button_create(TableButtonCreate {
         href,
-        modal_uid: MovementCreateModalKey::ID,
+        modal_uid: MOVEMENT_CREATE_MODAL.id(),
         ..Default::default()
     })
 }
 
 fn movement_create_button(kind: &str) -> Markup {
-    movement_create_opener(&modal_create_href_for_table::<MovementTableKey>(
+    movement_create_opener(&modal_create_href_for_table(
         &MovementCreateGetRouteTag::new(kind.to_string()).url(),
         "p_inventory.MovementCreateForm",
+        MOVEMENT_TABLE,
     ))
 }
 
@@ -1189,13 +1202,15 @@ impl MovementListPage {
                 }
             })
             .collect();
-        let pagination = render_pagination::<MovementTableKey>(
+        let pagination = render_pagination(
+            MOVEMENT_TABLE,
             &self.path_and_query,
             self.movements.number,
             self.movements.num_pages,
         );
         if let Some(instance_id) = rows_instance {
-            return data_table_with_filter_errors::<MovementTableKey>(
+            return data_table_with_filter_errors(
+                MOVEMENT_TABLE,
                 "",
                 html! {},
                 &headers,
@@ -1207,10 +1222,7 @@ impl MovementListPage {
             );
         }
         let filter = table_button_filter(TableButtonFilter {
-            panel: page_size_only_filter_form_with_extras::<
-                MovementTableKey,
-                MovementDefaultRouteTag,
-            >(
+            panel: page_size_only_filter_form_with_extras::<MovementDefaultRouteTag>(
                 self.page_size,
                 html! {
                     input type="hidden" name="tab" value=(self.tab.as_str()) {}
@@ -1227,7 +1239,8 @@ impl MovementListPage {
             (filter)
             (create)
         };
-        data_table_with_filter_errors::<MovementTableKey>(
+        data_table_with_filter_errors(
+            MOVEMENT_TABLE,
             "Movements",
             actions,
             &headers,
@@ -1321,7 +1334,7 @@ impl MovementDetailPage {
             name: "p_inventory.MovementEditForm",
             href: &MovementEditGetRouteTag::new(self.kind.clone(), self.id).url(),
             form_post_url: &movement_edit_post(&self.kind, self.id),
-            modal_uid: MovementEditModalKey::ID,
+            modal_uid: MOVEMENT_EDIT_MODAL.id(),
             label: "Edit",
             classes: "btn-outline",
             ..Default::default()
@@ -1531,12 +1544,13 @@ impl RenderTemplate for MovementCreateModalPage {
         } else {
             movement_form_inputs(movement_values_from_create(self))
         };
-        modal_keyed::<MovementCreateModalKey>(
+        modal_keyed(
+            MOVEMENT_CREATE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { (title) }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<MovementCreateModalKey>(&movement_create_post(
+                    attrs: form_hx_post_url(MOVEMENT_CREATE_MODAL, &movement_create_post(
                         &self.kind,
                         &self.form_name,
                         &self.refresh_table,
@@ -1626,12 +1640,13 @@ impl RenderTemplate for MovementEditModalPage {
         } else {
             movement_form_inputs(movement_values_from_edit(self))
         };
-        modal_keyed::<MovementEditModalKey>(
+        modal_keyed(
+            MOVEMENT_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { (title) }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<MovementEditModalKey>(&post),
+                    attrs: form_hx_post_url(MOVEMENT_EDIT_MODAL, &post),
                     form_error: Some(self.error.as_str()).filter(|err| !err.is_empty()),
                     inputs,
                     actions: html! {
@@ -1642,7 +1657,7 @@ impl RenderTemplate for MovementEditModalPage {
                             name: "p_inventory.MovementDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: MovementDeleteModalKey::ID,
+                            modal_uid: MOVEMENT_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -1859,14 +1874,17 @@ pub struct MovementSourceSelectPage {
     pub target_input: String,
     pub path_and_query: String,
     pub page_size: u32,
+    /// `"in"` or `"process"` — selects picker table/modal/route wiring.
+    pub kind: &'static str,
 }
 
-fn source_picker_table<K, M, R>(page: &MovementSourceSelectPage, route: R, kind: &str) -> Markup
-where
-    K: SwapKey,
-    M: SwapKey,
-    R: RouteUrl + FkSelectGet<K, M> + Copy,
-{
+fn source_picker_table(
+    page: &MovementSourceSelectPage,
+    table: SwapKey,
+    modal: SwapKey,
+    route: impl RouteUrl + FkSelectGet + Copy,
+) -> Markup {
+    let kind = page.kind;
     let when_label = if kind == "process" {
         "Date & time"
     } else {
@@ -1915,7 +1933,7 @@ where
             rows: filter_rows,
             page_size: page.page_size,
             sort: "",
-            attrs: form_hx_get_picker_route::<K, M, R>(route).set("hx-push-url", "false"),
+            attrs: form_hx_get_picker_route(route).set("hx-push-url", "false"),
             apply_label: "Apply",
             extra: html! {
                 input type="hidden" name="target_input" value=(target_input) {}
@@ -1932,39 +1950,41 @@ where
         (filter)
         (create)
     };
-    data_table_with_filter_errors::<K>(
+    data_table_with_filter_errors(
+        table,
         &page.title,
         actions,
         &headers,
         &rows,
-        render_picker_pagination::<M>(&page.path_and_query, page.rows.number, page.rows.num_pages),
+        render_picker_pagination(
+            modal,
+            &page.path_and_query,
+            page.rows.number,
+            page.rows.num_pages,
+        ),
         &page.path_and_query,
         &[],
         None,
     )
 }
 
-impl RenderPickerSelect<MovementInSelectTableKey, MovementInSelectModalKey>
-    for MovementSourceSelectPage
-{
+impl RenderPickerSelect for MovementSourceSelectPage {
     fn render_table(&self) -> Markup {
-        source_picker_table::<
-            MovementInSelectTableKey,
-            MovementInSelectModalKey,
-            MovementInFkSelectRouteTag,
-        >(self, MovementInFkSelectRouteTag, "in")
-    }
-}
-
-impl RenderPickerSelect<MovementProcessSelectTableKey, MovementProcessSelectModalKey>
-    for MovementSourceSelectPage
-{
-    fn render_table(&self) -> Markup {
-        source_picker_table::<
-            MovementProcessSelectTableKey,
-            MovementProcessSelectModalKey,
-            MovementProcessFkSelectRouteTag,
-        >(self, MovementProcessFkSelectRouteTag, "process")
+        if self.kind == "process" {
+            source_picker_table(
+                self,
+                MOVEMENT_PROCESS_SELECT_TABLE,
+                MOVEMENT_PROCESS_SELECT_MODAL,
+                MovementProcessFkSelectRouteTag,
+            )
+        } else {
+            source_picker_table(
+                self,
+                MOVEMENT_IN_SELECT_TABLE,
+                MOVEMENT_IN_SELECT_MODAL,
+                MovementInFkSelectRouteTag,
+            )
+        }
     }
 }
 

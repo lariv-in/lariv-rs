@@ -4,40 +4,40 @@ use maud::{Markup, PreEscaped, html};
 
 use crate::components::attrs::{HtmlAttrs, escape_attr};
 use crate::components::swap::{
-    ModalHostKey, SwapKey, form_hx_get_for_url, form_hx_get_route, form_hx_post_for_url,
-    form_hx_post_route, nav_main_attrs,
+    SwapKey, form_hx_get_for_url, form_hx_get_route, form_hx_post_for_url, form_hx_post_route,
+    nav_main_attrs,
 };
 use crate::http::{FkSelectGet, FragmentGet, FragmentPost, RouteUrl};
 
 /// HTMX target/swap for appending modals as children of `document.body`.
-pub const HTMX_TARGET_BODY_MODAL: &str = ModalHostKey::SELECTOR;
+pub const HTMX_TARGET_BODY_MODAL: &str = "body";
 pub const HTMX_SWAP_BODY_MODAL: &str = "beforeend";
 
 /// Element id prefix for FK typeahead dropdown swap targets (`fk-dropdown-{field}`).
 pub const FK_DROPDOWN_ID_PREFIX: &str = "fk-dropdown-";
 
 /// Declarative POST form attrs targeting a typed region (replaces form bubbling).
-pub fn form_post_region<K: SwapKey>(action: &str) -> HtmlAttrs {
-    form_hx_post_for_url::<K>(action)
+pub fn form_post_region(key: SwapKey, action: &str) -> HtmlAttrs {
+    form_hx_post_for_url(key, action)
 }
 
 /// Typed POST form attrs for a fragment route value.
-pub fn form_post_region_route<K: SwapKey, R: RouteUrl + FragmentPost<K>>(route: R) -> HtmlAttrs {
-    form_hx_post_route::<K, R>(route)
+pub fn form_post_region_route<R: RouteUrl + FragmentPost>(route: R) -> HtmlAttrs {
+    form_hx_post_route(route)
 }
 
 /// Declarative GET filter form attrs targeting the closest data table.
-pub fn form_get_region<K: SwapKey>(action: &str) -> HtmlAttrs {
-    let _ = K::ID;
+pub fn form_get_region(key: SwapKey, action: &str) -> HtmlAttrs {
+    let _ = key;
     form_hx_get_for_url(action)
 }
 
 /// Typed GET filter form attrs for a fragment route value.
-pub fn form_get_region_route<K: SwapKey, R: RouteUrl + FragmentGet<K>>(route: R) -> HtmlAttrs {
-    form_hx_get_route::<K, R>(route)
+pub fn form_get_region_route<R: RouteUrl + FragmentGet>(route: R) -> HtmlAttrs {
+    form_hx_get_route(route)
 }
 
-/// Row click attrs that navigate into [`AppLayoutKey`](crate::components::swap::AppLayoutKey)
+/// Row click attrs that navigate into [`APP_LAYOUT`](crate::components::swap::APP_LAYOUT)
 /// via HTMX (updates sidebar + main on detail pages).
 pub fn row_attr_navigate(url: &str) -> HtmlAttrs {
     nav_main_attrs(url)
@@ -158,22 +158,18 @@ pub fn hx_partial_with_head(head: Markup, body: Markup) -> Markup {
     }
 }
 
-/// Attrs to open a modal into [`ModalHostKey`] (`body` / beforeend).
+/// Attrs to open a modal into `document.body` (`beforeend`).
 pub fn modal_open_attrs(href: &str) -> HtmlAttrs {
     HtmlAttrs::new()
         .set("hx-get", href)
-        .set("hx-target", ModalHostKey::SELECTOR)
+        .set("hx-target", HTMX_TARGET_BODY_MODAL)
         .set("hx-swap", HTMX_SWAP_BODY_MODAL)
         .set("hx-push-url", "false")
 }
 
 /// Typed picker open attrs for routes declared with `fk_select` / `multi_select`.
-pub fn modal_picker_open_route<R, K, M>(route: R) -> HtmlAttrs
-where
-    R: RouteUrl + FkSelectGet<K, M>,
-    K: SwapKey,
-    M: SwapKey,
-{
+pub fn modal_picker_open_route<R: RouteUrl + FkSelectGet>(route: R) -> HtmlAttrs {
+    let _ = (R::TABLE, R::MODAL);
     modal_open_attrs(&route.url())
 }
 

@@ -19,7 +19,7 @@ use crate::{
     },
     forms::CronJobForm,
     handlers::history::session_display_title,
-    keys::{CronJobCreateModalKey, CronJobDeleteModalKey, CronJobEditModalKey, CronJobsTableKey},
+    keys::{CRON_JOB_CREATE_MODAL, CRON_JOB_DELETE_MODAL, CRON_JOB_EDIT_MODAL, CRON_JOBS_TABLE},
     routes::{CronJobsDetailRouteTag, CronJobsListRouteTag},
     state::LlmAssistantState,
     templates::{
@@ -27,7 +27,7 @@ use crate::{
         CronJobListPage, CronJobRow, CronJobRunRow,
     },
 };
-use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::duration::format_duration;
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
@@ -217,7 +217,7 @@ pub async fn list(
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
     };
-    if htmx.targets::<CronJobsTableKey>() {
+    if htmx.targets(CRON_JOBS_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -347,8 +347,9 @@ pub async fn create_post(
     match model.insert(&state.db).await {
         Ok(saved) => {
             state.cron_scheduler.reload();
-            respond_create_modal_done::<CronJobCreateModalKey>(
+            respond_create_modal_done(
                 &htmx,
+                CRON_JOB_CREATE_MODAL,
                 &q.refresh_table(),
                 &CronJobsDetailRouteTag::new(saved.id).url(),
             )
@@ -420,8 +421,9 @@ pub async fn edit_post(
     match am.update(&state.db).await {
         Ok(_) => {
             state.cron_scheduler.reload();
-            respond_edit_modal_done::<CronJobEditModalKey>(
+            respond_edit_modal_done(
                 &htmx,
+                CRON_JOB_EDIT_MODAL,
                 &CronJobsDetailRouteTag::new(id).url(),
             )
         }
@@ -437,7 +439,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = CronJobConfirmDeletePage {
-        modal_uid: CronJobDeleteModalKey::ID.to_string(),
+        modal_uid: CRON_JOB_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this cron job?".into(),
         name: q
             .name
@@ -465,7 +467,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete cron job");
             let page = CronJobConfirmDeletePage {
-                modal_uid: CronJobDeleteModalKey::ID.to_string(),
+                modal_uid: CRON_JOB_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this cron job?".into(),
                 name: "p_llm_assistant.CronJobDeleteForm".into(),
                 id,

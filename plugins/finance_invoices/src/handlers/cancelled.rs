@@ -6,7 +6,7 @@ use maud::Markup;
 
 use sea_orm::EntityTrait;
 
-use lariv_core::components::{SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::http::Cap;
 use lariv_core::web::{Htmx, html_built_page_or_app_layout};
 use lariv_plugin_users::middleware::RequireAuth;
@@ -19,13 +19,12 @@ use crate::{
         cancelled_invoice::Entity as CancelledInvoiceEntity,
         posted_invoice::Entity as PostedInvoiceEntity,
     },
-    keys::{CancelledInvoiceBulkNewDraftModalKey, CancelledInvoiceNewDraftModalKey},
+    keys::{CANCELLED_INVOICE_BULK_NEW_DRAFT_MODAL, CANCELLED_INVOICE_NEW_DRAFT_MODAL},
     logic::{
         cancelled_new_draft,
         draft_payment_term::cancelled_payment_term_display_rows,
         invoice_line_editor::{
-            cancelled_invoice_line_display_rows, invoice_customer_name,
-            invoice_header_tax_labels,
+            cancelled_invoice_line_display_rows, invoice_customer_name, invoice_header_tax_labels,
         },
         load_invoice_date_formats, optional_display,
         tax_assoc::load_cancelled_invoice_tax_ids,
@@ -180,10 +179,10 @@ pub async fn detail(
 pub async fn new_draft_confirm_get(RequireAuth(_ctx): RequireAuth, Path(id): Path<i64>) -> Markup {
     let post_url = CancelledInvoiceNewDraftRouteTag::new(id).path();
     confirm_invoice_transition(ConfirmInvoiceTransition {
-        modal_uid: CancelledInvoiceNewDraftModalKey::ID,
-        title: "New draft from cancelled",
-        message: "Create a new draft invoice from this cancelled invoice? The cancelled record will be unchanged.",
-        submit_label: "Create draft",
+        modal_uid: CANCELLED_INVOICE_NEW_DRAFT_MODAL.id(),
+        title: "New quotation from cancelled",
+        message: "Create a new quotation from this cancelled invoice? The cancelled record will be unchanged.",
+        submit_label: "Create quotation",
         post_url: &post_url,
         can_submit: true,
     })
@@ -230,16 +229,16 @@ pub async fn bulk_new_draft_confirm_get(
         )
     } else {
         (
-            "Create new draft invoices from the selected cancelled invoices? The cancelled records will be unchanged.".to_string(),
+            "Create new quotations from the selected cancelled invoices? The cancelled records will be unchanged.".to_string(),
             bulk_transition_post_url(&CancelledInvoiceBulkNewDraftRouteTag.path(), &ids),
             true,
         )
     };
     confirm_invoice_transition(ConfirmInvoiceTransition {
-        modal_uid: CancelledInvoiceBulkNewDraftModalKey::ID,
-        title: "New drafts from cancelled invoices",
+        modal_uid: CANCELLED_INVOICE_BULK_NEW_DRAFT_MODAL.id(),
+        title: "New quotations from cancelled invoices",
         message: &message,
-        submit_label: "Create drafts",
+        submit_label: "Create quotations",
         post_url: &post_url,
         can_submit,
     })

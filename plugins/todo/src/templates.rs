@@ -1,15 +1,17 @@
 //! Maud pages for the to-do page list and one page's checklist.
 
+use crate::create_modals::TODO_PAGE_CREATE;
+
 use maud::{Markup, PreEscaped, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
     ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FormOpts, LayoutMain,
     LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu,
-    SidebarNavLink, SwapKey, TableColumnHeader, TablePagination, TableRow, breadcrumbs,
-    button_modal_form, button_submit, column_sort_url, data_table_list, delete_confirmation,
-    field_text, form, form_hx_post_selector, form_hx_post_url, icon, layout_main, layout_sidebar,
-    modal, modal_keyed, pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu,
+    SidebarNavLink, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_modal_form,
+    button_submit, column_sort_url, data_table_list, delete_confirmation, field_text, form,
+    form_hx_post_selector, form_hx_post_url, icon, layout_main, layout_sidebar, modal, modal_keyed,
+    pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu,
     sidebar_nav_items_pane, sort_indicator, table_create_button, table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
@@ -19,7 +21,7 @@ use lariv_core::web::{modal_create_post_url, modal_edit_post_url};
 
 use super::forms::{TodoPageForm, TodoPageFormField};
 use super::keys::{
-    TodoPageCreateModalKey, TodoPageDeleteModalKey, TodoPageEditModalKey, TodoPageTableKey,
+    TODO_PAGE_CREATE_MODAL, TODO_PAGE_DELETE_MODAL, TODO_PAGE_EDIT_MODAL, TODO_PAGE_TABLE,
 };
 use super::routes::{
     TodoListRouteTag, TodoPageCreatePostRouteTag, TodoPageDeleteGetRouteTag,
@@ -128,7 +130,7 @@ fn render_pagination(path_and_query: &str, number: u32, num_pages: u32) -> Marku
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: TodoPageTableKey::SELECTOR,
+        hx_target: &TODO_PAGE_TABLE.selector(),
     })
 }
 
@@ -167,7 +169,9 @@ impl TodoPageListPage {
                 children: Vec::new(),
             })
             .collect();
-        let actions = table_create_button::<TodoPageTableKey, TodoPageCreateModalKey>(
+        let actions = table_create_button(
+            TODO_PAGE_TABLE,
+            TODO_PAGE_CREATE,
             Some("plus"),
             "btn-primary btn-sm btn-square",
         );
@@ -176,7 +180,14 @@ impl TodoPageListPage {
             self.pages.number,
             self.pages.num_pages,
         );
-        data_table_list::<TodoPageTableKey>("Pages", actions, &headers, &rows, pagination)
+        data_table_list(
+            TODO_PAGE_TABLE,
+            "Pages",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+        )
     }
 }
 
@@ -231,7 +242,7 @@ impl TodoListPage {
                         name: "p_todo.TodoPageEditForm",
                         href: &edit_url,
                         form_post_url: &edit_url,
-                        modal_uid: TodoPageEditModalKey::ID,
+                        modal_uid: TODO_PAGE_EDIT_MODAL.id(),
                         classes: "btn-sm",
                         ..Default::default()
                     }))
@@ -284,12 +295,13 @@ impl RenderTemplate for TodoPageCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let ctx = FormCtx::form::<TodoPageForm>(CsrfToken::current())
             .value(TodoPageFormField::Title, self.title.as_str());
-        modal_keyed::<TodoPageCreateModalKey>(
+        modal_keyed(
+            TODO_PAGE_CREATE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New page" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<TodoPageCreateModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(TODO_PAGE_CREATE_MODAL, &modal_create_post_url(
                         TodoPageCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
@@ -318,12 +330,13 @@ impl RenderTemplate for TodoPageEditModalPage {
         let delete_url = TodoPageDeleteGetRouteTag::new(self.id).url();
         let ctx = FormCtx::form::<TodoPageForm>(CsrfToken::current())
             .value(TodoPageFormField::Title, self.title.as_str());
-        modal_keyed::<TodoPageEditModalKey>(
+        modal_keyed(
+            TODO_PAGE_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit page" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<TodoPageEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(TODO_PAGE_EDIT_MODAL, &modal_edit_post_url(
                         TodoPageEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -337,7 +350,7 @@ impl RenderTemplate for TodoPageEditModalPage {
                             name: "p_todo.TodoPageDeleteForm",
                             href: &delete_url,
                             form_post_url: &TodoPageDeletePostRouteTag::new(self.id).url(),
-                            modal_uid: TodoPageDeleteModalKey::ID,
+                            modal_uid: TODO_PAGE_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -357,11 +370,11 @@ impl RenderTemplate for TodoPageDeleteModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let post_url = TodoPageDeletePostRouteTag::new(self.id).url();
         modal(lariv_core::components::Modal {
-            uid: TodoPageDeleteModalKey::ID,
+            uid: TODO_PAGE_DELETE_MODAL.id(),
             children: delete_confirmation(DeleteConfirmation {
                 title: "Delete page",
                 message: "This deletes the page and every to-do on it.",
-                attrs: form_hx_post_selector(&post_url, TodoPageDeleteModalKey::SELECTOR),
+                attrs: form_hx_post_selector(&post_url, &TODO_PAGE_DELETE_MODAL.selector()),
                 ..Default::default()
             }),
             ..Default::default()

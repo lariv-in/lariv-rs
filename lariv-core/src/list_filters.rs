@@ -249,6 +249,34 @@ pub fn parse_list_filters(query: &str) -> Vec<FilterClause> {
         .collect()
 }
 
+/// Parse indexed `filter.*` clauses, falling back to a picker typeahead `Name` param.
+///
+/// Indexed clauses win when present. When they are absent and `typeahead_field` is
+/// set, a non-empty `Name` query value becomes a single equality clause on that field.
+pub fn clauses_from_query(query: &str, typeahead_field: Option<&str>) -> Vec<FilterClause> {
+    let mut clauses = parse_list_filters(query);
+    if !clauses.is_empty() {
+        return clauses;
+    }
+    let Some(field) = typeahead_field else {
+        return clauses;
+    };
+    let Some(name) = form_urlencoded::parse(query.as_bytes())
+        .find_map(|(key, value)| (key == "Name").then(|| value.into_owned()))
+        .filter(|name| !name.trim().is_empty())
+    else {
+        return clauses;
+    };
+    clauses.push(FilterClause {
+        index: 0,
+        join: JoinOp::And,
+        field: field.to_string(),
+        op: CmpOp::Eq,
+        values: vec![name.trim().to_string()],
+    });
+    clauses
+}
+
 /// Fold catalog clauses into one condition.
 ///
 /// Unknown fields are ignored. A clause whose value does not parse is recorded
@@ -728,6 +756,26 @@ mod tests {
             "filter.0.field=title&filter.0.value=&filter.2.field=&filter.2.value=x",
         );
         assert!(parsed.is_empty());
+    }
+
+    #[test]
+    fn clauses_from_query_prefers_indexed_filters_over_typeahead_name() {
+        let indexed = clauses_from_query(
+            "Name=typeahead&filter.0.field=email&filter.0.value=a%40b.co",
+            Some("name"),
+        );
+        assert_eq!(indexed.len(), 1);
+        assert_eq!(indexed[0].field, "email");
+        assert_eq!(indexed[0].values, vec!["a@b.co".to_string()]);
+
+        let typeahead = clauses_from_query("Name=Ada+Lovelace&page=2", Some("name"));
+        assert_eq!(typeahead.len(), 1);
+        assert_eq!(typeahead[0].field, "name");
+        assert_eq!(typeahead[0].op, CmpOp::Eq);
+        assert_eq!(typeahead[0].values, vec!["Ada Lovelace".to_string()]);
+
+        assert!(clauses_from_query("Name=Ada", None).is_empty());
+        assert!(clauses_from_query("Name=+&page=1", Some("name")).is_empty());
     }
 
     #[test]

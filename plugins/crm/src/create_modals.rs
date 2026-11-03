@@ -1,54 +1,32 @@
-//! Typed [`CreateModal`] / [`PickerModal`] wiring for CRM swap keys.
+//! Typed [`CreateModal`] wiring for CRM swap keys.
 
-use lariv_core::picker::PickerModal;
 use lariv_core::web::CreateModal;
 
-use super::keys::{
-    CustomerCreateModalKey, CustomerSelectModalKey, CustomerSelectTableKey, LeadCreateModalKey,
-    LeadTagCreateModalKey, LeadTagSelectModalKey, LeadTagSelectTableKey,
-};
+use super::keys::{CUSTOMER_CREATE_MODAL, LEAD_CREATE_MODAL, LEAD_TAG_CREATE_MODAL};
 use super::routes::{
     CustomerCreateGetRouteTag, CustomerCreatePostRouteTag, LeadCreateGetRouteTag,
     LeadCreatePostRouteTag, LeadTagCreateGetRouteTag, LeadTagCreatePostRouteTag,
 };
 
-macro_rules! crm_create_modal {
-    ($modal:ident, $get:ty, $post:ty, $form:expr) => {
-        impl CreateModal for $modal {
-            type Get = $get;
-            type Post = $post;
-            const FORM_NAME: &'static str = $form;
-        }
+pub const LEAD_CREATE: CreateModal<LeadCreateGetRouteTag, LeadCreatePostRouteTag> = CreateModal {
+    key: LEAD_CREATE_MODAL,
+    form_name: "p_crm.LeadCreateForm",
+    get: LeadCreateGetRouteTag,
+    post: LeadCreatePostRouteTag,
+};
+
+pub const LEAD_TAG_CREATE: CreateModal<LeadTagCreateGetRouteTag, LeadTagCreatePostRouteTag> =
+    CreateModal {
+        key: LEAD_TAG_CREATE_MODAL,
+        form_name: "p_crm.LeadTagCreateForm",
+        get: LeadTagCreateGetRouteTag,
+        post: LeadTagCreatePostRouteTag,
     };
-}
 
-macro_rules! crm_picker_modal {
-    ($modal:ident, $table:ty) => {
-        impl PickerModal for $modal {
-            type Table = $table;
-        }
+pub const CUSTOMER_CREATE: CreateModal<CustomerCreateGetRouteTag, CustomerCreatePostRouteTag> =
+    CreateModal {
+        key: CUSTOMER_CREATE_MODAL,
+        form_name: "p_crm.CustomerCreateForm",
+        get: CustomerCreateGetRouteTag,
+        post: CustomerCreatePostRouteTag,
     };
-}
-
-crm_create_modal!(
-    LeadCreateModalKey,
-    LeadCreateGetRouteTag,
-    LeadCreatePostRouteTag,
-    "p_crm.LeadCreateForm"
-);
-crm_create_modal!(
-    LeadTagCreateModalKey,
-    LeadTagCreateGetRouteTag,
-    LeadTagCreatePostRouteTag,
-    "p_crm.LeadTagCreateForm"
-);
-
-crm_picker_modal!(LeadTagSelectModalKey, LeadTagSelectTableKey);
-
-crm_create_modal!(
-    CustomerCreateModalKey,
-    CustomerCreateGetRouteTag,
-    CustomerCreatePostRouteTag,
-    "p_crm.CustomerCreateForm"
-);
-crm_picker_modal!(CustomerSelectModalKey, CustomerSelectTableKey);

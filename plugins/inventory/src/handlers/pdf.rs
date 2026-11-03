@@ -11,7 +11,7 @@ use lariv_core::http::Cap;
 use lariv_plugin_filesystem::state::FilesystemState;
 use lariv_plugin_users::middleware::RequireAuth;
 
-use crate::keys::MovementPdfModalKey;
+use crate::keys::MOVEMENT_PDF_MODAL;
 use crate::logic::line::{load_in_lines, load_out_lines};
 use crate::logic::pdf::{
     MovementPdfError, MovementPdfHeader, movement_pdf_input, render_movement_pdf,
@@ -55,7 +55,8 @@ fn pdf_error_response(err: MovementPdfError) -> Response {
 }
 
 fn render_pdf_modal(title: &str, pdf_url: &str) -> Markup {
-    modal_keyed::<MovementPdfModalKey>(
+    modal_keyed(
+        MOVEMENT_PDF_MODAL,
         "max-w-6xl w-[95vw]",
         html! {
             div class="flex items-center justify-between gap-3 mb-3 pr-10" {
@@ -87,7 +88,8 @@ fn render_pdf_modal(title: &str, pdf_url: &str) -> Markup {
 }
 
 fn render_pdf_modal_error(message: &str) -> Markup {
-    modal_keyed::<MovementPdfModalKey>(
+    modal_keyed(
+        MOVEMENT_PDF_MODAL,
         "max-w-2xl",
         html! {
             h3 class="text-lg font-semibold mb-2" { "Stock movement PDF failed" }

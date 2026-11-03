@@ -18,7 +18,7 @@ pub use input_payment_term_lines_draft::{
 use maud::{Markup, html};
 
 use crate::scope::INVOICE_FISCAL_YEAR_COOKIE;
-use lariv_core::components::{SwapKey, swap::MainContentKey};
+use lariv_core::components::swap::MAIN_CONTENT;
 
 #[derive(Clone)]
 pub struct FiscalYearOption {
@@ -37,7 +37,7 @@ pub fn fiscal_year_environment_selector(
         .unwrap_or_default();
     let reload_js = format!(
         "htmx.ajax('GET',window.location.pathname+window.location.search,{{target:'{target}',select:'{target}',swap:'outerHTML',pushUrl:false}})",
-        target = MainContentKey::SELECTOR,
+        target = MAIN_CONTENT.selector(),
     );
     let on_change = format!(
         r#"(function(){{

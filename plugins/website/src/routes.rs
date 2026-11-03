@@ -4,7 +4,7 @@ use lariv_core::define_plugin_routes;
 
 use super::{
     builder_assets, handlers,
-    keys::{RouteDeleteModalKey, RoutesTableKey},
+    keys::{ROUTE_DELETE_MODAL, ROUTES_TABLE},
 };
 
 define_plugin_routes! {
@@ -13,7 +13,7 @@ define_plugin_routes! {
     routes: [
         get WebsiteCatchAllRouteTag, "/{*path}", root bare handlers::dynamic::catch_all, raw;
         get WebsiteHomeRouteTag, "/", root bare handlers::dynamic::home, raw;
-        get WebsiteRoutesListRouteTag, "/website", handlers::routes::list, fragment(RoutesTableKey);
+        get WebsiteRoutesListRouteTag, "/website", handlers::routes::list, fragment(ROUTES_TABLE);
         get WebsitePrefsGetRouteTag, "/website/preferences", handlers::preferences::get;
         post WebsitePrefsPostRouteTag, "/website/preferences", handlers::preferences::post;
         get WebsiteRoutesCreateGetRouteTag, "/website/create", handlers::routes::create_get, modal;
@@ -22,7 +22,7 @@ define_plugin_routes! {
         get WebsiteRoutesEditGetRouteTag, "/website/{id}/edit", handlers::routes::edit_get, modal;
         post WebsiteRoutesEditPostRouteTag, "/website/{id}/edit", handlers::routes::edit_post;
         get WebsiteRoutesDeleteGetRouteTag, "/website/{id}/delete", handlers::routes::delete_get, modal;
-        post WebsiteRoutesDeletePostRouteTag, "/website/{id}/delete", bare handlers::routes::delete_post, fragment(RouteDeleteModalKey);
+        post WebsiteRoutesDeletePostRouteTag, "/website/{id}/delete", bare handlers::routes::delete_post, fragment(ROUTE_DELETE_MODAL);
         get WebsiteBuilderRouteTag, "/website/{id}/builder", handlers::builder::builder_page;
         get WebsiteBuilderProjectGetRouteTag, "/website/{id}/builder/project", root bare handlers::builder::project_load, raw;
         post WebsiteBuilderProjectPostRouteTag, "/website/{id}/builder/project", root bare handlers::builder::project_store, raw;

@@ -9,7 +9,7 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
 };
 
-use lariv_core::components::{SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::web::{
@@ -21,7 +21,7 @@ use crate::{
     entities::lead_update::{self, Entity as LeadUpdateEntity},
     forms::{LeadUpdateForm, LeadUpdateQuickForm},
     handlers::ModalNameQuery,
-    keys::{LEAD_UPDATE_SAVED_EVENT, LeadUpdateDeleteModalKey, LeadUpdateEditModalKey},
+    keys::{LEAD_UPDATE_DELETE_MODAL, LEAD_UPDATE_EDIT_MODAL, LEAD_UPDATE_SAVED_EVENT},
     routes::{LeadDefaultRouteTag, LeadDetailRouteTag},
     scope::{
         find_lead_scoped, find_lead_update_scoped, lead_display_name, user_display_label,
@@ -248,7 +248,7 @@ pub async fn edit_post(
     am.datetime = Set(datetime);
     am.description = Set(form.description.trim().to_string());
     match am.update(&state.db).await {
-        Ok(_) => respond_edit_modal_done::<LeadUpdateEditModalKey>(&htmx, &lead_url(lead_id)),
+        Ok(_) => respond_edit_modal_done(&htmx, LEAD_UPDATE_EDIT_MODAL, &lead_url(lead_id)),
         Err(e) => {
             edit_modal_error(
                 &state.db,
@@ -272,7 +272,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: LeadUpdateDeleteModalKey::ID.to_string(),
+        modal_uid: LEAD_UPDATE_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this update?".into(),
         form_name: q
             .name
@@ -300,7 +300,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete lead update");
             let page = ConfirmDeletePage {
-                modal_uid: LeadUpdateDeleteModalKey::ID.to_string(),
+                modal_uid: LEAD_UPDATE_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this update?".into(),
                 form_name: "p_crm.LeadUpdateDeleteForm".into(),
                 id,

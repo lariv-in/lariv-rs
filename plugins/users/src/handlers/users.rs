@@ -15,8 +15,8 @@ use crate::{
     auth,
     entities::user::{self, Entity as UserEntity},
     keys::{
-        UserCreateModalKey, UserDeleteModalKey, UserEditModalKey, UserSelectModalKey,
-        UserSelectTableKey, UserTableKey,
+        USER_CREATE_MODAL, USER_DELETE_MODAL, USER_EDIT_MODAL, USER_SELECT_MODAL,
+        USER_SELECT_TABLE, USER_TABLE,
     },
     middleware::{RequireAuth, can_change_user_password, can_set_superuser},
     routes::{UsersChangePasswordPostRouteTag, UsersDetailRouteTag, UsersListRouteTag},
@@ -26,17 +26,15 @@ use crate::{
         UserEditModalPage, UserListPage, UserRow, UserSelectPage,
     },
 };
-use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
-use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
+use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx};
+use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use lariv_core::list_filters::{
-    CmpOp, FilterClause, FilterField, JoinOp, apply_filters, parse_list_filters, text_column,
-};
+use lariv_core::list_filters::{FilterField, apply_filters, clauses_from_query, text_column};
 use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-    respond_create_modal_done_fk, respond_edit_modal_done,
+    path_and_query, respond_create_modal_done_fk, respond_edit_modal_done,
 };
 
 use crate::forms::{PasswordForm, UserForm};
@@ -69,38 +67,6 @@ fn user_select_fields() -> Vec<FilterField> {
         text_column("name", "Name", user::Column::Name),
         text_column("email", "Email", user::Column::Email),
     ]
-}
-
-/// Picker typeahead still submits `Name`. Indexed `filter.*` clauses win when present.
-fn clauses_from_query(query: &str, typeahead_field: Option<&str>) -> Vec<FilterClause> {
-    let mut clauses = parse_list_filters(query);
-    if !clauses.is_empty() {
-        return clauses;
-    }
-    let Some(field) = typeahead_field else {
-        return clauses;
-    };
-    let Some(name) = UrlencodedFields::parse(query.as_bytes())
-        .ok()
-        .and_then(|fields| fields.get_first("Name").map(str::to_string))
-        .filter(|name| !name.trim().is_empty())
-    else {
-        return clauses;
-    };
-    clauses.push(FilterClause {
-        index: 0,
-        join: JoinOp::And,
-        field: field.to_string(),
-        op: CmpOp::Eq,
-        values: vec![name.trim().to_string()],
-    });
-    clauses
-}
-
-fn path_and_query(uri: &Uri) -> String {
-    uri.path_and_query()
-        .map(|pq| pq.as_str().to_string())
-        .unwrap_or_else(|| uri.path().to_string())
 }
 
 fn format_last_login(ctx: &crate::state::AuthContext, at: Option<chrono::DateTime<Utc>>) -> String {
@@ -257,7 +223,7 @@ pub async fn list(
         page_size: q.page_size.get(),
         show_last_login,
     };
-    if htmx.targets::<UserTableKey>() {
+    if htmx.targets(USER_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -308,7 +274,7 @@ pub(crate) async fn render_user_select(
         current_user_name: viewer_name.to_string(),
         page_size: q.page_size.get(),
     };
-    respond_picker_select::<UserSelectTableKey, UserSelectModalKey, _>(htmx, &page)
+    respond_picker_select(htmx, USER_SELECT_TABLE, USER_SELECT_MODAL, &page)
 }
 
 /// HTTP handler: `select`.
@@ -439,8 +405,9 @@ pub async fn create_post(
     )
     .await
     {
-        Ok(user) => respond_create_modal_done_fk::<UserCreateModalKey>(
+        Ok(user) => respond_create_modal_done_fk(
             &htmx,
+            USER_CREATE_MODAL,
             &q.refresh_table(),
             &UsersDetailRouteTag::new(user.id).url(),
             user.id,
@@ -547,7 +514,7 @@ pub async fn edit_post(
     am.updated_at = Set(Some(Utc::now()));
     match am.update(&state.db).await {
         Ok(_) => {
-            respond_edit_modal_done::<UserEditModalKey>(&htmx, &UsersDetailRouteTag::new(id).url())
+            respond_edit_modal_done(&htmx, USER_EDIT_MODAL, &UsersDetailRouteTag::new(id).url())
         }
         Err(e) => {
             let page = UserEditModalPage {
@@ -573,7 +540,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: UserDeleteModalKey::ID.to_string(),
+        modal_uid: USER_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this user?".into(),
         form_name: q
             .name
@@ -598,7 +565,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete user");
             let page = ConfirmDeletePage {
-                modal_uid: UserDeleteModalKey::ID.to_string(),
+                modal_uid: USER_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this user?".into(),
                 form_name: "p_users.UserDeleteForm".into(),
                 id,

@@ -1,3 +1,4 @@
+use crate::create_modals::LEAD_TAG_CREATE;
 use frunk::Generic;
 use maud::{Markup, html};
 
@@ -39,11 +40,10 @@ use super::forms::{
     LeadTagFormField, LeadUpdateForm, LeadUpdateFormField, LeadUpdateQuickForm,
 };
 use super::keys::{
-    LEAD_UPDATE_SAVED_EVENT, LeadConvertModalKey, LeadCreateModalKey, LeadDeleteModalKey,
-    LeadEditModalKey, LeadFailModalKey, LeadHubTableKey, LeadTagCreateModalKey,
-    LeadTagDeleteModalKey, LeadTagEditModalKey, LeadTagLeadsTableKey, LeadTagSelectModalKey,
-    LeadTagSelectTableKey, LeadTagTableKey, LeadUpdateDeleteModalKey, LeadUpdateEditModalKey,
-    LeadUpdatesKey,
+    LEAD_CONVERT_MODAL, LEAD_CREATE_MODAL, LEAD_DELETE_MODAL, LEAD_EDIT_MODAL, LEAD_FAIL_MODAL,
+    LEAD_HUB_TABLE, LEAD_TAG_CREATE_MODAL, LEAD_TAG_DELETE_MODAL, LEAD_TAG_EDIT_MODAL,
+    LEAD_TAG_LEADS_TABLE, LEAD_TAG_SELECT_MODAL, LEAD_TAG_SELECT_TABLE, LEAD_TAG_TABLE,
+    LEAD_UPDATE_DELETE_MODAL, LEAD_UPDATE_EDIT_MODAL, LEAD_UPDATE_SAVED_EVENT, LEAD_UPDATES,
 };
 use super::routes::{
     ConvertedLeadReactivatePostRouteTag, FailedLeadReactivatePostRouteTag, LeadConvertGetRouteTag,
@@ -87,7 +87,8 @@ fn scaffold_pane(
     })
 }
 
-fn filtered_data_table<K: SwapKey>(
+fn filtered_data_table(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -96,12 +97,13 @@ fn filtered_data_table<K: SwapKey>(
     refresh_url: &str,
     errors: &[FilterRowError],
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -122,7 +124,7 @@ fn filtered_data_table<K: SwapKey>(
         actions
     };
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         subtitle: "",
         classes: "w-full",
@@ -289,7 +291,8 @@ pub fn crm_menu(active: &str) -> Markup {
     })
 }
 
-fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, true);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -303,15 +306,17 @@ fn render_pagination<K: SwapKey>(path_and_query: &str, number: u32, num_pages: u
         .collect();
     table_pagination(TablePagination {
         pages: &pages,
-        hx_target: K::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
-fn render_picker_pagination<M: SwapKey>(
+fn render_picker_pagination(
+    key: SwapKey,
     path_and_query: &str,
     number: u32,
     num_pages: u32,
 ) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, false);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -325,7 +330,7 @@ fn render_picker_pagination<M: SwapKey>(
         .collect();
     table_pagination_picker(TablePagination {
         pages: &pages,
-        hx_target: M::SELECTOR,
+        hx_target: &hx_target,
     })
 }
 
@@ -359,7 +364,8 @@ fn tab_nav_link(href: &str, active: bool, label: &str) -> Markup {
     }
 }
 
-fn render_leads_data_table<K: SwapKey>(
+fn render_leads_data_table(
+    key: SwapKey,
     title: &str,
     leads: &ObjectList<LeadRow>,
     sort: &str,
@@ -438,8 +444,9 @@ fn render_leads_data_table<K: SwapKey>(
             children: Vec::new(),
         })
         .collect();
-    let pagination = render_pagination::<K>(path_and_query, leads.number, leads.num_pages);
-    filtered_data_table::<K>(
+    let pagination = render_pagination(key, path_and_query, leads.number, leads.num_pages);
+    filtered_data_table(
+        key,
         title,
         actions,
         &headers,
@@ -525,7 +532,7 @@ impl LeadHubPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<LeadHubTableKey, LeadDefaultRouteTag>(
+                    attrs: form_hx_get_route(
                         LeadDefaultRouteTag,
                     ),
                     apply_label: "Apply",
@@ -546,14 +553,15 @@ impl LeadHubPage {
                     name: "p_crm.LeadCreateForm",
                     href: &LeadCreateGetRouteTag.url(),
                     form_post_url: &LeadCreateGetRouteTag.path(),
-                    modal_uid: LeadCreateModalKey::ID,
+                    modal_uid: LEAD_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
                 }))
             };
         }
-        render_leads_data_table::<LeadHubTableKey>(
+        render_leads_data_table(
+            LEAD_HUB_TABLE,
             "Leads",
             &self.leads,
             &self.sort,
@@ -624,7 +632,7 @@ impl LeadDetailPage {
                     name: "p_crm.LeadConvertForm",
                     href: &LeadConvertGetRouteTag::new(self.id).url(),
                     form_post_url: &LeadConvertGetRouteTag::new(self.id).path(),
-                    modal_uid: LeadConvertModalKey::ID,
+                    modal_uid: LEAD_CONVERT_MODAL.id(),
                     label: "Convert",
                     classes: "btn-primary",
                     ..Default::default()
@@ -633,7 +641,7 @@ impl LeadDetailPage {
                     name: "p_crm.LeadFailForm",
                     href: &LeadFailGetRouteTag::new(self.id).url(),
                     form_post_url: &LeadFailGetRouteTag::new(self.id).path(),
-                    modal_uid: LeadFailModalKey::ID,
+                    modal_uid: LEAD_FAIL_MODAL.id(),
                     label: "Mark failed",
                     classes: "btn-outline",
                     ..Default::default()
@@ -642,7 +650,7 @@ impl LeadDetailPage {
                     name: "p_crm.LeadEditForm",
                     href: &LeadEditGetRouteTag::new(self.id).url(),
                     form_post_url: &LeadEditPostRouteTag::new(self.id).path(),
-                    modal_uid: LeadEditModalKey::ID,
+                    modal_uid: LEAD_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -751,12 +759,13 @@ impl RenderTemplate for LeadEditModalPage {
                 ))
             };
         }
-        modal_keyed::<LeadEditModalKey>(
+        modal_keyed(
+            LEAD_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit lead" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<LeadEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(LEAD_EDIT_MODAL, &modal_edit_post_url(
                         LeadEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -770,7 +779,7 @@ impl RenderTemplate for LeadEditModalPage {
                             name: "p_crm.LeadDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: LeadDeleteModalKey::ID,
+                            modal_uid: LEAD_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -799,12 +808,13 @@ pub struct LeadCreateModalPage {
 
 impl RenderTemplate for LeadCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<LeadCreateModalKey>(
+        modal_keyed(
+            LEAD_CREATE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New lead" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<LeadCreateModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(LEAD_CREATE_MODAL, &modal_create_post_url(
                         LeadCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
@@ -840,7 +850,8 @@ pub struct ConvertLeadModalPage {
 
 impl RenderTemplate for ConvertLeadModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<LeadConvertModalKey>(
+        modal_keyed(
+            LEAD_CONVERT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Convert lead" }
@@ -848,7 +859,7 @@ impl RenderTemplate for ConvertLeadModalPage {
                     "Convert this lead using its existing company and contact."
                 }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<LeadConvertModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(LEAD_CONVERT_MODAL, &modal_create_post_url(
                         LeadConvertPostRouteTag::new(self.lead_id),
                         &self.form_name,
                         &self.refresh_table,
@@ -876,12 +887,13 @@ pub struct FailLeadModalPage {
 
 impl RenderTemplate for FailLeadModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<LeadFailModalKey>(
+        modal_keyed(
+            LEAD_FAIL_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Mark lead failed" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<LeadFailModalKey>(&modal_create_post_url(
+                    attrs: form_hx_post_url(LEAD_FAIL_MODAL, &modal_create_post_url(
                         LeadFailPostRouteTag::new(self.lead_id),
                         &self.form_name,
                         &self.refresh_table,
@@ -935,7 +947,7 @@ impl LeadConvertDetailPage {
                     name: "p_crm.LeadFailForm",
                     href: &LeadFailGetRouteTag::new(self.lead_id).url(),
                     form_post_url: &LeadFailGetRouteTag::new(self.lead_id).path(),
-                    modal_uid: LeadFailModalKey::ID,
+                    modal_uid: LEAD_FAIL_MODAL.id(),
                     label: "Mark failed",
                     classes: "btn-outline",
                     ..Default::default()
@@ -944,7 +956,7 @@ impl LeadConvertDetailPage {
                     name: "p_crm.LeadEditForm",
                     href: &LeadEditGetRouteTag::new(self.lead_id).url(),
                     form_post_url: &LeadEditPostRouteTag::new(self.lead_id).path(),
-                    modal_uid: LeadEditModalKey::ID,
+                    modal_uid: LEAD_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -1049,7 +1061,7 @@ impl LeadFailDetailPage {
                     name: "p_crm.LeadEditForm",
                     href: &LeadEditGetRouteTag::new(self.lead_id).url(),
                     form_post_url: &LeadEditPostRouteTag::new(self.lead_id).path(),
-                    modal_uid: LeadEditModalKey::ID,
+                    modal_uid: LEAD_EDIT_MODAL.id(),
                     label: "Edit",
                     classes: "btn-outline",
                     ..Default::default()
@@ -1156,12 +1168,13 @@ pub struct LeadTagCreateModalPage {
 
 impl RenderTemplate for LeadTagCreateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        modal_keyed::<LeadTagCreateModalKey>(
+        modal_keyed(
+            LEAD_TAG_CREATE_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "New lead tag" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<LeadTagCreateModalKey>(&modal_create_post_query(
+                    attrs: form_hx_post_url(LEAD_TAG_CREATE_MODAL, &modal_create_post_query(
                         LeadTagCreatePostRouteTag,
                         &self.form_name,
                         &self.refresh_table,
@@ -1194,7 +1207,7 @@ pub struct LeadTagSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<LeadTagSelectTableKey, LeadTagSelectModalKey> for LeadTagSelectPage {
+impl RenderPickerSelect for LeadTagSelectPage {
     fn render_table(&self) -> Markup {
         let target = if self.target_input.is_empty() {
             "Tags"
@@ -1237,11 +1250,7 @@ impl RenderPickerSelect<LeadTagSelectTableKey, LeadTagSelectModalKey> for LeadTa
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_picker_route::<
-                        LeadTagSelectTableKey,
-                        LeadTagSelectModalKey,
-                        LeadTagSelectRouteTag,
-                    >(LeadTagSelectRouteTag)
+                    attrs: form_hx_get_picker_route(LeadTagSelectRouteTag)
                     .set("hx-push-url", "false"),
                     apply_label: "Apply",
                     extra: html! {
@@ -1256,19 +1265,21 @@ impl RenderPickerSelect<LeadTagSelectTableKey, LeadTagSelectModalKey> for LeadTa
         ) {
             actions = html! {
                 (actions)
-                (picker_create_button::<LeadTagCreateModalKey>(
+                (picker_create_button(LEAD_TAG_CREATE,
                     &self.target_input,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        filtered_data_table::<LeadTagSelectTableKey>(
+        filtered_data_table(
+            LEAD_TAG_SELECT_TABLE,
             "Select tags",
             actions,
             &headers,
             &rows,
-            render_picker_pagination::<LeadTagSelectModalKey>(
+            render_picker_pagination(
+                LEAD_TAG_SELECT_MODAL,
                 &self.path_and_query,
                 self.tags.number,
                 self.tags.num_pages,
@@ -1281,7 +1292,7 @@ impl RenderPickerSelect<LeadTagSelectTableKey, LeadTagSelectModalKey> for LeadTa
 
 impl RenderTemplate for LeadTagSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(LEAD_TAG_SELECT_MODAL).into_inner()
     }
 }
 
@@ -1335,7 +1346,7 @@ impl LeadTagListPage {
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route::<LeadTagTableKey, LeadTagDefaultRouteTag>(
+                    attrs: form_hx_get_route(
                         LeadTagDefaultRouteTag,
                     ),
                     apply_label: "Apply",
@@ -1349,18 +1360,20 @@ impl LeadTagListPage {
         ) {
             actions = html! {
                 (actions)
-                (table_create_button::<LeadTagTableKey, LeadTagCreateModalKey>(
+                (table_create_button(LEAD_TAG_TABLE, LEAD_TAG_CREATE,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        let pagination = render_pagination::<LeadTagTableKey>(
+        let pagination = render_pagination(
+            LEAD_TAG_TABLE,
             &self.path_and_query,
             self.tags.number,
             self.tags.num_pages,
         );
-        filtered_data_table::<LeadTagTableKey>(
+        filtered_data_table(
+            LEAD_TAG_TABLE,
             "Tags",
             actions,
             &headers,
@@ -1414,7 +1427,8 @@ impl LeadTagDetailPage {
     }
 
     pub fn render_leads_table(&self) -> Markup {
-        render_leads_data_table::<LeadTagLeadsTableKey>(
+        render_leads_data_table(
+            LEAD_TAG_LEADS_TABLE,
             "Leads",
             &self.leads,
             &self.sort,
@@ -1441,7 +1455,7 @@ impl LeadTagDetailPage {
                                 name: "p_crm.LeadTagEditForm",
                                 href: &LeadTagEditGetRouteTag::new(self.id).url(),
                                 form_post_url: &LeadTagEditPostRouteTag::new(self.id).path(),
-                                modal_uid: LeadTagEditModalKey::ID,
+                                modal_uid: LEAD_TAG_EDIT_MODAL.id(),
                                 label: "Edit",
                                 classes: "btn-outline",
                                 ..Default::default()
@@ -1498,12 +1512,13 @@ pub struct LeadTagEditModalPage {
 impl RenderTemplate for LeadTagEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = LeadTagDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<LeadTagEditModalKey>(
+        modal_keyed(
+            LEAD_TAG_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit tag" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<LeadTagEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(LEAD_TAG_EDIT_MODAL, &modal_edit_post_url(
                         LeadTagEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -1521,7 +1536,7 @@ impl RenderTemplate for LeadTagEditModalPage {
                             name: "p_crm.LeadTagDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: LeadTagDeleteModalKey::ID,
+                            modal_uid: LEAD_TAG_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -1561,10 +1576,9 @@ impl LeadUpdatesPanel {
             id = self.lead_id,
             default_dt = default_dt,
         );
-        let attrs =
-            form_hx_post_route::<LeadUpdatesKey, _>(LeadUpdateAddPostRouteTag::new(self.lead_id))
-                .set("x-data", x_data)
-                .set(format!("@{LEAD_UPDATE_SAVED_EVENT}"), "clearDraft()");
+        let attrs = form_hx_post_route(LeadUpdateAddPostRouteTag::new(self.lead_id))
+            .set("x-data", x_data)
+            .set(format!("@{LEAD_UPDATE_SAVED_EVENT}"), "clearDraft()");
         form(
             &CsrfToken::current(),
             FormOpts {
@@ -1585,7 +1599,7 @@ impl LeadUpdatesPanel {
 
     pub fn render_list(&self) -> Markup {
         html! {
-            div id=(LeadUpdatesKey::ID) class="max-h-96 overflow-y-auto flex flex-col divide-y divide-base-300 border border-base-300 rounded-box" {
+            div id=(LEAD_UPDATES.id()) class="max-h-96 overflow-y-auto flex flex-col divide-y divide-base-300 border border-base-300 rounded-box" {
                 @if self.items.is_empty() {
                     div class="text-sm opacity-60 px-3 py-4 text-center" { "No updates" }
                 } @else {
@@ -1601,7 +1615,7 @@ impl LeadUpdatesPanel {
                                         name: "p_crm.LeadUpdateEditForm",
                                         href: &LeadUpdateEditGetRouteTag::new(item.id).url(),
                                         form_post_url: &LeadUpdateEditPostRouteTag::new(item.id).path(),
-                                        modal_uid: LeadUpdateEditModalKey::ID,
+                                        modal_uid: LEAD_UPDATE_EDIT_MODAL.id(),
                                         label: "Edit",
                                         classes: "btn-ghost btn-xs",
                                         ..Default::default()
@@ -1610,7 +1624,7 @@ impl LeadUpdatesPanel {
                                         name: "p_crm.LeadUpdateDeleteForm",
                                         href: &LeadUpdateDeleteGetRouteTag::new(item.id).url(),
                                         form_post_url: &LeadUpdateDeleteGetRouteTag::new(item.id).url(),
-                                        modal_uid: LeadUpdateDeleteModalKey::ID,
+                                        modal_uid: LEAD_UPDATE_DELETE_MODAL.id(),
                                         label: "Delete",
                                         classes: "btn-ghost btn-xs text-error",
                                         ..Default::default()
@@ -1666,7 +1680,7 @@ impl LeadUpdateDetailPage {
                                 name: "p_crm.LeadUpdateEditForm",
                                 href: &LeadUpdateEditGetRouteTag::new(self.id).url(),
                                 form_post_url: &LeadUpdateEditPostRouteTag::new(self.id).path(),
-                                modal_uid: LeadUpdateEditModalKey::ID,
+                                modal_uid: LEAD_UPDATE_EDIT_MODAL.id(),
                                 label: "Edit",
                                 classes: "btn-outline",
                                 ..Default::default()
@@ -1723,12 +1737,13 @@ impl RenderTemplate for LeadUpdateEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = LeadUpdateDeleteGetRouteTag::new(self.id).url();
         let created_by_id_s = fk_value(self.created_by_id);
-        modal_keyed::<LeadUpdateEditModalKey>(
+        modal_keyed(
+            LEAD_UPDATE_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit update" }
                 (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url::<LeadUpdateEditModalKey>(&modal_edit_post_url(
+                    attrs: form_hx_post_url(LEAD_UPDATE_EDIT_MODAL, &modal_edit_post_url(
                         LeadUpdateEditPostRouteTag::new(self.id),
                         &self.form_name,
                     )),
@@ -1748,7 +1763,7 @@ impl RenderTemplate for LeadUpdateEditModalPage {
                             name: "p_crm.LeadUpdateDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: LeadUpdateDeleteModalKey::ID,
+                            modal_uid: LEAD_UPDATE_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -1772,18 +1787,18 @@ pub struct ConfirmDeletePage {
 impl RenderTemplate for ConfirmDeletePage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let target = if self.modal_uid.is_empty() {
-            format!("#{}", LeadDeleteModalKey::ID)
+            format!("#{}", LEAD_DELETE_MODAL.id())
         } else {
             format!("#{}", self.modal_uid)
         };
         let uid = if self.modal_uid.is_empty() {
-            LeadDeleteModalKey::ID
+            LEAD_DELETE_MODAL.id()
         } else {
             self.modal_uid.as_str()
         };
-        let post_url = if self.modal_uid == LeadTagDeleteModalKey::ID {
+        let post_url = if self.modal_uid == LEAD_TAG_DELETE_MODAL.id() {
             LeadTagDeletePostRouteTag::new(self.id).url()
-        } else if self.modal_uid == LeadUpdateDeleteModalKey::ID {
+        } else if self.modal_uid == LEAD_UPDATE_DELETE_MODAL.id() {
             LeadUpdateDeletePostRouteTag::new(self.id).url()
         } else {
             LeadDeletePostRouteTag::new(self.id).url()

@@ -632,9 +632,7 @@ fn fk_label(
             );
             join_parts(&[account.as_str(), field(sheets, index, table, id, "amount")])
         }
-        "draft_invoice_lines"
-        | "posted_invoice_lines"
-        | "cancelled_invoice_lines" => field(
+        "draft_invoice_lines" | "posted_invoice_lines" | "cancelled_invoice_lines" => field(
             sheets,
             index,
             "products",
@@ -1774,10 +1772,7 @@ mod tests {
             xml.contains("name=\"posted_invoices\""),
             "posted invoices sheet missing"
         );
-        assert!(
-            xml.contains("name=\"customers\""),
-            "customer sheet missing"
-        );
+        assert!(xml.contains("name=\"customers\""), "customer sheet missing");
         assert!(
             xml.contains("name=\"posted_invoice_lines\""),
             "invoice lines stay on their own sheet"

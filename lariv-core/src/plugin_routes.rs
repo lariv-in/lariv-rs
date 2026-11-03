@@ -9,7 +9,7 @@
 //!     ];
 //!     routes: [
 //!         get VNodeDeleteGetRouteTag, "/filesystem/{id}/delete", handlers::nodes::delete_get, modal;
-//!         get VNodeListRouteTag, "/filesystem", handlers::nodes::list, fragment(VNodeTableKey);
+//!         get VNodeListRouteTag, "/filesystem", handlers::nodes::list, fragment(V_NODE_TABLE);
 //!         get BlogBySlugRouteTag, "/blog/{slug}", handlers::..., param slug: String;
 //!     ]
 //! }

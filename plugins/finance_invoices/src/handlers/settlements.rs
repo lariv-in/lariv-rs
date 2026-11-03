@@ -16,8 +16,7 @@ use crate::{
     logic::{
         draft_payment_term::posted_payment_term_display_rows,
         invoice_line_editor::{
-            invoice_customer_name, invoice_header_tax_labels,
-            posted_invoice_line_display_rows,
+            invoice_customer_name, invoice_header_tax_labels, posted_invoice_line_display_rows,
         },
         load_invoice_date_formats, optional_display, posted_invoice_can_accept_payment,
         tax_assoc::load_posted_invoice_tax_ids,

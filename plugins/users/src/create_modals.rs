@@ -1,24 +1,26 @@
-//! Typed [`CreateModal`] / [`PickerModal`] wiring for user swap keys.
+//! Typed [`CreateModal`] wiring for user swap keys.
 
-use super::keys::{UserCreateModalKey, UserSelectModalKey, UserSelectTableKey};
-use super::routes::{UsersCreateGetRouteTag, UsersCreatePostRouteTag};
+use lariv_core::web::CreateModal;
 
-lariv_core::impl_create_modal!(
-    UserCreateModalKey,
-    UsersCreateGetRouteTag,
-    UsersCreatePostRouteTag,
-    "p_users.UserCreateForm"
-);
-lariv_core::impl_picker_modal!(UserSelectModalKey, UserSelectTableKey);
+use crate::keys::USER_CREATE_MODAL;
+use crate::routes::{UsersCreateGetRouteTag, UsersCreatePostRouteTag};
+
+pub const USER_CREATE: CreateModal<UsersCreateGetRouteTag, UsersCreatePostRouteTag> = CreateModal {
+    key: USER_CREATE_MODAL,
+    form_name: "p_users.UserCreateForm",
+    get: UsersCreateGetRouteTag,
+    post: UsersCreatePostRouteTag,
+};
 
 #[cfg(test)]
 mod tests {
-    use crate::keys::UserCreateModalKey;
+    use super::USER_CREATE;
     use lariv_core::picker::picker_create_button;
 
     #[test]
     fn user_picker_create_button_embeds_target_input() {
-        let html = picker_create_button::<UserCreateModalKey>(
+        let html = picker_create_button(
+            USER_CREATE,
             "UserID",
             Some("plus"),
             "btn-square btn-outline btn-sm",

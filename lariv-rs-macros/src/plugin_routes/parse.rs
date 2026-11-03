@@ -2,7 +2,7 @@
 
 use proc_macro2::Span;
 use syn::{
-    Ident, Path, Token, Type, bracketed, parse::Parse, parse::ParseStream, spanned::Spanned,
+    Expr, Ident, Path, Token, Type, bracketed, parse::Parse, parse::ParseStream, spanned::Spanned,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,8 +15,8 @@ pub enum HttpMethod {
 pub enum ResponseKind {
     Pane,
     Modal,
-    Fragment(Type),
-    FkSelect(Type, Type),
+    Fragment(Expr),
+    FkSelect(Expr, Expr),
     File,
     Redirect,
     Generation,
@@ -212,7 +212,7 @@ fn parse_route_line(input: ParseStream<'_>, prefix: Option<&str>) -> syn::Result
         (true, None) => {
             return Err(syn::Error::new(
                 handler.span(),
-                "bare route must specify a response kind: file, modal, redirect, generation, raw, fragment(SwapKey), fk_select(TableKey, ModalKey), or multi_select(TableKey, ModalKey)",
+                "bare route must specify a response kind: file, modal, redirect, generation, raw, fragment(SWAP_KEY), fk_select(TABLE, MODAL), or multi_select(TABLE, MODAL)",
             ));
         }
         (false, None) => ResponseKind::Pane,
@@ -285,19 +285,19 @@ fn parse_response(input: ParseStream<'_>, _bare: bool) -> syn::Result<ResponseKi
     if ident == "fragment" {
         let frag;
         syn::parenthesized!(frag in input);
-        let ty: Type = frag.parse()?;
-        return Ok(ResponseKind::Fragment(ty));
+        let key: Expr = frag.parse()?;
+        return Ok(ResponseKind::Fragment(key));
     }
     if ident == "fk_select" || ident == "multi_select" {
         let args;
         syn::parenthesized!(args in input);
-        let table: Type = args.parse()?;
+        let table: Expr = args.parse()?;
         args.parse::<Token![,]>()?;
-        let modal: Type = args.parse()?;
+        let modal: Expr = args.parse()?;
         return Ok(ResponseKind::FkSelect(table, modal));
     }
     Err(syn::Error::new(
         ident.span(),
-        "expected modal, file, redirect, generation, raw, fragment(Type), fk_select(TableKey, ModalKey), or multi_select(TableKey, ModalKey)",
+        "expected modal, file, redirect, generation, raw, fragment(SWAP_KEY), fk_select(TABLE, MODAL), or multi_select(TABLE, MODAL)",
     ))
 }

@@ -3,12 +3,11 @@ use maud::{Markup, html};
 
 use lariv_core::components::{
     ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldLink, FieldText, FilterClauseView,
-    FormOpts, ListFilterBuilder, ObjectList, ShellChrome, SwapKey, TableButtonFilter,
-    TableColumnHeader, TableRow, breadcrumbs, button_modal_form, button_submit, column_sort_url,
-    container_column, container_row, detail, detail_header, field_link, field_text, form,
-    form_hx_get_picker_route, form_hx_get_route, form_hx_post_url, label, list_filter_builder,
-    modal_keyed, row_attr_navigate_route, row_attr_select_extra, sort_indicator,
-    table_button_filter,
+    FormOpts, ListFilterBuilder, ObjectList, ShellChrome, TableButtonFilter, TableColumnHeader,
+    TableRow, breadcrumbs, button_modal_form, button_submit, column_sort_url, container_column,
+    container_row, detail, detail_header, field_link, field_text, form, form_hx_get_picker_route,
+    form_hx_get_route, form_hx_post_url, label, list_filter_builder, modal_keyed,
+    row_attr_navigate_route, row_attr_select_extra, sort_indicator, table_button_filter,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::list_filters::{FilterField, FilterRowError};
@@ -20,10 +19,10 @@ use crate::{
     accounting_detail_menu::{DetailMenuNavItem, detail_sidebar_menu},
     forms::{CustomSourceDocTemplateForm, CustomSourceDocTemplateFormField},
     keys::{
-        CustomSourceDocIndexCreateModalKey, CustomSourceDocTemplateCreateModalKey,
-        CustomSourceDocTemplateDeleteModalKey, CustomSourceDocTemplateEditModalKey,
-        CustomSourceDocTemplateSelectModalKey, CustomSourceDocTemplateSelectTableKey,
-        CustomSourceDocTemplateTableKey,
+        CUSTOM_SOURCE_DOC_INDEX_CREATE_MODAL, CUSTOM_SOURCE_DOC_TEMPLATE_CREATE_MODAL,
+        CUSTOM_SOURCE_DOC_TEMPLATE_DELETE_MODAL, CUSTOM_SOURCE_DOC_TEMPLATE_EDIT_MODAL,
+        CUSTOM_SOURCE_DOC_TEMPLATE_SELECT_MODAL, CUSTOM_SOURCE_DOC_TEMPLATE_SELECT_TABLE,
+        CUSTOM_SOURCE_DOC_TEMPLATE_TABLE,
     },
     routes::{
         CustomSourceDocIndexCreateGetRouteTag, CustomSourceDocIndexCreatePostRouteTag,
@@ -103,10 +102,7 @@ fn list_filter_form(page: &CustomSourceDocTemplateListPage) -> Markup {
         rows: &page.filters,
         page_size: page.page_size,
         sort: &page.sort,
-        attrs: form_hx_get_route::<
-            CustomSourceDocTemplateTableKey,
-            CustomSourceDocTemplateListRouteTag,
-        >(CustomSourceDocTemplateListRouteTag),
+        attrs: form_hx_get_route(CustomSourceDocTemplateListRouteTag),
         apply_label: "Apply Filters",
         extra: html! {},
     })
@@ -193,19 +189,21 @@ impl CustomSourceDocTemplateListPage {
                     name: "p_finance_accounts.CustomSourceDocTemplateCreateForm",
                     href: &CustomSourceDocTemplateCreateGetRouteTag.url(),
                     form_post_url: &CustomSourceDocTemplateCreateGetRouteTag.path(),
-                    modal_uid: CustomSourceDocTemplateCreateModalKey::ID,
+                    modal_uid: CUSTOM_SOURCE_DOC_TEMPLATE_CREATE_MODAL.id(),
                     icon_name: Some("plus"),
                     classes: "btn-square btn-outline btn-sm",
                     ..Default::default()
                 }))
             };
         }
-        let pagination = render_pagination::<CustomSourceDocTemplateTableKey>(
+        let pagination = render_pagination(
+            CUSTOM_SOURCE_DOC_TEMPLATE_TABLE,
             &self.path_and_query,
             self.templates.number,
             self.templates.num_pages,
         );
-        super::data_table_with_filter_errors::<CustomSourceDocTemplateTableKey>(
+        super::data_table_with_filter_errors(
+            CUSTOM_SOURCE_DOC_TEMPLATE_TABLE,
             "Transaction Templates",
             actions,
             &headers,
@@ -272,7 +270,7 @@ impl CustomSourceDocTemplateDetailPage {
                 name: "p_finance_accounts.CustomSourceDocIndexCreateForm",
                 href: &create_url,
                 form_post_url: &create_post,
-                modal_uid: CustomSourceDocIndexCreateModalKey::ID,
+                modal_uid: CUSTOM_SOURCE_DOC_INDEX_CREATE_MODAL.id(),
                 label: "New transaction",
                 classes: "btn-primary",
                 ..Default::default()
@@ -281,7 +279,7 @@ impl CustomSourceDocTemplateDetailPage {
                 name: "p_finance_accounts.CustomSourceDocTemplateEditForm",
                 href: &edit_url,
                 form_post_url: &edit_post,
-                modal_uid: CustomSourceDocTemplateEditModalKey::ID,
+                modal_uid: CUSTOM_SOURCE_DOC_TEMPLATE_EDIT_MODAL.id(),
                 label: "Edit",
                 classes: "btn-outline",
                 ..Default::default()
@@ -369,9 +367,7 @@ pub struct CustomSourceDocTemplateSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<CustomSourceDocTemplateSelectTableKey, CustomSourceDocTemplateSelectModalKey>
-    for CustomSourceDocTemplateSelectPage
-{
+impl RenderPickerSelect for CustomSourceDocTemplateSelectPage {
     fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
@@ -426,11 +422,7 @@ impl RenderPickerSelect<CustomSourceDocTemplateSelectTableKey, CustomSourceDocTe
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_picker_route::<
-                        CustomSourceDocTemplateSelectTableKey,
-                        CustomSourceDocTemplateSelectModalKey,
-                        CustomSourceDocTemplateSelectRouteTag,
-                    >(CustomSourceDocTemplateSelectRouteTag),
+                    attrs: form_hx_get_picker_route(CustomSourceDocTemplateSelectRouteTag),
                     apply_label: "Apply",
                     extra: html! {
                         input type="hidden" name="target_input" value=(target_input) {}
@@ -439,12 +431,14 @@ impl RenderPickerSelect<CustomSourceDocTemplateSelectTableKey, CustomSourceDocTe
                 ..Default::default()
             }))
         };
-        let pagination = render_picker_pagination::<CustomSourceDocTemplateSelectModalKey>(
+        let pagination = render_picker_pagination(
+            CUSTOM_SOURCE_DOC_TEMPLATE_SELECT_MODAL,
             &self.path_and_query,
             self.templates.number,
             self.templates.num_pages,
         );
-        super::data_table_with_filter_errors::<CustomSourceDocTemplateSelectTableKey>(
+        super::data_table_with_filter_errors(
+            CUSTOM_SOURCE_DOC_TEMPLATE_SELECT_TABLE,
             "Select Transaction Template",
             actions,
             &headers,
@@ -458,7 +452,8 @@ impl RenderPickerSelect<CustomSourceDocTemplateSelectTableKey, CustomSourceDocTe
 
 impl RenderTemplate for CustomSourceDocTemplateSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(CUSTOM_SOURCE_DOC_TEMPLATE_SELECT_MODAL)
+            .into_inner()
     }
 }
 
@@ -478,13 +473,14 @@ pub struct CustomSourceDocTemplateEditModalPage {
 impl RenderTemplate for CustomSourceDocTemplateEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = CustomSourceDocTemplateDeleteGetRouteTag::new(self.id).url();
-        modal_keyed::<CustomSourceDocTemplateEditModalKey>(
+        modal_keyed(
+            CUSTOM_SOURCE_DOC_TEMPLATE_EDIT_MODAL,
             &self.form_name,
             html! {
                 h3 class="font-bold text-lg mb-4" { "Edit transaction template" }
                 (form(&CsrfToken::current(), FormOpts {
                     classes: "@container",
-                    attrs: form_hx_post_url::<CustomSourceDocTemplateEditModalKey>(
+                    attrs: form_hx_post_url(CUSTOM_SOURCE_DOC_TEMPLATE_EDIT_MODAL,
                         &modal_edit_post_url(
                             CustomSourceDocTemplateEditPostRouteTag::new(self.id),
                             &self.form_name,
@@ -517,7 +513,7 @@ impl RenderTemplate for CustomSourceDocTemplateEditModalPage {
                             name: "p_finance_accounts.CustomSourceDocTemplateDeleteForm",
                             href: &delete_url,
                             form_post_url: &delete_url,
-                            modal_uid: CustomSourceDocTemplateDeleteModalKey::ID,
+                            modal_uid: CUSTOM_SOURCE_DOC_TEMPLATE_DELETE_MODAL.id(),
                             classes: "btn-error",
                             ..Default::default()
                         }))
@@ -549,7 +545,8 @@ impl RenderTemplate for CustomSourceDocTemplateCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed::<CustomSourceDocTemplateCreateModalKey>(
+        modal_keyed(
+            CUSTOM_SOURCE_DOC_TEMPLATE_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
@@ -557,7 +554,8 @@ impl RenderTemplate for CustomSourceDocTemplateCreateModalPage {
                     title: "Create Transaction Template",
                     subtitle: "Define variables and journal entry lines",
                     classes: "@container",
-                    attrs: form_hx_post_url::<CustomSourceDocTemplateCreateModalKey>(
+                    attrs: form_hx_post_url(
+                        CUSTOM_SOURCE_DOC_TEMPLATE_CREATE_MODAL,
                         &modal_create_post_url(
                             CustomSourceDocTemplateCreatePostRouteTag,
                             form_name,

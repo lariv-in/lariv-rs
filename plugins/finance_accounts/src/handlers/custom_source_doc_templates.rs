@@ -10,7 +10,7 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, SwapKey};
+use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
@@ -27,9 +27,9 @@ use crate::{
     handlers::ModalNameQuery,
     journal_template,
     keys::{
-        CustomSourceDocTemplateCreateModalKey, CustomSourceDocTemplateDeleteModalKey,
-        CustomSourceDocTemplateEditModalKey, CustomSourceDocTemplateSelectModalKey,
-        CustomSourceDocTemplateSelectTableKey, CustomSourceDocTemplateTableKey,
+        CUSTOM_SOURCE_DOC_TEMPLATE_CREATE_MODAL, CUSTOM_SOURCE_DOC_TEMPLATE_DELETE_MODAL,
+        CUSTOM_SOURCE_DOC_TEMPLATE_EDIT_MODAL, CUSTOM_SOURCE_DOC_TEMPLATE_SELECT_MODAL,
+        CUSTOM_SOURCE_DOC_TEMPLATE_SELECT_TABLE, CUSTOM_SOURCE_DOC_TEMPLATE_TABLE,
     },
     routes::{CustomSourceDocTemplateDetailRouteTag, CustomSourceDocTemplateListRouteTag},
     scope::find_custom_source_doc_template_scoped,
@@ -43,9 +43,7 @@ use crate::{
     variables,
 };
 
-use super::util::{
-    optional_fk, optional_fk_form_value, path_and_query, vnode_display, vnode_link,
-};
+use super::util::{optional_fk, optional_fk_form_value, path_and_query, vnode_display, vnode_link};
 
 #[derive(Debug, Deserialize, Default)]
 pub struct TemplateListQuery {
@@ -117,10 +115,9 @@ fn optional_text(value: &str) -> Option<String> {
 }
 
 fn can_mutate() -> bool {
-    lariv_core::components::role_permitted(
-        &lariv_plugin_users::role_authorization::roles_for::<crate::routes::FinanceAccountsMutate>(
-        ),
-    )
+    lariv_core::components::role_permitted(&lariv_plugin_users::role_authorization::roles_for::<
+        crate::routes::FinanceAccountsMutate,
+    >())
 }
 
 async fn save_from_form(
@@ -194,7 +191,7 @@ pub async fn list(
         page_size: q.page_size.get(),
     };
     let slot_ctx = SlotCtx::from_auth(&ctx);
-    if htmx.targets::<CustomSourceDocTemplateTableKey>() {
+    if htmx.targets(CUSTOM_SOURCE_DOC_TEMPLATE_TABLE) {
         return page.render_table();
     }
     if htmx.wants_main_content() {
@@ -260,8 +257,9 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<CustomSourceDocTemplateForm>,
 ) -> Response {
     match save_from_form(&state.db, &form, None).await {
-        Ok(id) => respond_create_modal_done::<CustomSourceDocTemplateCreateModalKey>(
+        Ok(id) => respond_create_modal_done(
             &htmx,
+            CUSTOM_SOURCE_DOC_TEMPLATE_CREATE_MODAL,
             &q.refresh_table(),
             &CustomSourceDocTemplateDetailRouteTag::new(id).url(),
         ),
@@ -325,8 +323,9 @@ pub async fn edit_post(
         return Redirect::to(&CustomSourceDocTemplateListRouteTag.url()).into_response();
     }
     match save_from_form(&state.db, &form, Some(id)).await {
-        Ok(_) => respond_edit_modal_done::<CustomSourceDocTemplateEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            CUSTOM_SOURCE_DOC_TEMPLATE_EDIT_MODAL,
             &CustomSourceDocTemplateDetailRouteTag::new(id).url(),
         ),
         Err(e) => {
@@ -355,7 +354,7 @@ pub async fn delete_get(
     Path(id): Path<i64>,
 ) -> maud::Markup {
     let page = ConfirmDeletePage {
-        modal_uid: CustomSourceDocTemplateDeleteModalKey::ID.to_string(),
+        modal_uid: CUSTOM_SOURCE_DOC_TEMPLATE_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this transaction template?".into(),
         form_name: q
             .name
@@ -385,7 +384,7 @@ pub async fn delete_post(
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete transaction template");
             let page = ConfirmDeletePage {
-                modal_uid: CustomSourceDocTemplateDeleteModalKey::ID.to_string(),
+                modal_uid: CUSTOM_SOURCE_DOC_TEMPLATE_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this transaction template?".into(),
                 form_name: "p_finance_accounts.CustomSourceDocTemplateDeleteForm".into(),
                 id,
@@ -429,7 +428,10 @@ pub async fn select(
         target_input: q.target_input.unwrap_or_else(|| "TemplateID".into()),
         page_size: q.filter.page_size.get(),
     };
-    respond_picker_select::<CustomSourceDocTemplateSelectTableKey, CustomSourceDocTemplateSelectModalKey, _>(
-        &htmx, &page,
+    respond_picker_select(
+        &htmx,
+        CUSTOM_SOURCE_DOC_TEMPLATE_SELECT_TABLE,
+        CUSTOM_SOURCE_DOC_TEMPLATE_SELECT_MODAL,
+        &page,
     )
 }

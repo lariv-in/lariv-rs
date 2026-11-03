@@ -16,8 +16,9 @@ use lariv_core::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::template::RenderTemplate;
 use lariv_core::web::modal_create_post_query;
 
+use crate::create_modals::CUSTOMER_CREATE;
 use crate::forms::{CustomerForm, CustomerFormField};
-use crate::keys::{CustomerCreateModalKey, CustomerSelectModalKey, CustomerSelectTableKey};
+use crate::keys::{CUSTOMER_CREATE_MODAL, CUSTOMER_SELECT_MODAL, CUSTOMER_SELECT_TABLE};
 use crate::routes::CustomerFkSelectRouteTag;
 
 pub struct CustomerRow {
@@ -36,7 +37,7 @@ pub struct CustomerSelectPage {
     pub page_size: u32,
 }
 
-impl RenderPickerSelect<CustomerSelectTableKey, CustomerSelectModalKey> for CustomerSelectPage {
+impl RenderPickerSelect for CustomerSelectPage {
     fn render_table(&self) -> Markup {
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
@@ -69,11 +70,7 @@ impl RenderPickerSelect<CustomerSelectTableKey, CustomerSelectModalKey> for Cust
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_picker_route::<
-                        CustomerSelectTableKey,
-                        CustomerSelectModalKey,
-                        CustomerFkSelectRouteTag,
-                    >(CustomerFkSelectRouteTag)
+                    attrs: form_hx_get_picker_route(CustomerFkSelectRouteTag)
                     .set("hx-push-url", "false"),
                     apply_label: "Apply",
                     extra: html! {
@@ -88,19 +85,21 @@ impl RenderPickerSelect<CustomerSelectTableKey, CustomerSelectModalKey> for Cust
         ) {
             actions = html! {
                 (actions)
-                (picker_create_button::<CustomerCreateModalKey>(
+                (picker_create_button(CUSTOMER_CREATE,
                     &self.target_input,
                     Some("plus"),
                     "btn-square btn-outline btn-sm",
                 ))
             };
         }
-        filtered_data_table::<CustomerSelectTableKey>(
+        filtered_data_table(
+            CUSTOMER_SELECT_TABLE,
             "Select customer",
             actions,
             &headers,
             &rows,
-            render_picker_pagination::<CustomerSelectModalKey>(
+            render_picker_pagination(
+                CUSTOMER_SELECT_MODAL,
                 &self.path_and_query,
                 self.customers.number,
                 self.customers.num_pages,
@@ -113,7 +112,7 @@ impl RenderPickerSelect<CustomerSelectTableKey, CustomerSelectModalKey> for Cust
 
 impl RenderTemplate for CustomerSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
-        self.render_modal().into_inner()
+        self.render_modal(CUSTOMER_SELECT_MODAL).into_inner()
     }
 }
 
@@ -135,19 +134,23 @@ impl RenderTemplate for CustomerCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        modal_keyed::<CustomerCreateModalKey>(
+        modal_keyed(
+            CUSTOMER_CREATE_MODAL,
             "",
             form(
                 &CsrfToken::current(),
                 FormOpts {
                     title: "Create customer",
                     subtitle: "A customer is one company or one contact.",
-                    attrs: form_hx_post_url::<CustomerCreateModalKey>(&modal_create_post_query(
-                        crate::routes::CustomerCreatePostRouteTag,
-                        form_name,
-                        &self.refresh_table,
-                        &self.target_input,
-                    )),
+                    attrs: form_hx_post_url(
+                        CUSTOMER_CREATE_MODAL,
+                        &modal_create_post_query(
+                            crate::routes::CustomerCreatePostRouteTag,
+                            form_name,
+                            &self.refresh_table,
+                            &self.target_input,
+                        ),
+                    ),
                     form_error: Some(self.error.as_str()).filter(|err| !err.is_empty()),
                     inputs: CustomerForm::render_inputs(
                         &FormCtx::form::<CustomerForm>(CsrfToken::current())
@@ -169,7 +172,8 @@ impl RenderTemplate for CustomerCreateModalPage {
     }
 }
 
-fn filtered_data_table<K: SwapKey>(
+fn filtered_data_table(
+    key: SwapKey,
     title: &str,
     actions: Markup,
     headers: &[TableColumnHeader<'_>],
@@ -178,12 +182,13 @@ fn filtered_data_table<K: SwapKey>(
     refresh_url: &str,
     errors: &[FilterRowError],
 ) -> Markup {
+    let hx_target = key.selector();
     let list = html! {
         (filter_error_banner(errors))
         (table_list_content(TableListContent {
             headers,
             rows,
-            hx_target: K::SELECTOR,
+            hx_target: &hx_target,
         }))
     };
     let grid = html! {
@@ -196,7 +201,7 @@ fn filtered_data_table<K: SwapKey>(
         .filter(|key| !key.is_empty())
         .collect();
     data_table(DataTable {
-        uid: K::ID,
+        uid: key.id(),
         title,
         subtitle: "",
         classes: "w-full",
@@ -221,11 +226,13 @@ fn filtered_data_table<K: SwapKey>(
     })
 }
 
-fn render_picker_pagination<M: SwapKey>(
+fn render_picker_pagination(
+    key: SwapKey,
     path_and_query: &str,
     number: u32,
     num_pages: u32,
 ) -> Markup {
+    let hx_target = key.selector();
     let owned = pagination_pages(path_and_query, number, num_pages, false);
     let pages: Vec<PaginationPage<'_>> = owned
         .iter()
@@ -239,6 +246,6 @@ fn render_picker_pagination<M: SwapKey>(
         .collect();
     table_pagination_picker(TablePagination {
         pages: &pages,
-        hx_target: M::SELECTOR,
+        hx_target: &hx_target,
     })
 }

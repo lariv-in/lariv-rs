@@ -20,7 +20,7 @@ use crate::{
     entities::holiday::{self, Entity as HolidayEntity},
     forms::{HolidayForm, HolidayImportForm},
     handlers::ModalNameQuery,
-    keys::{HolidayCreateModalKey, HolidayEditModalKey, HolidayImportModalKey, HolidayTableKey},
+    keys::{HOLIDAY_CREATE_MODAL, HOLIDAY_EDIT_MODAL, HOLIDAY_IMPORT_MODAL, HOLIDAY_TABLE},
     logic::holiday::{
         HolidayInput, create_holiday, current_import_year, delete_holiday, import_india_holidays,
         parse_import_year, update_holiday,
@@ -122,7 +122,7 @@ pub async fn list(
     let rows = ObjectList::from_page(rows, page_num, page_size, total);
     let sort = q.sort.unwrap_or_default();
     let path_and_query = path_and_query(&uri);
-    if htmx.targets::<HolidayTableKey>() {
+    if htmx.targets(HOLIDAY_TABLE) {
         let page = HolidayListPage {
             rows,
             fields: prepared.fields,
@@ -180,8 +180,9 @@ pub async fn create_post(
         }
     };
     match create_holiday(&state.db, input).await {
-        Ok(holiday) => respond_create_modal_done::<HolidayCreateModalKey>(
+        Ok(holiday) => respond_create_modal_done(
             &htmx,
+            HOLIDAY_CREATE_MODAL,
             &q.refresh_table(),
             &HolidayDetailRouteTag::new(holiday.id).url(),
         ),
@@ -217,8 +218,9 @@ pub async fn import_post(
         }
     };
     match import_india_holidays(&state.db, year).await {
-        Ok(_) => respond_create_modal_done::<HolidayImportModalKey>(
+        Ok(_) => respond_create_modal_done(
             &htmx,
+            HOLIDAY_IMPORT_MODAL,
             &q.refresh_table(),
             &HolidayListRouteTag.url(),
         ),
@@ -303,8 +305,9 @@ pub async fn edit_post(
         }
     };
     match update_holiday(&state.db, id, input).await {
-        Ok(_) => respond_edit_modal_done::<HolidayEditModalKey>(
+        Ok(_) => respond_edit_modal_done(
             &htmx,
+            HOLIDAY_EDIT_MODAL,
             &HolidayDetailRouteTag::new(id).url(),
         ),
         Err(e) => edit_error_response(&chrome, &ctx, id, &q, &form, e).await,

@@ -111,11 +111,7 @@ fn draft_fields(tz: String) -> Vec<FilterField> {
             draft_invoice::Column::DeliveryDate,
         ),
         decimal_expr_field("untaxed", "Untaxed amount", false, || {
-            expr_line_untaxed(
-                "draft_invoice_lines",
-                "draft_invoice_id",
-                "draft_invoices",
-            )
+            expr_line_untaxed("draft_invoice_lines", "draft_invoice_id", "draft_invoices")
         }),
         decimal_expr_field("total", "Total amount", true, || Expr::cust("0")),
         decimal_expr_field("tax", "Tax levied", true, || Expr::cust("0")),
@@ -127,11 +123,7 @@ fn draft_fields(tz: String) -> Vec<FilterField> {
             )
         }),
         number_expr_field("product_count", "Number of products", || {
-            expr_line_product_count(
-                "draft_invoice_lines",
-                "draft_invoice_id",
-                "draft_invoices",
-            )
+            expr_line_product_count("draft_invoice_lines", "draft_invoice_id", "draft_invoices")
         }),
         date_expr_field("final_due", "Final due date", true, || Expr::cust("0")),
     ]
