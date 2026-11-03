@@ -86,7 +86,7 @@ lariv_core::define_plugin_routes! {
         get JournalEntryCreateGetRouteTag, "/finance/journals/{journal_id}/entries/create", handlers::journal_entries::create_get, param journal_id: i64, modal, authorize(FinanceAccountsMutate, []);
         post JournalEntryCreatePostRouteTag, "/finance/journals/{journal_id}/entries/create", handlers::journal_entries::create_post, param journal_id: i64, authorize(FinanceAccountsMutate, []);
         get JournalEntryDetailRouteTag, "/finance/journal-entries/{id}", handlers::journal_entries::detail, authorize(FinanceAccountsView, []);
-        get JournalEntryEditGetRouteTag, "/finance/journal-entries/{id}/edit", handlers::journal_entries::edit_get, authorize(FinanceAccountsMutate, []);
+        get JournalEntryEditGetRouteTag, "/finance/journal-entries/{id}/edit", handlers::journal_entries::edit_get, modal, authorize(FinanceAccountsMutate, []);
         post JournalEntryEditPostRouteTag, "/finance/journal-entries/{id}/edit", handlers::journal_entries::edit_post, authorize(FinanceAccountsMutate, []);
         get JournalEntryDeleteGetRouteTag, "/finance/journal-entries/{id}/delete", handlers::journal_entries::delete_get, modal, authorize(FinanceAccountsMutate, []);
         post JournalEntryDeletePostRouteTag, "/finance/journal-entries/{id}/delete", bare handlers::journal_entries::delete_post, fragment(JOURNAL_ENTRY_DELETE_MODAL), authorize(FinanceAccountsMutate, []);

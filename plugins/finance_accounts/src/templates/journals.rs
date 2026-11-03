@@ -4,12 +4,11 @@ use maud::{Markup, html};
 use lariv_core::components::{
     ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldLink, FieldText, FieldTitle,
     FilterClauseView, FormOpts, ListFilterBuilder, ObjectList, ShellChrome, TableButtonFilter,
-    TableColumnHeader, TableRow, breadcrumbs, button_link_route, button_modal_form, button_submit,
-    column_sort_url, container_column, container_row, data_table_list, data_table_list_refresh,
-    detail, detail_header, field_link, field_text, field_title, form, form_hx_get_picker_route,
-    form_hx_get_route, form_hx_post_main_url, form_hx_post_route, form_hx_post_url, label,
-    list_filter_builder, modal_keyed, row_attr_navigate_route, row_attr_select, sort_indicator,
-    table_button_filter,
+    TableColumnHeader, TableRow, breadcrumbs, button_modal_form, button_submit, column_sort_url,
+    container_column, container_row, data_table_list, data_table_list_refresh, detail, detail_header,
+    field_link, field_text, field_title, form, form_hx_get_picker_route, form_hx_get_route,
+    form_hx_post_route, form_hx_post_url, label, list_filter_builder, modal_keyed,
+    row_attr_navigate_route, row_attr_select, sort_indicator, table_button_filter,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::list_filters::{FilterField, FilterRowError};
@@ -30,8 +29,9 @@ use crate::{
     },
     keys::{
         JOURNAL_CREATE_MODAL, JOURNAL_DELETE_MODAL, JOURNAL_EDIT_MODAL, JOURNAL_ENTRY_CREATE_MODAL,
-        JOURNAL_ENTRY_DELETE_MODAL, JOURNAL_ENTRY_SELECT_MODAL, JOURNAL_ENTRY_SELECT_TABLE,
-        JOURNAL_GENERATE_MODAL, JOURNAL_SELECT_MODAL, JOURNAL_SELECT_TABLE, JOURNAL_TABLE,
+        JOURNAL_ENTRY_DELETE_MODAL, JOURNAL_ENTRY_EDIT_MODAL, JOURNAL_ENTRY_SELECT_MODAL,
+        JOURNAL_ENTRY_SELECT_TABLE, JOURNAL_GENERATE_MODAL, JOURNAL_SELECT_MODAL,
+        JOURNAL_SELECT_TABLE, JOURNAL_TABLE,
     },
     routes::{
         AccountDetailRouteTag, JournalCreateGetRouteTag, JournalCreatePostRouteTag,
@@ -86,36 +86,6 @@ fn journal_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
             },
         ]),
     }
-}
-
-fn journal_entry_crumbs_with_action(
-    journal_id: i64,
-    journal_label: &str,
-    entry_id: i64,
-    action: &str,
-) -> Markup {
-    let list_url = JournalListRouteTag.url();
-    let journal_url = JournalDetailRouteTag::new(journal_id).url();
-    let entry_url = JournalEntryDetailRouteTag::new(entry_id).url();
-    let entry_label = format!("#{entry_id}");
-    breadcrumbs(&[
-        Crumb {
-            label: "Journals",
-            href: Some(&list_url),
-        },
-        Crumb {
-            label: journal_label,
-            href: Some(&journal_url),
-        },
-        Crumb {
-            label: &entry_label,
-            href: Some(&entry_url),
-        },
-        Crumb {
-            label: action,
-            href: None,
-        },
-    ])
 }
 
 fn journal_entry_crumbs(journal_id: i64, journal_label: &str, entry_label: &str) -> Markup {
@@ -965,15 +935,21 @@ impl JournalEntryDetailPage {
     }
 
     fn body(&self) -> Markup {
+        let edit_url = JournalEntryEditGetRouteTag::new(self.id).url();
+        let edit_post_url = JournalEntryEditPostRouteTag::new(self.id).path();
         let delete_url = JournalEntryDeleteGetRouteTag::new(self.id).url();
         let actions = if self.can_mutate {
             html! {
                 (container_row("flex gap-2", html! {
-                    (button_link_route(
-                        JournalEntryEditGetRouteTag::new(self.id),
-                        "Edit",
-                        "btn-outline",
-                    ))
+                    (button_modal_form(ButtonModalForm {
+                        label: "Edit",
+                        name: "p_finance_accounts.JournalEntryEditForm",
+                        href: &edit_url,
+                        form_post_url: &edit_post_url,
+                        modal_uid: JOURNAL_ENTRY_EDIT_MODAL.id(),
+                        classes: "btn-outline",
+                        ..Default::default()
+                    }))
                     (button_modal_form(ButtonModalForm {
                         label: "Delete",
                         icon_name: Some("trash"),
@@ -1043,84 +1019,55 @@ impl RenderTemplate for JournalEntryDetailPage {
 }
 
 #[derive(Generic)]
-pub struct JournalEntryEditPage {
+pub struct JournalEntryEditModalPage {
     pub id: i64,
-    pub journal_id: i64,
+    pub form_name: String,
     pub journal_label: String,
     pub lines: String,
     pub error: String,
     pub can_save: bool,
 }
 
-impl JournalEntryEditPage {
-    fn body(&self) -> Markup {
-        let post_path = JournalEntryEditPostRouteTag::new(self.id).path();
-        let inputs = JournalEntryLinesForm::render_inputs(
-            &FormCtx::form::<JournalEntryLinesForm>(CsrfToken::current())
-                .value(JournalEntryLinesFormField::Lines, &self.lines),
-        );
-        html! {
-            (detail(html! {
-                (container_column("", html! {
-                    @if self.can_save {
-                        (form(&CsrfToken::current(), FormOpts {
-                            title: &format!("Edit journal entry #{}", self.id),
-                            subtitle: &self.journal_label,
-                            attrs: form_hx_post_main_url(&post_path),
-                            form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                            inputs,
-                            actions: html! {
-                                (container_row("flex gap-2 mt-2", html! {
-                                    (button_submit(ButtonSubmit {
-                                        label: "Save",
-                                        classes: "btn-primary",
-                                        ..Default::default()
-                                    }))
-                                }))
-                            },
+impl RenderTemplate for JournalEntryEditModalPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        let body = if self.can_save {
+            let inputs = JournalEntryLinesForm::render_inputs(
+                &FormCtx::form::<JournalEntryLinesForm>(CsrfToken::current())
+                    .value(JournalEntryLinesFormField::Lines, &self.lines),
+            );
+            html! {
+                h3 class="font-bold text-lg mb-4" { (format!("Edit journal entry #{}", self.id)) }
+                p class="text-sm text-base-content/70 mb-4" { (self.journal_label) }
+                (form(&CsrfToken::current(), FormOpts {
+                    attrs: form_hx_post_url(JOURNAL_ENTRY_EDIT_MODAL, &modal_edit_post_url(
+                        JournalEntryEditPostRouteTag::new(self.id),
+                        &self.form_name,
+                    )),
+                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
+                    inputs,
+                    actions: html! {
+                        (button_submit(ButtonSubmit {
+                            label: "Save",
+                            classes: "btn-primary",
                             ..Default::default()
                         }))
-                    } @else {
-                        div class="alert alert-warning" {
-                            @if self.error.is_empty() {
-                                "This journal is immutable."
-                            } @else {
-                                (self.error)
-                            }
-                        }
-                    }
+                    },
+                    ..Default::default()
                 }))
-            }))
-        }
-    }
-
-    fn menu(&self) -> Markup {
-        journal_entry_detail_menu(self.id)
-    }
-
-    fn crumbs(&self) -> Markup {
-        journal_entry_crumbs_with_action(self.journal_id, &self.journal_label, self.id, "Edit")
-    }
-}
-
-impl RenderAppPane for JournalEntryEditPage {
-    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
-        layout_with_entity_sidebar_crumbs(self.menu(), self.crumbs(), self.body())
-    }
-    fn render_main(&self) -> lariv_core::components::MainContentHtml {
-        layout_main_with_crumbs(self.crumbs(), self.body())
-    }
-}
-
-impl RenderTemplate for JournalEntryEditPage {
-    fn render(&self, chrome: &ShellChrome) -> Markup {
-        app_scaffold_with_sidebar(
-            "Journal Entry",
-            chrome,
-            self.menu(),
-            self.crumbs(),
-            self.body(),
-        )
+            }
+        } else {
+            html! {
+                h3 class="font-bold text-lg mb-4" { (format!("Edit journal entry #{}", self.id)) }
+                div class="alert alert-warning" {
+                    @if self.error.is_empty() {
+                        "This journal is immutable."
+                    } @else {
+                        (self.error)
+                    }
+                }
+            }
+        };
+        modal_keyed(JOURNAL_ENTRY_EDIT_MODAL, &self.form_name, body)
     }
 }
 

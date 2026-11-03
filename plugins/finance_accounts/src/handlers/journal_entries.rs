@@ -13,7 +13,7 @@ use lariv_core::http::Cap;
 use lariv_core::picker::respond_picker_select;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-    respond_create_modal_done,
+    respond_create_modal_done, respond_edit_modal_done,
 };
 use lariv_plugin_users::middleware::RequireAuth;
 
@@ -21,7 +21,10 @@ use crate::{
     entities::{journal, journal_entry},
     forms::{JournalEntryForm, JournalEntryLinesForm},
     handlers::ModalNameQuery,
-    keys::{JOURNAL_ENTRY_CREATE_MODAL, JOURNAL_ENTRY_SELECT_MODAL, JOURNAL_ENTRY_SELECT_TABLE},
+    keys::{
+        JOURNAL_ENTRY_CREATE_MODAL, JOURNAL_ENTRY_EDIT_MODAL, JOURNAL_ENTRY_SELECT_MODAL,
+        JOURNAL_ENTRY_SELECT_TABLE,
+    },
     logic::custom_source_doc::{
         empty_lines_json, ensure_posting_accounts, lines_form_value, parse_journal_lines,
     },
@@ -40,7 +43,7 @@ use crate::{
     state::AccountsState,
     templates::{
         JournalEntryCreateModalPage, JournalEntryDeleteItem, JournalEntryDeleteModalPage,
-        JournalEntryDetailPage, JournalEntryEditPage, JournalEntryItemRow, JournalEntryRow,
+        JournalEntryDetailPage, JournalEntryEditModalPage, JournalEntryItemRow, JournalEntryRow,
         JournalEntrySelectPage,
     },
 };
@@ -208,8 +211,8 @@ pub async fn edit_get(
     Cap(state): Cap<AccountsState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
-    htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
 ) -> Response {
     let Some(entry) = find_journal_entry_scoped(&state.db, id).await else {
         return Redirect::to(&JournalListRouteTag.url()).into_response();
@@ -221,9 +224,9 @@ pub async fn edit_get(
         .await
         .unwrap_or_else(|_err| empty_lines_json());
     let mutable = can_mutate() && journal.is_mutable;
-    let page = JournalEntryEditPage {
+    let page = JournalEntryEditModalPage {
         id: entry.id,
-        journal_id: journal.id,
+        form_name: q.form_name(),
         journal_label: format!("{} (#{})", journal.name, journal.id),
         lines,
         error: if mutable {
@@ -233,7 +236,7 @@ pub async fn edit_get(
         },
         can_save: mutable,
     };
-    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn edit_post(
@@ -242,6 +245,7 @@ pub async fn edit_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
+    Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<JournalEntryLinesForm>,
 ) -> Response {
     let Some(entry) = find_journal_entry_scoped(&state.db, id).await else {
@@ -252,22 +256,22 @@ pub async fn edit_post(
     };
     let journal_label = format!("{} (#{})", journal.name, journal.id);
     let mutable = can_mutate() && journal.is_mutable;
+    let form_name = q.form_name();
     let submitted = if form.lines.trim().is_empty() {
         empty_lines_json()
     } else {
         form.lines.clone()
     };
     let render_err = |error: String| {
-        let page = JournalEntryEditPage {
+        let page = JournalEntryEditModalPage {
             id,
-            journal_id: journal.id,
+            form_name: form_name.clone(),
             journal_label: journal_label.clone(),
             lines: submitted.clone(),
             error,
             can_save: mutable,
         };
-        html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
-            .into_response()
+        html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
     };
     if !mutable {
         return render_err(
@@ -283,7 +287,11 @@ pub async fn edit_post(
         return render_err(e);
     }
     match update_journal_entry_lines(&state.db, entry.id, &lines).await {
-        Ok(()) => Redirect::to(&JournalEntryDetailRouteTag::new(id).url()).into_response(),
+        Ok(()) => respond_edit_modal_done(
+            &htmx,
+            JOURNAL_ENTRY_EDIT_MODAL,
+            &JournalEntryDetailRouteTag::new(id).url(),
+        ),
         Err(e) => render_err(e),
     }
 }

@@ -25,6 +25,7 @@ pub const JOURNAL_DELETE_MODAL: SwapKey = SwapKey("finance-journal-delete-modal"
 pub const SOURCE_DOC_SELECT_TABLE: SwapKey = SwapKey("finance-sourcedoc-selection-table");
 pub const SOURCE_DOC_SELECT_MODAL: SwapKey = SwapKey("finance-sourcedoc-selection-modal");
 pub const JOURNAL_ENTRY_CREATE_MODAL: SwapKey = SwapKey("finance-journal-entry-create-modal");
+pub const JOURNAL_ENTRY_EDIT_MODAL: SwapKey = SwapKey("finance-journal-entry-edit-modal");
 pub const JOURNAL_ENTRY_DELETE_MODAL: SwapKey = SwapKey("finance-journal-entry-delete-modal");
 pub const CUSTOM_SOURCE_DOC_INDEX_CREATE_MODAL: SwapKey =
     SwapKey("finance-custom-source-doc-index-create-modal");
