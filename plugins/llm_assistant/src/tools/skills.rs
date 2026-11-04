@@ -9,6 +9,7 @@ use sea_orm::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::llm_tools::{LlmTool, ToolCtx};
 use crate::{
     entities::{
         session::Entity as SessionEntity,
@@ -19,7 +20,6 @@ use crate::{
     handlers::skills::sync_skill_files,
 };
 use lariv_core::db::trigram;
-use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use lariv_plugin_filesystem::node;
 use lariv_plugin_users::entities::user::Entity as UserEntity;
 
@@ -460,7 +460,7 @@ mod tests {
     use sea_orm::{ActiveModelTrait, ActiveValue::Set, ConnectionTrait, Database, Schema};
 
     use crate::entities::skill_file_link;
-    use lariv_core::llm_tools::ToolCtx;
+    use crate::llm_tools::ToolCtx;
     use lariv_core::rune_env::RuneEnvCapability;
     use lariv_plugin_filesystem::{
         entities::filesystem_node,
@@ -513,7 +513,7 @@ mod tests {
     ) -> ToolCtx<'a> {
         ToolCtx {
             db,
-            store,
+            store: lariv_plugin_filesystem::storage::erase_store(store),
             cse_api_key: "",
             cse_cx: "",
             rune_env,

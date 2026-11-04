@@ -119,11 +119,6 @@ pub fn parse_duration(s: &str) -> Result<i64, String> {
     Ok(total)
 }
 
-/// Alias for [`parse_duration`] (Go-style strings remain supported).
-pub fn parse_go_duration(s: &str) -> Result<i64, String> {
-    parse_duration(s)
-}
-
 /// Format nanoseconds as a human-readable string (e.g. `"2 months 3 days 5 seconds"`).
 pub fn format_duration(nanos: i64) -> String {
     if nanos <= 0 {
@@ -143,30 +138,6 @@ pub fn format_duration(nanos: i64) -> String {
         return format!("{nanos}ns");
     }
     parts.join(" ")
-}
-
-/// Compact Go-style formatting (e.g. `"720h"`, `"30m"`).
-pub fn format_go_duration(nanos: i64) -> String {
-    if nanos <= 0 {
-        return String::new();
-    }
-    let mut rem = nanos;
-    let mut parts = Vec::new();
-    for (label, unit) in [
-        ("h", HOUR),
-        ("m", MIN),
-        ("s", SEC),
-        ("ms", MS),
-        ("us", US),
-        ("ns", NS),
-    ] {
-        if rem >= unit {
-            let count = rem / unit;
-            rem %= unit;
-            parts.push(format!("{count}{label}"));
-        }
-    }
-    parts.join("")
 }
 
 /// Normalize a user-entered duration for re-display in form fields.
@@ -237,12 +208,6 @@ mod tests {
     fn parse_years_and_months() {
         assert_eq!(parse_duration("25 years").unwrap(), 25 * YEAR);
         assert_eq!(parse_duration("2 months").unwrap(), 2 * MONTH);
-    }
-
-    #[test]
-    fn format_go_duration_compact() {
-        assert_eq!(format_go_duration(720 * HOUR), "720h");
-        assert_eq!(format_go_duration(30 * MIN), "30m");
     }
 
     #[test]

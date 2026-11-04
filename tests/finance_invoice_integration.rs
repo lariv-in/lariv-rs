@@ -371,7 +371,7 @@ async fn create_draft_invoice_via_rune_env() {
     let number = format!("RUNE-{}", uuid::Uuid::new_v4());
     let env_ctx = RuneEnvCtx {
         db: &db,
-        store,
+        store: filesystem::storage::erase_store(store),
         session_id: None,
     };
     let source = r#"

@@ -1,15 +1,24 @@
-//! Request auth hooks registered by the users plugin.
+//! Auth callbacks carried on the capability stack.
 //!
-//! Core routing and `authorized_role` call these hooks. With the users plugin
-//! not installed, scope is a no-op and role checks deny.
+//! The users plugin attaches [`AuthHooks`] at install. Mount publishes the value into
+//! request extensions. Routing and `authorized_role` read it from the request. With the
+//! capability absent, scope is a no-op, authorization passes the request through, and
+//! role checks deny.
+//!
+//! Sync template code has no request, so the request middleware copies the mounted value
+//! into a task-local for the rest of that request. The task-local is not a process-wide
+//! registration.
 
 use std::any::TypeId;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use std::sync::OnceLock;
 use std::task::{Context, Poll};
 
+use crate::{
+    capability::{Capability, HasCapTag},
+    tag::Tagged,
+};
 use axum::body::Body;
 use axum::extract::Request;
 use axum::middleware::Next;
@@ -22,34 +31,91 @@ pub type AuthScopeFn = fn(Request, Next) -> BoxFuture<Response>;
 pub type AuthorizeFn = fn(Request, Vec<String>, TypeId) -> BoxFuture<Result<Request, Response>>;
 pub type RolePermittedFn = fn(&[String]) -> bool;
 
-static AUTH_SCOPE: OnceLock<AuthScopeFn> = OnceLock::new();
-static AUTHORIZE: OnceLock<AuthorizeFn> = OnceLock::new();
-static ROLE_PERMITTED: OnceLock<RolePermittedFn> = OnceLock::new();
-
-pub fn register_auth_scope(f: AuthScopeFn) {
-    let _ = AUTH_SCOPE.set(f);
+tokio::task_local! {
+    static CURRENT_AUTH_HOOKS: AuthHooks;
 }
 
-pub fn register_authorize(f: AuthorizeFn) {
-    let _ = AUTHORIZE.set(f);
+/// Capability tag for [`AuthHooks`].
+pub struct AuthHooksTag;
+
+/// Callbacks the users plugin installs. Absent fields keep the core defaults.
+#[derive(Clone, Copy, Default)]
+pub struct AuthHooks {
+    scope: Option<AuthScopeFn>,
+    authorize: Option<AuthorizeFn>,
+    role_permitted: Option<RolePermittedFn>,
 }
 
-pub fn register_role_permitted(f: RolePermittedFn) {
-    let _ = ROLE_PERMITTED.set(f);
+/// Builder-phase store for [`AuthHooks`]. Generic over unused hooks so `cap_attach` can name it.
+#[derive(Clone, Copy)]
+pub struct AuthHooksCap<Hooks> {
+    items: AuthHooks,
+    _hooks: PhantomData<Hooks>,
+    _tag: PhantomData<fn() -> AuthHooksTag>,
 }
 
-/// Scope the request for handlers. No-op until the users plugin registers.
-pub async fn continue_with_auth_scope(req: Request, next: Next) -> Response {
-    if let Some(f) = AUTH_SCOPE.get() {
-        f(req, next).await
-    } else {
-        next.run(req).await
+impl<Hooks> AuthHooksCap<Hooks> {
+    pub const fn new(items: AuthHooks) -> Self {
+        Self {
+            items,
+            _hooks: PhantomData,
+            _tag: PhantomData,
+        }
     }
 }
 
-/// Whether the current principal may see `roles`. False until the users plugin registers.
+impl<Hooks> HasCapTag for AuthHooksCap<Hooks> {
+    type Tag = AuthHooksTag;
+}
+
+impl<Hooks> Capability for AuthHooksCap<Hooks> {
+    type Value = AuthHooks;
+    type Output = Tagged<AuthHooksTag, AuthHooks>;
+    type Hooks = Hooks;
+    type Items = AuthHooks;
+
+    fn mount(self) -> Self::Output {
+        Tagged::new(self.items)
+    }
+}
+
+impl AuthHooks {
+    pub const fn new(
+        scope: AuthScopeFn,
+        authorize: AuthorizeFn,
+        role_permitted: RolePermittedFn,
+    ) -> Self {
+        Self {
+            scope: Some(scope),
+            authorize: Some(authorize),
+            role_permitted: Some(role_permitted),
+        }
+    }
+}
+
+/// Scope the request for handlers. No-op when [`AuthHooks`] was not attached.
+pub async fn continue_with_auth_scope(req: Request, next: Next) -> Response {
+    let hooks = req
+        .extensions()
+        .get::<AuthHooks>()
+        .copied()
+        .unwrap_or_default();
+    CURRENT_AUTH_HOOKS
+        .scope(hooks, async move {
+            if let Some(scope) = hooks.scope {
+                scope(req, next).await
+            } else {
+                next.run(req).await
+            }
+        })
+        .await
+}
+
+/// Whether the current principal may see `roles`. False when no hooks are scoped.
 pub fn role_permitted(roles: &[String]) -> bool {
-    ROLE_PERMITTED.get().is_some_and(|f| f(roles))
+    CURRENT_AUTH_HOOKS
+        .try_with(|hooks| hooks.role_permitted.is_some_and(|f| f(roles)))
+        .unwrap_or(false)
 }
 
 pub async fn authorize_request(
@@ -57,11 +123,20 @@ pub async fn authorize_request(
     roles: Vec<String>,
     tag: TypeId,
 ) -> Result<Request, Response> {
-    if let Some(f) = AUTHORIZE.get() {
-        f(req, roles, tag).await
+    let authorize = req
+        .extensions()
+        .get::<AuthHooks>()
+        .and_then(|hooks| hooks.authorize);
+    if let Some(authorize) = authorize {
+        authorize(req, roles, tag).await
     } else {
         Ok(req)
     }
+}
+
+/// Run `f` with `hooks` visible to [`role_permitted`]. Tests and non-request callers use this.
+pub fn scope_sync<R>(hooks: AuthHooks, f: impl FnOnce() -> R) -> R {
+    CURRENT_AUTH_HOOKS.sync_scope(hooks, f)
 }
 
 /// Tower layer applied by [`crate::http::Route::authorize`].

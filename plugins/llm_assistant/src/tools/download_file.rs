@@ -6,13 +6,14 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::llm_tools::{LlmTool, ToolCtx};
 use crate::{
     content::attachments::resolve_mime,
     genai::FunctionDeclaration,
     vnode_text::{record_read, require_session_id, split_vnode_path},
 };
-use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use lariv_plugin_filesystem::node::{self, NodeFile};
+use lariv_plugin_filesystem::storage::ErasedFilestore;
 
 use super::http_fetch::{FetchOptions, Fetched, fetch_public_url};
 
@@ -109,9 +110,10 @@ pub(super) async fn store_at_path(
     }
 
     let (parent_segments, filename) = split_vnode_path(path)?;
-    let parent_id = node::ensure_directory_path(ctx.db, ctx.store.as_ref(), None, &parent_segments)
-        .await
-        .map_err(|e| e.to_string())?;
+    let parent_id =
+        node::ensure_directory_path(ctx.db, ctx.store.filestore(), None, &parent_segments)
+            .await
+            .map_err(|e| e.to_string())?;
 
     if node::find_child(ctx.db, parent_id, &filename, false)
         .await
@@ -141,7 +143,7 @@ pub(super) async fn store_at_path(
     let content_type = resolve_mime(&fetched.content_type, &filename, &bytes);
     let vnode = node::create(
         ctx.db,
-        ctx.store.as_ref(),
+        ctx.store.filestore(),
         filename.clone(),
         false,
         Some(NodeFile::Bytes {
@@ -177,7 +179,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    use lariv_core::llm_tools::ToolCtx;
+    use crate::llm_tools::ToolCtx;
     use lariv_core::rune_env::RuneEnvCapability;
     use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
 
@@ -196,7 +198,7 @@ mod tests {
         let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
         let ctx = ToolCtx {
             db: &db,
-            store,
+            store: lariv_plugin_filesystem::storage::erase_store(store),
             cse_api_key: "",
             cse_cx: "",
             rune_env: &cap,
@@ -226,7 +228,7 @@ mod tests {
         let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
         let ctx = ToolCtx {
             db: &db,
-            store,
+            store: lariv_plugin_filesystem::storage::erase_store(store),
             cse_api_key: "",
             cse_cx: "",
             rune_env: &cap,

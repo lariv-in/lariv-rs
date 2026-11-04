@@ -1,6 +1,6 @@
 //! Theme asset inject/strip.
 
-use lariv_core::grapesjs::GrapesJsTheme;
+use crate::grapesjs::GrapesJsTheme;
 
 fn theme_head_html(theme_id: &str, theme: &GrapesJsTheme) -> String {
     if theme_id.is_empty() {

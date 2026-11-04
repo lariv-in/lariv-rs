@@ -11,9 +11,8 @@ use rune::{Context, Diagnostics, Source, Sources, Value, Vm};
 use sea_orm::DatabaseConnection;
 use serde_json::{Value as JsonValue, json};
 
-use lariv_core::llm_tools::{HitlGate, HitlSource};
+use crate::llm_tools::{HitlGate, HitlSource};
 use lariv_core::rune_env::{NativeFn, ResolvedRuneEnv, RuneEnvCapability, RuneEnvCtx};
-use lariv_plugin_filesystem::storage::DynFilestore;
 
 use super::hitl::args_to_json;
 
@@ -30,7 +29,7 @@ pub struct CompileOpts<'a> {
 
 struct InvokeState {
     db: DatabaseConnection,
-    store: Arc<DynFilestore>,
+    store: Arc<dyn std::any::Any + Send + Sync>,
     session_id: Option<i64>,
     functions: HashMap<String, NativeFn>,
     hitl_functions: HashMap<String, NativeFn>,
@@ -312,7 +311,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    use lariv_plugin_filesystem::storage::UnimplementedFilestore;
+    use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
 
     fn test_env_ctx<'a>(
         db: &'a DatabaseConnection,
@@ -320,7 +319,7 @@ mod tests {
     ) -> RuneEnvCtx<'a> {
         RuneEnvCtx {
             db,
-            store: Arc::clone(store),
+            store: lariv_plugin_filesystem::storage::erase_store(Arc::clone(store)),
             session_id: None,
         }
     }

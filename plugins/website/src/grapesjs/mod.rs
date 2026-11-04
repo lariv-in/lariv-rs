@@ -18,7 +18,7 @@
 //! - [`GrapesJsTrait`] — Traits panel custom type
 //! - [`GrapesJsTheme`] — named CSS theme for builder and published pages
 //! - [`GrapesJsCapability`] — mounted four-registry catalog
-//! - [`GrapesJsCap`] — builder-phase [`CapStore`]
+//! - [`GrapesJsCap`] — builder-phase capability store
 //! - [`GrapesJsRegistrar`] — plugin hook trait
 //!
 //! # Stack safety
@@ -44,12 +44,14 @@ use frunk::{HCons, HNil, hlist::HList};
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::{
-    app::App,
-    capability::{ApplyHooks, CapStore, Capability, UnitHookProof, mount_unit_hooks},
-    tag::Tagged,
-    traits::add::{AddCapability, CapTagAbsent},
-};
+mod catalog;
+
+pub use catalog::Hook;
+
+use lariv_core::app::App;
+use lariv_core::capability::{CapHookExt, CapStore, Capability, HasCapTag};
+use lariv_core::tag::Tagged;
+use lariv_core::traits::add::{AddCapability, CapTagAbsent};
 
 /// Capability tag for GrapesJS registries.
 pub struct GrapesJsTag;
@@ -296,37 +298,69 @@ impl GrapesJsCapability {
 }
 
 /// Builder-phase GrapesJS capability.
-pub type GrapesJsCap<Hooks> = CapStore<GrapesJsTag, Hooks, GrapesJsCapability>;
+pub struct GrapesJsCap<Hooks> {
+    store: CapStore<GrapesJsTag, Hooks, GrapesJsCapability>,
+}
 
-impl<Hooks> GrapesJsCap<Hooks> {
-    /// Eagerly fold registrar hooks into items (testing / pre-mount inspection).
-    pub fn resolve_hooks<Proof>(self) -> GrapesJsCap<HNil>
-    where
-        Hooks: ApplyHooks<GrapesJsCapability, Proof, Output = GrapesJsCapability>,
-    {
-        CapStore::with_items(self.hooks.apply_hooks(self.items))
+impl GrapesJsCap<HNil> {
+    /// Empty hook list plus the given registry.
+    pub fn with_items(items: GrapesJsCapability) -> Self {
+        Self {
+            store: CapStore::with_items(items),
+        }
     }
 }
 
-impl<Plugin, H, Tail, TailProof> ApplyHooks<GrapesJsCapability, (TailProof, ())>
-    for HCons<Tagged<Plugin, H>, Tail>
+impl<Hooks> HasCapTag for GrapesJsCap<Hooks> {
+    type Tag = GrapesJsTag;
+}
+
+impl<Hooks, Plugin, Hook> CapHookExt<Plugin, Hook> for GrapesJsCap<Hooks> {
+    type Hooked = GrapesJsCap<HCons<Tagged<Plugin, Hook>, Hooks>>;
+
+    fn prepend_cap_hook(self, hook: Hook) -> Self::Hooked {
+        GrapesJsCap {
+            store: self.store.add_hook::<Plugin, Hook>(hook),
+        }
+    }
+}
+
+/// Fold [`GrapesJsRegistrar`] hooks (tail first = install order).
+pub trait FoldGrapesJsHooks {
+    fn fold(self, items: GrapesJsCapability) -> GrapesJsCapability;
+}
+
+impl FoldGrapesJsHooks for HNil {
+    fn fold(self, items: GrapesJsCapability) -> GrapesJsCapability {
+        items
+    }
+}
+
+impl<Plugin, H, Tail> FoldGrapesJsHooks for HCons<Tagged<Plugin, H>, Tail>
 where
-    Tail: ApplyHooks<GrapesJsCapability, TailProof, Output = GrapesJsCapability>,
+    Tail: FoldGrapesJsHooks,
     H: GrapesJsRegistrar,
 {
-    type Output = GrapesJsCapability;
-
-    fn apply_hooks(self, items: GrapesJsCapability) -> Self::Output {
-        let mut items = self.tail.apply_hooks(items);
+    fn fold(self, items: GrapesJsCapability) -> GrapesJsCapability {
+        let mut items = self.tail.fold(items);
         self.head.value.register_grapesjs(&mut items);
         items
     }
 }
 
+impl<Hooks> GrapesJsCap<Hooks> {
+    /// Eagerly fold registrar hooks into items (testing / pre-mount inspection).
+    pub fn resolve_hooks(self) -> GrapesJsCap<HNil>
+    where
+        Hooks: FoldGrapesJsHooks,
+    {
+        GrapesJsCap::with_items(self.store.hooks.fold(self.store.items))
+    }
+}
+
 impl<Hooks> Capability for GrapesJsCap<Hooks>
 where
-    Hooks: UnitHookProof,
-    Hooks: ApplyHooks<GrapesJsCapability, <Hooks as UnitHookProof>::Proof, Output = GrapesJsCapability>,
+    Hooks: FoldGrapesJsHooks,
 {
     /// Shared so request-extension clones do not deep-copy block/theme HTML.
     type Value = Arc<GrapesJsCapability>;
@@ -335,7 +369,8 @@ where
     type Items = GrapesJsCapability;
 
     fn mount(self) -> Self::Output {
-        mount_unit_hooks(self, Arc::new)
+        let items = self.store.hooks.fold(self.store.items);
+        Tagged::new(Arc::new(items))
     }
 }
 
@@ -344,5 +379,5 @@ pub fn with_grapesjs<L, Proof>(app: App<L>) -> App<HCons<GrapesJsCap<HNil>, L>>
 where
     L: HList + CapTagAbsent<GrapesJsTag, Proof>,
 {
-    app.add_capability(CapStore::with_items(GrapesJsCapability::new()))
+    app.add_capability(GrapesJsCap::with_items(GrapesJsCapability::new()))
 }

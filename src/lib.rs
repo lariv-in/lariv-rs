@@ -7,10 +7,6 @@
 extern crate self as lariv_rs;
 
 #[cfg(feature = "cap-llm")]
-pub use lariv_core::llm_tools;
-#[cfg(not(feature = "cap-llm"))]
-pub use lariv_core::llm_tools;
-#[cfg(feature = "cap-llm")]
 pub use lariv_core::rune_env;
 #[cfg(not(feature = "cap-llm"))]
 pub use lariv_core::rune_env;
@@ -18,8 +14,8 @@ pub use lariv_core::rune_env;
 pub use lariv_core::typst;
 pub use lariv_core::{
     app, apps, auth_hooks, capability, command, components, config, datetime, db, docs, duration,
-    export, filestore, genai, grapesjs, hooks, html_form, http, layers, migration, picker,
-    plugin_install, plugin_routes, role_registry, rt, tag, template, traits, views, web,
+    export, genai, hooks, html_form, http, layers, migration, picker, plugin_install,
+    plugin_routes, role_registry, tag, template, traits, views, web,
 };
 pub use lariv_core::{
     define_passthrough_cap, define_plugin_install, define_register_apps, define_register_export,

@@ -7,7 +7,7 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, ConnectionTrait, Database, Sch
 use serde_json::json;
 
 use crate::entities::{session, session_vnode_read};
-use lariv_core::llm_tools::{LlmTool, ToolCtx};
+use crate::llm_tools::{LlmTool, ToolCtx};
 use lariv_core::rune_env::RuneEnvCapability;
 use lariv_plugin_filesystem::{
     entities::filesystem_node,
@@ -34,7 +34,7 @@ impl Harness {
     fn ctx(&self) -> ToolCtx<'_> {
         ToolCtx {
             db: &self.db,
-            store: Arc::clone(&self.store),
+            store: lariv_plugin_filesystem::storage::erase_store(Arc::clone(&self.store)),
             cse_api_key: "",
             cse_cx: "",
             rune_env: &self.rune_env,

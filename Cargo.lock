@@ -4912,7 +4912,6 @@ dependencies = [
  "futures-util",
  "http 1.5.0",
  "lariv-rs-macros",
- "libc",
  "maud",
  "paste",
  "phonenumber",

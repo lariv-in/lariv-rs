@@ -257,33 +257,7 @@ where
 ///     columns: ["id", "email"];
 /// }
 /// ```
-#[macro_export]
-macro_rules! define_register_export {
-    (
-        plugin: $plugin:ty;
-        table: $table:expr;
-        model: $model:expr;
-        columns: [$($col:expr),* $(,)?];
-        $(deps: [$($dep:expr),* $(,)?];)?
-    ) => {
-        #[derive(Clone, Copy, Default)]
-        pub struct ExportHook;
-
-        impl $crate::export::ExportRegistrar for ExportHook {
-            fn register_export(
-                self,
-                export: $crate::export::ExportCapability,
-            ) -> $crate::export::ExportCapability {
-                export.register(
-                    $crate::export::ExportTable::new($table, $model, vec![$(::std::convert::Into::into($col)),*])
-                        $(.with_deps(vec![$(::std::convert::Into::into($dep)),*]))?
-                )
-            }
-        }
-    };
-}
-
-pub use crate::define_register_export;
+pub use lariv_rs_macros::define_register_export;
 
 /// Attach an empty export catalog capability to the app builder.
 pub fn with_export<L, Proof>(app: App<L>) -> App<HCons<ExportCap<HNil>, L>>

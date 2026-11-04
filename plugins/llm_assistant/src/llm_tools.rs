@@ -1,6 +1,6 @@
 //! LLM tool registry capability — plugins register tools; assistant chat runs them.
 //!
-//! Mirrors [`crate::grapesjs::GrapesJsCapability`] and [`crate::apps::AppsCapability`]:
+//! Mirrors the website plugin's GrapesJS registry and [`lariv_core::apps::AppsCapability`]:
 //! deferred registrar hooks at mount, mounted as [`Arc<LlmToolsCapability>`] for cheap
 //! request-extension clones.
 //!
@@ -41,15 +41,12 @@ use frunk::{HCons, HNil, hlist::HList};
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
 
-use crate::{
-    app::App,
-    capability::{ApplyHooks, CapStore, Capability, UnitHookProof, mount_unit_hooks},
-    filestore::DynFilestore,
-    genai::{FunctionDeclaration, FunctionResponsePart, GenaiClient},
-    rune_env::{NativeFn, RuneEnvCapability, RuneEnvCtx},
-    tag::Tagged,
-    traits::add::{AddCapability, CapTagAbsent},
-};
+use lariv_core::app::App;
+use lariv_core::capability::{CapHookExt, CapStore, Capability, HasCapTag};
+use lariv_core::genai::{FunctionDeclaration, FunctionResponsePart, GenaiClient};
+use lariv_core::rune_env::{NativeFn, RuneEnvCapability, RuneEnvCtx};
+use lariv_core::tag::Tagged;
+use lariv_core::traits::add::{AddCapability, CapTagAbsent};
 
 /// Capability tag for the LLM tool registry.
 pub struct LlmToolsTag;
@@ -98,7 +95,8 @@ pub trait SubagentHost: Send + Sync {
 /// Built per chat/tool invocation from mounted app capabilities and request extensions.
 pub struct ToolCtx<'a> {
     pub db: &'a DatabaseConnection,
-    pub store: Arc<DynFilestore>,
+    /// Filestore handle from the filesystem plugin (`erase_store`).
+    pub store: Arc<dyn std::any::Any + Send + Sync>,
     pub cse_api_key: &'a str,
     pub cse_cx: &'a str,
     pub rune_env: &'a RuneEnvCapability,
@@ -216,37 +214,79 @@ impl LlmToolsCapability {
 }
 
 /// Builder-phase LLM tools capability.
-pub type LlmToolsCap<Hooks> = CapStore<LlmToolsTag, Hooks, LlmToolsCapability>;
+pub struct LlmToolsCap<Hooks> {
+    store: CapStore<LlmToolsTag, Hooks, LlmToolsCapability>,
+}
 
-impl<Hooks> LlmToolsCap<Hooks> {
-    /// Eagerly fold registrar hooks into items (testing / pre-mount inspection).
-    pub fn resolve_hooks<Proof>(self) -> LlmToolsCap<HNil>
-    where
-        Hooks: ApplyHooks<LlmToolsCapability, Proof, Output = LlmToolsCapability>,
-    {
-        CapStore::with_items(self.hooks.apply_hooks(self.items))
+impl LlmToolsCap<HNil> {
+    /// Empty hook list plus the given registry.
+    pub fn with_items(items: LlmToolsCapability) -> Self {
+        Self {
+            store: CapStore::with_items(items),
+        }
     }
 }
 
-impl<Plugin, H, Tail, TailProof> ApplyHooks<LlmToolsCapability, (TailProof, ())>
-    for HCons<Tagged<Plugin, H>, Tail>
+impl<Hooks> HasCapTag for LlmToolsCap<Hooks> {
+    type Tag = LlmToolsTag;
+}
+
+impl<Hooks, Plugin, Hook> CapHookExt<Plugin, Hook> for LlmToolsCap<Hooks> {
+    type Hooked = LlmToolsCap<HCons<Tagged<Plugin, Hook>, Hooks>>;
+
+    fn prepend_cap_hook(self, hook: Hook) -> Self::Hooked {
+        LlmToolsCap {
+            store: self.store.add_hook::<Plugin, Hook>(hook),
+        }
+    }
+}
+
+/// Fold [`ToolsRegistrar`] hooks (tail first = install order).
+pub trait FoldLlmToolsHooks {
+    fn fold(self, items: LlmToolsCapability) -> LlmToolsCapability;
+}
+
+impl FoldLlmToolsHooks for HNil {
+    fn fold(self, items: LlmToolsCapability) -> LlmToolsCapability {
+        items
+    }
+}
+
+impl<Plugin, H, Tail> FoldLlmToolsHooks for HCons<Tagged<Plugin, H>, Tail>
 where
-    Tail: ApplyHooks<LlmToolsCapability, TailProof, Output = LlmToolsCapability>,
+    Tail: FoldLlmToolsHooks,
     H: ToolsRegistrar,
 {
-    type Output = LlmToolsCapability;
-
-    fn apply_hooks(self, items: LlmToolsCapability) -> Self::Output {
-        let mut items = self.tail.apply_hooks(items);
+    fn fold(self, items: LlmToolsCapability) -> LlmToolsCapability {
+        let mut items = self.tail.fold(items);
         self.head.value.register_tools(&mut items);
         items
     }
 }
 
+impl<Hooks> LlmToolsCap<Hooks> {
+    /// Registered hook list.
+    pub fn hooks(&self) -> &Hooks {
+        &self.store.hooks
+    }
+
+    /// Registry before hooks are folded.
+    pub fn items(&self) -> &LlmToolsCapability {
+        &self.store.items
+    }
+
+    /// Eagerly fold registrar hooks into items (testing / pre-mount inspection).
+    pub fn resolve_hooks(self) -> LlmToolsCap<HNil>
+    where
+        Hooks: FoldLlmToolsHooks,
+    {
+        LlmToolsCap::with_items(self.store.hooks.fold(self.store.items))
+    }
+}
+
 impl<Hooks> Capability for LlmToolsCap<Hooks>
 where
-    Hooks: UnitHookProof,
-    Hooks: ApplyHooks<LlmToolsCapability, <Hooks as UnitHookProof>::Proof, Output = LlmToolsCapability>,
+    Hooks: FoldLlmToolsHooks,
 {
     type Value = Arc<LlmToolsCapability>;
     type Output = Tagged<LlmToolsTag, Arc<LlmToolsCapability>>;
@@ -254,7 +294,8 @@ where
     type Items = LlmToolsCapability;
 
     fn mount(self) -> Self::Output {
-        mount_unit_hooks(self, Arc::new)
+        let items = self.store.hooks.fold(self.store.items);
+        Tagged::new(Arc::new(items))
     }
 }
 
@@ -263,7 +304,7 @@ pub fn with_llm_tools<L, Proof>(app: App<L>) -> App<HCons<LlmToolsCap<HNil>, L>>
 where
     L: HList + CapTagAbsent<LlmToolsTag, Proof>,
 {
-    app.add_capability(CapStore::with_items(LlmToolsCapability::new()))
+    app.add_capability(LlmToolsCap::with_items(LlmToolsCapability::new()))
 }
 
 #[cfg(test)]

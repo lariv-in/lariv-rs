@@ -58,7 +58,6 @@ use crate::{
     },
     db::{DbTag, connect, with_db},
     export::{ExportCap, with_export},
-    grapesjs::{GrapesJsCap, with_grapesjs},
     hooks::{
         FoldAttachState, FoldSeeds, FoldServeStartups, SeedRunner, SeedsCap, SeedsTag,
         ServeStartupRunner, ServeStartupsCap, ServeStartupsTag, StateHooksCap, StateHooksTag,
@@ -68,7 +67,6 @@ use crate::{
         HttpCap, HttpCapability, HttpTag, MountRoutes, ProvideRequestCaps, into_axum_router,
         with_http,
     },
-    llm_tools::{LlmToolsCap, with_llm_tools},
     migration::{MigrationCap, MigrationCapability, MigrationTag, RunMigrations, with_migrations},
     rune_env::{RuneEnvCap, with_rune_env},
     template::{TemplateCap, with_templates},
@@ -118,8 +116,6 @@ pub type WebAppCaps = frunk::HList![
     TemplateCap<HNil, HNil>,
     MigrationCap<HNil, HNil>,
     RuneEnvCap<HNil>,
-    LlmToolsCap<HNil>,
-    GrapesJsCap<HNil>,
     ExportCap<HNil>,
     AppsCap<HNil>,
     ServeStartupsCap<HNil>,
@@ -138,7 +134,7 @@ impl App<HNil> {
         }
     }
 
-    /// Empty app with config, state/seed hooks, apps, grapesjs, llm tools, migration, template, slots, views, HTTP, CLI.
+    /// Empty app with config, state/seed hooks, apps, migration, template, slots, views, HTTP, CLI.
     pub fn new_web_app() -> App<WebAppCaps> {
         let app = Self::new();
         let app = with_config(app);
@@ -147,8 +143,6 @@ impl App<HNil> {
         let app = with_serve_startups(app);
         let app = with_apps(app);
         let app = with_export(app);
-        let app = with_grapesjs(app);
-        let app = with_llm_tools(app);
         let app = with_rune_env(app);
         let app = with_migrations(app);
         let app = with_templates(app);

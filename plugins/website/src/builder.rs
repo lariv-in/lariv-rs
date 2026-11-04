@@ -1,6 +1,6 @@
 //! GrapesJS builder HTML/JS assembly.
 
-use lariv_core::grapesjs::GrapesJsCapability;
+use crate::grapesjs::GrapesJsCapability;
 
 use super::dotlottie::{DOTLOTTIE_CDN_URL, DOTLOTTIE_SCRIPT_ATTR};
 use super::routes::{

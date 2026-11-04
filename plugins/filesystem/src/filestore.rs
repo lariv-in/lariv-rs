@@ -1,9 +1,12 @@
-//! Blob storage trait shared by core capabilities and the filesystem plugin.
+//! Blob storage for uploaded files.
 //!
-//! Concrete backends stay in the filesystem plugin and re-export these types.
-//! LLM and Rune capabilities depend on [`DynFilestore`] from here.
+//! Concrete backends ([`super::storage::LocalFilestore`], [`super::storage::GcsFilestore`])
+//! live next to this trait. Request contexts in `lariv-core` cannot name this plugin, so
+//! they hold the handle from [`erase_store`] and callers recover it with [`ErasedFilestore`].
 
+use std::any::Any;
 use std::io;
+use std::sync::Arc;
 
 use tokio::io::AsyncRead;
 
@@ -81,6 +84,32 @@ pub trait Filestore: Send + Sync {
 /// Dynamic dispatch is required: the concrete backend is only known after
 /// config load.
 pub type DynFilestore = dyn Filestore;
+
+/// Place a filestore on a request context that cannot name this plugin.
+pub fn erase_store(store: Arc<DynFilestore>) -> Arc<dyn Any + Send + Sync> {
+    Arc::new(store)
+}
+
+/// Recover a filestore stored with [`erase_store`].
+pub trait ErasedFilestore {
+    fn filestore(&self) -> &DynFilestore;
+    fn filestore_arc(&self) -> Arc<DynFilestore>;
+}
+
+impl ErasedFilestore for Arc<dyn Any + Send + Sync> {
+    fn filestore(&self) -> &DynFilestore {
+        self.downcast_ref::<Arc<DynFilestore>>()
+            .expect("context store is not a filestore")
+            .as_ref()
+    }
+
+    fn filestore_arc(&self) -> Arc<DynFilestore> {
+        Arc::clone(
+            self.downcast_ref::<Arc<DynFilestore>>()
+                .expect("context store is not a filestore"),
+        )
+    }
+}
 
 /// Always-erroring stub for unit tests that need a [`DynFilestore`] without I/O.
 pub struct UnimplementedFilestore;

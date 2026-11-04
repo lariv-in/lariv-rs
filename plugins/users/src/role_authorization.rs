@@ -280,14 +280,18 @@ pub async fn continue_with_auth_scope(mut req: Request, next: Next) -> Response 
 
 /// Run `f` with a principal and registry, for tests and non-request callers.
 ///
-/// Actual and effective user are the same principal.
+/// Actual and effective user are the same principal. The users auth callbacks are
+/// scoped the same way a mounted [`AuthHooks`](lariv_core::auth_hooks::AuthHooks) value
+/// is scoped for a request.
 pub fn with_principal<R>(
     auth: AuthContext,
     registry: RoleAuthorizationRegistry,
     f: impl FnOnce() -> R,
 ) -> R {
-    CURRENT_ROLES.sync_scope(registry, || {
-        ACTUAL_AUTH.sync_scope(auth.clone(), || CURRENT_AUTH.sync_scope(auth, f))
+    lariv_core::auth_hooks::scope_sync(core_auth_hooks(), || {
+        CURRENT_ROLES.sync_scope(registry, || {
+            ACTUAL_AUTH.sync_scope(auth.clone(), || CURRENT_AUTH.sync_scope(auth, f))
+        })
     })
 }
 
@@ -409,17 +413,13 @@ pub async fn authorize_request(
     }
 }
 
-/// Publish users auth behavior to core routing and `authorized_role`.
-pub fn register_core_auth_hooks() {
-    lariv_core::auth_hooks::register_auth_scope(|req, next| {
-        Box::pin(continue_with_auth_scope(req, next))
-    });
-    lariv_core::auth_hooks::register_authorize(|req, roles, tag| {
-        Box::pin(authorize_request(req, roles, tag))
-    });
-    lariv_core::auth_hooks::register_role_permitted(|roles| {
-        current_auth().is_some_and(|auth| principal_allowed(&auth, roles))
-    });
+/// Callbacks core routing and `authorized_role` read from the mounted app.
+pub fn core_auth_hooks() -> lariv_core::auth_hooks::AuthHooks {
+    lariv_core::auth_hooks::AuthHooks::new(
+        |req, next| Box::pin(continue_with_auth_scope(req, next)),
+        |req, roles, tag| Box::pin(authorize_request(req, roles, tag)),
+        |roles| current_auth().is_some_and(|auth| principal_allowed(&auth, roles)),
+    )
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-//! Builtin LLM tools registered onto [`lariv_core::llm_tools::LlmToolsCapability`].
+//! Builtin LLM tools registered onto [`crate::llm_tools::LlmToolsCapability`].
 
 mod attach_vnode_to_context;
 mod create_vnode;
@@ -17,7 +17,7 @@ mod run_rune_file;
 mod skills;
 mod subagents;
 
-use lariv_core::llm_tools::{LlmToolsCapability, ToolsRegistrar};
+use crate::llm_tools::{LlmToolsCapability, ToolsRegistrar};
 
 use attach_vnode_to_context::AttachVnodeToContextTool;
 use create_vnode::CreateVnodeTool;

@@ -4,12 +4,13 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::llm_tools::{LlmTool, ToolCtx};
 use crate::{
     genai::FunctionDeclaration,
     vnode_text::{record_read, require_session_id, require_text_content_size, split_vnode_path},
 };
-use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use lariv_plugin_filesystem::node::{self, NodeFile};
+use lariv_plugin_filesystem::storage::ErasedFilestore;
 
 pub struct CreateVnodeTool;
 
@@ -63,7 +64,7 @@ impl LlmTool for CreateVnodeTool {
 
         let (parent_segments, filename) = split_vnode_path(path)?;
         let parent_id =
-            node::ensure_directory_path(ctx.db, ctx.store.as_ref(), None, &parent_segments)
+            node::ensure_directory_path(ctx.db, ctx.store.filestore(), None, &parent_segments)
                 .await
                 .map_err(|e| e.to_string())?;
 
@@ -94,7 +95,7 @@ impl LlmTool for CreateVnodeTool {
         let bytes = parsed.content.into_bytes();
         let vnode = node::create(
             ctx.db,
-            ctx.store.as_ref(),
+            ctx.store.filestore(),
             filename.clone(),
             false,
             Some(NodeFile::Bytes {

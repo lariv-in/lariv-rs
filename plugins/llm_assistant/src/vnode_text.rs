@@ -5,7 +5,8 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
 };
 
-use lariv_core::llm_tools::ToolCtx;
+use crate::llm_tools::ToolCtx;
+use lariv_plugin_filesystem::storage::ErasedFilestore;
 use lariv_plugin_filesystem::{
     entities::VNode,
     node::{self, NodeError},
@@ -157,7 +158,7 @@ pub async fn require_fresh_read(
 }
 
 pub async fn load_text_file(ctx: &ToolCtx<'_>, vnode: &VNode) -> Result<(Vec<u8>, String), String> {
-    let bytes = read_file_bytes(ctx.store.as_ref(), vnode)
+    let bytes = read_file_bytes(ctx.store.filestore(), vnode)
         .await
         .map_err(|e: NodeError| e.to_string())?;
     let text = decode_text(&bytes)?.to_string();

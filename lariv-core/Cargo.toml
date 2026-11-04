@@ -51,7 +51,6 @@ clap = { workspace = true }
 anyhow = { workspace = true }
 http = { workspace = true }
 async-trait = { workspace = true }
-libc = { workspace = true }
 cookie = { workspace = true }
 pulldown-cmark = { workspace = true }
 chrono-tz = { workspace = true }

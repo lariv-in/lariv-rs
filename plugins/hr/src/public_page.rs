@@ -8,8 +8,8 @@ use maud::Markup;
 use sea_orm::DatabaseConnection;
 
 use lariv_core::components::shell::{ShellBase, shell_base};
-use lariv_core::grapesjs::GrapesJsCapability;
 use lariv_plugin_filesystem::storage::DynFilestore;
+use lariv_plugin_website::grapesjs::GrapesJsCapability;
 use lariv_plugin_website::preferences::resolve_theme;
 use lariv_plugin_website::theme::inject_theme_assets;
 

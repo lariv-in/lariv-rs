@@ -11,7 +11,7 @@ use minijinja::Environment;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use tokio::io::AsyncReadExt;
 
-use lariv_core::grapesjs::GrapesJsCapability;
+use crate::grapesjs::GrapesJsCapability;
 use lariv_plugin_filesystem::{entities::VNode, node, storage::DynFilestore};
 
 use super::{

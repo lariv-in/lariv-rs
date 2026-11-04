@@ -5,10 +5,10 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
-use lariv_core::grapesjs::GrapesJsCapability;
 use lariv_core::html_form::{CsrfToken, HtmlForm};
 use lariv_core::http::Cap;
 use lariv_plugin_filesystem::state::FilesystemState;
+use lariv_plugin_website::grapesjs::GrapesJsCapability;
 use lariv_plugin_website::state::WebsiteState;
 
 use lariv_plugin_hr::gender::ApplicantGender;

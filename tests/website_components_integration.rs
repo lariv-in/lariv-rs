@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use lariv_rs::grapesjs::{GrapesJsCapability, GrapesJsRegistrar};
+use lariv_rs::plugins::website::grapesjs::{GrapesJsCapability, GrapesJsRegistrar};
 use lariv_rs::plugins::website::{component_catalog, grapesjs::Hook, publish};
 
 fn catalog_from_hook() -> Arc<GrapesJsCapability> {

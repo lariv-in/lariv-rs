@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::grapesjs::{GrapesJsCapability, GrapesJsRegistrar};
 use crate::{grapesjs::Hook, publish};
-use lariv_core::grapesjs::{GrapesJsCapability, GrapesJsRegistrar};
 
 /// Build the website plugin GrapesJS catalog (same registry as production).
 pub fn build_website_catalog() -> Arc<GrapesJsCapability> {

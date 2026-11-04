@@ -59,7 +59,6 @@
 //! | [`components`] | Maud UI builders (fields, tables, shells) |
 //! | [`web`] | HTMX-aware page rendering helpers |
 //! | [`html_form`] | Form macro and widget traits |
-//! | [`rt`] | Large-stack process entry helpers ([`main`]) |
 //! | [`config`] | TOML configuration loading |
 //! | [`db`] | SeaORM connection capability |
 //! | [`migration`] | Composite SeaORM migrator |
@@ -67,9 +66,7 @@
 //! | [`hooks`] | State attachment and seed hooks |
 //! | [`apps`] | Dashboard app tile catalog |
 //! | [`export`] | XLSX export table catalog |
-//! | [`llm_tools`] | Gemini function-calling tools |
 //! | [`rune_env`] | Rune script native bindings |
-//! | [`grapesjs`] | Website builder block/component registries |
 //! | [`genai`] | Gemini HTTP client |
 //! | [`views`] | Named view registry (PWA offline page) |
 //!
@@ -112,9 +109,7 @@ pub mod db;
 pub mod docs;
 pub mod duration;
 pub mod export;
-pub mod filestore;
 pub mod genai;
-pub mod grapesjs;
 pub mod hooks;
 pub mod html_form;
 pub mod http;
@@ -123,17 +118,11 @@ pub mod layers;
 #[path = "../../lariv-formula/src/length.rs"]
 pub(crate) mod length;
 pub mod list_filters;
-#[cfg(feature = "cap-llm")]
-pub mod llm_tools;
-#[cfg(not(feature = "cap-llm"))]
-#[path = "llm_tools_stub.rs"]
-pub mod llm_tools;
 pub mod migration;
 pub mod picker;
 pub mod plugin_install;
 pub mod plugin_routes;
 pub mod role_registry;
-pub mod rt;
 #[cfg(feature = "cap-llm")]
 pub mod rune_env;
 #[cfg(not(feature = "cap-llm"))]
@@ -151,6 +140,10 @@ pub mod web;
 ///
 /// See [`plugin_routes`] for the full DSL reference.
 pub use lariv_rs_macros::define_plugin_routes;
+pub use lariv_rs_macros::{
+    define_passthrough_cap, define_plugin_install, define_register_export, define_register_items,
+    define_replace_templates,
+};
 
 /// Attribute macro: run `async fn main` on a thread with a raised stack size.
 ///
@@ -160,7 +153,7 @@ pub use lariv_rs_macros::define_plugin_routes;
 ///
 /// # Attributes
 ///
-/// - `stack_size = <expr>` — bytes (default: [`rt::DEFAULT_STACK_SIZE`], 64 MiB)
+/// - `stack_size = <expr>` — bytes (default: 64 MiB)
 /// - `flavor = "current_thread" | "multi_thread"` — Tokio runtime (default: `"current_thread"`)
 /// - `thread_name = "..."` — OS thread name (default: `"lariv-server"`)
 ///
@@ -180,6 +173,4 @@ pub use lariv_rs_macros::define_plugin_routes;
 /// ```
 pub use lariv_rs_macros::main;
 
-/// Re-exported for [`define_plugin_install!`](plugin_install::define_plugin_install) `cap_attach` /
-/// `cap_hook` unique type-parameter names (used via `$crate::paste` from the macro).
 pub use paste;

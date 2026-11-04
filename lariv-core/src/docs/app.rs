@@ -50,8 +50,6 @@
 //! | `state($hook)` | Runtime state after DB connect |
 //! | `seeds($hook)` | Startup seed data |
 //! | `commands($hook)` | CLI subcommands |
-//! | `grapesjs($hook)` | Website builder blocks |
-//! | `tools($hook)` | LLM function-calling tools |
 //! | `export($hook)` | XLSX export catalog tables |
 //! | `rune_env($hook)` | Rune script bindings |
 //!

@@ -2075,7 +2075,6 @@ mod vnode_form_page_tests {
 
     #[test]
     fn permissions_nav_is_hidden_from_hr() {
-        lariv_plugin_users::role_authorization::register_core_auth_hooks();
         let registry =
             RoleAuthorizationRegistry::new().allow::<FilesystemPermissions>(vec!["admin".into()]);
         let page = filesystem_list_page();

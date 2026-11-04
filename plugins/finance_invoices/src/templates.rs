@@ -13,10 +13,11 @@ use lariv_core::components::{
     button_modal_form, button_modal_route, button_submit, column_sort_url, container_column,
     container_row, data_table, delete_confirmation, detail, detail_header, field_link, field_text,
     field_textarea, field_title, filter_error_banner, form, form_hx_get_picker_route,
-    form_hx_get_route, form_hx_get_url, form_hx_post_main_url, form_hx_post_selector,
-    form_hx_post_url, label, list_filter_builder, modal, modal_keyed, pagination_pages,
-    row_attr_navigate, row_attr_select_multi, sort_indicator, table_button_bulk_actions,
-    table_button_columns, table_button_filter, table_list_content, table_pagination,
+    form_hx_get_route, form_hx_get_url, form_hx_post_main_url, form_hx_post_route,
+    form_hx_post_selector, form_hx_post_url, label, list_filter_builder, modal, modal_keyed,
+    pagination_pages, row_attr_navigate, row_attr_select_multi, sort_indicator,
+    table_button_bulk_actions, table_button_columns, table_button_filter, table_list_content,
+    table_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm, csrf_hidden_field};
 use lariv_core::http::{FkSelectGet, ProvideRequestCaps, RouteQueryBuilder, RouteUrl};
@@ -47,8 +48,8 @@ use super::forms::{
 use super::keys::{
     DRAFT_INVOICE_BULK_DELETE_MODAL, DRAFT_INVOICE_BULK_EDIT_MODAL, DRAFT_INVOICE_CREATE_MODAL,
     DRAFT_INVOICE_DELETE_MODAL, DRAFT_INVOICE_EDIT_MODAL, DRAFT_INVOICE_SELECT_MODAL,
-    DRAFT_INVOICE_SELECT_TABLE, INVOICE_PAY_MODAL, QUOTATION_INVOICE_CREATE_MODAL,
-    QUOTATION_INVOICE_SELECT_MODAL, QUOTATION_INVOICE_SELECT_TABLE,
+    DRAFT_INVOICE_SELECT_TABLE, INVOICE_PAY_MODAL, POSTED_INVOICE_RESET_DRAFT_MODAL,
+    QUOTATION_INVOICE_CREATE_MODAL, QUOTATION_INVOICE_SELECT_MODAL, QUOTATION_INVOICE_SELECT_TABLE,
 };
 use super::routes::{
     CancelledInvoiceBulkNewDraftRouteTag, CancelledInvoiceDetailRouteTag,
@@ -65,7 +66,8 @@ use super::routes::{
     PostedInvoiceBulkCancelPostRouteTag, PostedInvoiceBulkNewDraftRouteTag,
     PostedInvoiceCancelGetRouteTag, PostedInvoiceCancelRouteTag, PostedInvoiceDetailRouteTag,
     PostedInvoiceNewDraftGetRouteTag, PostedInvoicePayGetRouteTag, PostedInvoicePayPostRouteTag,
-    PostedInvoicePdfModalRouteTag, QuotationInvoiceBulkCreateDraftGetRouteTag,
+    PostedInvoicePdfModalRouteTag, PostedInvoiceResetDraftGetRouteTag,
+    PostedInvoiceResetDraftRouteTag, QuotationInvoiceBulkCreateDraftGetRouteTag,
     QuotationInvoiceBulkDeleteGetRouteTag, QuotationInvoiceBulkEditGetRouteTag,
     QuotationInvoiceCreateGetRouteTag, QuotationInvoiceCreatePostRouteTag,
     QuotationInvoiceDetailRouteTag, QuotationInvoiceMultiSelectRouteTag,
@@ -1557,6 +1559,11 @@ impl PostedInvoiceDetailPage {
                     "New quotation",
                     "btn-outline",
                 ))
+                (button_modal_route(
+                    PostedInvoiceResetDraftGetRouteTag::new(self.id),
+                    "Reset to draft",
+                    "btn-warning",
+                ))
             }
             @if self.can_pay {
                 (button_modal_form(ButtonModalForm {
@@ -2515,6 +2522,74 @@ impl RenderTemplate for InvoicePreferencesPage {
             self.body(),
             &InvoiceDefaultRouteTag.url(),
         )
+    }
+}
+
+#[derive(Clone)]
+pub struct ResetToDraftDeleteItem {
+    pub kind: String,
+    pub label: String,
+    pub url: String,
+}
+
+/// Confirm resetting a posted invoice: copy it with New Draft, then cascade-delete its journal.
+pub fn posted_reset_to_draft_modal(
+    id: i64,
+    items: &[ResetToDraftDeleteItem],
+    error: Option<&str>,
+    can_submit: bool,
+) -> Markup {
+    let body = if !can_submit {
+        let err = error.unwrap_or("Reset to draft is unavailable.");
+        html! {
+            h3 class="font-bold text-lg" { "Reset to draft unavailable" }
+            div class="alert alert-error my-2 text-sm" { (err) }
+        }
+    } else {
+        let item_list = html! {
+            p class="my-2" {
+                "A new draft invoice is created from this invoice, with the same fields as New quotation. The following records are then permanently deleted:"
+            }
+            (container_column("", html! {
+                @for item in items {
+                    (label(&item.kind, reset_to_draft_item_cell(&item.label, &item.url)))
+                }
+            }))
+        };
+        form(
+            &CsrfToken::current(),
+            FormOpts {
+                title: "Reset to draft",
+                subtitle: "This cannot be undone.",
+                attrs: form_hx_post_route(PostedInvoiceResetDraftRouteTag::new(id)),
+                form_error: error,
+                inputs: item_list,
+                actions: html! {
+                    (button_submit(ButtonSubmit {
+                        label: "Reset to draft",
+                        classes: "btn-error",
+                        ..Default::default()
+                    }))
+                },
+                ..Default::default()
+            },
+        )
+    };
+    modal_keyed(POSTED_INVOICE_RESET_DRAFT_MODAL, "", body)
+}
+
+fn reset_to_draft_item_cell(name: &str, url: &str) -> Markup {
+    if url.is_empty() {
+        field_text(FieldText {
+            value: name,
+            classes: "",
+        })
+    } else {
+        field_link(FieldLink {
+            href: url,
+            label: name,
+            classes: "",
+        })
     }
 }
 

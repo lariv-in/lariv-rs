@@ -12,7 +12,7 @@ use serde_json::Value as JsonValue;
 use tokio::sync::{broadcast, oneshot};
 use tokio_util::sync::CancellationToken;
 
-use lariv_core::llm_tools::HitlGate;
+use crate::llm_tools::HitlGate;
 
 use super::genai::Content;
 

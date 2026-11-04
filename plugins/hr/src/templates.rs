@@ -1497,7 +1497,6 @@ mod tests {
 
     #[test]
     fn granted_role_sees_leaves_in_the_hr_sidebar() {
-        lariv_plugin_users::role_authorization::register_core_auth_hooks();
         let registry = RoleAuthorizationRegistry::new()
             .allow::<HrPeopleView>(vec![Unassigned::NAME.into()])
             .allow::<JobFormView>(vec![Unassigned::NAME.into()])

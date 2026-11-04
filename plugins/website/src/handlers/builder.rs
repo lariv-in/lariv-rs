@@ -12,6 +12,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
 
+use crate::grapesjs::GrapesJsCapability;
 use crate::{
     builder::{grapesjs_body_html, grapesjs_head_html},
     builder_refs::{
@@ -27,7 +28,6 @@ use crate::{
     templates::RoutesBuilderPage,
 };
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
-use lariv_core::grapesjs::GrapesJsCapability;
 use lariv_core::http::Cap;
 use lariv_core::web::html_built_page_with_slots;
 use lariv_plugin_filesystem::node;

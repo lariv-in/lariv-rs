@@ -13,9 +13,10 @@ use crate::gemini_file_cache;
 use crate::genai::FunctionDeclaration;
 use crate::genai::FunctionResponseFileData;
 use crate::genai::FunctionResponsePart;
-use lariv_core::llm_tools::{LlmTool, ToolCtx, ToolResult};
+use crate::llm_tools::{LlmTool, ToolCtx, ToolResult};
 use lariv_plugin_filesystem::entities::VNode;
 use lariv_plugin_filesystem::node;
+use lariv_plugin_filesystem::storage::ErasedFilestore;
 use lariv_plugin_filesystem::zip::read_file_bytes;
 
 pub struct AttachVnodeToContextTool;
@@ -81,7 +82,7 @@ async fn attach(ctx: &ToolCtx<'_>, args: Value) -> Result<ToolResult, String> {
         ));
     }
 
-    let bytes = read_file_bytes(ctx.store.as_ref(), &vnode)
+    let bytes = read_file_bytes(ctx.store.filestore(), &vnode)
         .await
         .map_err(|e| e.to_string())?;
     let mime = detect_mime(&vnode.name, &bytes);
@@ -173,7 +174,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    use lariv_core::llm_tools::ToolCtx;
+    use crate::llm_tools::ToolCtx;
     use lariv_core::rune_env::RuneEnvCapability;
     use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
 
@@ -184,7 +185,7 @@ mod tests {
     ) -> ToolCtx<'a> {
         ToolCtx {
             db,
-            store,
+            store: lariv_plugin_filesystem::storage::erase_store(store),
             cse_api_key: "",
             cse_cx: "",
             rune_env,

@@ -4,8 +4,9 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::llm_tools::{LlmTool, ToolCtx};
 use crate::{chat_attachments, genai::FunctionDeclaration};
-use lariv_core::llm_tools::{LlmTool, ToolCtx};
+use lariv_plugin_filesystem::storage::ErasedFilestore;
 use lariv_plugin_filesystem::{
     entities::VNode,
     node::{self, NodeFile},
@@ -84,7 +85,7 @@ impl LlmTool for GeneratePdfTool {
         let filename = unique_filename(ctx.db, parent.id, &pdf_filename(&parsed.filename)).await;
         let vnode = node::create(
             ctx.db,
-            ctx.store.as_ref(),
+            ctx.store.filestore(),
             filename.clone(),
             false,
             Some(NodeFile::Bytes {
@@ -128,11 +129,11 @@ fn pdf_filename(raw: &str) -> String {
 async fn save_parent(ctx: &ToolCtx<'_>) -> Result<VNode, String> {
     match ctx.session_id {
         Some(session_id) => {
-            chat_attachments::ensure_conversation_folder(ctx.db, ctx.store.as_ref(), session_id)
+            chat_attachments::ensure_conversation_folder(ctx.db, ctx.store.filestore(), session_id)
                 .await
                 .map_err(|e| format!("chat attachments folder: {e}"))
         }
-        None => chat_attachments::ensure_chat_attachments_parent(ctx.db, ctx.store.as_ref())
+        None => chat_attachments::ensure_chat_attachments_parent(ctx.db, ctx.store.filestore())
             .await
             .map_err(|e| format!("chat attachments folder: {e}")),
     }
@@ -207,7 +208,7 @@ mod tests {
     async fn empty_source_errors() {
         use std::sync::Arc;
 
-        use lariv_core::llm_tools::ToolCtx;
+        use crate::llm_tools::ToolCtx;
         use lariv_core::rune_env::RuneEnvCapability;
         use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
 
@@ -216,7 +217,7 @@ mod tests {
         let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
         let ctx = ToolCtx {
             db: &db,
-            store,
+            store: lariv_plugin_filesystem::storage::erase_store(store),
             cse_api_key: "",
             cse_cx: "",
             rune_env: &cap,

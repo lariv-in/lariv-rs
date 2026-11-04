@@ -1,6 +1,7 @@
 //! Rune sandbox bindings for filesystem and chat-attachment helpers.
 
 use lariv_core::rune_env::{RuneEnvCapability, RuneEnvRegistrar};
+use lariv_plugin_filesystem::storage::ErasedFilestore;
 
 /// Registers assistant filesystem helpers onto the Rune environment.
 #[derive(Clone, Copy, Default)]
@@ -288,8 +289,6 @@ fn unarchive_file(
     ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
     args: &[rune::Value],
 ) -> Result<rune::Value, String> {
-    use std::sync::Arc;
-
     use serde_json::json;
 
     use lariv_core::rune_env::{block_on_async, json_to_rune, rune_to_json};
@@ -310,7 +309,7 @@ fn unarchive_file(
     let password = optional_password(&parsed);
 
     let db = ctx.db.clone();
-    let store = Arc::clone(&ctx.store);
+    let store = ctx.store.filestore_arc();
     let out = block_on_async(async move {
         let archive_node = resolve_file_vnode(&db, archive).await?;
         let bytes = read_file_bytes(store.as_ref(), &archive_node)
@@ -337,8 +336,6 @@ fn unarchive_single(
     ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
     args: &[rune::Value],
 ) -> Result<rune::Value, String> {
-    use std::sync::Arc;
-
     use lariv_core::rune_env::{block_on_async, json_to_rune, rune_to_json};
     use lariv_plugin_filesystem::zip::read_file_bytes;
 
@@ -364,7 +361,7 @@ fn unarchive_single(
     let password = optional_password(&parsed);
 
     let db = ctx.db.clone();
-    let store = Arc::clone(&ctx.store);
+    let store = ctx.store.filestore_arc();
     let out = block_on_async(async move {
         let archive_node = resolve_file_vnode(&db, archive).await?;
         let bytes = read_file_bytes(store.as_ref(), &archive_node)
@@ -390,8 +387,6 @@ fn list_archive_files(
     ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
     args: &[rune::Value],
 ) -> Result<rune::Value, String> {
-    use std::sync::Arc;
-
     use serde_json::json;
 
     use lariv_core::rune_env::{block_on_async, json_to_rune, rune_to_json};
@@ -408,7 +403,7 @@ fn list_archive_files(
     let password = optional_password(&parsed);
 
     let db = ctx.db.clone();
-    let store = Arc::clone(&ctx.store);
+    let store = ctx.store.filestore_arc();
     let out = block_on_async(async move {
         let archive_node = resolve_file_vnode(&db, archive).await?;
         let bytes = read_file_bytes(store.as_ref(), &archive_node)
@@ -430,8 +425,6 @@ fn stat_file(
     ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
     args: &[rune::Value],
 ) -> Result<rune::Value, String> {
-    use std::sync::Arc;
-
     use serde_json::json;
 
     use lariv_core::rune_env::{block_on_async, json_to_rune, rune_to_json};
@@ -442,7 +435,7 @@ fn stat_file(
     let parsed = parse_vnode_ref(&rune_to_json(value)?, "stat_file")?;
 
     let db = ctx.db.clone();
-    let store = Arc::clone(&ctx.store);
+    let store = ctx.store.filestore_arc();
     let out = block_on_async(async move {
         let (vnode, path) = resolve_any_vnode(&db, parsed).await?;
         let (size, content_type) = if vnode.is_directory {
@@ -477,8 +470,6 @@ fn read_bytes_file(
     ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
     args: &[rune::Value],
 ) -> Result<rune::Value, String> {
-    use std::sync::Arc;
-
     use lariv_core::rune_env::{block_on_async, rune_to_json};
     use lariv_plugin_filesystem::{node, zip::read_file_bytes};
 
@@ -488,7 +479,7 @@ fn read_bytes_file(
     let parsed = parse_vnode_ref(&rune_to_json(value)?, "read_bytes_file")?;
 
     let db = ctx.db.clone();
-    let store = Arc::clone(&ctx.store);
+    let store = ctx.store.filestore_arc();
     let data = block_on_async(async move {
         let vnode = match parsed {
             VNodeRef::Path(path) => {
@@ -649,7 +640,7 @@ mod tests {
     ) -> RuneEnvCtx<'a> {
         RuneEnvCtx {
             db,
-            store: Arc::clone(store),
+            store: lariv_plugin_filesystem::storage::erase_store(Arc::clone(store)),
             session_id,
         }
     }

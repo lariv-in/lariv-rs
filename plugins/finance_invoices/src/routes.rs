@@ -2,9 +2,9 @@ use super::{
     customer_journal, handlers,
     keys::{
         DRAFT_INVOICE_BULK_DELETE_MODAL, DRAFT_INVOICE_DELETE_MODAL, DRAFT_INVOICE_SELECT_MODAL,
-        DRAFT_INVOICE_SELECT_TABLE, INVOICE_HUB_TABLE, QUOTATION_INVOICE_BULK_DELETE_MODAL,
-        QUOTATION_INVOICE_DELETE_MODAL, QUOTATION_INVOICE_SELECT_MODAL,
-        QUOTATION_INVOICE_SELECT_TABLE,
+        DRAFT_INVOICE_SELECT_TABLE, INVOICE_HUB_TABLE, POSTED_INVOICE_RESET_DRAFT_MODAL,
+        QUOTATION_INVOICE_BULK_DELETE_MODAL, QUOTATION_INVOICE_DELETE_MODAL,
+        QUOTATION_INVOICE_SELECT_MODAL, QUOTATION_INVOICE_SELECT_TABLE,
     },
 };
 
@@ -64,6 +64,8 @@ lariv_core::define_plugin_routes! {
         post PostedInvoiceCancelRouteTag, "/finance-invoices/posted/{id}/cancel", bare handlers::posted::cancel_invoice, redirect, authorize(FinanceInvoicesMutate, []);
         get PostedInvoiceNewDraftGetRouteTag, "/finance-invoices/posted/{id}/new-draft", handlers::posted::new_draft_confirm_get, modal, authorize(FinanceInvoicesMutate, []);
         post PostedInvoiceNewDraftRouteTag, "/finance-invoices/posted/{id}/new-draft", bare handlers::posted::new_draft, redirect, authorize(FinanceInvoicesMutate, []);
+        get PostedInvoiceResetDraftGetRouteTag, "/finance-invoices/posted/{id}/reset-draft", handlers::posted::reset_draft_get, modal, authorize(FinanceInvoicesMutate, []);
+        post PostedInvoiceResetDraftRouteTag, "/finance-invoices/posted/{id}/reset-draft", bare handlers::posted::reset_draft_post, fragment(POSTED_INVOICE_RESET_DRAFT_MODAL), authorize(FinanceInvoicesMutate, []);
         get PostedInvoiceBulkNewDraftGetRouteTag, "/finance-invoices/posted/bulk-new-draft", handlers::posted::bulk_new_draft_confirm_get, modal, authorize(FinanceInvoicesMutate, []);
         post PostedInvoiceBulkNewDraftRouteTag, "/finance-invoices/posted/bulk-new-draft", bare handlers::posted::bulk_new_draft, redirect, authorize(FinanceInvoicesMutate, []);
         get PostedInvoiceBulkCancelGetRouteTag, "/finance-invoices/bulk-cancel", handlers::posted::bulk_cancel_get, authorize(FinanceInvoicesMutate, []);

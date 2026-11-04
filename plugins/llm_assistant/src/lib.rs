@@ -54,6 +54,11 @@ pub mod handlers;
 pub mod hitl;
 pub mod keys;
 pub mod live_turn;
+#[cfg(feature = "cap-llm")]
+pub mod llm_tools;
+#[cfg(not(feature = "cap-llm"))]
+#[path = "llm_tools_stub.rs"]
+pub mod llm_tools;
 pub mod migrations;
 pub mod preferences;
 pub mod routes;
@@ -73,12 +78,12 @@ use std::sync::Arc;
 
 use frunk::{HCons, HNil, hlist::HList};
 
+use crate::llm_tools::{FoldLlmToolsHooks, LlmToolsCap, LlmToolsTag};
 use lariv_core::app::App;
 use lariv_core::capability::{ApplyHooks, CapStore, define_passthrough_cap};
 use lariv_core::config::{ConfigCap, ConfigTag};
 use lariv_core::db::{DbCap, DbTag};
 use lariv_core::hooks::AttachState;
-use lariv_core::llm_tools::{LlmToolsCap, LlmToolsCapability, LlmToolsTag};
 use lariv_core::plugin_install::define_plugin_install;
 use lariv_core::rune_env::{RuneEnvCap, RuneEnvCapability, RuneEnvTag};
 use lariv_core::traits::{
@@ -100,12 +105,13 @@ define_passthrough_cap!(LlmAssistantStateCap, LlmAssistantTag, LlmAssistantState
 
 define_plugin_install! {
     plugin: LlmAssistantTag;
-    /// Register assistant deferred hooks (apps, tools, migrations, templates, slots, config, routes, state).
+    /// Register assistant deferred hooks (apps, LLM tools, migrations, templates, slots, config, routes, state).
     steps: [
         cap_attach(hitl::HitlTag, hitl::HitlCap, hitl::HitlCap::with_items(hitl::HitlCapability::new())),
         cap_hook(hitl::HitlTag, hitl::HitlCap, hitl::Hook),
         apps(apps::Hook),
-        tools(tools::Hook),
+        cap_attach(llm_tools::LlmToolsTag, llm_tools::LlmToolsCap, llm_tools::LlmToolsCap::with_items(llm_tools::LlmToolsCapability::new())),
+        cap_hook(llm_tools::LlmToolsTag, llm_tools::LlmToolsCap, tools::Hook),
         rune_env(rune_env::Hook),
         migrations(migrations::Hook),
         templates(templates::Hook),
@@ -131,7 +137,6 @@ impl<
     FsCfgIdx,
     ToolsIdx,
     ToolsHooks,
-    ToolsProof,
     RuneEnvIdx,
     RuneEnvHooks,
     RuneProof,
@@ -148,7 +153,6 @@ impl<
             AsstCfgIdx,
             FsCfgIdx,
             ToolsIdx,
-            ToolsProof,
             RuneEnvIdx,
             RuneProof,
             HitlIdx,
@@ -161,7 +165,7 @@ where
     Configs: GetByTag<LlmAssistantConfigTag, AsstCfgIdx, Value = LlmAssistantConfig>,
     Configs: GetByTag<FilesystemConfigTag, FsCfgIdx, Value = FilesystemConfig>,
     L: GetByCapTag<LlmToolsTag, ToolsIdx, Value = LlmToolsCap<ToolsHooks>>,
-    ToolsHooks: Clone + ApplyHooks<LlmToolsCapability, ToolsProof, Output = LlmToolsCapability>,
+    ToolsHooks: Clone + FoldLlmToolsHooks,
     L: GetByCapTag<RuneEnvTag, RuneEnvIdx, Value = RuneEnvCap<RuneEnvHooks>>,
     RuneEnvHooks: Clone + ApplyHooks<RuneEnvCapability, RuneProof, Output = RuneEnvCapability>,
     L: GetByCapTag<hitl::HitlTag, HitlIdx, Value = hitl::HitlCap<HitlHooks>>,
@@ -179,7 +183,7 @@ where
             <Configs as GetByTag<FilesystemConfigTag, FsCfgIdx>>::get_by_tag(configs).clone();
         let store: Arc<DynFilestore> = filestore_from_config(&fs_config);
         let tools_cap = app.get_capability::<LlmToolsTag, ToolsIdx>();
-        let tools = Arc::new(tools_cap.hooks.clone().apply_hooks(tools_cap.items.clone()));
+        let tools = Arc::new(tools_cap.hooks().clone().fold(tools_cap.items().clone()));
         let rune_cap = app.get_capability::<RuneEnvTag, RuneEnvIdx>();
         let rune_env = Arc::new(rune_cap.hooks.clone().apply_hooks(rune_cap.items.clone()));
         let hitl_cap = app.get_capability::<hitl::HitlTag, HitlIdx>();

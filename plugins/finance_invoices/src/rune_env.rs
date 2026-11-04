@@ -385,7 +385,7 @@ mod tests {
     ) -> RuneEnvCtx<'a> {
         RuneEnvCtx {
             db,
-            store: Arc::clone(store),
+            store: lariv_plugin_filesystem::storage::erase_store(Arc::clone(store)),
             session_id: None,
         }
     }

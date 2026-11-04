@@ -1,6 +1,6 @@
 //! Published HTML assembly.
 
-use lariv_core::grapesjs::GrapesJsTheme;
+use crate::grapesjs::GrapesJsTheme;
 
 use super::{dotlottie::inject_dotlottie_script, theme::inject_theme_assets};
 

@@ -5,11 +5,11 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::genai::FunctionDeclaration;
+use crate::llm_tools::{LlmTool, ToolCtx};
 use crate::vnode_text::load_text_file;
 use crate::vnode_text::record_read;
 use crate::vnode_text::require_session_id;
 use crate::vnode_text::resolve_file_vnode;
-use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use lariv_plugin_filesystem::node;
 
 pub struct ReadVnodeTool;

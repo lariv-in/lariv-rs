@@ -4,10 +4,18 @@
 //!
 //! - [`html_form`] — attribute macro: serde field wiring + `HtmlForm` trait impl
 //! - [`define_plugin_routes`] — proc macro: route tags, URL builders, response traits, `RouteRegistrar` hook
+//! - [`define_register_items`] — proc macro: item tags and a registrar hook
+//! - [`define_replace_templates`] — proc macro: replace and prepend template registrations
+//! - [`define_passthrough_cap`] — proc macro: hook-free state capability
+//! - [`define_register_export`] — proc macro: `ExportRegistrar` hook for one table
+//! - [`define_plugin_install`] — proc macro: plugin `install` function
+//! - [`apply_registrar_hook`] — proc macro: `ApplyHooks` + `FoldRegistrarHooks` for a registrar
 //! - [`main`] — attribute macro: large-stack async `main` for deep HList install/mount
 
+mod capability;
 mod html_form;
 mod main_attr;
+mod plugin_install;
 mod plugin_routes;
 
 use proc_macro::TokenStream;
@@ -105,6 +113,89 @@ pub fn html_form(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn define_plugin_routes(input: TokenStream) -> TokenStream {
     plugin_routes::define_plugin_routes(input)
+}
+
+/// `ApplyHooks` and `FoldRegistrarHooks` for one registrar trait.
+///
+/// Used by the template, slot, migration, and command capabilities. The `proof`
+/// type is the token carried in each hook's proof tuple; `tag` is the capability tag.
+#[proc_macro]
+pub fn apply_registrar_hook(input: TokenStream) -> TokenStream {
+    expand(capability::apply_registrar_hook(input.into()))
+}
+
+/// Declare item tags and a `Register*` impl for a marker-style capability.
+///
+/// Two item shapes are supported (add-order; last entry is the HList head):
+///
+/// - `Tag => Value` — `add::<Tag, Value>()` → `Tagged<Tag, Wrapper<Value>>` (templates)
+/// - `Tag, Kind => Value` — `add::<Tag, Kind, Value>()` → `Tagged<Tag, Wrapper<Kind, Value>>` (slots)
+/// - empty `items: []` — identity `Register*` (hook queued, nothing added)
+///
+/// Index names before each tag are call-site documentation; frunk indices are inferred.
+#[proc_macro]
+pub fn define_register_items(input: TokenStream) -> TokenStream {
+    expand(capability::define_register_items(input.into()))
+}
+
+/// Register a template hook that replaces tagged pages and optionally prepends new ones.
+#[proc_macro]
+pub fn define_replace_templates(input: TokenStream) -> TokenStream {
+    expand(capability::define_replace_templates(input.into()))
+}
+
+/// `CapStore<Tag, HNil, Value>` that mounts as `Tagged::new(items)`.
+#[proc_macro]
+pub fn define_passthrough_cap(input: TokenStream) -> TokenStream {
+    expand(capability::define_passthrough_cap(input.into()))
+}
+
+/// Register one exportable table as an `ExportRegistrar` hook.
+///
+/// ```ignore
+/// define_register_export! {
+///     plugin: UsersTag;
+///     table: "users";
+///     model: "User";
+///     columns: ["id", "email"];
+///     deps: ["clients"];
+/// }
+/// ```
+///
+/// `deps` is optional. `plugin` is required for call-site consistency and is not
+/// emitted; the generated `ExportHook` does not name the plugin tag.
+#[proc_macro]
+pub fn define_register_export(input: TokenStream) -> TokenStream {
+    expand(capability::define_register_export(input.into()))
+}
+
+/// Generate a plugin `install` function and the `After*` type aliases it chains.
+///
+/// Re-exported from `lariv-core` as [`define_plugin_install`](self::define_plugin_install).
+/// Call sites keep `lariv_core::plugin_install::define_plugin_install!`.
+///
+/// ```ignore
+/// define_plugin_install! {
+///     plugin: UsersTag;
+///     /// Register users deferred hooks and config section.
+///     steps: [
+///         apps(apps::Hook),
+///         migrations(migrations::Hook),
+///         http(routes::Hook),
+///         state(StateHook),
+///     ]
+/// }
+/// ```
+#[proc_macro]
+pub fn define_plugin_install(input: TokenStream) -> TokenStream {
+    expand(plugin_install::define_plugin_install(input.into()))
+}
+
+fn expand(result: syn::Result<proc_macro2::TokenStream>) -> TokenStream {
+    match result {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
 }
 
 /// Run `async fn main` on a thread with a raised stack size.

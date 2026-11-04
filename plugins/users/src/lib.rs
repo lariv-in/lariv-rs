@@ -88,6 +88,7 @@ define_plugin_install! {
     plugin: UsersTag;
     /// Register users deferred hooks and config section.
     steps: [
+        cap_attach(lariv_core::auth_hooks::AuthHooksTag, lariv_core::auth_hooks::AuthHooksCap, lariv_core::auth_hooks::AuthHooksCap::<frunk::HNil>::new(role_authorization::core_auth_hooks())),
         cap_attach(role_authorization::RoleAuthorizationTag, role_authorization::RoleAuthorizationCap, role_authorization::RoleAuthorizationCap::<frunk::HNil>::new()),
         cap_hook(role_authorization::RoleAuthorizationTag, role_authorization::RoleAuthorizationCap, routes::RoleHook),
         cap_attach(role_registry::RoleRegistryTag, role_registry::RoleRegistryCap, role_registry::RoleRegistryCap::<frunk::HNil>::new()),
@@ -120,7 +121,6 @@ where
     type Output = HCons<UsersStateCap, L>;
 
     fn attach_state(app: App<L>) -> App<Self::Output> {
-        role_authorization::register_core_auth_hooks();
         let conn = app.get_capability::<DbTag, DbIdx>().items.conn.clone();
         let config = <Configs as GetByTag<UsersConfigTag, UsersCfgIdx>>::get_by_tag(
             &app.get_capability::<ConfigTag, CfgIdx>().items,

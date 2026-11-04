@@ -19,8 +19,9 @@ use tokio_util::io::StreamReader;
 
 use super::config::{FilesystemConfig, StorageBackend};
 
-pub use lariv_core::filestore::{
-    DynFilestore, FileDownload, Filestore, FilestoreError, UnimplementedFilestore,
+pub use super::filestore::{
+    DynFilestore, ErasedFilestore, FileDownload, Filestore, FilestoreError, UnimplementedFilestore,
+    erase_store,
 };
 
 fn store_err(value: object_store::Error) -> FilestoreError {

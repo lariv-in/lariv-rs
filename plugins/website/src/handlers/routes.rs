@@ -14,6 +14,7 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
+use crate::grapesjs::GrapesJsCapability;
 use crate::{
     entities::{
         db_route::{self, ActiveModel, Entity as DbRouteEntity},
@@ -32,7 +33,6 @@ use crate::{
 use lariv_core::components::{
     FilterClauseView, ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx,
 };
-use lariv_core::grapesjs::GrapesJsCapability;
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::list_filters::{FilterField, apply_filters, parse_list_filters, text_column};

@@ -4,6 +4,7 @@ use axum::{
 };
 use chrono::Utc;
 use maud::Markup;
+use sea_orm::{DatabaseConnection, TransactionTrait};
 
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{CsrfToken, HtmlFormBody};
@@ -11,30 +12,37 @@ use lariv_core::http::Cap;
 use lariv_core::web::{Htmx, html_built_page_or_app_layout, html_built_page_with_slots};
 use lariv_plugin_users::middleware::RequireAuth;
 
+use lariv_plugin_finance_accounts::logic::journal::{
+    cascade_delete_preview, collect_journal_entry_cascade, delete_journal_entry_recursive,
+};
 use lariv_plugin_finance_accounts::scope::load_journal_entry_currency_format;
+use lariv_plugin_finance_accounts::source_doc_registry::SourceDocRegistry;
 
 use crate::{
+    draft_form_addon::run_draft_invoice_on_new_draft_from_posted,
     forms::CancelInvoiceForm,
     keys::{POSTED_INVOICE_BULK_NEW_DRAFT_MODAL, POSTED_INVOICE_NEW_DRAFT_MODAL},
     logic::{
+        delete_draft, delete_quotation,
         draft_payment_term::posted_payment_term_display_rows,
         invoice_line_editor::{
             invoice_customer_name, invoice_header_tax_labels, posted_invoice_line_display_rows,
         },
         load_invoice_date_formats, optional_display, posted_invoice_can_accept_payment,
-        posted_new_cancelled, posted_new_draft,
+        posted_new_cancelled, posted_new_draft, quotation_to_draft,
         tax_assoc::load_posted_invoice_tax_ids,
     },
     routes::{
-        CancelledInvoiceDetailRouteTag, PostedInvoiceBulkNewDraftRouteTag,
-        PostedInvoiceCancelGetRouteTag, PostedInvoiceDetailRouteTag, PostedInvoiceNewDraftRouteTag,
-        QuotationInvoiceDetailRouteTag,
+        CancelledInvoiceDetailRouteTag, DraftInvoiceDetailRouteTag,
+        PostedInvoiceBulkNewDraftRouteTag, PostedInvoiceCancelGetRouteTag,
+        PostedInvoiceDetailRouteTag, PostedInvoiceNewDraftRouteTag, QuotationInvoiceDetailRouteTag,
     },
     scope::{find_active_posted, find_cancellable_posted, hub_tab_url},
     state::InvoicesState,
     templates::{
         CancelBulkInvoicePage, CancelInvoicePage, ConfirmInvoiceTransition,
-        PostedInvoiceDetailPage, confirm_invoice_transition,
+        PostedInvoiceDetailPage, ResetToDraftDeleteItem, confirm_invoice_transition,
+        posted_reset_to_draft_modal,
     },
 };
 
@@ -209,6 +217,189 @@ pub async fn new_draft(
             Redirect::to(&PostedInvoiceDetailRouteTag::new(id).url()).into_response()
         }
     }
+}
+
+pub async fn reset_draft_get(
+    Cap(state): Cap<InvoicesState>,
+    Cap(source_docs): Cap<SourceDocRegistry>,
+    RequireAuth(_ctx): RequireAuth,
+    Path(id): Path<i64>,
+) -> Response {
+    let Some(posted) = find_active_posted(&state.db, id).await else {
+        return Redirect::to(&hub_tab_url("posted")).into_response();
+    };
+    reset_draft_modal(&state.db, &source_docs, id, posted.journal_entry_id, None)
+        .await
+        .into_response()
+}
+
+pub async fn reset_draft_post(
+    Cap(state): Cap<InvoicesState>,
+    Cap(source_docs): Cap<SourceDocRegistry>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+) -> Response {
+    let Some(posted) = find_active_posted(&state.db, id).await else {
+        return Redirect::to(&hub_tab_url("posted")).into_response();
+    };
+    let journal_entry_id = posted.journal_entry_id;
+    if journal_entry_id <= 0 {
+        return reset_draft_modal(
+            &state.db,
+            &source_docs,
+            id,
+            journal_entry_id,
+            Some("This posted invoice has no journal entry.".into()),
+        )
+        .await
+        .into_response();
+    }
+    let draft_id = match copy_posted_invoice_to_draft(&state.db, id, &ctx.timezone).await {
+        Ok(draft_id) => draft_id,
+        Err(e) => {
+            tracing::error!(error = %e, id, "failed to create draft while resetting posted invoice");
+            return reset_draft_modal(&state.db, &source_docs, id, journal_entry_id, Some(e))
+                .await
+                .into_response();
+        }
+    };
+    match delete_journal_entry_recursive(&state.db, journal_entry_id).await {
+        Ok(()) => htmx.redirect(&DraftInvoiceDetailRouteTag::new(draft_id).url()),
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                id,
+                journal_entry_id,
+                draft_id,
+                "failed to delete journal entry while resetting posted invoice"
+            );
+            let error = match delete_draft(&state.db, draft_id).await {
+                Ok(()) => e.to_string(),
+                Err(rollback) => {
+                    tracing::error!(
+                        error = %rollback,
+                        draft_id,
+                        "failed to roll back draft after reset-to-draft delete failed"
+                    );
+                    format!(
+                        "{e} (the new draft invoice #{draft_id} could not be removed: {rollback})"
+                    )
+                }
+            };
+            reset_draft_modal(&state.db, &source_docs, id, journal_entry_id, Some(error))
+                .await
+                .into_response()
+        }
+    }
+}
+
+/// Copy a posted invoice into a draft: New Draft, then the quotation-to-draft copy.
+///
+/// The intermediate quotation is removed. Addon data on the posted invoice is copied
+/// onto the draft before the posted row is deleted.
+async fn copy_posted_invoice_to_draft(
+    db: &DatabaseConnection,
+    posted_id: i64,
+    tz: &str,
+) -> Result<i64, String> {
+    let quotation = posted_new_draft(db, posted_id, tz).await?;
+    let draft = match quotation_to_draft(db, quotation.id).await {
+        Ok(draft) => draft,
+        Err(e) => {
+            return Err(rollback_quotation(db, quotation.id, e).await);
+        }
+    };
+    if let Err(e) = delete_quotation(db, quotation.id).await {
+        return Err(rollback_draft(db, draft.id, e).await);
+    }
+    let txn = match db.begin().await {
+        Ok(txn) => txn,
+        Err(e) => return Err(rollback_draft(db, draft.id, e.to_string()).await),
+    };
+    if let Err(e) = run_draft_invoice_on_new_draft_from_posted(&txn, posted_id, draft.id).await {
+        if let Err(rollback) = txn.rollback().await {
+            tracing::error!(error = %rollback, "failed to roll back draft addon copy");
+        }
+        return Err(rollback_draft(db, draft.id, e).await);
+    }
+    if let Err(e) = txn.commit().await {
+        return Err(rollback_draft(db, draft.id, e.to_string()).await);
+    }
+    Ok(draft.id)
+}
+
+async fn rollback_quotation(db: &DatabaseConnection, quotation_id: i64, error: String) -> String {
+    match delete_quotation(db, quotation_id).await {
+        Ok(()) => error,
+        Err(rollback) => {
+            tracing::error!(
+                error = %rollback,
+                quotation_id,
+                "failed to remove quotation created during reset to draft"
+            );
+            format!("{error} (quotation #{quotation_id} could not be removed: {rollback})")
+        }
+    }
+}
+
+async fn rollback_draft(db: &DatabaseConnection, draft_id: i64, error: String) -> String {
+    match delete_draft(db, draft_id).await {
+        Ok(()) => error,
+        Err(rollback) => {
+            tracing::error!(
+                error = %rollback,
+                draft_id,
+                "failed to remove draft created during reset to draft"
+            );
+            format!("{error} (draft invoice #{draft_id} could not be removed: {rollback})")
+        }
+    }
+}
+
+async fn reset_draft_modal(
+    db: &DatabaseConnection,
+    registry: &SourceDocRegistry,
+    id: i64,
+    journal_entry_id: i64,
+    error: Option<String>,
+) -> Markup {
+    if journal_entry_id <= 0 {
+        return posted_reset_to_draft_modal(
+            id,
+            &[],
+            Some(
+                error
+                    .as_deref()
+                    .unwrap_or("This posted invoice has no journal entry."),
+            ),
+            false,
+        );
+    }
+    let (items, preview_error) = match collect_journal_entry_cascade(db, journal_entry_id).await {
+        Ok(graph) => match cascade_delete_preview(db, registry, &graph).await {
+            Ok(items) => (
+                items
+                    .into_iter()
+                    .map(|item| ResetToDraftDeleteItem {
+                        kind: item.kind,
+                        label: item.label,
+                        url: item.url,
+                    })
+                    .collect(),
+                None,
+            ),
+            Err(e) => (Vec::new(), Some(e.to_string())),
+        },
+        Err(e) => (Vec::new(), Some(e.to_string())),
+    };
+    let can_submit = preview_error.is_none();
+    posted_reset_to_draft_modal(
+        id,
+        &items,
+        preview_error.as_deref().or(error.as_deref()),
+        can_submit,
+    )
 }
 
 pub async fn bulk_new_draft_confirm_get(

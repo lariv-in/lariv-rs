@@ -3,8 +3,8 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
+use crate::llm_tools::{LlmTool, ToolCtx};
 use lariv_core::genai::FunctionDeclaration;
-use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use lariv_core::rune_env::standard_library_names;
 
 pub struct ListRuneEnvTool;
@@ -44,7 +44,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    use lariv_core::llm_tools::ToolCtx;
+    use crate::llm_tools::ToolCtx;
     use lariv_core::rune_env::RuneEnvCapability;
     use lariv_plugin_filesystem::storage::{DynFilestore, UnimplementedFilestore};
 
@@ -55,7 +55,7 @@ mod tests {
         let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
         let ctx = ToolCtx {
             db: &db,
-            store,
+            store: lariv_plugin_filesystem::storage::erase_store(store),
             cse_api_key: "",
             cse_cx: "",
             rune_env: &cap,
@@ -87,7 +87,7 @@ mod tests {
         let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
         let ctx = ToolCtx {
             db: &db,
-            store,
+            store: lariv_plugin_filesystem::storage::erase_store(store),
             cse_api_key: "",
             cse_cx: "",
             rune_env: &cap,

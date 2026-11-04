@@ -2,17 +2,18 @@
 //!
 //! Mirrors [`lariv_core::rune_env::RuneEnvCapability`]: deferred [`HitlRegistrar`] hooks at mount,
 //! mounted as [`Arc<HitlCapability>`]. Scripts call these names like other Rune env functions;
-//! [`lariv_core::llm_tools::HitlGate`] blocks until a human approves (or the call fails closed).
+//! [`crate::llm_tools::HitlGate`] blocks until a human approves (or the call fails closed).
 
 use std::sync::Arc;
 
 use frunk::{HCons, HNil};
 use serde_json::Value as JsonValue;
 
+use crate::llm_tools::{HitlGate, HitlSource};
 use lariv_core::capability::{CapStore, Capability};
-use lariv_core::llm_tools::{HitlGate, HitlSource};
 use lariv_core::rune_env::{NativeBinding, NativeFn, RuneEnvCtx};
 use lariv_core::tag::Tagged;
+use lariv_plugin_filesystem::storage::ErasedFilestore;
 
 /// Capability tag for HITL-gated Rune functions.
 pub struct HitlTag;
@@ -240,7 +241,7 @@ fn delete_vnode(ctx: &RuneEnvCtx<'_>, args: &[rune::Value]) -> Result<rune::Valu
         .ok_or_else(|| "delete_vnode requires an object argument".to_string())?;
     let parsed = parse_vnode_ref(&rune_to_json(value)?, "delete_vnode")?;
     let db = ctx.db.clone();
-    let store = Arc::clone(&ctx.store);
+    let store = ctx.store.filestore_arc();
     block_on_async(async move {
         let (vnode, _) = resolve_any_vnode(&db, parsed).await?;
         node::delete_tree(&db, store.as_ref(), &vnode)
@@ -307,7 +308,7 @@ mod tests {
     ) -> RuneEnvCtx<'a> {
         RuneEnvCtx {
             db,
-            store: std::sync::Arc::clone(store),
+            store: lariv_plugin_filesystem::storage::erase_store(std::sync::Arc::clone(store)),
             session_id: None,
         }
     }

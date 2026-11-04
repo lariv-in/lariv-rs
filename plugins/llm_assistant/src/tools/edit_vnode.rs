@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::llm_tools::{LlmTool, ToolCtx};
 use crate::{
     genai::FunctionDeclaration,
     vnode_text::{
@@ -11,7 +12,7 @@ use crate::{
         require_text_content_size, resolve_file_vnode,
     },
 };
-use lariv_core::llm_tools::{LlmTool, ToolCtx};
+use lariv_plugin_filesystem::storage::ErasedFilestore;
 use lariv_plugin_filesystem::{
     node::{self, NodeFile},
     zip::read_file_bytes,
@@ -69,7 +70,7 @@ impl LlmTool for EditVnodeTool {
         require_text_content_size(&parsed.content)?;
 
         let vnode = resolve_file_vnode(ctx.db, path).await?;
-        let current = read_file_bytes(ctx.store.as_ref(), &vnode)
+        let current = read_file_bytes(ctx.store.filestore(), &vnode)
             .await
             .map_err(|e| e.to_string())?;
         decode_text(&current)?;
@@ -79,7 +80,7 @@ impl LlmTool for EditVnodeTool {
         let filename = vnode.name.clone();
         let vnode = node::update(
             ctx.db,
-            ctx.store.as_ref(),
+            ctx.store.filestore(),
             vnode,
             filename.clone(),
             Some(NodeFile::Bytes {

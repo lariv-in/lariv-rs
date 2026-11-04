@@ -29,6 +29,7 @@ pub mod apps;
 pub mod config;
 pub mod create_modals;
 pub mod entities;
+pub mod filestore;
 pub mod forms;
 pub mod handlers;
 pub mod keys;

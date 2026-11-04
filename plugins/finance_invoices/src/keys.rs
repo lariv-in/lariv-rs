@@ -13,6 +13,7 @@ pub const DRAFT_INVOICE_POST_MODAL: SwapKey = SwapKey("draft-invoice-post-modal"
 pub const DRAFT_INVOICE_BULK_POST_MODAL: SwapKey = SwapKey("draft-invoice-bulk-post-modal");
 pub const DRAFT_INVOICE_BULK_DELETE_MODAL: SwapKey = SwapKey("draft-invoice-bulk-delete-modal");
 pub const POSTED_INVOICE_NEW_DRAFT_MODAL: SwapKey = SwapKey("posted-invoice-new-draft-modal");
+pub const POSTED_INVOICE_RESET_DRAFT_MODAL: SwapKey = SwapKey("posted-invoice-reset-draft-modal");
 pub const POSTED_INVOICE_BULK_NEW_DRAFT_MODAL: SwapKey =
     SwapKey("posted-invoice-bulk-new-draft-modal");
 pub const CANCELLED_INVOICE_NEW_DRAFT_MODAL: SwapKey = SwapKey("cancelled-invoice-new-draft-modal");

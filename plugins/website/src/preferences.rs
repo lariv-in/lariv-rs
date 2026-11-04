@@ -4,7 +4,7 @@ use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 use serde_json::{Value, json};
 
-use lariv_core::grapesjs::{GrapesJsCapability, GrapesJsTheme};
+use crate::grapesjs::{GrapesJsCapability, GrapesJsTheme};
 use lariv_plugin_filesystem::{node, storage::DynFilestore};
 
 use super::{

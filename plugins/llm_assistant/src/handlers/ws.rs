@@ -14,6 +14,7 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
+use crate::llm_tools::LlmToolsCapability;
 use crate::{
     actions::{
         StreamEvent, load_api_contents, resolve_context_usage, run_stream_turn,
@@ -36,7 +37,6 @@ use crate::{
     },
 };
 use lariv_core::http::Cap;
-use lariv_core::llm_tools::LlmToolsCapability;
 use lariv_core::rune_env::RuneEnvCapability;
 use lariv_plugin_filesystem::{node, state::FilesystemState, zip::read_file_bytes};
 use lariv_plugin_users::middleware::RequireAuth;

@@ -8,10 +8,10 @@ use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 
+use crate::llm_tools::{HitlGate, LlmToolsCapability, ToolCtx, ToolResult};
 use lariv_core::genai::util::{content_answer_text, content_is_thought_only};
-use lariv_core::llm_tools::{HitlGate, LlmToolsCapability, ToolCtx, ToolResult};
 use lariv_core::rune_env::RuneEnvCapability;
-use lariv_plugin_filesystem::storage::DynFilestore;
+use lariv_plugin_filesystem::storage::{DynFilestore, erase_store};
 
 use super::{
     compaction::{CompactionError, contents_for_api, latest_fence, load_session_fences},
@@ -394,7 +394,7 @@ pub async fn run_stream_turn(
 
             let tool_ctx = ToolCtx {
                 db: &state.db,
-                store: Arc::clone(&store),
+                store: erase_store(Arc::clone(&store)),
                 cse_api_key: &cse_api_key,
                 cse_cx: &cse_cx,
                 rune_env: &rune_env,

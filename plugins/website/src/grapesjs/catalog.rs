@@ -1,4 +1,4 @@
-use lariv_core::grapesjs::{
+use super::{
     GrapesJsBlock, GrapesJsCapability, GrapesJsComponent, GrapesJsRegistrar, GrapesJsTheme,
     GrapesJsTrait,
 };
@@ -982,14 +982,14 @@ impl GrapesJsRegistrar for Hook {
             // Layout blocks
             .register_block(
                 "p_website.section",
-                block_html("Section", "Layout", include_str!("assets/grapesjs_blocks/section.html")),
+                block_html("Section", "Layout", include_str!("../assets/grapesjs_blocks/section.html")),
             )
             .register_block(
                 "p_website.row-2",
                 block_html(
                     "2 Columns",
                     "Layout",
-                    include_str!("assets/grapesjs_blocks/2-columns.html"),
+                    include_str!("../assets/grapesjs_blocks/2-columns.html"),
                 ),
             )
             .register_block(
@@ -997,12 +997,12 @@ impl GrapesJsRegistrar for Hook {
                 block_html(
                     "3 Columns",
                     "Layout",
-                    include_str!("assets/grapesjs_blocks/3-columns.html"),
+                    include_str!("../assets/grapesjs_blocks/3-columns.html"),
                 ),
             )
             .register_block(
                 "p_website.card",
-                block_html("Card", "Layout", include_str!("assets/grapesjs_blocks/card.html")),
+                block_html("Card", "Layout", include_str!("../assets/grapesjs_blocks/card.html")),
             )
             // Catalog blocks
             .register_block(
@@ -1010,39 +1010,39 @@ impl GrapesJsRegistrar for Hook {
                 block_html(
                     "Accordion",
                     "Interactive",
-                    include_str!("assets/grapesjs_components/accordion.html"),
+                    include_str!("../assets/grapesjs_components/accordion.html"),
                 ),
             )
             .register_block(
                 "p_website.blurb",
-                block_html("Blurb", "Basic", include_str!("assets/grapesjs_components/blurb.html")),
+                block_html("Blurb", "Basic", include_str!("../assets/grapesjs_components/blurb.html")),
             )
             .register_block(
                 "p_website.button",
-                block_html("Button", "Basic", include_str!("assets/grapesjs_components/button.html")),
+                block_html("Button", "Basic", include_str!("../assets/grapesjs_components/button.html")),
             )
             .register_block(
                 "p_website.contact-detail",
                 block_html(
                     "Contact detail",
                     "Basic",
-                    include_str!("assets/grapesjs_components/contact-detail.html"),
+                    include_str!("../assets/grapesjs_components/contact-detail.html"),
                 ),
             )
             .register_block(
                 "p_website.cta",
-                block_html("CTA", "Basic", include_str!("assets/grapesjs_components/cta.html")),
+                block_html("CTA", "Basic", include_str!("../assets/grapesjs_components/cta.html")),
             )
             .register_block(
                 "p_website.code",
-                block_html("Code", "Basic", include_str!("assets/grapesjs_components/code.html")),
+                block_html("Code", "Basic", include_str!("../assets/grapesjs_components/code.html")),
             )
             .register_block(
                 "p_website.expand-section",
                 block_html(
                     "Expand section",
                     "Layout",
-                    include_str!("assets/grapesjs_components/expand-section.html"),
+                    include_str!("../assets/grapesjs_components/expand-section.html"),
                 ),
             )
             .register_block(
@@ -1050,87 +1050,87 @@ impl GrapesJsRegistrar for Hook {
                 block_html(
                     "Feature card",
                     "Basic",
-                    include_str!("assets/grapesjs_components/feature-card.html"),
+                    include_str!("../assets/grapesjs_components/feature-card.html"),
                 ),
             )
             .register_block(
                 "p_website.divider",
-                block_html("Divider", "Basic", include_str!("assets/grapesjs_components/divider.html")),
+                block_html("Divider", "Basic", include_str!("../assets/grapesjs_components/divider.html")),
             )
             .register_block(
                 "p_website.dropdown",
                 block_html(
                     "Dropdown",
                     "Interactive",
-                    include_str!("assets/grapesjs_components/dropdown.html"),
+                    include_str!("../assets/grapesjs_components/dropdown.html"),
                 ),
             )
             .register_block(
                 "p_website.gallery",
-                block_html("Gallery", "Media", include_str!("assets/grapesjs_components/gallery.html")),
+                block_html("Gallery", "Media", include_str!("../assets/grapesjs_components/gallery.html")),
             )
             .register_block(
                 "p_website.heading",
                 block_html(
                     "Heading",
                     "Basic",
-                    include_str!("assets/grapesjs_components/heading.html"),
+                    include_str!("../assets/grapesjs_components/heading.html"),
                 ),
             )
             .register_block(
                 "p_website.hero",
-                block_html("Hero", "Layout", include_str!("assets/grapesjs_components/hero.html")),
+                block_html("Hero", "Layout", include_str!("../assets/grapesjs_components/hero.html")),
             )
             .register_block(
                 "p_website.navbar",
                 block_html(
                     "Navbar",
                     "Layout",
-                    include_str!("assets/grapesjs_components/navbar.html"),
+                    include_str!("../assets/grapesjs_components/navbar.html"),
                 ),
             )
             .register_block(
                 "p_website.icon",
-                block_html("Icon", "Media", include_str!("assets/grapesjs_components/icon.html")),
+                block_html("Icon", "Media", include_str!("../assets/grapesjs_components/icon.html")),
             )
             .register_block(
                 "p_website.icon-list",
                 block_html(
                     "Icon list",
                     "Basic",
-                    include_str!("assets/grapesjs_components/icon-list.html"),
+                    include_str!("../assets/grapesjs_components/icon-list.html"),
                 ),
             )
             .register_block(
                 "p_website.image",
-                block_html("Image", "Media", include_str!("assets/grapesjs_components/image.html")),
+                block_html("Image", "Media", include_str!("../assets/grapesjs_components/image.html")),
             )
             .register_block(
                 "p_website.video",
-                block_html("Video", "Media", include_str!("assets/grapesjs_components/video.html")),
+                block_html("Video", "Media", include_str!("../assets/grapesjs_components/video.html")),
             )
             .register_block(
                 "p_website.link",
-                block_html("Link", "Basic", include_str!("assets/grapesjs_components/link.html")),
+                block_html("Link", "Basic", include_str!("../assets/grapesjs_components/link.html")),
             )
             .register_block(
                 "p_website.dotlottie",
                 block_html(
                     "DotLottie",
                     "Media",
-                    include_str!("assets/grapesjs_components/dotlottie.html"),
+                    include_str!("../assets/grapesjs_components/dotlottie.html"),
                 ),
             )
             .register_block(
                 "p_website.person",
-                block_html("Person", "Basic", include_str!("assets/grapesjs_components/person.html")),
+                block_html("Person", "Basic", include_str!("../assets/grapesjs_components/person.html")),
             )
             .register_block(
                 "p_website.pricing-tables",
                 block_html(
                     "Pricing tables",
                     "Basic",
-                    include_str!("assets/grapesjs_components/pricing-tables.html"),
+                    include_str!("../assets/grapesjs_components/pricing-tables.html"),
                 ),
             )
             .register_block(
@@ -1138,7 +1138,7 @@ impl GrapesJsRegistrar for Hook {
                 block_html(
                     "Section header",
                     "Basic",
-                    include_str!("assets/grapesjs_components/section-header.html"),
+                    include_str!("../assets/grapesjs_components/section-header.html"),
                 ),
             )
             .register_block(
@@ -1146,19 +1146,19 @@ impl GrapesJsRegistrar for Hook {
                 block_html(
                     "Slider",
                     "Interactive",
-                    include_str!("assets/grapesjs_components/slider.html"),
+                    include_str!("../assets/grapesjs_components/slider.html"),
                 ),
             )
             .register_block(
                 "p_website.tabs",
-                block_html("Tabs", "Interactive", include_str!("assets/grapesjs_components/tabs.html")),
+                block_html("Tabs", "Interactive", include_str!("../assets/grapesjs_components/tabs.html")),
             )
             .register_block(
                 "p_website.plugin-catalog",
                 block_html(
                     "Plugin catalog",
                     "Interactive",
-                    include_str!("assets/grapesjs_components/plugin-catalog.html"),
+                    include_str!("../assets/grapesjs_components/plugin-catalog.html"),
                 ),
             )
             .register_block(
@@ -1166,7 +1166,7 @@ impl GrapesJsRegistrar for Hook {
                 block_html(
                     "Testimonial",
                     "Basic",
-                    include_str!("assets/grapesjs_components/testimonial.html"),
+                    include_str!("../assets/grapesjs_components/testimonial.html"),
                 ),
             )
             .register_block(
@@ -1174,19 +1174,19 @@ impl GrapesJsRegistrar for Hook {
                 block_html(
                     "Toggleable",
                     "Interactive",
-                    include_str!("assets/grapesjs_components/toggleable.html"),
+                    include_str!("../assets/grapesjs_components/toggleable.html"),
                 ),
             )
             .register_block(
                 "p_website.text",
-                block_html("Text", "Basic", include_str!("assets/grapesjs_components/text.html")),
+                block_html("Text", "Basic", include_str!("../assets/grapesjs_components/text.html")),
             )
             .register_block(
                 "p_website.bar-counter",
                 block_html(
                     "Bar counter",
                     "Counters",
-                    include_str!("assets/grapesjs_components/bar-counter.html"),
+                    include_str!("../assets/grapesjs_components/bar-counter.html"),
                 ),
             )
             .register_block(
@@ -1194,7 +1194,7 @@ impl GrapesJsRegistrar for Hook {
                 block_html(
                     "Circle counter",
                     "Counters",
-                    include_str!("assets/grapesjs_components/circle-counter.html"),
+                    include_str!("../assets/grapesjs_components/circle-counter.html"),
                 ),
             )
             .register_block(
@@ -1202,7 +1202,7 @@ impl GrapesJsRegistrar for Hook {
                 block_html(
                     "Countdown",
                     "Counters",
-                    include_str!("assets/grapesjs_components/countdown-counter.html"),
+                    include_str!("../assets/grapesjs_components/countdown-counter.html"),
                 ),
             )
             .register_block(
@@ -1210,7 +1210,7 @@ impl GrapesJsRegistrar for Hook {
                 block_html(
                     "Number counter",
                     "Counters",
-                    include_str!("assets/grapesjs_components/number-counter.html"),
+                    include_str!("../assets/grapesjs_components/number-counter.html"),
                 ),
             )
             // Components
@@ -2146,7 +2146,7 @@ impl GrapesJsRegistrar for Hook {
                 "p_website.default",
                 GrapesJsTheme {
                     label: "Default".into(),
-                    css: include_str!("assets/grapesjs_theme.css").trim().into(),
+                    css: include_str!("../assets/grapesjs_theme.css").trim().into(),
                     stylesheets: vec![DEFAULT_THEME_FONTS_CSS.into()],
                     ..Default::default()
                 },
@@ -2208,7 +2208,7 @@ impl GrapesJsRegistrar for Hook {
                         "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4".into(),
                     ],
                     css_type: Some("text/tailwindcss".into()),
-                    css: include_str!("assets/grapesjs_tailwind_theme.css").trim().into(),
+                    css: include_str!("../assets/grapesjs_tailwind_theme.css").trim().into(),
                     stylesheets: vec![
                         "https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700&display=swap"
                             .into(),
@@ -2226,7 +2226,7 @@ impl GrapesJsRegistrar for Hook {
                         "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4".into(),
                     ],
                     stylesheets: vec!["https://cdn.jsdelivr.net/npm/daisyui@5".into()],
-                    css: include_str!("assets/grapesjs_daisyui_theme.css").trim().into(),
+                    css: include_str!("../assets/grapesjs_daisyui_theme.css").trim().into(),
                     ..Default::default()
                 },
             )
@@ -2235,8 +2235,8 @@ impl GrapesJsRegistrar for Hook {
                 GrapesJsTheme {
                     label: "KDS Tagore".into(),
                     stylesheets: vec![KDS_THEME_FONTS_CSS.into()],
-                    css: include_str!("assets/grapesjs_kds_theme.css").trim().into(),
-                    js: include_str!("assets/grapesjs_kds_theme.js").trim().into(),
+                    css: include_str!("../assets/grapesjs_kds_theme.css").trim().into(),
+                    js: include_str!("../assets/grapesjs_kds_theme.js").trim().into(),
                     ..Default::default()
                 },
             )

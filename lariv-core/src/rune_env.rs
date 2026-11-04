@@ -1,6 +1,6 @@
 //! Rune environment registry — plugins register bindings for assistant scripts.
 //!
-//! Mirrors [`crate::llm_tools::LlmToolsCapability`]: deferred registrar hooks at mount,
+//! Mirrors the LLM tools registry: deferred registrar hooks at mount,
 //! mounted as [`Arc<RuneEnvCapability>`] for cheap request-extension clones.
 //!
 //! Plugins expose static JSON values or request-scoped native functions that Rune scripts
@@ -52,7 +52,6 @@ use serde_json::{Value as JsonValue, json};
 use crate::{
     app::App,
     capability::{ApplyHooks, CapStore, Capability, UnitHookProof, mount_unit_hooks},
-    filestore::DynFilestore,
     tag::Tagged,
     traits::add::{AddCapability, CapTagAbsent},
 };
@@ -63,7 +62,8 @@ pub struct RuneEnvTag;
 /// Request-time context when resolving contextual bindings.
 pub struct RuneEnvCtx<'a> {
     pub db: &'a DatabaseConnection,
-    pub store: Arc<DynFilestore>,
+    /// Filestore handle from the filesystem plugin (`erase_store`).
+    pub store: Arc<dyn std::any::Any + Send + Sync>,
     /// Active assistant conversation, when the script runs inside a chat turn.
     pub session_id: Option<i64>,
 }

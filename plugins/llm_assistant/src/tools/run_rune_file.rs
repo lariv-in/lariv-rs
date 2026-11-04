@@ -7,9 +7,10 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::genai::FunctionDeclaration;
+use crate::llm_tools::{LlmTool, ToolCtx};
 use crate::rune_engine;
-use lariv_core::llm_tools::{LlmTool, ToolCtx};
 use lariv_plugin_filesystem::node;
+use lariv_plugin_filesystem::storage::ErasedFilestore;
 use lariv_plugin_filesystem::zip::read_file_bytes;
 
 pub struct RunRuneFileTool;
@@ -67,7 +68,7 @@ impl LlmTool for RunRuneFileTool {
             return Err(format!("path \"{path}\" is a directory, not a file"));
         }
 
-        let bytes = read_file_bytes(ctx.store.as_ref(), &vnode)
+        let bytes = read_file_bytes(ctx.store.filestore(), &vnode)
             .await
             .map_err(|e| e.to_string())?;
         let source = String::from_utf8_lossy(&bytes);

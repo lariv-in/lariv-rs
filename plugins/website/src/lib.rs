@@ -94,7 +94,8 @@ define_plugin_install! {
     /// Register website deferred hooks (apps, grapesjs, migrations, templates, slots, config, routes, state).
     steps: [
         apps(apps::Hook),
-        grapesjs(grapesjs::Hook),
+        cap_attach(grapesjs::GrapesJsTag, grapesjs::GrapesJsCap, grapesjs::GrapesJsCap::with_items(grapesjs::GrapesJsCapability::new())),
+        cap_hook(grapesjs::GrapesJsTag, grapesjs::GrapesJsCap, grapesjs::Hook),
         migrations(migrations::Hook),
         templates(templates::Hook),
         slots(templates::SlotsHook),
