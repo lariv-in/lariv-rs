@@ -8,6 +8,10 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
+use lariv_formula::{
+    Measure, VariableDef, VariableSchema, VariableType, VariableValues, format_value_lines,
+    parse_values,
+};
 use lariv_plugin_finance_common::decimal::{self, parse_decimal};
 use lariv_plugin_finance_products::{
     entities::product::{Entity as ProductEntity, ProductKind},
@@ -26,9 +30,15 @@ use crate::logic::tax_assoc::{set_draft_invoice_taxes, set_draft_line_taxes};
 pub struct DraftLinePending {
     pub product_id: i64,
     pub rate: Option<String>,
-    /// Number of products. Multiplies the price of one product. Defaults to 1.
+    /// Magnitude of the quantity measure. Multiplies the price of one product. Defaults to 1.
     #[serde(default = "default_line_quantity")]
     pub quantity: String,
+    /// Measure kind (`length`, `weight`, `quantity`, …). Defaults to `quantity`.
+    #[serde(default = "default_qty_kind")]
+    pub qty_kind: String,
+    /// Unit for [`Self::qty_kind`]. Empty uses that kind's default unit.
+    #[serde(default)]
+    pub qty_unit: String,
     /// Raw formula inputs, keyed by the product's variable names.
     #[serde(default)]
     pub variables: Option<serde_json::Value>,
@@ -37,6 +47,9 @@ pub struct DraftLinePending {
     /// Optional note stored with this product line.
     #[serde(default)]
     pub remarks: Option<String>,
+    /// Name printed for this line. Empty uses the catalog product name.
+    #[serde(default)]
+    pub product_name: Option<String>,
 }
 
 /// Format an invoice datetime as a calendar date (`DD/MM/YYYY`) in `tz`.
@@ -83,6 +96,7 @@ pub fn parse_delivery_date(s: &str) -> Result<Option<NaiveDate>, String> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InvoiceState {
     Draft,
+    Quotation,
     Posted,
     PartiallyPaid,
     Paid,
@@ -93,6 +107,7 @@ impl InvoiceState {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Draft => "draft",
+            Self::Quotation => "quotation",
             Self::Posted => "posted",
             Self::PartiallyPaid => "partially paid",
             Self::Paid => "paid",
@@ -114,7 +129,7 @@ pub async fn draft_invoice_state(
     if exists {
         Ok(InvoiceState::Draft)
     } else {
-        Err("quotation not found".to_string())
+        Err("draft invoice not found".to_string())
     }
 }
 
@@ -130,8 +145,87 @@ fn default_line_quantity() -> String {
     "1".to_string()
 }
 
+fn default_qty_kind() -> String {
+    VariableType::Quantity.as_str().to_string()
+}
+
+/// Parse a line quantity the same way a formula variable is parsed.
+///
+/// `kind` is the measure kind and `unit` is the unit for that kind. An empty
+/// kind is a count (`quantity` / `Number`). The returned magnitude is what
+/// multiplies the unit price.
+pub(crate) fn parse_qty_measure(
+    raw_value: &str,
+    kind: &str,
+    unit: &str,
+) -> Result<(Decimal, String, String), String> {
+    let kind = kind.trim();
+    let ty = if kind.is_empty() {
+        VariableType::Quantity
+    } else {
+        VariableType::parse_name(kind).ok_or_else(|| format!("unknown quantity kind `{kind}`"))?
+    };
+    let mut schema = VariableSchema::new();
+    schema.insert("quantity".to_string(), VariableDef::new(ty));
+    let raw = serde_json::json!({
+        "quantity": {
+            "kind": ty.as_str(),
+            "value": raw_value.trim(),
+            "unit": unit.trim(),
+        }
+    });
+    let values = parse_values(&schema, &raw).map_err(|e| e.to_string())?;
+    let measure = values
+        .get("quantity")
+        .ok_or_else(|| "quantity is required".to_string())?;
+    if measure.value <= Decimal::ZERO {
+        return Err("quantity must be positive".to_string());
+    }
+    Ok((
+        decimal::normalize(measure.value),
+        measure.kind.as_str().to_string(),
+        measure.unit.clone(),
+    ))
+}
+
+/// Display a stored quantity measure (`5 No.`, `2 cm`, `18%`).
+pub(crate) fn format_qty_measure(value: Decimal, kind: &str, unit: &str) -> String {
+    let ty = VariableType::parse_name(kind).unwrap_or(VariableType::Quantity);
+    let unit = {
+        let trimmed = unit.trim();
+        if trimmed.is_empty() {
+            ty.default_accepted_unit().to_string()
+        } else {
+            trimmed.to_string()
+        }
+    };
+    let mut schema = VariableSchema::new();
+    schema.insert(
+        "quantity".to_string(),
+        VariableDef {
+            ty,
+            accepted_unit: unit.clone(),
+        },
+    );
+    let mut values = VariableValues::new();
+    values.insert(
+        "quantity".to_string(),
+        Measure {
+            kind: ty,
+            value,
+            unit,
+        },
+    );
+    format_value_lines(&schema, &values)
+        .into_iter()
+        .next()
+        .unwrap_or_default()
+        .trim_start_matches("Quantity: ")
+        .to_string()
+}
+
 /// A typed unit price overrides the sales formula. An empty rate leaves pricing to the formula.
-fn optional_non_negative_rate(raw: &Option<String>) -> Result<Option<Decimal>, String> {
+pub(crate) fn optional_non_negative_rate(raw: &Option<String>) -> Result<Option<Decimal>, String> {
     let Some(raw) = raw.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) else {
         return Ok(None);
     };
@@ -142,13 +236,7 @@ fn optional_non_negative_rate(raw: &Option<String>) -> Result<Option<Decimal>, S
     Ok(Some(rate))
 }
 
-fn parse_positive_quantity(raw: &str) -> Result<Decimal, String> {
-    parse_decimal(raw)
-        .filter(|d| *d > Decimal::ZERO)
-        .ok_or_else(|| "quantity must be positive".to_string())
-}
-
-fn merge_tax_ids(header: &[i64], product: &[i64], line: Option<&[i64]>) -> Vec<i64> {
+pub(crate) fn merge_tax_ids(header: &[i64], product: &[i64], line: Option<&[i64]>) -> Vec<i64> {
     if let Some(ids) = line {
         return ids.to_vec();
     }
@@ -162,13 +250,30 @@ fn merge_tax_ids(header: &[i64], product: &[i64], line: Option<&[i64]>) -> Vec<i
     out
 }
 
-async fn build_line<C: ConnectionTrait>(
+pub(crate) struct PricedLine {
+    pub product_id: i64,
+    pub product_name: String,
+    pub product_remarks: Option<String>,
+    pub hsn_code: Option<i64>,
+    pub sac_code: Option<i64>,
+    pub variable_types: String,
+    pub sales_price_formula: String,
+    pub rate: Decimal,
+    pub quantity: Decimal,
+    pub qty_kind: String,
+    pub qty_unit: String,
+    pub variable_values: String,
+    pub pre_tax_amount: Decimal,
+    pub remarks: Option<String>,
+    pub tax_ids: Vec<i64>,
+}
+
+pub(crate) async fn price_pending_line(
     db: &DatabaseConnection,
-    txn: &C,
-    draft_id: i64,
+    txn: &impl ConnectionTrait,
     row: &DraftLinePending,
     header_tax_ids: &[i64],
-) -> Result<(draft_invoice_line::Model, Vec<i64>), String> {
+) -> Result<PricedLine, String> {
     if row.product_id == 0 {
         return Err("choose a product for each line".to_string());
     }
@@ -177,7 +282,8 @@ async fn build_line<C: ConnectionTrait>(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("unknown product #{}", row.product_id))?;
-    let quantity = parse_positive_quantity(&row.quantity)?;
+    let (quantity, qty_kind, qty_unit) =
+        parse_qty_measure(&row.quantity, &row.qty_kind, &row.qty_unit)?;
     let explicit_rate = optional_non_negative_rate(&row.rate)?;
     let priced = if pricing::has_variable_pricing(&prod.variables) {
         let raw = row
@@ -208,26 +314,56 @@ async fn build_line<C: ConnectionTrait>(
             return Err("one or more line tax ids are invalid".to_string());
         }
     }
-    let now = Utc::now();
     let remarks = resolved_line_remarks(&row.remarks, prod.remarks.as_deref());
+    let product_name = resolved_line_product_name(&row.product_name, &prod.name)?;
     let (hsn_code, sac_code) = match prod.product_kind {
         ProductKind::Goods => (prod.hsn_code, None),
         ProductKind::Services => (None, prod.hsn_code),
     };
+    Ok(PricedLine {
+        product_id: row.product_id,
+        product_name,
+        product_remarks: prod.remarks.clone(),
+        hsn_code,
+        sac_code,
+        variable_types: prod.variables.clone(),
+        sales_price_formula: prod.sales_price_formula.clone(),
+        rate: priced.rate,
+        quantity: priced.quantity,
+        qty_kind,
+        qty_unit,
+        variable_values: priced.variable_values,
+        pre_tax_amount: priced.pre_tax,
+        remarks,
+        tax_ids,
+    })
+}
+
+async fn build_line<C: ConnectionTrait>(
+    db: &DatabaseConnection,
+    txn: &C,
+    draft_id: i64,
+    row: &DraftLinePending,
+    header_tax_ids: &[i64],
+) -> Result<(draft_invoice_line::Model, Vec<i64>), String> {
+    let priced = price_pending_line(db, txn, row, header_tax_ids).await?;
+    let now = Utc::now();
     let line = draft_invoice_line::ActiveModel {
         draft_invoice_id: Set(draft_id),
-        product_id: Set(row.product_id),
-        product_name: Set(prod.name.clone()),
-        product_remarks: Set(prod.remarks.clone()),
-        hsn_code: Set(hsn_code),
-        sac_code: Set(sac_code),
-        variable_types: Set(prod.variables.clone()),
-        sales_price_formula: Set(prod.sales_price_formula.clone()),
+        product_id: Set(priced.product_id),
+        product_name: Set(priced.product_name),
+        product_remarks: Set(priced.product_remarks),
+        hsn_code: Set(priced.hsn_code),
+        sac_code: Set(priced.sac_code),
+        variable_types: Set(priced.variable_types),
+        sales_price_formula: Set(priced.sales_price_formula),
         rate: Set(priced.rate),
         quantity: Set(priced.quantity),
+        qty_kind: Set(priced.qty_kind),
+        qty_unit: Set(priced.qty_unit),
         variable_values: Set(priced.variable_values),
-        pre_tax_amount: Set(priced.pre_tax),
-        remarks: Set(remarks),
+        pre_tax_amount: Set(priced.pre_tax_amount),
+        remarks: Set(priced.remarks),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -235,7 +371,18 @@ async fn build_line<C: ConnectionTrait>(
     .insert(txn)
     .await
     .map_err(|e| e.to_string())?;
-    Ok((line, tax_ids))
+    Ok((line, priced.tax_ids))
+}
+
+/// A typed line name wins. An empty name uses the catalog product name.
+pub(crate) fn resolved_line_product_name(
+    explicit: &Option<String>,
+    catalog_name: &str,
+) -> Result<String, String> {
+    if let Some(name) = explicit.as_deref().and_then(optional_trimmed_text) {
+        return Ok(name);
+    }
+    optional_trimmed_text(catalog_name).ok_or_else(|| "product name is required".to_string())
 }
 
 /// Line remarks from the form win. When the caller omits remarks, use the product's.
@@ -371,7 +518,7 @@ pub async fn update_draft_invoice(
         .one(&txn)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "quotation not found".to_string())?
+        .ok_or_else(|| "draft invoice not found".to_string())?
         .into();
     am.number = Set(number);
     am.reference = Set(input.reference);
@@ -466,7 +613,7 @@ pub async fn patch_draft_invoice(
         .one(&txn)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "quotation not found".to_string())?
+        .ok_or_else(|| "draft invoice not found".to_string())?
         .into();
 
     if let Some(number) = &input.number {
@@ -579,13 +726,13 @@ pub fn parse_lines_json(raw: &str) -> Result<Vec<DraftLinePending>, String> {
     serde_json::from_str(raw).map_err(|e| format!("invalid goods lines data: {e}"))
 }
 
-fn line_is_blank(id: i64, rate: &Option<String>, remarks: &Option<String>) -> bool {
+pub(crate) fn line_is_blank(id: i64, rate: &Option<String>, remarks: &Option<String>) -> bool {
     id <= 0
         && rate.as_deref().unwrap_or("").trim().is_empty()
         && remarks.as_deref().unwrap_or("").trim().is_empty()
 }
 
-fn occupied_lines(lines: &[DraftLinePending]) -> Result<Vec<DraftLinePending>, String> {
+pub(crate) fn occupied_lines(lines: &[DraftLinePending]) -> Result<Vec<DraftLinePending>, String> {
     let mut out = Vec::new();
     for row in lines {
         if line_is_blank(row.product_id, &row.rate, &row.remarks) {
@@ -611,9 +758,38 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].remarks.as_deref(), Some("  dock delivery  "));
         assert_eq!(lines[0].quantity, "2");
+        assert_eq!(lines[0].qty_kind, "quantity");
+        assert!(lines[0].qty_unit.is_empty());
 
         let omitted = parse_lines_json(r#"[{"product_id":1,"quantity":"1"}]"#).unwrap();
         assert!(omitted[0].remarks.is_none());
+        assert!(omitted[0].product_name.is_none());
+
+        let named = parse_lines_json(
+            r#"[{"product_id":1,"quantity":"1","product_name":"  Dock widget  "}]"#,
+        )
+        .unwrap();
+        assert_eq!(named[0].product_name.as_deref(), Some("  Dock widget  "));
+    }
+
+    #[test]
+    fn typed_product_name_wins_over_catalog_name() {
+        assert_eq!(
+            resolved_line_product_name(&Some("  Dock widget  ".into()), "Widget").unwrap(),
+            "Dock widget"
+        );
+        assert_eq!(
+            resolved_line_product_name(&None, "Widget").unwrap(),
+            "Widget"
+        );
+        assert_eq!(
+            resolved_line_product_name(&Some("   ".into()), "Widget").unwrap(),
+            "Widget"
+        );
+        assert_eq!(
+            resolved_line_product_name(&None, "  ").unwrap_err(),
+            "product name is required"
+        );
     }
 
     #[test]
@@ -652,8 +828,33 @@ mod tests {
     }
 
     #[test]
+    fn qty_measure_follows_variable_kinds() {
+        let (value, kind, unit) = parse_qty_measure("2", "length", "cm").unwrap();
+        assert_eq!(value, Decimal::from(2));
+        assert_eq!(kind, "length");
+        assert_eq!(unit, "cm");
+        assert_eq!(format_qty_measure(value, &kind, &unit), "2 cm");
+
+        let (value, kind, unit) = parse_qty_measure("3", "", "").unwrap();
+        assert_eq!(kind, "quantity");
+        assert_eq!(unit, "Number");
+        assert_eq!(format_qty_measure(value, &kind, &unit), "3 No.");
+
+        let (value, kind, unit) = parse_qty_measure("1.5", "weight", "kg").unwrap();
+        assert_eq!(value, Decimal::new(15, 1));
+        assert_eq!(kind, "weight");
+        assert_eq!(unit, "kg");
+        assert_eq!(format_qty_measure(value, &kind, &unit), "1.5 kg");
+
+        assert!(parse_qty_measure("1.5", "quantity", "Number").is_err());
+        assert!(parse_qty_measure("2", "length", "furlong").is_err());
+        assert!(parse_qty_measure("1", "area", "m").is_err());
+    }
+
+    #[test]
     fn invoice_state_labels() {
         assert_eq!(InvoiceState::Draft.as_str(), "draft");
+        assert_eq!(InvoiceState::Quotation.as_str(), "quotation");
         assert_eq!(InvoiceState::Posted.as_str(), "posted");
         assert_eq!(InvoiceState::PartiallyPaid.as_str(), "partially paid");
         assert_eq!(InvoiceState::Paid.as_str(), "paid");

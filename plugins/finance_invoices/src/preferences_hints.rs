@@ -1,8 +1,8 @@
 //! Tooltip copy for invoice preference fields patched onto `/finance/preferences`.
 
 pub const INVOICE_NUMBER_FORMAT_HINT: &str = "\
-Applied when posting a quotation that has no invoice number (blank or unset). \
-If the quotation already has a number, that value is kept unchanged.
+Applied when posting a draft invoice that has no invoice number (blank or unset). \
+If the draft invoice already has a number, that value is kept unchanged.
 
 This is not a template engine — only these literal placeholders are replaced at post time:
 • {{FISCAL_CODE}} — Indian fiscal year code for the invoice date (Apr–Mar, e.g. 24-25)
@@ -36,10 +36,11 @@ pub const INVOICE_PDF_TEMPLATE_HINT: &str = "\
 Minijinja (Jinja2-style) template. Minijinja expands {% … %} and {{ … }; the result must be valid Typst source, which is then compiled to PDF. Leave blank to use the built-in example template.
 
 Root context (PascalCase field names):
-• ID, Number, InvoiceType (draft, posted, partially paid, paid, or cancelled), Reference, EWayBillNumber, PaymentReference, BankAccount (invoice account; newlines are Typst line breaks), Remarks
+• ID, Number, InvoiceType (quotation, draft, posted, partially paid, paid, or cancelled), Reference, EWayBillNumber, PaymentReference, BankAccount (invoice account; newlines are Typst line breaks), Remarks
 • Datetime / DatetimeDisplay (from invoice datetime format pref; default DD/MM/YYYY), DatetimeYear, DatetimeMonth, DatetimeDay
 • DeliveryDate and DeliveryDateDisplay (from invoice date format pref; default DD/MM/YYYY; empty when unset)
-• CustomerId (contact id when Customer.CustomerType is individual, otherwise company id), Customer.CustomerType (individual or business), Customer.Name, Customer.Address, Customer.GSTIN, Customer.PAN, Customer.Phone, Customer.Email, Customer.Website
+• CustomerId (contact id when Customer.CustomerType is individual, otherwise company id), Customer.CustomerType (individual or business), Customer.Name, Customer.Address, Customer.GSTIN, Customer.PAN, Customer.Phone, Customer.Website
+• Customer.Email is escaped for Typst markup (`@` is written as \\@, so {{ Customer.Email }} is not a label). Customer.EmailHref is the same address escaped for a Typst string: #link(\"mailto:{{ Customer.EmailHref }}\")[{{ Customer.Email }}]
 • PaymentTerm.Summary, PaymentTerm.Lines (DueDate / DueDateDisplay from invoice date format pref + amount per line; DueDatetime / DueDatetimeDisplay are aliases)
 • Taxes[] — invoice-level taxes: Name, Percentage, TaxType (levied or withholding)
 • Lines[] — Product.Name, Product.HSNCode, Product.Reference, Product.VariableTypes, Quantity, Rate, Amount, Remarks, Variables, VariableLines, line Taxes[]. Quantity multiplies Rate, the price of one product. Amount is the line pre-tax total. Variables holds typed measures ({kind, value, unit}). VariableLines is one name-and-value string per variable.

@@ -9,7 +9,10 @@ use lariv_core::components::{
     input_foreign_key,
     text::icon,
 };
-use lariv_formula::variable_value_input::{VariableValueInput, variable_value_input};
+use lariv_formula::{
+    VariableType,
+    variable_value_input::{VariableValueInput, variable_value_input},
+};
 
 use crate::logic::invoice_line_editor::InvoiceLineDisplayRow;
 
@@ -128,7 +131,7 @@ formatDec(n) {
 	return s || '0';
 },
 blankLine() {
-	return { product_id: 0, quantity: '1', rate: '', calculated_rate: '', product_label: '', fk_slot: this.allocFkSlot(), line_taxes: [], has_formula: false, variable_rows: [], pre_tax: '', price_error: '', remarks: '' };
+	return { product_id: 0, quantity: '1', qty_kind: 'quantity', qty_unit: 'Number', rate: '', calculated_rate: '', product_label: '', product_name: '', fk_slot: this.allocFkSlot(), line_taxes: [], has_formula: false, variable_rows: [], pre_tax: '', price_error: '', remarks: '' };
 },
 variableMagnitude(raw) {
 	if (raw == null) return { value: '', unit: '' };
@@ -208,6 +211,7 @@ applyProduct(line, detail) {
 	line.product_id = pid;
 	line.product_label = detail.display || '';
 	if (!pid) {
+		line.product_name = '';
 		line.rate = '';
 		line.calculated_rate = '';
 		line.has_formula = false;
@@ -219,6 +223,7 @@ applyProduct(line, detail) {
 		return;
 	}
 	const prod = (this.products || []).find(p => Number(p.id) === pid);
+	line.product_name = line.product_label || (prod && prod.name) || '';
 	let sp = detail.sales_price != null && String(detail.sales_price).trim() !== ''
 		? String(detail.sales_price).trim() : '';
 	if (!sp && prod && prod.sales_price != null && String(prod.sales_price).trim() !== '') {
@@ -451,6 +456,21 @@ variablePayload(line) {
 	}
 	return values;
 },
+ensureQtyUnit(line) {
+	const choices = this.qtyUnitChoices[line.qty_kind];
+	if (choices) {
+		if (!choices.some((choice) => choice[0] === line.qty_unit)) {
+			line.qty_unit = this.qtyFixedUnits[line.qty_kind] || choices[0][0];
+		}
+		return;
+	}
+	line.qty_unit = this.qtyFixedUnits[line.qty_kind] || '';
+},
+qtyFixedLabel(kind) {
+	if (kind === 'quantity') return 'No.';
+	if (kind === 'decimal') return '';
+	return this.qtyFixedUnits[kind] || '';
+},
 invoiceGrandTotalDisplay() {
 	const sub = this.linesSubtotalNumber();
 	const headerLevied = this.invoiceHeaderTaxAmountForKind('levied');
@@ -513,6 +533,36 @@ fn preview_parts(preview: &str) -> (String, String, String, String) {
     (products, tax_pct, tax_kind, all_taxes)
 }
 
+/// Kind labels, unit choices, fixed units, and placeholders for the quantity measure.
+fn qty_measure_maps() -> (String, String, String, String) {
+    let kinds: Vec<(&str, &str)> = VariableType::all()
+        .iter()
+        .map(|ty| (ty.as_str(), ty.label()))
+        .collect();
+    let mut choices = serde_json::Map::new();
+    let mut fixed = serde_json::Map::new();
+    let mut placeholders = serde_json::Map::new();
+    for ty in VariableType::all() {
+        fixed.insert(
+            ty.as_str().to_string(),
+            serde_json::Value::String(ty.default_accepted_unit().to_string()),
+        );
+        placeholders.insert(
+            ty.as_str().to_string(),
+            serde_json::Value::String(ty.default_placeholder().to_string()),
+        );
+        if let Some(units) = ty.unit_choices() {
+            choices.insert(ty.as_str().to_string(), serde_json::json!(units));
+        }
+    }
+    (
+        serde_json::to_string(&kinds).unwrap_or_else(|_| "[]".into()),
+        serde_json::Value::Object(choices).to_string(),
+        serde_json::Value::Object(fixed).to_string(),
+        serde_json::Value::Object(placeholders).to_string(),
+    )
+}
+
 /// Render the draft invoice lines editor.
 pub fn input_invoice_lines_draft(opts: InputInvoiceLinesDraft<'_>) -> Markup {
     let product_pick_fallback =
@@ -529,7 +579,7 @@ pub fn input_invoice_lines_draft(opts: InputInvoiceLinesDraft<'_>) -> Markup {
         opts.tax_pick_url
     };
     let defaults = if opts.defaults.trim().is_empty() {
-        r#"[{"product_id":0,"quantity":"1","rate":"","product_label":"","fk_slot":"InvoiceLineProduct_0","tax_ids":[],"remarks":""}]"#
+        r#"[{"product_id":0,"quantity":"1","qty_kind":"quantity","qty_unit":"Number","rate":"","product_label":"","product_name":"","fk_slot":"InvoiceLineProduct_0","tax_ids":[],"remarks":""}]"#
     } else {
         opts.defaults.trim()
     };
@@ -545,8 +595,9 @@ pub fn input_invoice_lines_draft(opts: InputInvoiceLinesDraft<'_>) -> Markup {
         opts.price_url
     };
     let price_url = serde_json::to_string(price_source).unwrap_or_else(|_| "\"\"".into());
+    let (qty_kinds, qty_unit_choices, qty_fixed_units, qty_placeholders) = qty_measure_maps();
     let alpine_data = format!(
-        "{{ lines: {defaults}, products: {products_json}, tax_pct_by_id: {tax_pct_json}, tax_kind_by_id: {tax_kind_json}, all_taxes: {all_taxes_json}, product_pick_base: {product_pick_base}, tax_pick_base: {tax_pick_base}, price_url: {price_url}, {methods} }}",
+        "{{ lines: {defaults}, products: {products_json}, tax_pct_by_id: {tax_pct_json}, tax_kind_by_id: {tax_kind_json}, all_taxes: {all_taxes_json}, product_pick_base: {product_pick_base}, tax_pick_base: {tax_pick_base}, price_url: {price_url}, qtyKinds: {qty_kinds}.map(([key, label]) => ({{ key, label }})), qtyUnitChoices: {qty_unit_choices}, qtyFixedUnits: {qty_fixed_units}, qtyPlaceholders: {qty_placeholders}, {methods} }}",
         methods = INVOICE_LINES_DRAFT_ALPINE_METHODS.trim_end_matches(',')
     );
 
@@ -562,7 +613,11 @@ if (typeof Alpine !== 'undefined' && Alpine.store && !Alpine.store('m2mSelection
 	const taken = new Set();
 	for (const line of d.lines) {{
 		if (line.quantity == null || line.quantity === '') line.quantity = '1';
+		if (!line.qty_kind) line.qty_kind = 'quantity';
+		if (line.qty_unit == null) line.qty_unit = '';
+		d.ensureQtyUnit(line);
 		if (line.product_label == null) line.product_label = '';
+		if (line.product_name == null) line.product_name = line.product_label || '';
 		if (!String(line.fk_slot || '').startsWith('InvoiceLineProduct_') || taken.has(String(line.fk_slot))) line.fk_slot = d.allocFkSlot();
 		taken.add(String(line.fk_slot));
 		if (!Array.isArray(line.line_taxes)) line.line_taxes = [];
@@ -593,8 +648,11 @@ $el.closest('form').addEventListener('submit', (ev) => {{
 	const strip = (l) => ({{
 		product_id: l.product_id,
 		quantity: l.quantity,
+		qty_kind: l.qty_kind || 'quantity',
+		qty_unit: l.qty_unit || '',
 		rate: l.rate,
 		product_label: l.product_label,
+		product_name: l.product_name == null ? '' : String(l.product_name),
 		fk_slot: l.fk_slot,
 		variables: d.variablePayload(l),
 		tax_ids: (l.line_taxes || []).map(t => parseInt(String(t.Key), 10)).filter(id => !isNaN(id) && id > 0),
@@ -649,9 +707,10 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                 thead {
                                     tr {
                                         th class="whitespace-nowrap min-w-[16rem]" { "Product" }
+                                        th class="whitespace-nowrap min-w-[12rem]" { "Product name" }
                                         th class="whitespace-nowrap min-w-[12rem]" { "Remarks" }
                                         th class="whitespace-nowrap min-w-[14rem]" { "Inputs" }
-                                        th class="whitespace-nowrap min-w-[7rem]" { "Quantity" }
+                                        th class="whitespace-nowrap min-w-[12rem]" { "Quantity" }
                                         th class="whitespace-nowrap min-w-[8rem]" { "Unit price" }
                                         th class="whitespace-nowrap min-w-[10rem]" { "Line taxes" }
                                         th class="whitespace-nowrap min-w-[7rem] text-end" { "Untaxed amount" }
@@ -669,6 +728,10 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                                     x-effect="bindProductPicker($el, line)" {
                                                     (embed_product_picker(product_pick_url))
                                                 }
+                                            }
+                                            td class="align-middle min-w-[12rem]" {
+                                                input type="text" class="input input-bordered input-sm w-full min-w-[10rem]"
+                                                    x-model="line.product_name" placeholder="Product name" {}
                                             }
                                             td class="align-middle min-w-[12rem]" {
                                                 textarea class="textarea textarea-bordered w-full min-w-[10rem] text-sm" rows="2"
@@ -690,9 +753,17 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                                 }
                                                 span class="text-sm opacity-60" x-show="!line.has_formula" { "—" }
                                             }
-                                            td class="align-middle min-w-[7rem]" {
-                                                input type="text" class="input input-bordered input-sm w-full min-w-[5rem]"
-                                                    x-model="line.quantity" inputmode="decimal" placeholder="e.g. 1" {}
+                                            td class="align-middle min-w-[12rem]" {
+                                                div class="flex flex-col gap-1" {
+                                                    (PreEscaped(r#"<select class="select select-bordered select-xs w-full" x-model="line.qty_kind" @change="ensureQtyUnit(line)" aria-label="Quantity kind"><template x-for="kind in qtyKinds" :key="kind.key"><option :value="kind.key" x-text="kind.label"></option></template></select>"#))
+                                                    div class="flex items-center gap-1" {
+                                                        input type="text" class="input input-bordered input-sm w-full min-w-[5rem]"
+                                                            x-model="line.quantity"
+                                                            x-bind:placeholder="qtyPlaceholders[line.qty_kind] || 'e.g. 1'"
+                                                            x-bind:inputmode="line.qty_kind === 'quantity' ? 'numeric' : (line.qty_kind === 'duration' ? 'text' : 'decimal')" {}
+                                                        (PreEscaped(r#"<select class="select select-bordered select-xs w-16" x-show="qtyUnitChoices[line.qty_kind]" x-cloak x-model="line.qty_unit" aria-label="Quantity unit"><template x-for="choice in (qtyUnitChoices[line.qty_kind] || [])" :key="choice[0]"><option :value="choice[0]" x-text="choice[1]"></option></template></select><span class="text-xs opacity-70 shrink-0" x-show="line.qty_kind && !qtyUnitChoices[line.qty_kind]" x-cloak x-text="qtyFixedLabel(line.qty_kind)"></span>"#))
+                                                    }
+                                                }
                                             }
                                             td class="align-middle min-w-[8rem]" {
                                                 div class="flex items-start gap-1 min-w-[5rem]" {
@@ -799,6 +870,18 @@ mod tests {
             "x-init quotes must be escaped"
         );
         assert!(
+            html.contains(">Product name<"),
+            "line editor must include a product name column"
+        );
+        assert!(
+            html.contains("x-model=\"line.product_name\""),
+            "product name must be an editable input"
+        );
+        assert!(
+            html.contains("product_name: l.product_name"),
+            "saved lines must send the product name"
+        );
+        assert!(
             html.contains(">Remarks<"),
             "line editor must include a remarks column"
         );
@@ -868,6 +951,19 @@ mod tests {
             html.contains("x-model=\"line.quantity\""),
             "quantity column must be an editable input"
         );
+        assert!(
+            html.contains("aria-label=\"Quantity kind\""),
+            "quantity kind must be selectable: {html}"
+        );
+        assert!(
+            html.contains("aria-label=\"Quantity unit\""),
+            "quantity unit must follow the selected kind: {html}"
+        );
+        assert!(html.contains("ensureQtyUnit"), "{html}");
+        assert!(
+            html.contains("qty_kind: l.qty_kind"),
+            "saved lines must send the quantity measure kind: {html}"
+        );
         assert!(html.contains(">Unit price<"));
         assert!(
             html.contains("applyCalculatedRate"),
@@ -928,9 +1024,10 @@ pub fn field_invoice_lines(rows: &[InvoiceLineDisplayRow]) -> Markup {
                 table class="table table-sm min-w-max w-full" {
                     thead {
                         tr {
-                            th class="whitespace-nowrap min-w-[12rem]" { "Product" }
+                            th class="whitespace-nowrap min-w-[12rem]" { "Product name" }
                             th class="whitespace-nowrap min-w-[12rem]" { "Remarks" }
                             th class="whitespace-nowrap min-w-[14rem]" { "Inputs" }
+                            th class="whitespace-nowrap min-w-[7rem]" { "Quantity kind" }
                             th class="whitespace-nowrap min-w-[5rem] text-end" { "Quantity" }
                             th class="whitespace-nowrap min-w-[7rem] text-end" { "Unit price" }
                             th class="whitespace-nowrap min-w-[10rem]" { "Line taxes" }
@@ -943,7 +1040,7 @@ pub fn field_invoice_lines(rows: &[InvoiceLineDisplayRow]) -> Markup {
                     tbody {
                         @if rows.is_empty() {
                             tr {
-                                td colspan="10" class="text-center opacity-50 py-4" { "No lines" }
+                                td colspan="11" class="text-center opacity-50 py-4" { "No lines" }
                             }
                         } @else {
                             @for r in rows {
@@ -951,6 +1048,7 @@ pub fn field_invoice_lines(rows: &[InvoiceLineDisplayRow]) -> Markup {
                                     td class="whitespace-nowrap max-w-md min-w-[12rem]" { (r.product) }
                                     td class="min-w-[12rem] max-w-md text-sm whitespace-pre-wrap" { (r.remarks) }
                                     td class="min-w-[14rem] text-sm" { (r.inputs) }
+                                    td class="whitespace-nowrap min-w-[7rem]" { (r.qty_kind) }
                                     td class="whitespace-nowrap text-end tabular-nums" { (r.quantity) }
                                     td class="whitespace-nowrap text-end tabular-nums" { (r.rate) }
                                     td class="min-w-[10rem] max-w-md text-sm" { (r.line_taxes) }

@@ -222,12 +222,15 @@ struct Prepared {
 }
 
 const OMITTED_SHEETS: &[&str] = &[
+    "quotation_invoice_taxes",
     "draft_invoice_taxes",
     "posted_invoice_taxes",
     "cancelled_invoice_taxes",
+    "quotation_invoice_line_taxes",
     "draft_invoice_line_taxes",
     "posted_invoice_line_taxes",
     "cancelled_invoice_line_taxes",
+    "quotation_payment_terms",
     "draft_payment_terms",
     "posted_payment_terms",
 ];
@@ -246,6 +249,15 @@ struct RelArray {
 
 fn append_relation_links(prepared: &mut [Prepared]) {
     for spec in [
+        RelArray {
+            parent: "quotation_invoices",
+            parent_key: "id",
+            child: "quotation_invoice_lines",
+            child_key: "quotation_invoice_id",
+            prefix: "line",
+            link_column: None,
+            link_table: "quotation_invoice_lines",
+        },
         RelArray {
             parent: "draft_invoices",
             parent_key: "id",
@@ -272,6 +284,15 @@ fn append_relation_links(prepared: &mut [Prepared]) {
             prefix: "line",
             link_column: None,
             link_table: "cancelled_invoice_lines",
+        },
+        RelArray {
+            parent: "quotation_invoices",
+            parent_key: "quotation_payment_term_id",
+            child: "quotation_payment_term_lines",
+            child_key: "quotation_payment_term_id",
+            prefix: "payment_term",
+            link_column: None,
+            link_table: "quotation_payment_term_lines",
         },
         RelArray {
             parent: "draft_invoices",
@@ -301,6 +322,15 @@ fn append_relation_links(prepared: &mut [Prepared]) {
             link_table: "posted_payment_term_lines",
         },
         RelArray {
+            parent: "quotation_invoices",
+            parent_key: "id",
+            child: "quotation_invoice_taxes",
+            child_key: "quotation_invoice_id",
+            prefix: "header_tax",
+            link_column: Some("tax_id"),
+            link_table: "taxes",
+        },
+        RelArray {
             parent: "draft_invoices",
             parent_key: "id",
             child: "draft_invoice_taxes",
@@ -324,6 +354,15 @@ fn append_relation_links(prepared: &mut [Prepared]) {
             child: "cancelled_invoice_taxes",
             child_key: "cancelled_invoice_id",
             prefix: "header_tax",
+            link_column: Some("tax_id"),
+            link_table: "taxes",
+        },
+        RelArray {
+            parent: "quotation_invoice_lines",
+            parent_key: "id",
+            child: "quotation_invoice_line_taxes",
+            child_key: "quotation_invoice_line_id",
+            prefix: "tax",
             link_column: Some("tax_id"),
             link_table: "taxes",
         },
@@ -358,9 +397,11 @@ fn append_relation_links(prepared: &mut [Prepared]) {
         append_link_array(prepared, &spec);
     }
     for (table, column) in [
+        ("quotation_invoices", "quotation_payment_term_id"),
         ("draft_invoices", "draft_payment_term_id"),
         ("posted_invoices", "posted_payment_term_id"),
         ("cancelled_invoices", "posted_payment_term_id"),
+        ("quotation_payment_term_lines", "quotation_payment_term_id"),
         ("draft_payment_term_lines", "draft_payment_term_id"),
         ("posted_payment_term_lines", "posted_payment_term_id"),
     ] {
@@ -607,7 +648,7 @@ fn fk_label(
             field(sheets, index, table, id, "code"),
             field(sheets, index, table, id, "name"),
         ),
-        "draft_invoices" | "posted_invoices" | "cancelled_invoices" => {
+        "quotation_invoices" | "draft_invoices" | "posted_invoices" | "cancelled_invoices" => {
             field(sheets, index, table, id, "number").to_string()
         }
         "credit_notes" => field(sheets, index, table, id, "reason").to_string(),
@@ -631,7 +672,10 @@ fn fk_label(
             );
             join_parts(&[account.as_str(), field(sheets, index, table, id, "amount")])
         }
-        "draft_invoice_lines" | "posted_invoice_lines" | "cancelled_invoice_lines" => field(
+        "quotation_invoice_lines"
+        | "draft_invoice_lines"
+        | "posted_invoice_lines"
+        | "cancelled_invoice_lines" => field(
             sheets,
             index,
             "products",
@@ -639,9 +683,9 @@ fn fk_label(
             "name",
         )
         .to_string(),
-        "draft_payment_term_lines" | "posted_payment_term_lines" => {
-            term_line_label(sheets, index, table, id)
-        }
+        "quotation_payment_term_lines"
+        | "draft_payment_term_lines"
+        | "posted_payment_term_lines" => term_line_label(sheets, index, table, id),
         _ => String::new(),
     };
     label.trim().to_string()
@@ -937,6 +981,36 @@ fn sheet_specs() -> &'static [SheetDef] {
 
 const SHEETS: &[SheetDef] = &[
     SheetDef {
+        table: "quotation_invoices",
+        columns: &[
+            "id",
+            "created_at",
+            "updated_at",
+            "number",
+            "reference",
+            "eway_bill_number",
+            "payment_reference",
+            "bank_account",
+            "remarks",
+            "datetime",
+            "delivery_date",
+            "customer_id",
+            "quotation_payment_term_id",
+        ],
+        root: true,
+        parent: None,
+        fks: &[
+            Fk {
+                column: "customer_id",
+                target: "customers",
+            },
+            Fk {
+                column: "quotation_payment_term_id",
+                target: "quotation_payment_terms",
+            },
+        ],
+    },
+    SheetDef {
         table: "draft_invoices",
         columns: &[
             "id",
@@ -1124,6 +1198,8 @@ const SHEETS: &[SheetDef] = &[
             "sales_price_formula",
             "rate",
             "quantity",
+            "qty_kind",
+            "qty_unit",
             "variable_values",
             "pre_tax_amount",
             "remarks",
@@ -1140,6 +1216,102 @@ const SHEETS: &[SheetDef] = &[
                 target: "products",
             },
         ],
+    },
+    SheetDef {
+        table: "quotation_invoice_lines",
+        columns: &[
+            "id",
+            "created_at",
+            "updated_at",
+            "quotation_invoice_id",
+            "product_id",
+            "product_name",
+            "product_remarks",
+            "hsn_code",
+            "sac_code",
+            "variable_types",
+            "sales_price_formula",
+            "rate",
+            "quantity",
+            "qty_kind",
+            "qty_unit",
+            "variable_values",
+            "pre_tax_amount",
+            "remarks",
+        ],
+        root: false,
+        parent: Some(("quotation_invoice_id", "quotation_invoices")),
+        fks: &[
+            Fk {
+                column: "quotation_invoice_id",
+                target: "quotation_invoices",
+            },
+            Fk {
+                column: "product_id",
+                target: "products",
+            },
+        ],
+    },
+    SheetDef {
+        table: "quotation_invoice_taxes",
+        columns: &["quotation_invoice_id", "tax_id"],
+        root: false,
+        parent: Some(("quotation_invoice_id", "quotation_invoices")),
+        fks: &[
+            Fk {
+                column: "quotation_invoice_id",
+                target: "quotation_invoices",
+            },
+            Fk {
+                column: "tax_id",
+                target: "taxes",
+            },
+        ],
+    },
+    SheetDef {
+        table: "quotation_invoice_line_taxes",
+        columns: &["quotation_invoice_line_id", "tax_id"],
+        root: false,
+        parent: Some(("quotation_invoice_line_id", "quotation_invoice_lines")),
+        fks: &[
+            Fk {
+                column: "quotation_invoice_line_id",
+                target: "quotation_invoice_lines",
+            },
+            Fk {
+                column: "tax_id",
+                target: "taxes",
+            },
+        ],
+    },
+    SheetDef {
+        table: "quotation_payment_terms",
+        columns: &["id", "created_at", "updated_at"],
+        root: false,
+        parent: None,
+        fks: &[],
+    },
+    SheetDef {
+        table: "quotation_payment_term_lines",
+        columns: &[
+            "id",
+            "created_at",
+            "updated_at",
+            "quotation_payment_term_id",
+            "line_order",
+            "date_kind",
+            "due_date",
+            "due_duration",
+            "amount_kind",
+            "amount",
+            "amount_percentage",
+        ],
+        root: false,
+        parent: Some(("quotation_payment_term_id", "quotation_payment_terms")),
+        fks: &[Fk {
+            column: "quotation_payment_term_id",
+            target: "quotation_payment_terms",
+        }],
     },
     SheetDef {
         table: "draft_invoice_taxes",
@@ -1189,6 +1361,8 @@ const SHEETS: &[SheetDef] = &[
             "sales_price_formula",
             "rate",
             "quantity",
+            "qty_kind",
+            "qty_unit",
             "variable_values",
             "pre_tax_amount",
             "remarks",
@@ -1259,6 +1433,8 @@ const SHEETS: &[SheetDef] = &[
             "sales_price_formula",
             "rate",
             "quantity",
+            "qty_kind",
+            "qty_unit",
             "variable_values",
             "pre_tax_amount",
             "remarks",

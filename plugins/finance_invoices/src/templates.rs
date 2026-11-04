@@ -47,7 +47,8 @@ use super::forms::{
 use super::keys::{
     DRAFT_INVOICE_BULK_DELETE_MODAL, DRAFT_INVOICE_BULK_EDIT_MODAL, DRAFT_INVOICE_CREATE_MODAL,
     DRAFT_INVOICE_DELETE_MODAL, DRAFT_INVOICE_EDIT_MODAL, DRAFT_INVOICE_SELECT_MODAL,
-    DRAFT_INVOICE_SELECT_TABLE, INVOICE_PAY_MODAL,
+    DRAFT_INVOICE_SELECT_TABLE, INVOICE_PAY_MODAL, QUOTATION_INVOICE_CREATE_MODAL,
+    QUOTATION_INVOICE_SELECT_MODAL, QUOTATION_INVOICE_SELECT_TABLE,
 };
 use super::routes::{
     CancelledInvoiceBulkNewDraftRouteTag, CancelledInvoiceDetailRouteTag,
@@ -64,9 +65,19 @@ use super::routes::{
     PostedInvoiceBulkCancelPostRouteTag, PostedInvoiceBulkNewDraftRouteTag,
     PostedInvoiceCancelGetRouteTag, PostedInvoiceCancelRouteTag, PostedInvoiceDetailRouteTag,
     PostedInvoiceNewDraftGetRouteTag, PostedInvoicePayGetRouteTag, PostedInvoicePayPostRouteTag,
-    PostedInvoicePdfModalRouteTag,
+    PostedInvoicePdfModalRouteTag, QuotationInvoiceBulkCreateDraftGetRouteTag,
+    QuotationInvoiceBulkDeleteGetRouteTag, QuotationInvoiceBulkEditGetRouteTag,
+    QuotationInvoiceCreateGetRouteTag, QuotationInvoiceCreatePostRouteTag,
+    QuotationInvoiceDetailRouteTag, QuotationInvoiceMultiSelectRouteTag,
 };
 use lariv_core::list_filters::{FilterField, FilterRowError};
+
+#[path = "quotation_templates.rs"]
+mod quotation_templates;
+pub use quotation_templates::{
+    QuotationInvoiceBulkEditModalPage, QuotationInvoiceCreateModalPage, QuotationInvoiceDetailPage,
+    QuotationInvoiceEditModalPage,
+};
 
 lariv_core::define_register_items! {
     plugin: FinanceInvoicesTag;
@@ -83,6 +94,11 @@ lariv_core::define_register_items! {
         DraftInvoiceBulkEditModalIdx: DraftInvoiceBulkEditModalPageTag => DraftInvoiceBulkEditModalPage,
         DraftInvoiceDetailIdx: DraftInvoiceDetailPageTag => DraftInvoiceDetailPage,
         DraftInvoiceSelectIdx: DraftInvoiceSelectPageTag => DraftInvoiceSelectPage,
+        QuotationInvoiceEditModalIdx: QuotationInvoiceEditModalPageTag => QuotationInvoiceEditModalPage,
+        QuotationInvoiceCreateModalIdx: QuotationInvoiceCreateModalPageTag => QuotationInvoiceCreateModalPage,
+        QuotationInvoiceBulkEditModalIdx: QuotationInvoiceBulkEditModalPageTag => QuotationInvoiceBulkEditModalPage,
+        QuotationInvoiceDetailIdx: QuotationInvoiceDetailPageTag => QuotationInvoiceDetailPage,
+        QuotationInvoiceSelectIdx: QuotationInvoiceSelectPageTag => QuotationInvoiceSelectPage,
         PostedInvoiceDetailIdx: PostedInvoiceDetailPageTag => PostedInvoiceDetailPage,
         PaidInvoiceDetailIdx: PaidInvoiceDetailPageTag => PaidInvoiceDetailPage,
         PartiallyPaidInvoiceDetailIdx: PartiallyPaidInvoiceDetailPageTag => PartiallyPaidInvoiceDetailPage,
@@ -177,11 +193,30 @@ fn invoice_number_label(id: i64, number: &str) -> String {
     }
 }
 
-fn draft_invoice_label(id: i64, number: &str) -> String {
+fn quotation_invoice_label(id: i64, number: &str) -> String {
     if number.is_empty() {
         format!("Quotation #{id}")
     } else {
         format!("Quotation {number}")
+    }
+}
+
+fn quotation_invoice_detail_menu(id: i64, number: &str) -> Markup {
+    let label = quotation_invoice_label(id, number);
+    let detail = QuotationInvoiceDetailRouteTag::new(id).url();
+    let nav = vec![DetailMenuNavItem {
+        title: "Quotation Detail",
+        url: detail,
+        active: true,
+    }];
+    detail_sidebar_menu(format!("Quotation: {label}"), &nav, None, html! {})
+}
+
+fn draft_invoice_label(id: i64, number: &str) -> String {
+    if number.is_empty() {
+        format!("Draft invoice #{id}")
+    } else {
+        format!("Draft invoice {number}")
     }
 }
 
@@ -344,11 +379,11 @@ fn draft_invoice_detail_menu(id: i64, number: &str) -> Markup {
     };
     let detail_url = DraftInvoiceDetailRouteTag::new(id).url();
     let nav = vec![DetailMenuNavItem {
-        title: "Quotation Detail",
+        title: "Draft Invoice Detail",
         url: detail_url,
         active: true,
     }];
-    detail_sidebar_menu(format!("Quotation: {label}"), &nav, None, html! {})
+    detail_sidebar_menu(format!("Draft invoice: {label}"), &nav, None, html! {})
 }
 
 fn posted_invoice_detail_menu(id: i64, number: &str) -> Markup {
@@ -490,6 +525,10 @@ impl InvoiceHubPage {
         }
     }
 
+    fn quotations_hub(&self) -> bool {
+        self.tab != "drafts" && self.tab != "posted" && self.tab != "cancelled"
+    }
+
     fn drafts_hub(&self) -> bool {
         self.tab == "drafts"
     }
@@ -512,10 +551,20 @@ impl InvoiceHubPage {
         "Alpine.$data($el.closest('[data-invoice-hub-selection]'))"
     }
 
-    fn selection_x_data() -> String {
-        let bulk_delete =
-            lariv_core::http::trailing_slash(&DraftInvoiceBulkDeleteGetRouteTag.path());
-        let bulk_edit = lariv_core::http::trailing_slash(&DraftInvoiceBulkEditGetRouteTag.path());
+    fn selection_x_data(&self) -> String {
+        let (bulk_delete, bulk_edit) = if self.quotations_hub() {
+            (
+                lariv_core::http::trailing_slash(&QuotationInvoiceBulkDeleteGetRouteTag.path()),
+                lariv_core::http::trailing_slash(&QuotationInvoiceBulkEditGetRouteTag.path()),
+            )
+        } else {
+            (
+                lariv_core::http::trailing_slash(&DraftInvoiceBulkDeleteGetRouteTag.path()),
+                lariv_core::http::trailing_slash(&DraftInvoiceBulkEditGetRouteTag.path()),
+            )
+        };
+        let bulk_create_draft =
+            lariv_core::http::trailing_slash(&QuotationInvoiceBulkCreateDraftGetRouteTag.path());
         let bulk_post = lariv_core::http::trailing_slash(&DraftInvoiceBulkPostRouteTag.path());
         let bulk_cancel =
             lariv_core::http::trailing_slash(&PostedInvoiceBulkCancelGetRouteTag.path());
@@ -582,7 +631,7 @@ impl InvoiceHubPage {
                 const ids = this.selectedIds();
                 if (ids.length < 1) return '#';
                 const params = new URLSearchParams(window.location.search);
-                const tab = params.get('tab') || 'drafts';
+                const tab = params.get('tab') || 'quotations';
                 return '{bulk_pdfs}?tab=' + encodeURIComponent(tab) + '&ids=' + ids.join(',');
             }},
             requestBulkDelete(el) {{
@@ -621,6 +670,16 @@ impl InvoiceHubPage {
                 if (href === '#' || typeof htmx === 'undefined') return;
                 htmx.ajax('GET', href, {{ target: 'body', swap: 'beforeend', source: el }});
             }},
+            bulkCreateDraftHref() {{
+                const ids = this.selectedIds();
+                if (ids.length < 1) return '#';
+                return '{bulk_create_draft}?ids=' + ids.join(',');
+            }},
+            requestBulkCreateDraft(el) {{
+                const href = this.bulkCreateDraftHref();
+                if (href === '#' || typeof htmx === 'undefined') return;
+                htmx.ajax('GET', href, {{ target: 'body', swap: 'beforeend', source: el }});
+            }},
             requestBulkDownloadPdfs() {{
                 const href = this.bulkDownloadPdfsHref();
                 if (href === '#') return;
@@ -634,7 +693,7 @@ impl InvoiceHubPage {
         html! {
             (PreEscaped(format!(
                 r#"<div data-invoice-hub-selection x-data="{}">"#,
-                lariv_core::components::attrs::escape_attr(&Self::selection_x_data()),
+                lariv_core::components::attrs::escape_attr(&self.selection_x_data()),
             )))
             (table)
             (PreEscaped("</div>"))
@@ -653,9 +712,10 @@ impl InvoiceHubPage {
 
     pub fn render_table(&self) -> Markup {
         let posted_hub = self.posted_hub();
+        let quotations_hub = self.quotations_hub();
         let drafts_hub = self.drafts_hub();
         let cancelled_hub = self.cancelled_hub();
-        let show_customer = drafts_hub || posted_hub;
+        let show_customer = quotations_hub || drafts_hub || posted_hub;
         let show_select = self.show_select();
         let sel = Self::selection_root_js();
 
@@ -897,6 +957,25 @@ impl InvoiceHubPage {
                 .build(),
             None => DraftInvoiceCreateGetRouteTag.url(),
         };
+        let quotation_create_href = match self.create_customer_id.filter(|id| *id > 0) {
+            Some(id) => RouteQueryBuilder::new(QuotationInvoiceCreateGetRouteTag)
+                .query("CustomerID", id)
+                .build(),
+            None => QuotationInvoiceCreateGetRouteTag.url(),
+        };
+        let quotation_create = if self.can_edit && quotations_hub {
+            button_modal_form(ButtonModalForm {
+                name: "p_finance_invoices.QuotationInvoiceCreateForm",
+                href: &quotation_create_href,
+                form_post_url: &QuotationInvoiceCreatePostRouteTag.path(),
+                modal_uid: QUOTATION_INVOICE_CREATE_MODAL.id(),
+                icon_name: Some("plus"),
+                classes: "btn-square btn-outline btn-sm",
+                ..Default::default()
+            })
+        } else {
+            html! {}
+        };
         let draft_create = if self.can_edit && drafts_hub {
             button_modal_form(ButtonModalForm {
                 name: "p_finance_invoices.DraftInvoiceCreateForm",
@@ -927,6 +1006,15 @@ impl InvoiceHubPage {
                 "btn-ghost",
                 "requestBulkDownloadPdfs",
             ));
+            if quotations_hub {
+                items.push_str(&item("Edit selected", "btn-ghost", "requestBulkEdit"));
+                items.push_str(&item("Create draft", "btn-ghost", "requestBulkCreateDraft"));
+                items.push_str(&item(
+                    "Delete selected",
+                    "btn-ghost text-error",
+                    "requestBulkDelete",
+                ));
+            }
             if drafts_hub {
                 items.push_str(&item("Edit selected", "btn-ghost", "requestBulkEdit"));
                 items.push_str(&item("Post selected", "btn-ghost", "requestBulkPost"));
@@ -984,6 +1072,7 @@ impl InvoiceHubPage {
         let actions = html! {
             (page_size_filter)
             (excel)
+            (quotation_create)
             (draft_create)
             (bulk_actions)
         };
@@ -992,8 +1081,10 @@ impl InvoiceHubPage {
         // do not reset checkboxes.
         let table_title = if !self.heading.is_empty() {
             self.heading.as_str()
-        } else if drafts_hub {
+        } else if quotations_hub {
             "Quotations"
+        } else if drafts_hub {
+            "Draft invoices"
         } else {
             "Invoices"
         };
@@ -1020,7 +1111,8 @@ impl InvoiceHubPage {
             (container_column("", html! {
                 (fiscal_year_environment_selector(&self.fiscal_years, self.selected_fiscal_year_start))
                 div class="tabs tabs-boxed mb-4" {
-                    (self.tab_link("drafts", "Quotations"))
+                    (self.tab_link("quotations", "Quotations"))
+                    (self.tab_link("drafts", "Drafts"))
                     (self.tab_link("posted", "Posted"))
                     (self.tab_link("cancelled", "Cancelled"))
                 }
@@ -1071,7 +1163,7 @@ impl RenderTemplate for DraftInvoiceEditModalPage {
             DRAFT_INVOICE_EDIT_MODAL,
             "!max-w-6xl w-full",
             html! {
-                h3 class="font-bold text-lg mb-4" { "Edit quotation" }
+                h3 class="font-bold text-lg mb-4" { "Edit draft invoice" }
                 (form(&CsrfToken::current(), FormOpts {
                     classes: "@container",
                     attrs: form_hx_post_url(DRAFT_INVOICE_EDIT_MODAL, &modal_edit_post_url(
@@ -1141,8 +1233,8 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
             form(
                 &CsrfToken::current(),
                 FormOpts {
-                    title: "Create quotation",
-                    subtitle: "Create a new quotation",
+                    title: "Create draft invoice",
+                    subtitle: "Create a new draft invoice",
                     classes: "@container",
                     attrs: form_hx_post_url(
                         DRAFT_INVOICE_CREATE_MODAL,
@@ -1237,10 +1329,10 @@ impl RenderTemplate for DraftInvoiceBulkEditModalPage {
             self.form_name.as_str()
         };
         let subtitle = if self.selected_count == 1 {
-            "Update the selected quotation. Only non-empty fields are applied.".to_string()
+            "Update the selected draft invoice. Only non-empty fields are applied.".to_string()
         } else {
             format!(
-                "Update {} selected quotations. Only non-empty fields are applied to every selected quotation.",
+                "Update {} selected draft invoices. Only non-empty fields are applied to every selected draft invoice.",
                 self.selected_count
             )
         };
@@ -1250,7 +1342,7 @@ impl RenderTemplate for DraftInvoiceBulkEditModalPage {
             form(
                 &CsrfToken::current(),
                 FormOpts {
-                    title: "Bulk edit quotations",
+                    title: "Bulk edit draft invoices",
                     subtitle: &subtitle,
                     classes: "@container",
                     attrs: form_hx_post_url(
@@ -1375,7 +1467,7 @@ impl DraftInvoiceDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (detail_header(DetailHeader {
-                        title: &format!("Quotation #{}", self.id),
+                        title: &format!("Draft invoice #{}", self.id),
                         actions,
                     }))
                     @if let Some(e) = &self.error {
@@ -1427,7 +1519,7 @@ impl RenderTemplate for DraftInvoiceDetailPage {
         let label = draft_invoice_label(self.id, &self.number);
         let detail_url = DraftInvoiceDetailRouteTag::new(self.id).url();
         let crumbs = invoice_section_crumbs(&label, &detail_url, None);
-        app_scaffold_with_sidebar("Quotation", chrome, self.menu(), crumbs, self.body())
+        app_scaffold_with_sidebar("Draft invoice", chrome, self.menu(), crumbs, self.body())
     }
 }
 
@@ -2050,7 +2142,7 @@ impl RenderPickerSelect for DraftInvoiceSelectPage {
         );
         data_table_with_filter_errors(
             DRAFT_INVOICE_SELECT_TABLE,
-            "Select quotations",
+            "Select draft invoices",
             actions,
             &headers,
             &rows,
@@ -2064,6 +2156,135 @@ impl RenderPickerSelect for DraftInvoiceSelectPage {
 impl RenderTemplate for DraftInvoiceSelectPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         self.render_modal(DRAFT_INVOICE_SELECT_MODAL).into_inner()
+    }
+}
+
+#[derive(Generic)]
+pub struct QuotationInvoiceSelectRow {
+    pub id: i64,
+    pub number: String,
+    pub datetime: String,
+    pub customer_name: String,
+}
+
+#[derive(Generic)]
+pub struct QuotationInvoiceSelectPage {
+    pub invoices: ObjectList<QuotationInvoiceSelectRow>,
+    pub fields: Vec<FilterField>,
+    pub filters: Vec<FilterClauseView>,
+    pub filter_errors: Vec<FilterRowError>,
+    /// Pre-rendered addon filter fields, matching the invoice hub.
+    pub extra_filters: String,
+    pub target_input: String,
+    pub sort: String,
+    pub path_and_query: String,
+    pub page_size: u32,
+}
+
+impl RenderPickerSelect for QuotationInvoiceSelectPage {
+    fn render_table(&self) -> Markup {
+        let target = if self.target_input.is_empty() {
+            "Invoices"
+        } else {
+            self.target_input.as_str()
+        };
+        let id_sort = column_sort_url(&self.path_and_query, "ID", &self.sort);
+        let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
+        let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
+        let id_label = format!("ID{}", sort_indicator(&self.sort, "ID"));
+        let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
+        let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
+        let headers = [
+            TableColumnHeader {
+                key: "ID",
+                label: &id_label,
+                sort_url: Some(&id_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Number",
+                label: &number_label,
+                sort_url: Some(&number_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Date",
+                label: &date_label,
+                sort_url: Some(&date_sort),
+                push_url: false,
+            },
+            TableColumnHeader {
+                key: "Customer",
+                label: "Customer",
+                sort_url: None,
+                push_url: false,
+            },
+        ];
+        let rows: Vec<TableRow> = self
+            .invoices
+            .items
+            .iter()
+            .map(|inv| TableRow {
+                attrs: row_attr_select_multi(target, &inv.id.to_string(), &inv.number),
+                cells: vec![
+                    field_text(FieldText {
+                        value: &inv.id.to_string(),
+                        classes: "tabular-nums",
+                    }),
+                    field_text(FieldText {
+                        value: &inv.number,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &inv.datetime,
+                        classes: "",
+                    }),
+                    field_text(FieldText {
+                        value: &inv.customer_name,
+                        classes: "",
+                    }),
+                ],
+                key: String::new(),
+                children: Vec::new(),
+            })
+            .collect();
+        let actions = html! {
+            (table_button_filter(TableButtonFilter {
+                panel: invoice_select_filter_form(
+                    &self.fields,
+                    &self.filters,
+                    self.page_size,
+                    &self.sort,
+                    QuotationInvoiceMultiSelectRouteTag,
+                    &self.target_input,
+                    &self.extra_filters,
+                ),
+                ..Default::default()
+            }))
+        };
+        let pagination = render_picker_pagination(
+            QUOTATION_INVOICE_SELECT_MODAL,
+            &self.path_and_query,
+            self.invoices.number,
+            self.invoices.num_pages,
+        );
+        data_table_with_filter_errors(
+            QUOTATION_INVOICE_SELECT_TABLE,
+            "Select quotations",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+            &self.filter_errors,
+        )
+    }
+}
+
+impl RenderTemplate for QuotationInvoiceSelectPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        self.render_modal(QUOTATION_INVOICE_SELECT_MODAL)
+            .into_inner()
     }
 }
 
@@ -2343,6 +2564,8 @@ pub struct ConfirmDeletePage {
     pub message: String,
     pub form_name: String,
     pub id: i64,
+    /// Empty posts to the draft-invoice delete route.
+    pub post_url: String,
     pub error: String,
 }
 
@@ -2358,7 +2581,11 @@ impl RenderTemplate for ConfirmDeletePage {
         } else {
             self.modal_uid.as_str()
         };
-        let post_url = DraftInvoiceDeletePostRouteTag::new(self.id).url();
+        let post_url = if self.post_url.is_empty() {
+            DraftInvoiceDeletePostRouteTag::new(self.id).url()
+        } else {
+            self.post_url.clone()
+        };
         modal(lariv_core::components::Modal {
             uid,
             children: delete_confirmation(DeleteConfirmation {
@@ -2379,6 +2606,8 @@ pub struct ConfirmBulkDeletePage {
     pub message: String,
     pub form_name: String,
     pub ids: String,
+    /// Empty posts to the draft-invoice bulk-delete route.
+    pub post_url: String,
     pub error: String,
     pub can_submit: bool,
 }
@@ -2395,7 +2624,11 @@ impl RenderTemplate for ConfirmBulkDeletePage {
         } else {
             self.modal_uid.as_str()
         };
-        let post_url = DraftInvoiceBulkDeletePostRouteTag.url();
+        let post_url = if self.post_url.is_empty() {
+            DraftInvoiceBulkDeletePostRouteTag.url()
+        } else {
+            self.post_url.clone()
+        };
         let form_attrs = form_hx_post_selector(&post_url, &target);
         modal(lariv_core::components::Modal {
             uid,
@@ -2439,7 +2672,7 @@ mod transition_confirm_tests {
         let html = confirm_invoice_transition(ConfirmInvoiceTransition {
             modal_uid: "draft-invoice-post-modal",
             title: "Post invoice",
-            message: "Post this quotation? This will create a posted invoice.",
+            message: "Post this draft invoice? This will create a posted invoice.",
             submit_label: "Post invoice",
             post_url: "/dashboard/finance-invoices/i/4/post",
             can_submit: true,
@@ -2447,7 +2680,7 @@ mod transition_confirm_tests {
         .into_string();
 
         assert!(html.contains(r#"<dialog id="draft-invoice-post-modal""#));
-        assert!(html.contains("Post this quotation? This will create a posted invoice."));
+        assert!(html.contains("Post this draft invoice? This will create a posted invoice."));
         assert!(html.contains(r#"hx-post="/dashboard/finance-invoices/i/4/post""#));
         assert!(html.contains(">Post invoice</button>"));
         assert!(html.contains(">Cancel</button>"));

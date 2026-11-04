@@ -46,7 +46,7 @@ use serde_json::{Value, json};
 
 use crate::{
     app::App,
-    capability::{ApplyHooks, CapStore, Capability, mount_with_hooks},
+    capability::{ApplyHooks, CapStore, Capability, UnitHookProof, mount_unit_hooks},
     tag::Tagged,
     traits::add::{AddCapability, CapTagAbsent},
 };
@@ -325,7 +325,8 @@ where
 
 impl<Hooks> Capability for GrapesJsCap<Hooks>
 where
-    Hooks: ApplyHooks<GrapesJsCapability, (), Output = GrapesJsCapability>,
+    Hooks: UnitHookProof,
+    Hooks: ApplyHooks<GrapesJsCapability, <Hooks as UnitHookProof>::Proof, Output = GrapesJsCapability>,
 {
     /// Shared so request-extension clones do not deep-copy block/theme HTML.
     type Value = Arc<GrapesJsCapability>;
@@ -334,7 +335,7 @@ where
     type Items = GrapesJsCapability;
 
     fn mount(self) -> Self::Output {
-        mount_with_hooks(self, Arc::new)
+        mount_unit_hooks(self, Arc::new)
     }
 }
 

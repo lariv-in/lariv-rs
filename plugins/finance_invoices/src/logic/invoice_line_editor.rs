@@ -24,13 +24,15 @@ use crate::entities::{
     draft_invoice_line::{self, Entity as DraftInvoiceLineEntity},
     posted_invoice::Entity as PostedInvoiceEntity,
     posted_invoice_line::{self, Entity as PostedInvoiceLineEntity},
+    quotation_invoice_line::{self, Entity as QuotationInvoiceLineEntity},
 };
 use crate::logic::tax_assoc::{
     load_cancelled_line_tax_ids, load_draft_line_tax_ids, load_posted_line_tax_ids,
+    load_quotation_line_tax_ids,
 };
 
 pub fn default_lines_json() -> String {
-    r#"[{"product_id":0,"quantity":"1","rate":"","product_label":"","fk_slot":"InvoiceLineProduct_0","tax_ids":[],"has_formula":false,"variable_rows":[],"pre_tax":"","remarks":""}]"#
+    r#"[{"product_id":0,"quantity":"1","qty_kind":"quantity","qty_unit":"Number","rate":"","product_label":"","product_name":"","fk_slot":"InvoiceLineProduct_0","tax_ids":[],"has_formula":false,"variable_rows":[],"pre_tax":"","remarks":""}]"#
         .to_string()
 }
 
@@ -134,8 +136,11 @@ struct LineVariableRow {
 struct DraftLineFormRow {
     product_id: i64,
     quantity: String,
+    qty_kind: String,
+    qty_unit: String,
     rate: String,
     product_label: String,
+    product_name: String,
     fk_slot: String,
     tax_ids: Vec<i64>,
     has_formula: bool,
@@ -231,8 +236,11 @@ pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> St
         rows.push(DraftLineFormRow {
             product_id: ln.product_id,
             quantity: decimal::decimal_display(ln.quantity),
+            qty_kind: ln.qty_kind,
+            qty_unit: ln.qty_unit,
             rate: decimal::decimal_display(ln.rate),
-            product_label: ln.product_name,
+            product_label: ln.product_name.clone(),
+            product_name: ln.product_name,
             fk_slot: format!("InvoiceLineProduct_{draft_id}_{}", ln.id),
             tax_ids,
             has_formula,
@@ -248,6 +256,7 @@ pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> St
 #[derive(Clone, Debug)]
 pub struct InvoiceLineDisplayRow {
     pub product: String,
+    pub qty_kind: String,
     pub remarks: String,
     pub inputs: String,
     pub quantity: String,
@@ -290,6 +299,8 @@ async fn build_line_display_row(
     product_name: &str,
     variable_types: &str,
     quantity: Decimal,
+    qty_kind: &str,
+    qty_unit: &str,
     rate: Decimal,
     variable_values: &str,
     pre_tax: Decimal,
@@ -313,9 +324,12 @@ async fn build_line_display_row(
         crate::logic::tax_calculations::invoice_line_amounts(pre_tax, &taxes);
     InvoiceLineDisplayRow {
         product: product_name.to_string(),
+        qty_kind: lariv_formula::VariableType::parse_name(qty_kind)
+            .map(|ty| ty.label().to_string())
+            .unwrap_or_else(|| qty_kind.to_string()),
         remarks: crate::logic::draft::optional_display(remarks),
         inputs,
-        quantity: decimal::decimal_display(quantity),
+        quantity: crate::logic::draft::format_qty_measure(quantity, qty_kind, qty_unit),
         rate: currency.display(rate),
         line_taxes,
         untaxed_amount: currency.display(untaxed),
@@ -369,6 +383,8 @@ pub async fn draft_invoice_line_display_rows(
                 &ln.product_name,
                 &ln.variable_types,
                 ln.quantity,
+                &ln.qty_kind,
+                &ln.qty_unit,
                 ln.rate,
                 &ln.variable_values,
                 ln.pre_tax_amount,
@@ -409,6 +425,8 @@ pub async fn posted_invoice_line_display_rows(
                 &ln.product_name,
                 &ln.variable_types,
                 ln.quantity,
+                &ln.qty_kind,
+                &ln.qty_unit,
                 ln.rate,
                 &ln.variable_values,
                 ln.pre_tax_amount,
@@ -428,6 +446,8 @@ struct CancelledLineRow {
     variable_types: String,
     rate: Decimal,
     quantity: Decimal,
+    qty_kind: String,
+    qty_unit: String,
     variable_values: String,
     pre_tax_amount: Decimal,
     remarks: Option<String>,
@@ -440,7 +460,7 @@ async fn load_cancelled_invoice_lines(
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
-            "SELECT id, product_name, variable_types, rate, quantity, variable_values, \
+            "SELECT id, product_name, variable_types, rate, quantity, qty_kind, qty_unit, variable_values, \
              pre_tax_amount, remarks \
              FROM cancelled_invoice_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
@@ -457,12 +477,105 @@ async fn load_cancelled_invoice_lines(
                 variable_types: r.try_get("", "variable_types").ok()?,
                 rate: r.try_get("", "rate").ok()?,
                 quantity: r.try_get("", "quantity").ok()?,
+                qty_kind: r.try_get("", "qty_kind").ok()?,
+                qty_unit: r.try_get("", "qty_unit").ok()?,
                 variable_values: r.try_get("", "variable_values").ok()?,
                 pre_tax_amount: r.try_get("", "pre_tax_amount").ok()?,
                 remarks: r.try_get("", "remarks").ok()?,
             })
         })
         .collect()
+}
+
+pub async fn quotation_lines_form_json(db: &DatabaseConnection, quotation_id: i64) -> String {
+    let lines = QuotationInvoiceLineEntity::find()
+        .filter(quotation_invoice_line::Column::QuotationInvoiceId.eq(quotation_id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    if lines.is_empty() {
+        return default_lines_json();
+    }
+    let mut rows = Vec::with_capacity(lines.len());
+    for ln in lines {
+        let has_formula = pricing::has_variable_pricing(&ln.variable_types);
+        let variable_rows =
+            variable_rows_for_line(&ln.variable_types, has_formula, &ln.variable_values);
+        let tax_ids = load_quotation_line_tax_ids(db, ln.id)
+            .await
+            .unwrap_or_default();
+        rows.push(DraftLineFormRow {
+            product_id: ln.product_id,
+            quantity: decimal::decimal_display(ln.quantity),
+            qty_kind: ln.qty_kind,
+            qty_unit: ln.qty_unit,
+            rate: decimal::decimal_display(ln.rate),
+            product_label: ln.product_name.clone(),
+            product_name: ln.product_name,
+            fk_slot: format!("InvoiceLineProduct_{quotation_id}_{}", ln.id),
+            tax_ids,
+            has_formula,
+            variable_rows,
+            pre_tax: decimal::decimal_display(ln.pre_tax_amount),
+            remarks: ln.remarks.unwrap_or_default(),
+        });
+    }
+    serde_json::to_string(&rows).unwrap_or_else(|_| default_lines_json())
+}
+
+pub async fn quotation_invoice_line_display_rows(
+    db: &DatabaseConnection,
+    quotation_id: i64,
+) -> Vec<InvoiceLineDisplayRow> {
+    let lines = QuotationInvoiceLineEntity::find()
+        .filter(quotation_invoice_line::Column::QuotationInvoiceId.eq(quotation_id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let mut journal_id = None;
+    let mut mixed_journals = false;
+    for ln in &lines {
+        if ln.product_id > 0
+            && let Ok(Some(template)) =
+                lariv_plugin_finance_products::journal_template::load_template(db, ln.product_id)
+                    .await
+        {
+            match journal_id {
+                Some(existing) if existing != template.journal_id => mixed_journals = true,
+                None => journal_id = Some(template.journal_id),
+                _ => {}
+            }
+        }
+    }
+    let currency = if mixed_journals {
+        load_default_currency_format(db).await
+    } else {
+        currency_for_journal_or_default(db, journal_id).await
+    };
+    let mut rows = Vec::with_capacity(lines.len());
+    for ln in lines {
+        let tax_ids = load_quotation_line_tax_ids(db, ln.id)
+            .await
+            .unwrap_or_default();
+        rows.push(
+            build_line_display_row(
+                db,
+                &ln.product_name,
+                &ln.variable_types,
+                ln.quantity,
+                &ln.qty_kind,
+                &ln.qty_unit,
+                ln.rate,
+                &ln.variable_values,
+                ln.pre_tax_amount,
+                &ln.remarks,
+                &tax_ids,
+                &currency,
+            )
+            .await,
+        );
+    }
+    rows
 }
 
 pub async fn cancelled_invoice_line_display_rows(
@@ -489,6 +602,8 @@ pub async fn cancelled_invoice_line_display_rows(
                 &ln.product_name,
                 &ln.variable_types,
                 ln.quantity,
+                &ln.qty_kind,
+                &ln.qty_unit,
                 ln.rate,
                 &ln.variable_values,
                 ln.pre_tax_amount,

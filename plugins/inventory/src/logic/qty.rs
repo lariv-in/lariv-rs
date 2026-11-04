@@ -4,8 +4,8 @@
 //! summed in kilograms, then shown in the stock's unit. Other formula types sum
 //! the line decimals when the unit matches.
 
-use lariv_core::length::{NM_PER_MM, parse_length_unit};
-pub use lariv_core::weight::{self, WeightUnit, parse_weight_unit};
+use lariv_formula::length::{NM_PER_MM, parse_length_unit};
+pub use lariv_formula::weight::{self, WeightUnit, parse_weight_unit};
 use lariv_formula::{VariableType, parse_length};
 use rust_decimal::Decimal;
 

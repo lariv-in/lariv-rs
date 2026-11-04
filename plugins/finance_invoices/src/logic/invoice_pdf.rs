@@ -33,8 +33,11 @@ use crate::entities::preferences;
 use crate::entities::{
     CancelledInvoiceEntity, DraftInvoiceEntity, DraftInvoiceLineEntity, PaidInvoiceEntity,
     PartiallyPaidInvoiceEntity, PostedInvoiceEntity, PostedInvoiceLineEntity,
+    QuotationInvoiceEntity, QuotationInvoiceLineEntity,
 };
-use crate::entities::{draft_invoice_line, posted_invoice, posted_invoice_line};
+use crate::entities::{
+    draft_invoice_line, posted_invoice, posted_invoice_line, quotation_invoice_line,
+};
 use crate::invoice_addon_key::InvoiceAddonKey;
 use crate::invoice_pdf_addon::{collect_invoice_pdf_extras, collect_invoice_pdf_sample_extras};
 use crate::invoice_pdf_assets::VnodeImageContext;
@@ -49,9 +52,14 @@ use crate::logic::preferences::{
     format_pref_calendar_date, format_pref_datetime, invoice_date_format, invoice_datetime_format,
     load_invoice_preferences,
 };
+use crate::logic::quotation::{
+    load_quotation_payment_term_lines, quotation_payment_term_line_display,
+    resolve_quotation_due_date,
+};
 use crate::logic::tax_assoc::{
     load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids, load_draft_invoice_tax_ids,
     load_draft_line_tax_ids, load_posted_invoice_tax_ids, load_posted_line_tax_ids,
+    load_quotation_invoice_tax_ids, load_quotation_line_tax_ids,
 };
 use crate::logic::tax_calculations::{
     InvoiceLinesTotals, invoice_line_amounts, invoice_receivable_grand_total,
@@ -214,6 +222,10 @@ struct PdfLine {
     product_id: i64,
     product: PdfProduct,
     quantity: String,
+    /// Measure kind of [`Self::quantity`] (`length`, `quantity`, …).
+    qty_kind: String,
+    /// Unit of [`Self::quantity`] for [`Self::qty_kind`].
+    qty_unit: String,
     rate: String,
     amount: String,
     remarks: String,
@@ -520,6 +532,8 @@ struct LineRow {
     variable_types: String,
     sales_price_formula: String,
     quantity: Decimal,
+    qty_kind: String,
+    qty_unit: String,
     rate: Decimal,
     pre_tax: Decimal,
     remarks: Option<String>,
@@ -528,6 +542,7 @@ struct LineRow {
 
 #[derive(Clone, Copy)]
 enum LineTaxSource {
+    Quotation,
     Draft,
     Posted,
     Cancelled,
@@ -540,6 +555,7 @@ async fn line_tax_ids(
     _is_service: bool,
 ) -> Result<Vec<i64>, InvoicePdfError> {
     let ids = match source {
+        LineTaxSource::Quotation => load_quotation_line_tax_ids(db, line_id).await,
         LineTaxSource::Draft => load_draft_line_tax_ids(db, line_id).await,
         LineTaxSource::Posted => load_posted_line_tax_ids(db, line_id).await,
         LineTaxSource::Cancelled => load_cancelled_line_tax_ids(db, line_id).await,
@@ -569,6 +585,8 @@ async fn load_draft_lines(
             variable_types: l.variable_types,
             sales_price_formula: l.sales_price_formula,
             quantity: l.quantity,
+            qty_kind: l.qty_kind,
+            qty_unit: l.qty_unit,
             rate: l.rate,
             pre_tax: l.pre_tax_amount,
             remarks: l.remarks,
@@ -598,6 +616,8 @@ async fn load_posted_lines(
             variable_types: l.variable_types,
             sales_price_formula: l.sales_price_formula,
             quantity: l.quantity,
+            qty_kind: l.qty_kind,
+            qty_unit: l.qty_unit,
             rate: l.rate,
             pre_tax: l.pre_tax_amount,
             remarks: l.remarks,
@@ -614,7 +634,7 @@ async fn load_cancelled_lines(
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id, product_id, product_name, product_remarks, hsn_code, sac_code, \
-             variable_types, sales_price_formula, rate, quantity, \
+             variable_types, sales_price_formula, rate, quantity, qty_kind, qty_unit, \
              pre_tax_amount, remarks, variable_values \
              FROM cancelled_invoice_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
@@ -656,6 +676,12 @@ async fn load_cancelled_lines(
                 .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
             quantity: r
                 .try_get("", "quantity")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            qty_kind: r
+                .try_get("", "qty_kind")
+                .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
+            qty_unit: r
+                .try_get("", "qty_unit")
                 .map_err(|e| InvoicePdfError::msg(e.to_string()))?,
             rate: r
                 .try_get("", "rate")
@@ -704,6 +730,8 @@ async fn build_pdf_lines(
             product_id: row.product_id.unwrap_or(0),
             product,
             quantity: dec_str(row.quantity),
+            qty_kind: row.qty_kind.clone(),
+            qty_unit: row.qty_unit.clone(),
             rate: money_str(row.rate, currency),
             amount: dec_str(row.pre_tax),
             remarks: row.remarks.clone().unwrap_or_default(),
@@ -859,6 +887,130 @@ async fn draft_invoice_currency(db: &DatabaseConnection, draft_id: i64) -> Curre
         Some(id) => load_journal_currency_format(db, id).await,
         None => load_default_currency_format(db).await,
     }
+}
+
+async fn load_quotation_lines(
+    db: &DatabaseConnection,
+    quotation_id: i64,
+) -> Result<Vec<LineRow>, InvoicePdfError> {
+    let rows = QuotationInvoiceLineEntity::find()
+        .filter(quotation_invoice_line::Column::QuotationInvoiceId.eq(quotation_id))
+        .all(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+    Ok(rows
+        .into_iter()
+        .map(|l| LineRow {
+            id: l.id,
+            product_id: Some(l.product_id),
+            is_service: l.sac_code.is_some(),
+            catalog_name: l.product_name,
+            catalog_remarks: l.product_remarks,
+            hsn_or_sac: l.hsn_code.or(l.sac_code).unwrap_or(0),
+            variable_types: l.variable_types,
+            sales_price_formula: l.sales_price_formula,
+            quantity: l.quantity,
+            qty_kind: l.qty_kind,
+            qty_unit: l.qty_unit,
+            rate: l.rate,
+            pre_tax: l.pre_tax_amount,
+            remarks: l.remarks,
+            variable_values: l.variable_values,
+        })
+        .collect())
+}
+
+async fn load_quotation_payment_term_pdf(
+    db: &DatabaseConnection,
+    quotation_id: i64,
+    anchor: DateTime<Utc>,
+    tz: &str,
+    date_fmt: &str,
+) -> Result<PdfPaymentTerm, InvoicePdfError> {
+    let lines = load_quotation_payment_term_lines(db, quotation_id)
+        .await
+        .map_err(InvoicePdfError::msg)?;
+    let pdf_lines: Vec<PdfPaymentTermLine> = lines
+        .iter()
+        .map(|l| {
+            let display = quotation_payment_term_line_display(l, date_fmt);
+            let due_date = resolve_quotation_due_date(l, anchor, tz).unwrap_or_else(|_| {
+                l.due_date.unwrap_or_else(|| {
+                    anchor
+                        .with_timezone(&lariv_core::datetime::parse_timezone(tz))
+                        .date_naive()
+                })
+            });
+            let due_date_display = format_pref_calendar_date(due_date, date_fmt);
+            PdfPaymentTermLine::formatted(due_date_display, display.amount_display)
+        })
+        .collect();
+    let summary = pdf_lines
+        .iter()
+        .map(|l| format!("{}: {}", l.due_date_display, l.amount))
+        .collect::<Vec<_>>()
+        .join("; ");
+    Ok(PdfPaymentTerm {
+        id: quotation_id,
+        summary,
+        lines: pdf_lines,
+    })
+}
+
+pub async fn render_quotation_invoice_pdf(
+    fs: &FilesystemState,
+    id: i64,
+    tz: &str,
+) -> Result<InvoicePdfResult, InvoicePdfError> {
+    let db = &fs.db;
+    let quotation = QuotationInvoiceEntity::find_by_id(id)
+        .one(db)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?
+        .ok_or(InvoicePdfError::NotFound)?;
+    let header_tax_ids = load_quotation_invoice_tax_ids(db, quotation.id)
+        .await
+        .map_err(|e| InvoicePdfError::msg(e.to_string()))?;
+    let line_rows = load_quotation_lines(db, quotation.id).await?;
+    let prefs = load_invoice_preferences(db).await;
+    let currency = load_default_currency_format(db).await;
+    let date_fmt = invoice_date_format(&prefs);
+    let payment_term =
+        load_quotation_payment_term_pdf(db, quotation.id, quotation.datetime, tz, date_fmt).await?;
+    let root = build_pdf_root(
+        db,
+        quotation.id,
+        quotation.number.clone(),
+        quotation.reference.clone(),
+        quotation.eway_bill_number.clone(),
+        quotation.payment_reference.clone(),
+        quotation.bank_account.clone(),
+        quotation.remarks.clone(),
+        quotation.datetime,
+        quotation.delivery_date,
+        crate::logic::bill_to::load_bill_to(db, quotation.customer_id).await,
+        header_tax_ids,
+        line_rows,
+        LineTaxSource::Quotation,
+        vec![],
+        payment_term,
+        InvoiceState::Quotation,
+        tz,
+        &currency,
+        &prefs,
+    )
+    .await?;
+    let base = pdf_filename_base(
+        quotation.number.as_deref(),
+        &format!("quotation-{}", quotation.id),
+    );
+    render_pdf_from_prefs(
+        fs,
+        &root,
+        &base,
+        Some(InvoiceAddonKey::Quotation(quotation.id)),
+    )
+    .await
 }
 
 pub async fn render_draft_invoice_pdf(
@@ -1146,6 +1298,8 @@ fn sample_invoice_pdf_root(tz: &str, date_fmt: &str, datetime_fmt: &str) -> PdfR
                 sales_price_formula: r#"decimal("27000")"#.into(),
             },
             quantity: "1".into(),
+            qty_kind: "quantity".into(),
+            qty_unit: "Number".into(),
             rate: "54000".into(),
             amount: "54000".into(),
             remarks: "Delivered to the warehouse dock.".into(),
@@ -1277,11 +1431,17 @@ fn render_template(
     vnode_ctx: Option<&VnodeImageContext>,
 ) -> Result<String, InvoicePdfError> {
     let grand_words = invoice_amount_words_from_decimal(pdf_receivable_grand_total(root));
-    let ctx = merge_pdf_context(root, extras)?;
+    let mut ctx = merge_pdf_context(root, extras)?;
+    // Saved templates print `{{ Customer.Email }}` in markup. `@` would be a Typst label
+    // (`label <gmail.com> does not exist`). Escape that field here; `EmailHref` stays
+    // suitable for a quoted `mailto:` string.
+    sanitize_customer_email(&mut ctx);
     let mut env = Environment::new();
     // Print/iterate of missing names must fail; a silent empty substitution would
     // still compile the rest of the layout and look like the default template.
     env.set_undefined_behavior(UndefinedBehavior::SemiStrict);
+    env.add_filter("typst", typst_markup);
+    env.add_filter("typstStr", typst_string);
     env.add_function("num2words", num2words_fn);
     env.add_function("num2wordsAnd", num2words_and_fn);
     env.add_function("num2wordsRupees", num2words_rupees_fn);
@@ -1312,6 +1472,65 @@ fn render_template(
         .map_err(|e| InvoicePdfError::msg(format!("invalid invoice PDF template: {e}")))?;
     tmpl.render(ctx)
         .map_err(|e| InvoicePdfError::msg(format!("rendering invoice PDF template failed: {e}")))
+}
+
+/// Make `Customer.Email` safe to drop into Typst markup, and publish `Customer.EmailHref`
+/// for `#link("mailto:…")`.
+fn sanitize_customer_email(ctx: &mut serde_json::Value) {
+    let Some(customer) = ctx.get_mut("Customer").and_then(|v| v.as_object_mut()) else {
+        return;
+    };
+    let Some(email) = customer
+        .get("Email")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+    else {
+        return;
+    };
+    customer.insert(
+        "Email".to_string(),
+        serde_json::Value::String(typst_markup(email.clone())),
+    );
+    customer.insert(
+        "EmailHref".to_string(),
+        serde_json::Value::String(typst_string(email)),
+    );
+}
+
+/// Escape text placed in Typst markup. `@` starts a label, so a raw email fails to compile.
+fn typst_markup(value: String) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\\' | '#' | '[' | ']' | '*' | '_' | '`' | '$' | '@' | '<' | '>' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+/// Escape text placed inside a Typst `"..."` string (the `mailto:` target).
+///
+/// `@` is literal in a string. A markup escape such as `\@` would be copied through,
+/// because Typst only treats `\\`, `\"`, `\n`, `\r`, `\t`, and `\u{…}` as string escapes.
+fn typst_string(value: String) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\\' | '"' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(ch),
+        }
+    }
+    out
 }
 
 fn num2words_fn(n: i64) -> Result<String, minijinja::Error> {
@@ -1604,6 +1823,50 @@ mod tests {
     }
 
     #[test]
+    fn email_is_markup_safe_and_mailto_ready() {
+        assert_eq!(
+            typst_markup("billing_desk@example.com".into()),
+            r"billing\_desk\@example.com"
+        );
+        assert_eq!(
+            typst_string("billing_desk@example.com".into()),
+            "billing_desk@example.com"
+        );
+        assert_eq!(typst_string("a\"b\\c".into()), r#"a\"b\\c"#);
+    }
+
+    #[tokio::test]
+    async fn plain_customer_email_compiles() {
+        let mut root = sample_example_invoice_root();
+        root.customer.email = Some("ada@gmail.com".into());
+        let asset_dir = std::env::temp_dir().join("lariv-invoice-pdf-email-at");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        let out = render_template(
+            "Email: {{ Customer.Email }}",
+            &root,
+            serde_json::json!({}),
+            &asset_dir,
+            None,
+        )
+        .expect("render");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        assert_eq!(out, r"Email: ada\@gmail.com");
+        let pdf = typst::typst_compile(&out).await.expect("compile");
+        assert!(pdf.starts_with(b"%PDF"));
+    }
+
+    #[tokio::test]
+    async fn mailto_email_compiles() {
+        let src = format!(
+            "Email: #link(\"mailto:{}\")[{}]",
+            typst_string("billing_desk@example.com".into()),
+            typst_markup("billing_desk@example.com".into()),
+        );
+        let pdf = typst::typst_compile(&src).await.expect("compile");
+        assert!(pdf.starts_with(b"%PDF"));
+    }
+
+    #[test]
     fn example_invoice_pdf_template_renders() {
         let root = sample_example_invoice_root();
         let asset_dir = std::env::temp_dir().join("lariv-invoice-pdf-test");
@@ -1625,7 +1888,9 @@ mod tests {
         assert!(!out.contains("```"));
         assert!(out.contains("Mumbai 400001"));
         assert!(out.contains("Phone: +91 98765 43210"));
-        assert!(out.contains("Email: billing@example.com"));
+        assert!(
+            out.contains(r#"Email: #link("mailto:billing@example.com")[billing\@example.com]"#)
+        );
         assert!(out.contains("GSTIN/UIN: 27AAAAA0000A1Z5"));
         assert!(out.contains("Place of Supply: Maharashtra"));
         assert!(out.contains("dict-sum-prefix(tax-totals, \"SGST\")"));
@@ -1656,11 +1921,29 @@ mod tests {
         )
         .expect("render draft");
         let _ = std::fs::remove_dir_all(&asset_dir);
-        assert!(draft.contains("*QUOTATION*"), "{draft}");
-        assert!(draft.contains("*Quotation No.:*"), "{draft}");
+        assert!(draft.contains("*DRAFT INVOICE*"), "{draft}");
+        assert!(draft.contains("*Invoice No.:*"), "{draft}");
         assert!(
-            draft.contains("This is a Computer Generated Quotation"),
+            draft.contains("This is a Computer Generated Draft Invoice"),
             "{draft}"
+        );
+        root.invoice_type = InvoiceState::Quotation.as_str().to_string();
+        let asset_dir = std::env::temp_dir().join("lariv-invoice-pdf-test-type-quotation");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        let quotation = render_template(
+            DEFAULT_INVOICE_PDF_TEMPLATE,
+            &root,
+            serde_json::json!({}),
+            &asset_dir,
+            None,
+        )
+        .expect("render quotation");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        assert!(quotation.contains("*QUOTATION*"), "{quotation}");
+        assert!(quotation.contains("*Quotation No.:*"), "{quotation}");
+        assert!(
+            quotation.contains("This is a Computer Generated Quotation"),
+            "{quotation}"
         );
 
         root.invoice_type = InvoiceState::Cancelled.as_str().to_string();

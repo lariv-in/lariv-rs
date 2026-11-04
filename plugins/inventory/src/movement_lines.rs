@@ -3,7 +3,7 @@
 use lariv_core::components::{
     InputForeignKey, attrs::escape_attr, input_foreign_key, row_attr_navigate,
 };
-use lariv_core::length::LengthUnit;
+use lariv_formula::length::LengthUnit;
 use maud::{Markup, PreEscaped, html};
 
 use crate::logic::line::default_movement_lines_json;

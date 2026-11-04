@@ -31,7 +31,8 @@ use crate::{
     },
     routes::{
         CancelledInvoiceBulkNewDraftRouteTag, CancelledInvoiceDetailRouteTag,
-        CancelledInvoiceNewDraftRouteTag, DraftInvoiceDetailRouteTag, PostedInvoiceDetailRouteTag,
+        CancelledInvoiceNewDraftRouteTag, PostedInvoiceDetailRouteTag,
+        QuotationInvoiceDetailRouteTag,
     },
     scope::hub_tab_url,
     state::InvoicesState,
@@ -194,7 +195,7 @@ pub async fn new_draft(
     Path(id): Path<i64>,
 ) -> Response {
     match cancelled_new_draft(&state.db, id, &ctx.timezone).await {
-        Ok(d) => Redirect::to(&DraftInvoiceDetailRouteTag::new(d.id).url()).into_response(),
+        Ok(d) => Redirect::to(&QuotationInvoiceDetailRouteTag::new(d.id).url()).into_response(),
         Err(_) => Redirect::to(&CancelledInvoiceDetailRouteTag::new(id).url()).into_response(),
     }
 }
@@ -268,5 +269,5 @@ pub async fn bulk_new_draft(
             return Redirect::to(&CancelledInvoiceDetailRouteTag::new(id).url()).into_response();
         }
     }
-    Redirect::to(&hub_tab_url("drafts")).into_response()
+    Redirect::to(&hub_tab_url("quotations")).into_response()
 }

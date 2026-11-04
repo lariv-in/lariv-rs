@@ -7,10 +7,10 @@
 use maud::{Markup, PreEscaped, html};
 
 use lariv_core::components::attrs::escape_attr;
-use lariv_core::length::LengthUnit;
-use lariv_core::weight::WeightUnit;
 
 use crate::VariableType;
+use crate::length::LengthUnit;
+use crate::weight::WeightUnit;
 
 /// Alpine bindings for [`variable_value_input`].
 pub struct VariableValueInput<'a> {

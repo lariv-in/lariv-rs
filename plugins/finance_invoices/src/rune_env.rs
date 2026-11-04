@@ -23,12 +23,12 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "create_invoice",
-        "create_invoice(#{ customer_id?: int, lines?: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new draft invoice id. Provide at least one line (lines). Quantity multiplies the price of one product. When the catalog item has variables, pass them; an omitted rate uses the sales formula, and a given rate is the price of one unit. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
+        "create_invoice(#{ customer_id?: int, lines?: [#{ product_id: int, quantity?: number|string, qty_kind?: string, qty_unit?: string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new draft invoice id. Provide at least one line (lines). Quantity is a measure: qty_kind is its kind (length, weight, quantity, …) and qty_unit is the unit for that kind. The magnitude multiplies the price of one product. Omitted kind is quantity and omitted unit is that kind's default (Number for a count). When the catalog item has variables, pass them; an omitted rate uses the sales formula, and a given rate is the price of one unit. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
         |_ctx| NativeBinding::Function(Arc::new(create_invoice)),
     );
     rune_env.register_contextual(
         "update_invoice",
-        "update_invoice(#{ id: int, customer_id?: int, lines?: [#{ product_id: int, quantity?: number|string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated draft invoice id (full replace; invoice must be in draft state). Provide at least one line (lines). Quantity multiplies the price of one product. When the catalog item has variables, an omitted rate uses the sales formula, and a given rate is the price of one unit. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
+        "update_invoice(#{ id: int, customer_id?: int, lines?: [#{ product_id: int, quantity?: number|string, qty_kind?: string, qty_unit?: string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated draft invoice id (full replace; invoice must be in draft state). Provide at least one line (lines). Quantity is a measure: qty_kind is its kind and qty_unit is the unit for that kind. The magnitude multiplies the price of one product. Omitted kind is quantity. When the catalog item has variables, an omitted rate uses the sales formula, and a given rate is the price of one unit. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
         |_ctx| NativeBinding::Function(Arc::new(update_invoice)),
     );
     rune_env.register_contextual(
@@ -185,6 +185,10 @@ mod args {
         #[serde(default)]
         quantity: Option<NumberOrString>,
         #[serde(default)]
+        qty_kind: Option<String>,
+        #[serde(default)]
+        qty_unit: Option<String>,
+        #[serde(default)]
         variables: Option<serde_json::Value>,
         #[serde(default)]
         tax_ids: Option<Vec<i64>>,
@@ -274,9 +278,12 @@ mod args {
                     .quantity
                     .map(NumberOrString::into_string)
                     .unwrap_or_else(|| "1".into()),
+                qty_kind: line.qty_kind.unwrap_or_else(|| "quantity".into()),
+                qty_unit: line.qty_unit.unwrap_or_default(),
                 variables: line.variables,
                 tax_ids: line.tax_ids,
                 remarks: line.remarks,
+                product_name: None,
             })
             .collect()
     }

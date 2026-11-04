@@ -45,10 +45,7 @@ use frunk::{HCons, HNil, hlist::HList};
 
 use crate::{
     app::{App, MountedApp},
-    capability::{
-        ApplyHooks, CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook,
-        mount_with_hooks,
-    },
+    capability::{CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook, mount_registrar},
     components::SlotTag,
     config::{AppConfig, AppConfigTag, ConfigCapability, ConfigTag},
     db::{DbState, DbTag},
@@ -255,15 +252,18 @@ apply_registrar_hook! {
 
 impl<Hooks, Items> Capability for CommandCap<Hooks, Items>
 where
-    Hooks: ApplyHooks<Items>,
+    Hooks: FoldRegistrarHooks<CommandTag, Items>,
 {
-    type Value = CommandCapability<Hooks::Output>;
-    type Output = Tagged<CommandTag, CommandCapability<Hooks::Output>>;
+    type Value = CommandCapability<<Hooks as FoldRegistrarHooks<CommandTag, Items>>::Output>;
+    type Output = Tagged<
+        CommandTag,
+        CommandCapability<<Hooks as FoldRegistrarHooks<CommandTag, Items>>::Output>,
+    >;
     type Hooks = Hooks;
     type Items = Items;
 
     fn mount(self) -> Self::Output {
-        mount_with_hooks(self, |items| CommandCapability { commands: items })
+        mount_registrar(self, |items| CommandCapability { commands: items })
     }
 }
 

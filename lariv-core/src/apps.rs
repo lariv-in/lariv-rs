@@ -39,7 +39,7 @@ use frunk::{HCons, HNil, hlist::HList};
 
 use crate::{
     app::App,
-    capability::{ApplyHooks, CapStore, Capability, mount_with_hooks},
+    capability::{ApplyHooks, CapStore, Capability, UnitHookProof, mount_unit_hooks},
     tag::Tagged,
     traits::add::{AddCapability, CapTagAbsent},
 };
@@ -152,7 +152,8 @@ where
 
 impl<Hooks> Capability for AppsCap<Hooks>
 where
-    Hooks: ApplyHooks<AppsCapability, (), Output = AppsCapability>,
+    Hooks: UnitHookProof,
+    Hooks: ApplyHooks<AppsCapability, <Hooks as UnitHookProof>::Proof, Output = AppsCapability>,
 {
     type Value = AppsCapability;
     type Output = Tagged<AppsTag, AppsCapability>;
@@ -160,7 +161,7 @@ where
     type Items = AppsCapability;
 
     fn mount(self) -> Self::Output {
-        mount_with_hooks(self, |items| items)
+        mount_unit_hooks(self, |items| items)
     }
 }
 

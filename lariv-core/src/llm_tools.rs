@@ -43,7 +43,7 @@ use serde_json::Value;
 
 use crate::{
     app::App,
-    capability::{ApplyHooks, CapStore, Capability, mount_with_hooks},
+    capability::{ApplyHooks, CapStore, Capability, UnitHookProof, mount_unit_hooks},
     filestore::DynFilestore,
     genai::{FunctionDeclaration, FunctionResponsePart, GenaiClient},
     rune_env::{NativeFn, RuneEnvCapability, RuneEnvCtx},
@@ -245,7 +245,8 @@ where
 
 impl<Hooks> Capability for LlmToolsCap<Hooks>
 where
-    Hooks: ApplyHooks<LlmToolsCapability, (), Output = LlmToolsCapability>,
+    Hooks: UnitHookProof,
+    Hooks: ApplyHooks<LlmToolsCapability, <Hooks as UnitHookProof>::Proof, Output = LlmToolsCapability>,
 {
     type Value = Arc<LlmToolsCapability>;
     type Output = Tagged<LlmToolsTag, Arc<LlmToolsCapability>>;
@@ -253,7 +254,7 @@ where
     type Items = LlmToolsCapability;
 
     fn mount(self) -> Self::Output {
-        mount_with_hooks(self, Arc::new)
+        mount_unit_hooks(self, Arc::new)
     }
 }
 

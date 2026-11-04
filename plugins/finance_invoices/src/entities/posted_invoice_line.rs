@@ -21,9 +21,13 @@ pub struct Model {
     pub sales_price_formula: String,
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
     pub rate: Decimal,
-    /// Number of products. Multiplies `rate`, the price of one product.
+    /// Magnitude of this line's quantity measure. Multiplies `rate`.
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
     pub quantity: Decimal,
+    /// Measure kind of `quantity` (`length`, `weight`, `quantity`, …).
+    pub qty_kind: String,
+    /// Unit of `quantity` for [`Self::qty_kind`] (`mm`, `kg`, `Number`, …).
+    pub qty_unit: String,
     /// Raw variable values copied from the draft line.
     pub variable_values: String,
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]

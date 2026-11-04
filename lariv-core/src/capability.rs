@@ -12,6 +12,8 @@
 //! - [`ApplyHooks`] — fold hook HList over items (tail first = install order)
 //! - [`CapHookExt`] — prepend plugin hooks on custom builder capabilities (`cap_hook` install step)
 //! - [`FoldMount`] — fold a builder HList of capabilities into mounted outputs
+//! - [`UnitHookProof`] — proof tuple for hook lists that use the default `()` proof, so
+//!   [`Capability::mount`] does not take a caller-supplied proof parameter
 //!
 //! # Registrar capabilities
 //!
@@ -798,6 +800,56 @@ macro_rules! define_passthrough_cap {
 }
 
 pub use crate::define_passthrough_cap;
+
+/// Proof tuple for hook lists whose each step uses [`ApplyHooks`]'s default `()` proof.
+///
+/// `HNil` is `()`. Each cons cell is `(Tail::Proof, ())`, matching registrar impls such as
+/// [`crate::apps::AppsRegistrar`] and route hooks generated with the default
+/// [`crate::http::RouteRegistrar`] proof. Naming the tuple on [`Capability`] would leave
+/// the parameter unconstrained, so mount reads it from the hook list instead.
+pub trait UnitHookProof {
+    type Proof;
+}
+
+impl UnitHookProof for HNil {
+    type Proof = ();
+}
+
+impl<Head, Tail> UnitHookProof for HCons<Head, Tail>
+where
+    Tail: UnitHookProof,
+{
+    type Proof = (Tail::Proof, ());
+}
+
+/// Apply [`FoldRegistrarHooks`] and wrap the items as the mounted [`Tagged`] value.
+pub fn mount_registrar<Tag, Hooks, Items, Value, F>(
+    store: CapStore<Tag, Hooks, Items>,
+    wrap: F,
+) -> Tagged<Tag, Value>
+where
+    Hooks: FoldRegistrarHooks<Tag, Items>,
+    F: FnOnce(<Hooks as FoldRegistrarHooks<Tag, Items>>::Output) -> Value,
+{
+    let items = store.hooks.fold_registrar_hooks(store.items);
+    Tagged::new(wrap(items))
+}
+
+/// Apply [`ApplyHooks`] using [`UnitHookProof`] and wrap the items as the mounted [`Tagged`] value.
+pub fn mount_unit_hooks<Tag, Hooks, Items, Value, F>(
+    store: CapStore<Tag, Hooks, Items>,
+    wrap: F,
+) -> Tagged<Tag, Value>
+where
+    Hooks: UnitHookProof + ApplyHooks<Items, <Hooks as UnitHookProof>::Proof>,
+    F: FnOnce(<Hooks as ApplyHooks<Items, <Hooks as UnitHookProof>::Proof>>::Output) -> Value,
+{
+    let items = <Hooks as ApplyHooks<Items, <Hooks as UnitHookProof>::Proof>>::apply_hooks(
+        store.hooks,
+        store.items,
+    );
+    Tagged::new(wrap(items))
+}
 
 /// Fold a builder HList of [`Capability`] values into mounted [`Tagged`] outputs.
 pub trait FoldMount: Sized {

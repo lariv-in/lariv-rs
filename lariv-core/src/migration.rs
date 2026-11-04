@@ -42,10 +42,7 @@ use sea_orm_migration::{MigratorTrait, seaql_migrations};
 
 use crate::{
     app::{App, MountedApp},
-    capability::{
-        ApplyHooks, CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook,
-        mount_with_hooks,
-    },
+    capability::{CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook, mount_registrar},
     db::{DbState, DbTag},
     tag::Tagged,
     traits::{
@@ -135,15 +132,18 @@ apply_registrar_hook! {
 
 impl<Hooks, Items> Capability for MigrationCap<Hooks, Items>
 where
-    Hooks: ApplyHooks<Items>,
+    Hooks: FoldRegistrarHooks<MigrationTag, Items>,
 {
-    type Value = MigrationCapability<Hooks::Output>;
-    type Output = Tagged<MigrationTag, MigrationCapability<Hooks::Output>>;
+    type Value = MigrationCapability<<Hooks as FoldRegistrarHooks<MigrationTag, Items>>::Output>;
+    type Output = Tagged<
+        MigrationTag,
+        MigrationCapability<<Hooks as FoldRegistrarHooks<MigrationTag, Items>>::Output>,
+    >;
     type Hooks = Hooks;
     type Items = Items;
 
     fn mount(self) -> Self::Output {
-        mount_with_hooks(self, |items| MigrationCapability { migrators: items })
+        mount_registrar(self, |items| MigrationCapability { migrators: items })
     }
 }
 

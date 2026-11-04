@@ -3,6 +3,7 @@
 /// Which invoice header an addon should load data for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum InvoiceAddonKey {
+    Quotation(i64),
     Draft(i64),
     Posted(i64),
 }
@@ -10,7 +11,7 @@ pub enum InvoiceAddonKey {
 impl InvoiceAddonKey {
     pub fn id(self) -> i64 {
         match self {
-            Self::Draft(id) | Self::Posted(id) => id,
+            Self::Quotation(id) | Self::Draft(id) | Self::Posted(id) => id,
         }
     }
 

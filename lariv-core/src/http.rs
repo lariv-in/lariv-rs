@@ -44,7 +44,7 @@ use frunk::{HCons, HNil, hlist::HList};
 
 use crate::{
     app::{App, MountedApp},
-    capability::{CapStore, Capability},
+    capability::{CapStore, Capability, UnitHookProof},
     components::slots::{SharedChromeFolder, SlotTag},
     tag::Tagged,
     traits::{
@@ -432,16 +432,35 @@ impl<Hooks, Routes> HttpCap<Hooks, HttpCapability<Routes>> {
     }
 }
 
-impl<Http> Capability for HttpCap<HNil, Http> {
+impl<Hooks, Routes> Capability for HttpCap<Hooks, HttpCapability<Routes>>
+where
+    Hooks: UnitHookProof,
+    Hooks: FoldMountRoutes<HttpCapability<Routes>, <Hooks as UnitHookProof>::Proof>,
+{
     /// Shared so request-extension / middleware clones do not deep-copy the route HList
     /// (recursive [`Clone`] of dozens of [`Route`]s overflows the default tokio stack).
-    type Value = Arc<Http>;
-    type Output = Tagged<HttpTag, Arc<Http>>;
-    type Hooks = HNil;
-    type Items = Http;
+    type Value = Arc<
+        <Hooks as FoldMountRoutes<HttpCapability<Routes>, <Hooks as UnitHookProof>::Proof>>::Output,
+    >;
+    type Output =
+        Tagged<
+            HttpTag,
+            Arc<
+                <Hooks as FoldMountRoutes<
+                    HttpCapability<Routes>,
+                    <Hooks as UnitHookProof>::Proof,
+                >>::Output,
+            >,
+        >;
+    type Hooks = Hooks;
+    type Items = HttpCapability<Routes>;
 
     fn mount(self) -> Self::Output {
-        Tagged::new(Arc::new(self.items))
+        let http = <Hooks as FoldMountRoutes<
+            HttpCapability<Routes>,
+            <Hooks as UnitHookProof>::Proof,
+        >>::fold_mount_routes(self.hooks, self.items);
+        Tagged::new(Arc::new(http))
     }
 }
 

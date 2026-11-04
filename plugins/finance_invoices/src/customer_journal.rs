@@ -29,11 +29,12 @@ use lariv_plugin_users::middleware::RequireAuth;
 use crate::components::fiscal_year_environment_selector;
 use crate::handlers::hub::{CustomerHubTable, HubQuery, customer_hub_table};
 use crate::keys::{
-    CUSTOMER_CANCELLED_INVOICES_TABLE, CUSTOMER_INVOICES_TABLE, CUSTOMER_QUOTATIONS_TABLE,
+    CUSTOMER_CANCELLED_INVOICES_TABLE, CUSTOMER_DRAFT_INVOICES_TABLE, CUSTOMER_INVOICES_TABLE,
+    CUSTOMER_QUOTATIONS_TABLE,
 };
 use crate::routes::{
-    CustomerJournalCancelledRouteTag, CustomerJournalInvoicesRouteTag,
-    CustomerJournalQuotationsRouteTag,
+    CustomerJournalCancelledRouteTag, CustomerJournalDraftInvoicesRouteTag,
+    CustomerJournalInvoicesRouteTag, CustomerJournalQuotationsRouteTag,
 };
 use crate::scope::{
     LarivEnvironment, list_fiscal_year_options, resolve_list_fiscal_year,
@@ -46,6 +47,10 @@ pub struct Hook;
 
 fn quotations_url(customer_id: i64) -> String {
     CustomerJournalQuotationsRouteTag::new(customer_id).url()
+}
+
+fn draft_invoices_url(customer_id: i64) -> String {
+    CustomerJournalDraftInvoicesRouteTag::new(customer_id).url()
 }
 
 fn invoices_url(customer_id: i64) -> String {
@@ -74,6 +79,12 @@ impl CustomerJournalRegistrar for Hook {
                 title: "Quotations",
                 url_fn: quotations_url,
                 order: 40,
+            })
+            .push(CustomerSidebarLink {
+                key: "draft-invoices",
+                title: "Draft invoices",
+                url_fn: draft_invoices_url,
+                order: 45,
             })
             .push(CustomerSidebarLink {
                 key: "invoices",
@@ -106,7 +117,8 @@ impl CustomerJournalSection for InvoicesSection {
             .collect::<Vec<_>>();
         let selected = selected_fiscal_year_start_for_ui(&env);
         let totals = journal_totals(ctx, resolve_list_fiscal_year(&env)).await;
-        let quotations = table(ctx, "drafts", "Quotations", "").await;
+        let quotations = table(ctx, "quotations", "Quotations", "").await;
+        let drafts = table(ctx, "drafts", "Draft invoices", "").await;
         let invoices = table(ctx, "posted", "Invoices", "").await;
         let cancelled = table(ctx, "cancelled", "Cancelled invoices", "").await;
         html! {
@@ -114,6 +126,7 @@ impl CustomerJournalSection for InvoicesSection {
             (journal_totals_fields(&totals))
             div class="flex flex-col gap-8" {
                 (quotations)
+                (drafts)
                 (invoices)
                 (cancelled)
             }
@@ -265,6 +278,10 @@ async fn table(ctx: &CustomerJournalRender, tab: &str, heading: &str, query: &st
             CUSTOMER_CANCELLED_INVOICES_TABLE,
             CustomerJournalCancelledRouteTag::new(ctx.customer_id).path(),
         ),
+        "drafts" => (
+            CUSTOMER_DRAFT_INVOICES_TABLE,
+            CustomerJournalDraftInvoicesRouteTag::new(ctx.customer_id).path(),
+        ),
         _ => (
             CUSTOMER_QUOTATIONS_TABLE,
             CustomerJournalQuotationsRouteTag::new(ctx.customer_id).path(),
@@ -311,6 +328,7 @@ fn section_key(tab: &str) -> &'static str {
     match tab {
         "posted" => "invoices",
         "cancelled" => "cancelled",
+        "drafts" => "draft-invoices",
         _ => "quotations",
     }
 }
@@ -337,6 +355,10 @@ async fn respond_table(
         "cancelled" => (
             CUSTOMER_CANCELLED_INVOICES_TABLE,
             CustomerJournalCancelledRouteTag::new(id).path(),
+        ),
+        "drafts" => (
+            CUSTOMER_DRAFT_INVOICES_TABLE,
+            CustomerJournalDraftInvoicesRouteTag::new(id).path(),
         ),
         _ => (
             CUSTOMER_QUOTATIONS_TABLE,
@@ -404,8 +426,33 @@ pub async fn quotations(
         &headers,
         &uri,
         id,
-        "drafts",
+        "quotations",
         "Quotations",
+        &q,
+    )
+    .await
+}
+
+pub async fn draft_invoices(
+    Cap(state): Cap<InvoicesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    headers: HeaderMap,
+    uri: Uri,
+    Path(id): Path<i64>,
+    Query(q): Query<HubQuery>,
+) -> Response {
+    respond_table(
+        &state,
+        &chrome,
+        &ctx,
+        &htmx,
+        &headers,
+        &uri,
+        id,
+        "drafts",
+        "Draft invoices",
         &q,
     )
     .await

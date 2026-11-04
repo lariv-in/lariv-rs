@@ -11,6 +11,7 @@ use crate::entities::{
     paid_invoice::{self, Entity as PaidInvoiceEntity},
     partially_paid_invoice::{self, Entity as PartiallyPaidInvoiceEntity},
     posted_invoice::{self, Entity as PostedInvoiceEntity},
+    quotation_invoice::{self, Entity as QuotationInvoiceEntity},
 };
 use lariv_plugin_finance_common::fiscal_year::FiscalYear;
 
@@ -142,6 +143,17 @@ pub fn hub_tab_url(tab: &str) -> String {
     lariv_core::http::RouteQueryBuilder::new(crate::routes::InvoiceDefaultRouteTag)
         .query("tab", tab)
         .build()
+}
+
+/// Quotation listed on the quotations hub tab.
+pub async fn find_active_quotation(
+    db: &DatabaseConnection,
+    id: i64,
+) -> Option<quotation_invoice::Model> {
+    lariv_core::web::opt_or_log(
+        QuotationInvoiceEntity::find_by_id(id).one(db).await,
+        "find by id",
+    )
 }
 
 /// Draft still listed under the drafts hub tab.

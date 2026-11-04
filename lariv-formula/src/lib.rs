@@ -20,12 +20,16 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use lariv_core::duration::parse_duration;
-use lariv_core::length::{self, LengthUnit, parse_length_unit, parse_to_nm};
-use lariv_core::weight::{self, WeightUnit, parse_weight_unit};
 use rune::termcolor::NoColor;
 use rune::{Any, Context, Diagnostics, FromValue, Module, Source, Sources, Value, Vm};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+
+pub mod length;
+pub mod weight;
+
+use length::{LengthUnit, parse_length_unit, parse_to_nm};
+use weight::{WeightUnit, parse_weight_unit};
 
 const NANOS_PER_SECOND: i64 = 1_000_000_000;
 const MAX_SOURCE_BYTES: usize = 64 * 1024;

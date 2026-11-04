@@ -12,7 +12,10 @@ use sea_orm::{
 use lariv_plugin_finance_common::decimal;
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
-use crate::entities::{draft_invoice, draft_invoice_line, posted_invoice_line};
+use crate::entities::{
+    draft_invoice, draft_invoice_line, posted_invoice_line, quotation_invoice,
+    quotation_invoice_line,
+};
 use crate::logic::draft_payment_term::{
     load_draft_payment_term_lines, load_posted_payment_term_for_cancelled,
     load_posted_payment_term_for_posted, resolve_due_date,
@@ -131,6 +134,56 @@ pub async fn draft_invoice_list_metrics(
         accumulate_line(&mut totals, &mut line_tax_ids, line.pre_tax_amount, &taxes);
     }
     let final_due = draft_final_due(db, draft_id, draft.datetime, tz).await;
+    metrics_from_totals(
+        &totals,
+        &header_taxes,
+        &line_tax_ids,
+        product_count,
+        final_due,
+    )
+}
+
+pub async fn quotation_invoice_list_metrics(
+    db: &DatabaseConnection,
+    quotation_id: i64,
+    tz: &str,
+) -> InvoiceListMetrics {
+    let Ok(Some(quotation)) = quotation_invoice::Entity::find_by_id(quotation_id)
+        .one(db)
+        .await
+    else {
+        return InvoiceListMetrics::default();
+    };
+    let header_tax_ids = crate::logic::tax_assoc::load_quotation_invoice_tax_ids(db, quotation_id)
+        .await
+        .unwrap_or_default();
+    let header_taxes = load_taxes_by_ids(db, &header_tax_ids)
+        .await
+        .unwrap_or_default();
+    let lines = quotation_invoice_line::Entity::find()
+        .filter(quotation_invoice_line::Column::QuotationInvoiceId.eq(quotation_id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let product_count = lines.len() as u32;
+    let mut totals = InvoiceLinesTotals::default();
+    let mut line_tax_ids = HashSet::new();
+    for line in &lines {
+        let tax_ids = crate::logic::tax_assoc::load_quotation_line_tax_ids(db, line.id)
+            .await
+            .unwrap_or_default();
+        let taxes = load_taxes_by_ids(db, &tax_ids).await.unwrap_or_default();
+        accumulate_line(&mut totals, &mut line_tax_ids, line.pre_tax_amount, &taxes);
+    }
+    let term_lines = crate::logic::quotation::load_quotation_payment_term_lines(db, quotation_id)
+        .await
+        .unwrap_or_default();
+    let final_due = term_lines
+        .iter()
+        .filter_map(|line| {
+            crate::logic::quotation::resolve_quotation_due_date(line, quotation.datetime, tz).ok()
+        })
+        .max();
     metrics_from_totals(
         &totals,
         &header_taxes,

@@ -12,7 +12,7 @@ use sea_orm::DatabaseBackend;
 use sea_orm::sea_query::{Condition, Expr, ExprTrait, Func, SimpleExpr};
 use std::str::FromStr;
 
-use crate::entities::{cancelled_invoice, draft_invoice, posted_invoice};
+use crate::entities::{cancelled_invoice, draft_invoice, posted_invoice, quotation_invoice};
 use crate::hub_sort::{
     expr_ar_amount, expr_line_product_count, expr_line_untaxed, expr_open_balance,
     expr_posted_final_due, expr_tax_levied_approx,
@@ -34,6 +34,7 @@ use lariv_plugin_finance_products::routes::ProductFkSelectRouteTag;
 /// `when = "posted"` flag. Customer is also on the drafts tab.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HubFilterKind {
+    Quotation,
     Draft,
     Posted,
     Cancelled,
@@ -42,9 +43,10 @@ pub enum HubFilterKind {
 impl HubFilterKind {
     pub fn from_tab(tab: &str) -> Self {
         match tab {
+            "drafts" => Self::Draft,
             "posted" => Self::Posted,
             "cancelled" => Self::Cancelled,
-            _ => Self::Draft,
+            _ => Self::Quotation,
         }
     }
 }
@@ -76,6 +78,7 @@ pub fn invoice_picker_clauses(query: &str) -> Vec<FilterClause> {
 pub fn hub_filter_fields(kind: HubFilterKind, tz: &str) -> Vec<FilterField> {
     let tz = tz.to_string();
     match kind {
+        HubFilterKind::Quotation => quotation_fields(tz),
         HubFilterKind::Draft => draft_fields(tz),
         HubFilterKind::Posted => posted_fields(tz),
         HubFilterKind::Cancelled => cancelled_fields(tz),
@@ -90,6 +93,50 @@ pub fn matches_in_memory(post: &[FilterClause], metrics: &InvoiceListMetrics) ->
         "final_due" => cmp_date(clause, metrics.final_due),
         _ => true,
     })
+}
+
+fn quotation_fields(tz: String) -> Vec<FilterField> {
+    vec![
+        id_field("quotation_invoices"),
+        text_column("number", "Number", quotation_invoice::Column::Number),
+        foreign_key_column(
+            "customer",
+            "Customer",
+            quotation_invoice::Column::CustomerId,
+            CustomerFkSelectRouteTag.url(),
+            "Select customer…",
+        ),
+        datetime_column("datetime", "Date", quotation_invoice::Column::Datetime, tz),
+        date_column(
+            "delivery_date",
+            "Delivery date",
+            quotation_invoice::Column::DeliveryDate,
+        ),
+        decimal_expr_field("untaxed", "Untaxed amount", false, || {
+            expr_line_untaxed(
+                "quotation_invoice_lines",
+                "quotation_invoice_id",
+                "quotation_invoices",
+            )
+        }),
+        decimal_expr_field("total", "Total amount", true, || Expr::cust("0")),
+        decimal_expr_field("tax", "Tax levied", true, || Expr::cust("0")),
+        product_field(|id| {
+            format!(
+                "EXISTS (SELECT 1 FROM quotation_invoice_lines \
+                  WHERE quotation_invoice_lines.quotation_invoice_id = quotation_invoices.id \
+                    AND quotation_invoice_lines.product_id = {id})"
+            )
+        }),
+        number_expr_field("product_count", "Number of products", || {
+            expr_line_product_count(
+                "quotation_invoice_lines",
+                "quotation_invoice_id",
+                "quotation_invoices",
+            )
+        }),
+        date_expr_field("final_due", "Final due date", true, || Expr::cust("0")),
+    ]
 }
 
 fn draft_fields(tz: String) -> Vec<FilterField> {

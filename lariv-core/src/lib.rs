@@ -119,7 +119,9 @@ pub mod hooks;
 pub mod html_form;
 pub mod http;
 pub mod layers;
-pub mod length;
+// `lariv-formula` depends on this crate, so the length widgets include its module.
+#[path = "../../lariv-formula/src/length.rs"]
+pub(crate) mod length;
 pub mod list_filters;
 #[cfg(feature = "cap-llm")]
 pub mod llm_tools;
@@ -144,7 +146,6 @@ pub mod traits;
 pub mod typst;
 pub mod views;
 pub mod web;
-pub mod weight;
 
 /// Generate route tags, proof type, and [`RouteRegistrar`](http::RouteRegistrar) hook.
 ///

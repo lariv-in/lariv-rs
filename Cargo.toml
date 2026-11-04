@@ -185,6 +185,7 @@ required-features = ["full"]
 
 [dependencies]
 lariv-core = { workspace = true }
+lariv-formula = { workspace = true }
 lariv-rs-macros.workspace = true
 paste = { workspace = true }
 tokio = { workspace = true }

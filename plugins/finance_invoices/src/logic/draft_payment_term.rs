@@ -256,7 +256,7 @@ async fn set_draft_invoice_term_id<C: ConnectionTrait>(
         .one(conn)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "quotation not found".to_string())?
+        .ok_or_else(|| "draft invoice not found".to_string())?
         .into();
     am.draft_payment_term_id = Set(Some(term_id));
     am.update(conn).await.map_err(|e| e.to_string())?;
@@ -520,7 +520,7 @@ async fn load_draft_payment_term_lines_conn<C: ConnectionTrait>(
     load_draft_lines_for_term(conn, term_id).await
 }
 
-async fn load_posted_payment_term_by_id<C: ConnectionTrait>(
+pub(crate) async fn load_posted_payment_term_by_id<C: ConnectionTrait>(
     conn: &C,
     term_id: i64,
 ) -> Result<

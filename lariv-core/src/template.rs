@@ -7,7 +7,7 @@
 //! # Routes
 //!
 //! Call [`with_templates`] on the app builder, then use [`TemplateRegistrar`] hooks to
-//! append page markers. Resolve hooks with [`TemplateCap::resolve_hooks`] before mount.
+//! append page markers. [`App::mount`](crate::app::App::mount) folds those hooks.
 //!
 //! # Use cases
 //!
@@ -31,10 +31,7 @@ use maud::Markup;
 
 use crate::{
     app::App,
-    capability::{
-        ApplyHooks, CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook,
-        mount_with_hooks,
-    },
+    capability::{CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook, mount_registrar},
     tag::Tagged,
     traits::{
         add::{AddCapability, CapTagAbsent},
@@ -195,15 +192,18 @@ apply_registrar_hook! {
 
 impl<Hooks, Items> Capability for TemplateCap<Hooks, Items>
 where
-    Hooks: ApplyHooks<Items>,
+    Hooks: FoldRegistrarHooks<TemplateTag, Items>,
 {
-    type Value = TemplateCapability<Hooks::Output>;
-    type Output = Tagged<TemplateTag, TemplateCapability<Hooks::Output>>;
+    type Value = TemplateCapability<<Hooks as FoldRegistrarHooks<TemplateTag, Items>>::Output>;
+    type Output = Tagged<
+        TemplateTag,
+        TemplateCapability<<Hooks as FoldRegistrarHooks<TemplateTag, Items>>::Output>,
+    >;
     type Hooks = Hooks;
     type Items = Items;
 
     fn mount(self) -> Self::Output {
-        mount_with_hooks(self, |items| TemplateCapability { templates: items })
+        mount_registrar(self, |items| TemplateCapability { templates: items })
     }
 }
 

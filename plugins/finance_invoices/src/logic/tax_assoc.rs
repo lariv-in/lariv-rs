@@ -80,6 +80,84 @@ pub async fn load_draft_line_tax_ids<C: ConnectionTrait>(
         .collect())
 }
 
+pub async fn set_quotation_invoice_taxes<C: ConnectionTrait>(
+    db: &C,
+    quotation_id: i64,
+    tax_ids: &[i64],
+) -> Result<(), sea_orm::DbErr> {
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "DELETE FROM quotation_invoice_taxes WHERE quotation_invoice_id = $1",
+        [quotation_id.into()],
+    ))
+    .await?;
+    for tax_id in tax_ids {
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "INSERT INTO quotation_invoice_taxes (quotation_invoice_id, tax_id) VALUES ($1, $2)",
+            [quotation_id.into(), (*tax_id).into()],
+        ))
+        .await?;
+    }
+    Ok(())
+}
+
+pub async fn load_quotation_invoice_tax_ids<C: ConnectionTrait>(
+    db: &C,
+    quotation_id: i64,
+) -> Result<Vec<i64>, sea_orm::DbErr> {
+    let rows = db
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT tax_id FROM quotation_invoice_taxes WHERE quotation_invoice_id = $1",
+            [quotation_id.into()],
+        ))
+        .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|r| r.try_get::<i64>("", "tax_id").ok())
+        .collect())
+}
+
+pub async fn set_quotation_line_taxes<C: ConnectionTrait>(
+    db: &C,
+    line_id: i64,
+    tax_ids: &[i64],
+) -> Result<(), sea_orm::DbErr> {
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "DELETE FROM quotation_invoice_line_taxes WHERE quotation_invoice_line_id = $1",
+        [line_id.into()],
+    ))
+    .await?;
+    for tax_id in tax_ids {
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "INSERT INTO quotation_invoice_line_taxes (quotation_invoice_line_id, tax_id) VALUES ($1, $2)",
+            [line_id.into(), (*tax_id).into()],
+        ))
+        .await?;
+    }
+    Ok(())
+}
+
+pub async fn load_quotation_line_tax_ids<C: ConnectionTrait>(
+    db: &C,
+    line_id: i64,
+) -> Result<Vec<i64>, sea_orm::DbErr> {
+    let rows = db
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT tax_id FROM quotation_invoice_line_taxes WHERE quotation_invoice_line_id = $1",
+            [line_id.into()],
+        ))
+        .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|r| r.try_get::<i64>("", "tax_id").ok())
+        .collect())
+}
+
 pub async fn set_posted_invoice_taxes<C: ConnectionTrait>(
     db: &C,
     posted_id: i64,

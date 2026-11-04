@@ -10,6 +10,10 @@ pub mod posted_invoice_line;
 pub mod posted_payment_term;
 pub mod posted_payment_term_line;
 pub mod preferences;
+pub mod quotation_invoice;
+pub mod quotation_invoice_line;
+pub mod quotation_payment_term;
+pub mod quotation_payment_term_line;
 
 pub use crate::payment_term_kind::{PaymentTermAmountKind, PaymentTermDateKind};
 pub use cancelled_invoice::Entity as CancelledInvoiceEntity;
@@ -24,3 +28,7 @@ pub use posted_invoice_line::Entity as PostedInvoiceLineEntity;
 pub use posted_payment_term::Entity as PostedPaymentTermEntity;
 pub use posted_payment_term_line::Entity as PostedPaymentTermLineEntity;
 pub use preferences::Entity as InvoicePreferencesEntity;
+pub use quotation_invoice::Entity as QuotationInvoiceEntity;
+pub use quotation_invoice_line::Entity as QuotationInvoiceLineEntity;
+pub use quotation_payment_term::Entity as QuotationPaymentTermEntity;
+pub use quotation_payment_term_line::Entity as QuotationPaymentTermLineEntity;

@@ -1,0 +1,27 @@
+use chrono::{DateTime, NaiveDate, Utc};
+use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "quotation_invoices")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i64,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub number: Option<String>,
+    pub reference: Option<String>,
+    pub eway_bill_number: Option<String>,
+    pub payment_reference: Option<String>,
+    pub bank_account: Option<String>,
+    pub remarks: Option<String>,
+    pub datetime: DateTime<Utc>,
+    pub delivery_date: Option<NaiveDate>,
+    pub customer_id: i64,
+    pub quotation_payment_term_id: Option<i64>,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {}
+
+impl ActiveModelBehavior for ActiveModel {}

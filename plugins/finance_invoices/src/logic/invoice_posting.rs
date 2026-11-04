@@ -28,9 +28,7 @@ use lariv_plugin_finance_taxes::entities::tax::Model as TaxModel;
 use lariv_plugin_finance_taxes::journal_template::evaluate_tax_for_document;
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
-use crate::draft_form_addon::{
-    run_draft_invoice_on_new_draft_from_posted, run_draft_invoice_on_posted,
-};
+use crate::draft_form_addon::run_draft_invoice_on_posted;
 use crate::entities::{
     CancelledInvoiceEntity, DraftInvoiceEntity, DraftInvoiceLineEntity, PostedInvoiceEntity,
     PostedInvoiceLineEntity,
@@ -39,14 +37,14 @@ use crate::entities::{
     cancelled_invoice, draft_invoice, draft_invoice_line, posted_invoice, posted_invoice_line,
 };
 use crate::logic::draft_payment_term::{
-    convert_draft_to_posted_payment_term, copy_posted_payment_term, posted_payment_term_to_draft,
+    convert_draft_to_posted_payment_term, copy_posted_payment_term,
 };
 use crate::logic::invoice_number::posted_invoice_number;
 use crate::logic::tax_assoc::{
     load_cancelled_invoice_tax_ids, load_cancelled_line_tax_ids, load_draft_invoice_tax_ids,
     load_draft_line_tax_ids, load_posted_invoice_tax_ids, load_posted_line_tax_ids,
-    set_cancelled_invoice_taxes, set_cancelled_line_taxes, set_draft_invoice_taxes,
-    set_draft_line_taxes, set_posted_invoice_taxes, set_posted_line_taxes,
+    set_cancelled_invoice_taxes, set_cancelled_line_taxes, set_posted_invoice_taxes,
+    set_posted_line_taxes, set_quotation_invoice_taxes, set_quotation_line_taxes,
 };
 use crate::logic::tax_calculations::{
     InvoiceLinesTotals, document_level_header_taxes, invoice_line_amounts,
@@ -287,8 +285,8 @@ pub async fn preview_draft_journal(
 
 fn draft_journal_label(id: i64, number: &Option<String>) -> String {
     match number.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        Some(number) => format!("Quotation {number}"),
-        None => format!("Quotation #{id}"),
+        Some(number) => format!("Draft invoice {number}"),
+        None => format!("Draft invoice #{id}"),
     }
 }
 
@@ -310,7 +308,7 @@ async fn prepare_draft_journal(
         .one(db)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or("quotation required")?;
+        .ok_or("draft invoice required")?;
 
     let lines = DraftInvoiceLineEntity::find()
         .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft_id))
@@ -455,7 +453,7 @@ pub async fn draft_new_posted_with_lines(
         .one(&txn)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or("quotation required")?;
+        .ok_or("draft invoice required")?;
     let draft = locked;
 
     let doc_id = create_source_doc(&txn, POSTED_INVOICE_SOURCE_DOC_TYPE)
@@ -514,6 +512,8 @@ pub async fn draft_new_posted_with_lines(
             sales_price_formula: Set(lwt.line.sales_price_formula.clone()),
             rate: Set(lwt.line.rate),
             quantity: Set(lwt.line.quantity),
+            qty_kind: Set(lwt.line.qty_kind.clone()),
+            qty_unit: Set(lwt.line.qty_unit.clone()),
             variable_values: Set(lwt.line.variable_values.clone()),
             pre_tax_amount: Set(lwt.line.pre_tax_amount),
             remarks: Set(lwt.line.remarks.clone()),
@@ -653,6 +653,8 @@ pub async fn posted_new_cancelled(
             &pl.sales_price_formula,
             pl.rate,
             pl.quantity,
+            &pl.qty_kind,
+            &pl.qty_unit,
             &pl.variable_values,
             pl.pre_tax_amount,
             pl.remarks.clone(),
@@ -672,7 +674,7 @@ pub async fn posted_new_draft(
     db: &DatabaseConnection,
     posted_id: i64,
     _tz: &str,
-) -> Result<draft_invoice::Model, String> {
+) -> Result<crate::entities::quotation_invoice::Model, String> {
     let posted = PostedInvoiceEntity::find_by_id(posted_id)
         .one(db)
         .await
@@ -691,7 +693,7 @@ pub async fn posted_new_draft(
 
     let txn = db.begin().await.map_err(|e| e.to_string())?;
     let now = Utc::now();
-    let draft = draft_invoice::ActiveModel {
+    let quotation = crate::entities::quotation_invoice::ActiveModel {
         number: Set(None),
         reference: Set(posted.reference.clone()),
         eway_bill_number: Set(posted.eway_bill_number.clone()),
@@ -709,9 +711,14 @@ pub async fn posted_new_draft(
     .await
     .map_err(|e| e.to_string())?;
 
-    posted_payment_term_to_draft(&txn, posted.posted_payment_term_id, draft.id).await?;
+    crate::logic::quotation::copy_posted_payment_term_to_quotation(
+        &txn,
+        posted.posted_payment_term_id,
+        quotation.id,
+    )
+    .await?;
 
-    set_draft_invoice_taxes(&txn, draft.id, &header_tax_ids)
+    set_quotation_invoice_taxes(&txn, quotation.id, &header_tax_ids)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -719,8 +726,8 @@ pub async fn posted_new_draft(
         let line_tax_ids = load_posted_line_tax_ids(&txn, pl.id)
             .await
             .map_err(|e| e.to_string())?;
-        let line = draft_invoice_line::ActiveModel {
-            draft_invoice_id: Set(draft.id),
+        let line = crate::entities::quotation_invoice_line::ActiveModel {
+            quotation_invoice_id: Set(quotation.id),
             product_id: Set(pl.product_id.unwrap_or(0)),
             product_name: Set(pl.product_name.clone()),
             product_remarks: Set(pl.product_remarks.clone()),
@@ -730,6 +737,8 @@ pub async fn posted_new_draft(
             sales_price_formula: Set(pl.sales_price_formula.clone()),
             rate: Set(pl.rate),
             quantity: Set(pl.quantity),
+            qty_kind: Set(pl.qty_kind.clone()),
+            qty_unit: Set(pl.qty_unit.clone()),
             variable_values: Set(pl.variable_values.clone()),
             pre_tax_amount: Set(pl.pre_tax_amount),
             remarks: Set(pl.remarks.clone()),
@@ -740,21 +749,20 @@ pub async fn posted_new_draft(
         .insert(&txn)
         .await
         .map_err(|e| e.to_string())?;
-        set_draft_line_taxes(&txn, line.id, &line_tax_ids)
+        set_quotation_line_taxes(&txn, line.id, &line_tax_ids)
             .await
             .map_err(|e| e.to_string())?;
     }
-    run_draft_invoice_on_new_draft_from_posted(&txn, posted_id, draft.id).await?;
 
     txn.commit().await.map_err(|e| e.to_string())?;
-    Ok(draft)
+    Ok(quotation)
 }
 
 pub async fn cancelled_new_draft(
     db: &DatabaseConnection,
     cancelled_id: i64,
     _tz: &str,
-) -> Result<draft_invoice::Model, String> {
+) -> Result<crate::entities::quotation_invoice::Model, String> {
     let cancelled = CancelledInvoiceEntity::find_by_id(cancelled_id)
         .one(db)
         .await
@@ -768,7 +776,7 @@ pub async fn cancelled_new_draft(
 
     let txn = db.begin().await.map_err(|e| e.to_string())?;
     let now = Utc::now();
-    let draft = draft_invoice::ActiveModel {
+    let quotation = crate::entities::quotation_invoice::ActiveModel {
         number: Set(None),
         reference: Set(cancelled.reference.clone()),
         eway_bill_number: Set(cancelled.eway_bill_number.clone()),
@@ -786,9 +794,14 @@ pub async fn cancelled_new_draft(
     .await
     .map_err(|e| e.to_string())?;
 
-    posted_payment_term_to_draft(&txn, cancelled.posted_payment_term_id, draft.id).await?;
+    crate::logic::quotation::copy_posted_payment_term_to_quotation(
+        &txn,
+        cancelled.posted_payment_term_id,
+        quotation.id,
+    )
+    .await?;
 
-    set_draft_invoice_taxes(&txn, draft.id, &header_tax_ids)
+    set_quotation_invoice_taxes(&txn, quotation.id, &header_tax_ids)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -796,8 +809,8 @@ pub async fn cancelled_new_draft(
         let line_tax_ids = load_cancelled_line_tax_ids(&txn, cl.id)
             .await
             .map_err(|e| e.to_string())?;
-        let line = draft_invoice_line::ActiveModel {
-            draft_invoice_id: Set(draft.id),
+        let line = crate::entities::quotation_invoice_line::ActiveModel {
+            quotation_invoice_id: Set(quotation.id),
             product_id: Set(cl.product_id.unwrap_or(0)),
             product_name: Set(cl.product_name.clone()),
             product_remarks: Set(cl.product_remarks.clone()),
@@ -807,6 +820,8 @@ pub async fn cancelled_new_draft(
             sales_price_formula: Set(cl.sales_price_formula.clone()),
             rate: Set(cl.rate),
             quantity: Set(cl.quantity),
+            qty_kind: Set(cl.qty_kind.clone()),
+            qty_unit: Set(cl.qty_unit.clone()),
             variable_values: Set(cl.variable_values.clone()),
             pre_tax_amount: Set(cl.pre_tax_amount),
             remarks: Set(cl.remarks.clone()),
@@ -817,14 +832,13 @@ pub async fn cancelled_new_draft(
         .insert(&txn)
         .await
         .map_err(|e| e.to_string())?;
-        set_draft_line_taxes(&txn, line.id, &line_tax_ids)
+        set_quotation_line_taxes(&txn, line.id, &line_tax_ids)
             .await
             .map_err(|e| e.to_string())?;
     }
-    run_draft_invoice_on_new_draft_from_posted(&txn, cancelled.posted_invoice_id, draft.id).await?;
 
     txn.commit().await.map_err(|e| e.to_string())?;
-    Ok(draft)
+    Ok(quotation)
 }
 
 struct CancelledLineSnapshot {
@@ -838,6 +852,8 @@ struct CancelledLineSnapshot {
     sales_price_formula: String,
     rate: Decimal,
     quantity: Decimal,
+    qty_kind: String,
+    qty_unit: String,
     variable_values: String,
     pre_tax_amount: Decimal,
     remarks: Option<String>,
@@ -851,7 +867,7 @@ async fn load_cancelled_invoice_lines(
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id, product_id, product_name, product_remarks, hsn_code, \
-             variable_types, sales_price_formula, rate, quantity, \
+             variable_types, sales_price_formula, rate, quantity, qty_kind, qty_unit, \
              variable_values, pre_tax_amount, remarks \
              FROM cancelled_invoice_lines \
              WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
@@ -876,6 +892,8 @@ async fn load_cancelled_invoice_lines(
                     .map_err(|e| e.to_string())?,
                 rate: r.try_get("", "rate").map_err(|e| e.to_string())?,
                 quantity: r.try_get("", "quantity").map_err(|e| e.to_string())?,
+                qty_kind: r.try_get("", "qty_kind").map_err(|e| e.to_string())?,
+                qty_unit: r.try_get("", "qty_unit").map_err(|e| e.to_string())?,
                 variable_values: r
                     .try_get("", "variable_values")
                     .map_err(|e| e.to_string())?,
@@ -898,6 +916,8 @@ async fn insert_cancelled_line<C: ConnectionTrait>(
     sales_price_formula: &str,
     rate: Decimal,
     quantity: Decimal,
+    qty_kind: &str,
+    qty_unit: &str,
     variable_values: &str,
     pre_tax_amount: Decimal,
     remarks: Option<String>,
@@ -910,8 +930,9 @@ async fn insert_cancelled_line<C: ConnectionTrait>(
             "INSERT INTO cancelled_invoice_lines \
              (cancelled_invoice_id, product_id, product_name, product_remarks, \
               hsn_code, sac_code, variable_types, sales_price_formula, rate, quantity, \
-              variable_values, pre_tax_amount, remarks, journal_entry_item_id, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15) \
+              qty_kind, qty_unit, variable_values, pre_tax_amount, remarks, \
+              journal_entry_item_id, created_at, updated_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $17) \
              RETURNING id",
             [
                 cancelled_id.into(),
@@ -924,6 +945,8 @@ async fn insert_cancelled_line<C: ConnectionTrait>(
                 sales_price_formula.into(),
                 rate.into(),
                 quantity.into(),
+                qty_kind.into(),
+                qty_unit.into(),
                 variable_values.into(),
                 pre_tax_amount.into(),
                 remarks.into(),

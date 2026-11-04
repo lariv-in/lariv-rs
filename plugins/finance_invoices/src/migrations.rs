@@ -57,6 +57,8 @@ mod m00002_unify_service_catalog;
 mod m00003_unify_document_lines;
 mod m00004_quotation_status;
 mod m00049_quotations_to_draft_invoices;
+mod m00050_split_quotation_invoices;
+mod m00051_invoice_line_qty_measure;
 
 use super::FinanceInvoicesTag;
 
@@ -124,6 +126,8 @@ impl MigratorTrait for Migrator {
             Box::new(m00003_unify_document_lines::Migration),
             Box::new(m00004_quotation_status::Migration),
             Box::new(m00049_quotations_to_draft_invoices::Migration),
+            Box::new(m00050_split_quotation_invoices::Migration),
+            Box::new(m00051_invoice_line_qty_measure::Migration),
         ]
     }
 }

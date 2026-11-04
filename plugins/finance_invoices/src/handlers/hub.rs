@@ -24,6 +24,7 @@ use crate::{
         cancelled_invoice::{self, Entity as CancelledInvoiceEntity},
         draft_invoice::{self, Entity as DraftInvoiceEntity},
         posted_invoice::{self, Entity as PostedInvoiceEntity},
+        quotation_invoice::{self, Entity as QuotationInvoiceEntity},
     },
     hub_filter::{HubFilterKind, hub_filter_fields, matches_in_memory},
     hub_filter_addon::{HubQueryParams, apply_extra_sql_filters, render_extra_filter_inputs},
@@ -38,10 +39,11 @@ use crate::{
     logic::{
         InvoiceDateFormats, InvoiceListMetrics, cancelled_invoice_list_metrics,
         draft_invoice_list_metrics, load_invoice_date_formats, posted_invoice_list_metrics,
-        posted_invoice_open_balance,
+        posted_invoice_open_balance, quotation_invoice_list_metrics,
     },
     routes::{
         CancelledInvoiceDetailRouteTag, DraftInvoiceDetailRouteTag, PostedInvoiceDetailRouteTag,
+        QuotationInvoiceDetailRouteTag,
     },
     scope::{
         LarivEnvironment, list_fiscal_year_options, resolve_list_fiscal_year,
@@ -237,6 +239,207 @@ fn cmp_metrics(
         HubSortKey::FinalDueDate => cmp_opt_date(a.final_due, b.final_due, desc),
         _ => std::cmp::Ordering::Equal,
     }
+}
+
+fn quotation_needs_metric_sort(key: HubSortKey) -> bool {
+    matches!(
+        key,
+        HubSortKey::TotalAmount | HubSortKey::TaxLevied | HubSortKey::FinalDueDate
+    )
+}
+
+fn apply_quotation_sql_sort(
+    query: Select<quotation_invoice::Entity>,
+    key: HubSortKey,
+    desc: bool,
+) -> Select<quotation_invoice::Entity> {
+    match key {
+        HubSortKey::Id => {
+            if desc {
+                query.order_by_desc(quotation_invoice::Column::Id)
+            } else {
+                query.order_by_asc(quotation_invoice::Column::Id)
+            }
+        }
+        HubSortKey::Number => {
+            if desc {
+                query.order_by_desc(quotation_invoice::Column::Number)
+            } else {
+                query.order_by_asc(quotation_invoice::Column::Number)
+            }
+        }
+        HubSortKey::Date => {
+            if desc {
+                query.order_by_desc(quotation_invoice::Column::Datetime)
+            } else {
+                query.order_by_asc(quotation_invoice::Column::Datetime)
+            }
+        }
+        HubSortKey::DeliveryDate => {
+            if desc {
+                query.order_by_desc(quotation_invoice::Column::DeliveryDate)
+            } else {
+                query.order_by_asc(quotation_invoice::Column::DeliveryDate)
+            }
+        }
+        HubSortKey::Customer => order_by_expr(query, expr_customer("quotation_invoices"), desc),
+        HubSortKey::UntaxedAmount => order_by_expr(
+            query,
+            expr_line_untaxed(
+                "quotation_invoice_lines",
+                "quotation_invoice_id",
+                "quotation_invoices",
+            ),
+            desc,
+        ),
+        HubSortKey::ProductCount => order_by_expr(
+            query,
+            expr_line_product_count(
+                "quotation_invoice_lines",
+                "quotation_invoice_id",
+                "quotation_invoices",
+            ),
+            desc,
+        ),
+        // Metric-sorted keys and posted-only columns fall through to date order.
+        _ => {
+            if desc {
+                query.order_by_desc(quotation_invoice::Column::Datetime)
+            } else {
+                query.order_by_asc(quotation_invoice::Column::Datetime)
+            }
+        }
+    }
+}
+
+async fn query_quotation_rows(
+    db: &sea_orm::DatabaseConnection,
+    customer_id: Option<i64>,
+    q: &HubQuery,
+    params: &HubQueryParams<'_>,
+    env: &LarivEnvironment,
+    tz: &str,
+    dates: &InvoiceDateFormats,
+    applied: &AppliedFilters,
+) -> (Vec<InvoiceRow>, u32, u64) {
+    let page_num = q.page.get();
+    let mut query = QuotationInvoiceEntity::find();
+    query = filter_customer(query, customer_id, quotation_invoice::Column::CustomerId);
+    query = query.filter(applied.condition.clone());
+    query = apply_extra_sql_filters(query, params, "quotation_invoices.id");
+    query = apply_fiscal_year_datetime_filter(query, env, quotation_invoice::Column::Datetime);
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    let parsed_sort = parse_hub_sort(sort);
+    let metric_sort = parsed_sort.filter(|(key, _)| quotation_needs_metric_sort(*key));
+    if !applied.post.is_empty() || metric_sort.is_some() {
+        if metric_sort.is_none() {
+            query = match parsed_sort {
+                Some((key, desc)) => apply_quotation_sql_sort(query, key, desc),
+                None => query.order_by_desc(quotation_invoice::Column::Id),
+            };
+        }
+        return quotation_rows_metric_sorted(
+            db,
+            query,
+            page_num,
+            q.page_size.get(),
+            tz,
+            dates,
+            metric_sort,
+            &applied.post,
+        )
+        .await;
+    }
+    query = match parsed_sort {
+        Some((key, desc)) => apply_quotation_sql_sort(query, key, desc),
+        None => query.order_by_desc(quotation_invoice::Column::Id),
+    };
+    let paginator = query.paginate(db, q.page_size.get() as u64);
+    let total = paginator.num_items().await.unwrap_or(0);
+    let models = paginator
+        .fetch_page((page_num as u64).saturating_sub(1))
+        .await
+        .unwrap_or_default();
+    (
+        quotation_models_to_rows(db, &models, tz, dates).await,
+        page_num,
+        total,
+    )
+}
+
+async fn quotation_rows_metric_sorted(
+    db: &sea_orm::DatabaseConnection,
+    query: Select<quotation_invoice::Entity>,
+    page_num: u32,
+    page_size: u32,
+    tz: &str,
+    dates: &InvoiceDateFormats,
+    sort: Option<(HubSortKey, bool)>,
+    post: &[lariv_core::list_filters::FilterClause],
+) -> (Vec<InvoiceRow>, u32, u64) {
+    let mut models = query.all(db).await.unwrap_or_default();
+    let mut keyed = Vec::with_capacity(models.len());
+    for m in models.drain(..) {
+        let metrics = quotation_invoice_list_metrics(db, m.id, tz).await;
+        if !matches_in_memory(post, &metrics) {
+            continue;
+        }
+        keyed.push((m, metrics));
+    }
+    if let Some((key, desc)) = sort {
+        keyed.sort_by(|(a, am), (b, bm)| {
+            cmp_metrics(am, bm, key, desc).then_with(|| a.id.cmp(&b.id))
+        });
+    }
+    let total = keyed.len() as u64;
+    let start = ((page_num as usize).saturating_sub(1)).saturating_mul(page_size as usize);
+    let page_models: Vec<_> = keyed
+        .into_iter()
+        .skip(start)
+        .take(page_size as usize)
+        .map(|(m, _)| m)
+        .collect();
+    (
+        quotation_models_to_rows(db, &page_models, tz, dates).await,
+        page_num,
+        total,
+    )
+}
+
+async fn quotation_models_to_rows(
+    db: &sea_orm::DatabaseConnection,
+    models: &[quotation_invoice::Model],
+    tz: &str,
+    dates: &InvoiceDateFormats,
+) -> Vec<InvoiceRow> {
+    let currency = load_default_currency_format(db).await;
+    let customer_ids: Vec<i64> = models.iter().map(|d| d.customer_id).collect();
+    let parties = crate::logic::bill_to::parties_in_order(db, &customer_ids).await;
+    let customers = PartyLabels::load(db, &parties).await;
+    let mut rows = Vec::with_capacity(models.len());
+    for (d, party) in models.iter().zip(parties) {
+        let metrics = quotation_invoice_list_metrics(db, d.id, tz).await;
+        let (untaxed_amount, total_amount, tax_levied, product_count, final_due_date) =
+            format_metrics(&metrics, &currency, dates);
+        rows.push(InvoiceRow {
+            id: d.id,
+            addon_key: Some(InvoiceAddonKey::Quotation(d.id)),
+            number: d.number.clone().unwrap_or_else(|| "—".to_string()),
+            datetime: dates.datetime(d.datetime, tz),
+            delivery_date: format_hub_delivery_date(d.delivery_date, dates),
+            detail_href: QuotationInvoiceDetailRouteTag::new(d.id).url(),
+            customer_name: customers.name(party),
+            open_balance: String::new(),
+            selectable: true,
+            untaxed_amount,
+            total_amount,
+            tax_levied,
+            product_count,
+            final_due_date,
+            extra_cells: Vec::new(),
+        });
+    }
+    rows
 }
 
 fn draft_needs_metric_sort(key: HubSortKey) -> bool {
@@ -816,8 +1019,21 @@ async fn load_hub_page(
             )
             .await
         }
-        _ => {
+        "drafts" => {
             query_draft_rows(
+                db,
+                req.customer_id,
+                req.q,
+                &params,
+                &env,
+                req.timezone,
+                &dates,
+                &applied,
+            )
+            .await
+        }
+        _ => {
+            query_quotation_rows(
                 db,
                 req.customer_id,
                 req.q,
@@ -914,7 +1130,7 @@ pub async fn hub(
     uri: Uri,
     Query(q): Query<HubQuery>,
 ) -> maud::Markup {
-    let tab = match q.tab.as_deref().unwrap_or("drafts") {
+    let tab = match q.tab.as_deref().unwrap_or("quotations") {
         "paid" | "partial" => "posted",
         other => other,
     };

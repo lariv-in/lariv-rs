@@ -18,13 +18,14 @@ pub use lariv_core::rune_env;
 pub use lariv_core::typst;
 pub use lariv_core::{
     app, apps, auth_hooks, capability, command, components, config, datetime, db, docs, duration,
-    export, filestore, genai, grapesjs, hooks, html_form, http, layers, length, migration, picker,
+    export, filestore, genai, grapesjs, hooks, html_form, http, layers, migration, picker,
     plugin_install, plugin_routes, role_registry, rt, tag, template, traits, views, web,
 };
 pub use lariv_core::{
     define_passthrough_cap, define_plugin_install, define_register_apps, define_register_export,
     define_register_items, define_register_migrations, define_replace_templates,
 };
+pub use lariv_formula::{length, weight};
 pub use lariv_rs_macros::{define_plugin_routes, main};
 pub use paste;
 

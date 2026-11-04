@@ -18,15 +18,17 @@ use lariv_plugin_users::middleware::RequireAuth;
 use crate::logic::invoice_pdf::{
     InvoicePdfError, InvoicePdfResult, render_cancelled_invoice_pdf, render_draft_invoice_pdf,
     render_paid_invoice_pdf, render_partially_paid_invoice_pdf, render_posted_invoice_pdf,
+    render_quotation_invoice_pdf,
 };
 use crate::{
     keys::INVOICE_PDF_MODAL,
     routes::{
         CancelledInvoicePdfRouteTag, DraftInvoicePdfRouteTag, PaidInvoicePdfRouteTag,
-        PartiallyPaidInvoicePdfRouteTag, PostedInvoicePdfRouteTag,
+        PartiallyPaidInvoicePdfRouteTag, PostedInvoicePdfRouteTag, QuotationInvoicePdfRouteTag,
     },
     scope::{
-        find_active_draft, find_active_paid, find_active_partial, find_active_posted, hub_tab_url,
+        find_active_draft, find_active_paid, find_active_partial, find_active_posted,
+        find_active_quotation, hub_tab_url,
     },
     state::InvoicesState,
 };
@@ -133,11 +135,25 @@ pub async fn draft_pdf_modal(
     Path(id): Path<i64>,
 ) -> Markup {
     if find_active_draft(&state.db, id).await.is_none() {
+        return render_pdf_modal_error("Draft invoice not found");
+    }
+    render_pdf_modal(
+        &format!("Draft invoice #{id} PDF"),
+        &DraftInvoicePdfRouteTag::new(id).path(),
+    )
+}
+
+pub async fn quotation_pdf_modal(
+    Cap(state): Cap<InvoicesState>,
+    RequireAuth(_ctx): RequireAuth,
+    Path(id): Path<i64>,
+) -> Markup {
+    if find_active_quotation(&state.db, id).await.is_none() {
         return render_pdf_modal_error("Quotation not found");
     }
     render_pdf_modal(
         &format!("Quotation #{id} PDF"),
-        &DraftInvoicePdfRouteTag::new(id).path(),
+        &QuotationInvoicePdfRouteTag::new(id).path(),
     )
 }
 
@@ -200,6 +216,21 @@ pub async fn draft_pdf(
         return Redirect::to(&hub_tab_url("drafts")).into_response();
     }
     match render_draft_invoice_pdf(&fs, id, &ctx.timezone).await {
+        Ok(result) => pdf_ok_response(result),
+        Err(e) => pdf_error_response(e),
+    }
+}
+
+pub async fn quotation_pdf(
+    Cap(state): Cap<InvoicesState>,
+    Cap(fs): Cap<FilesystemState>,
+    RequireAuth(ctx): RequireAuth,
+    Path(id): Path<i64>,
+) -> Response {
+    if find_active_quotation(&state.db, id).await.is_none() {
+        return Redirect::to(&hub_tab_url("quotations")).into_response();
+    }
+    match render_quotation_invoice_pdf(&fs, id, &ctx.timezone).await {
         Ok(result) => pdf_ok_response(result),
         Err(e) => pdf_error_response(e),
     }
@@ -335,6 +366,12 @@ async fn render_bulk_tab_pdf(
     tz: &str,
 ) -> Result<InvoicePdfResult, InvoicePdfError> {
     match tab {
+        "quotations" => {
+            if find_active_quotation(&state.db, id).await.is_none() {
+                return Err(InvoicePdfError::NotFound);
+            }
+            render_quotation_invoice_pdf(fs, id, tz).await
+        }
         "drafts" => {
             if find_active_draft(&state.db, id).await.is_none() {
                 return Err(InvoicePdfError::NotFound);
@@ -373,7 +410,7 @@ pub async fn bulk_pdfs(
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<BulkPdfsQuery>,
 ) -> Response {
-    let tab = q.tab.as_deref().unwrap_or("drafts").trim();
+    let tab = q.tab.as_deref().unwrap_or("quotations").trim();
     let tab = match tab {
         "posted" | "cancelled" | "paid" | "partial" | "drafts" => tab,
         _ => "drafts",

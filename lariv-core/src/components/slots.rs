@@ -13,10 +13,7 @@ use maud::{Markup, html};
 
 use crate::{
     app::App,
-    capability::{
-        ApplyHooks, CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook,
-        mount_with_hooks,
-    },
+    capability::{CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook, mount_registrar},
     tag::Tagged,
     traits::{
         add::{AddCapability, CapTagAbsent},
@@ -292,8 +289,8 @@ apply_registrar_hook! {
 
 impl<Hooks, Items> Capability for SlotCap<Hooks, Items>
 where
-    Hooks: ApplyHooks<Items>,
-    <Hooks as ApplyHooks<Items>>::Output: FoldSlots + Send + Sync + 'static,
+    Hooks: FoldRegistrarHooks<SlotTag, Items>,
+    <Hooks as FoldRegistrarHooks<SlotTag, Items>>::Output: FoldSlots + Send + Sync + 'static,
 {
     type Value = SharedChromeFolder;
     type Output = Tagged<SlotTag, SharedChromeFolder>;
@@ -301,7 +298,7 @@ where
     type Items = Items;
 
     fn mount(self) -> Self::Output {
-        mount_with_hooks(self, |items| {
+        mount_registrar(self, |items| {
             Arc::new(SlotCapability { slots: items }) as SharedChromeFolder
         })
     }

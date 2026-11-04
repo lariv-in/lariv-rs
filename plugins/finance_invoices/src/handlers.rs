@@ -6,6 +6,7 @@ pub mod pay;
 pub mod pdf;
 pub mod posted;
 pub mod preferences;
+pub mod quotations;
 pub mod settlements;
 pub mod xlsx;
 

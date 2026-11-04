@@ -6,7 +6,7 @@ use lariv_core::html_form::{
     FieldRender, FormCtx, FormWidget, html_form,
     widgets::{Select, Text, Textarea},
 };
-use lariv_core::length::LengthUnit;
+use lariv_formula::length::LengthUnit;
 use lariv_plugin_contacts::routes::ContactFkSelectRouteTag;
 use lariv_plugin_crm::routes::CustomerFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;

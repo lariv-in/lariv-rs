@@ -8,6 +8,7 @@ pub mod invoice_pdf;
 pub mod invoice_posting;
 pub mod payment;
 pub mod preferences;
+pub mod quotation;
 pub mod tax_assoc;
 pub mod tax_calculations;
 
@@ -27,7 +28,7 @@ pub use draft_payment_term::{
 };
 pub use invoice_list_metrics::{
     InvoiceListMetrics, cancelled_invoice_list_metrics, draft_invoice_list_metrics,
-    posted_invoice_list_metrics, posted_invoice_list_metrics_map,
+    posted_invoice_list_metrics, posted_invoice_list_metrics_map, quotation_invoice_list_metrics,
 };
 pub use invoice_posting::{
     cancelled_new_draft, draft_new_posted, posted_new_cancelled, posted_new_draft,
@@ -40,4 +41,8 @@ pub use payment::{
 pub use preferences::{
     InvoiceDateFormats, invoice_date_format, invoice_datetime_format, load_invoice_date_formats,
     load_invoice_preferences,
+};
+pub use quotation::{
+    create_quotation_invoice, delete_quotation, patch_quotation_invoice, quotation_to_draft,
+    update_quotation_invoice,
 };

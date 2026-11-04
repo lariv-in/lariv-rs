@@ -26,9 +26,9 @@ use crate::{
         tax_assoc::load_posted_invoice_tax_ids,
     },
     routes::{
-        CancelledInvoiceDetailRouteTag, DraftInvoiceDetailRouteTag,
-        PostedInvoiceBulkNewDraftRouteTag, PostedInvoiceCancelGetRouteTag,
-        PostedInvoiceDetailRouteTag, PostedInvoiceNewDraftRouteTag,
+        CancelledInvoiceDetailRouteTag, PostedInvoiceBulkNewDraftRouteTag,
+        PostedInvoiceCancelGetRouteTag, PostedInvoiceDetailRouteTag, PostedInvoiceNewDraftRouteTag,
+        QuotationInvoiceDetailRouteTag,
     },
     scope::{find_active_posted, find_cancellable_posted, hub_tab_url},
     state::InvoicesState,
@@ -203,7 +203,7 @@ pub async fn new_draft(
         return Redirect::to(&hub_tab_url("posted")).into_response();
     }
     match posted_new_draft(&state.db, id, &ctx.timezone).await {
-        Ok(d) => Redirect::to(&DraftInvoiceDetailRouteTag::new(d.id).url()).into_response(),
+        Ok(d) => Redirect::to(&QuotationInvoiceDetailRouteTag::new(d.id).url()).into_response(),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to create draft from posted invoice");
             Redirect::to(&PostedInvoiceDetailRouteTag::new(id).url()).into_response()
@@ -257,7 +257,7 @@ pub async fn bulk_new_draft(
             return Redirect::to(&PostedInvoiceDetailRouteTag::new(id).url()).into_response();
         }
     }
-    Redirect::to(&hub_tab_url("drafts")).into_response()
+    Redirect::to(&hub_tab_url("quotations")).into_response()
 }
 
 pub async fn bulk_cancel_get(

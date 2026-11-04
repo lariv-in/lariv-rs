@@ -51,7 +51,7 @@ use serde_json::{Value as JsonValue, json};
 
 use crate::{
     app::App,
-    capability::{ApplyHooks, CapStore, Capability, mount_with_hooks},
+    capability::{ApplyHooks, CapStore, Capability, UnitHookProof, mount_unit_hooks},
     filestore::DynFilestore,
     tag::Tagged,
     traits::add::{AddCapability, CapTagAbsent},
@@ -297,7 +297,9 @@ where
 
 impl<Hooks> Capability for RuneEnvCap<Hooks>
 where
-    Hooks: ApplyHooks<RuneEnvCapability, (), Output = RuneEnvCapability>,
+    Hooks: UnitHookProof,
+    Hooks:
+        ApplyHooks<RuneEnvCapability, <Hooks as UnitHookProof>::Proof, Output = RuneEnvCapability>,
 {
     type Value = Arc<RuneEnvCapability>;
     type Output = Tagged<RuneEnvTag, Arc<RuneEnvCapability>>;
@@ -305,7 +307,7 @@ where
     type Items = RuneEnvCapability;
 
     fn mount(self) -> Self::Output {
-        mount_with_hooks(self, Arc::new)
+        mount_unit_hooks(self, Arc::new)
     }
 }
 

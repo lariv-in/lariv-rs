@@ -2,7 +2,9 @@ use super::{
     customer_journal, handlers,
     keys::{
         DRAFT_INVOICE_BULK_DELETE_MODAL, DRAFT_INVOICE_DELETE_MODAL, DRAFT_INVOICE_SELECT_MODAL,
-        DRAFT_INVOICE_SELECT_TABLE, INVOICE_HUB_TABLE,
+        DRAFT_INVOICE_SELECT_TABLE, INVOICE_HUB_TABLE, QUOTATION_INVOICE_BULK_DELETE_MODAL,
+        QUOTATION_INVOICE_DELETE_MODAL, QUOTATION_INVOICE_SELECT_MODAL,
+        QUOTATION_INVOICE_SELECT_TABLE,
     },
 };
 
@@ -16,6 +18,7 @@ lariv_core::define_plugin_routes! {
     routes: [
         get InvoiceDefaultRouteTag, "/finance-invoices", handlers::hub::hub, fragment(INVOICE_HUB_TABLE), authorize(FinanceInvoicesView, []);
         get CustomerJournalQuotationsRouteTag, "/finance/customers/{id}/journal/quotations", customer_journal::quotations, authorize(FinanceInvoicesView, []);
+        get CustomerJournalDraftInvoicesRouteTag, "/finance/customers/{id}/journal/draft-invoices", customer_journal::draft_invoices, authorize(FinanceInvoicesView, []);
         get CustomerJournalInvoicesRouteTag, "/finance/customers/{id}/journal/invoices", customer_journal::invoices, authorize(FinanceInvoicesView, []);
         get CustomerJournalCancelledRouteTag, "/finance/customers/{id}/journal/cancelled", customer_journal::cancelled, authorize(FinanceInvoicesView, []);
         get InvoiceLinePriceRouteTag, "/finance-invoices/line-price", handlers::drafts::line_price, authorize(FinanceInvoicesView, []);
@@ -37,6 +40,24 @@ lariv_core::define_plugin_routes! {
         get DraftInvoicePdfModalRouteTag, "/finance-invoices/i/{id}/pdf", bare handlers::pdf::draft_pdf_modal, modal, authorize(FinanceInvoicesView, []);
         get DraftInvoicePdfRouteTag, "/finance-invoices/i/{id}/pdf/file", bare handlers::pdf::draft_pdf, file, authorize(FinanceInvoicesView, []);
         get DraftInvoiceMultiSelectRouteTag, "/finance-invoices/pick", handlers::drafts::multi_select, multi_select(DRAFT_INVOICE_SELECT_TABLE, DRAFT_INVOICE_SELECT_MODAL), authorize(FinanceInvoicesView, []);
+        get QuotationInvoiceCreateGetRouteTag, "/finance-invoices/quotations/create", handlers::quotations::create_get, modal, authorize(FinanceInvoicesMutate, []);
+        post QuotationInvoiceCreatePostRouteTag, "/finance-invoices/quotations/create", handlers::quotations::create_post, authorize(FinanceInvoicesMutate, []);
+        get QuotationInvoiceBulkDeleteGetRouteTag, "/finance-invoices/quotations/bulk-delete", handlers::quotations::bulk_delete_get, modal, authorize(FinanceInvoicesMutate, []);
+        post QuotationInvoiceBulkDeletePostRouteTag, "/finance-invoices/quotations/bulk-delete", bare handlers::quotations::bulk_delete_post, fragment(QUOTATION_INVOICE_BULK_DELETE_MODAL), authorize(FinanceInvoicesMutate, []);
+        get QuotationInvoiceBulkEditGetRouteTag, "/finance-invoices/quotations/bulk-edit", handlers::quotations::bulk_edit_get, modal, authorize(FinanceInvoicesMutate, []);
+        post QuotationInvoiceBulkEditPostRouteTag, "/finance-invoices/quotations/bulk-edit", handlers::quotations::bulk_edit_post, authorize(FinanceInvoicesMutate, []);
+        get QuotationInvoiceBulkCreateDraftGetRouteTag, "/finance-invoices/quotations/bulk-create-draft", handlers::quotations::bulk_create_draft_get, modal, authorize(FinanceInvoicesMutate, []);
+        post QuotationInvoiceBulkCreateDraftRouteTag, "/finance-invoices/quotations/bulk-create-draft", bare handlers::quotations::bulk_create_draft_post, redirect, authorize(FinanceInvoicesMutate, []);
+        get QuotationInvoiceMultiSelectRouteTag, "/finance-invoices/quotations/pick", handlers::quotations::multi_select, multi_select(QUOTATION_INVOICE_SELECT_TABLE, QUOTATION_INVOICE_SELECT_MODAL), authorize(FinanceInvoicesView, []);
+        get QuotationInvoiceDetailRouteTag, "/finance-invoices/quotations/{id}", handlers::quotations::detail, authorize(FinanceInvoicesView, []);
+        get QuotationInvoiceEditGetRouteTag, "/finance-invoices/quotations/{id}/edit", handlers::quotations::edit_get, modal, authorize(FinanceInvoicesMutate, []);
+        post QuotationInvoiceEditPostRouteTag, "/finance-invoices/quotations/{id}/edit", handlers::quotations::edit_post, authorize(FinanceInvoicesMutate, []);
+        get QuotationInvoiceDeleteGetRouteTag, "/finance-invoices/quotations/{id}/delete", handlers::quotations::delete_get, modal, authorize(FinanceInvoicesMutate, []);
+        post QuotationInvoiceDeletePostRouteTag, "/finance-invoices/quotations/{id}/delete", bare handlers::quotations::delete_post, fragment(QUOTATION_INVOICE_DELETE_MODAL), authorize(FinanceInvoicesMutate, []);
+        get QuotationInvoiceCreateDraftGetRouteTag, "/finance-invoices/quotations/{id}/create-draft", handlers::quotations::create_draft_get, modal, authorize(FinanceInvoicesMutate, []);
+        post QuotationInvoiceCreateDraftRouteTag, "/finance-invoices/quotations/{id}/create-draft", bare handlers::quotations::create_draft_post, redirect, authorize(FinanceInvoicesMutate, []);
+        get QuotationInvoicePdfModalRouteTag, "/finance-invoices/quotations/{id}/pdf", bare handlers::pdf::quotation_pdf_modal, modal, authorize(FinanceInvoicesView, []);
+        get QuotationInvoicePdfRouteTag, "/finance-invoices/quotations/{id}/pdf/file", bare handlers::pdf::quotation_pdf, file, authorize(FinanceInvoicesView, []);
 
         get PostedInvoiceDetailRouteTag, "/finance-invoices/posted/{id}", handlers::posted::detail, authorize(FinanceInvoicesView, []);
         get PostedInvoiceCancelGetRouteTag, "/finance-invoices/posted/{id}/cancel", handlers::posted::cancel_get, authorize(FinanceInvoicesMutate, []);
