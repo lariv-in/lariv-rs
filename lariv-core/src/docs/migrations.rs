@@ -44,7 +44,7 @@
 //! # Registering migrations
 //!
 //! ```ignore
-//! // migrations/mod.rs
+//! // migrations.rs
 //! mod m20260801_000001_create_items;
 //!
 //! use sea_orm_migration::MigratorTrait;

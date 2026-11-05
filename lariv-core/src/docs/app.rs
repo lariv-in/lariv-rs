@@ -1,6 +1,6 @@
 //! Plugin entrypoint — `define_plugin_install!` and install steps.
 //!
-//! # Plugin definition (`mod.rs`)
+//! # Plugin definition (`lib.rs`)
 //!
 //! Every plugin is its own crate (`plugins/<name>/src/lib.rs`). The crate root declares:
 //!

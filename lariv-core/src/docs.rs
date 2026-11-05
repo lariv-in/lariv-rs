@@ -32,14 +32,14 @@
 //! ├── src/
 //! │   ├── main.rs              # or src/bin/lariv.rs — install plugins, serve
 //! │   └── plugins/
+//! │       ├── hello.rs         # plugin tag + define_plugin_install!
 //! │       └── hello/
-//! │           ├── mod.rs       # plugin tag + define_plugin_install!
 //! │           ├── routes.rs    # define_plugin_routes!
 //! │           ├── templates.rs # RenderTemplate pages + define_register_items!
 //! │           ├── handlers.rs  # async Axum handler fns
 //! │           ├── config.rs    # optional [hello] TOML section
-//! │           ├── entities/    # optional SeaORM models
-//! │           ├── migrations/  # optional SeaORM migrators
+//! │           ├── entities.rs  # optional SeaORM models
+//! │           ├── migrations.rs  # optional SeaORM migrators
 //! │           └── cli.rs       # optional CLI subcommands
 //! └── data/                    # SQLite file (when using default database_url)
 //! ```
@@ -74,7 +74,7 @@
 //!
 //! | File | Purpose |
 //! |------|---------|
-//! | `mod.rs` | Plugin tag, `define_plugin_install!`, state hooks |
+//! | `hello.rs` | Plugin tag, `define_plugin_install!`, state hooks |
 //! | `routes.rs` | URL paths → handlers via `define_plugin_routes!` |
 //! | `templates.rs` | Page structs implementing [`RenderTemplate`](crate::template::RenderTemplate) |
 //! | `handlers.rs` | Async functions called by routes; build pages and return HTML |

@@ -112,6 +112,11 @@ struct PdfRoot {
     taxes: Vec<PdfTax>,
     lines: Vec<PdfLine>,
     payments: Vec<PdfPayment>,
+    /// Accounting currency symbol for this invoice. Empty when the currency has none.
+    ///
+    /// [`render_template`] markup-escapes this before the template sees it, so
+    /// `{{ CurrencySymbol }}` is safe in Typst markup (`$` is not math mode).
+    currency_symbol: String,
     #[serde(rename = "company_name")]
     company_name: String,
     #[serde(rename = "company_address")]
@@ -259,7 +264,9 @@ fn dec_str(d: Decimal) -> String {
     d.normalize().to_string()
 }
 
-/// Money for Typst: pad to currency minor units, no symbol (template adds ₹ / parses floats).
+/// Money for Typst: pad to currency minor units, no symbol.
+///
+/// The template prefixes `CurrencySymbol` and parses these strings as floats.
 fn money_str(d: Decimal, currency: &CurrencyFormat) -> String {
     decimal_display_currency(d, currency.minor_unit, "")
 }
@@ -847,6 +854,7 @@ async fn build_pdf_root(
         taxes: header_taxes,
         lines,
         payments,
+        currency_symbol: currency.symbol.trim().to_string(),
         company_name,
         company_address,
         company_phone,
@@ -1322,6 +1330,7 @@ fn sample_invoice_pdf_root(tz: &str, date_fmt: &str, datetime_fmt: &str) -> PdfR
             taxes: vec![],
         }],
         payments: vec![],
+        currency_symbol: "₹".into(),
         company_name: String::new(),
         company_address: String::new(),
         company_phone: String::new(),
@@ -1358,6 +1367,8 @@ pub async fn render_invoice_pdf_preview(
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| invoice_datetime_format(&prefs));
     let mut root = sample_invoice_pdf_root(tz, date_fmt, datetime_fmt);
+    let currency = load_default_currency_format(&fs.db).await;
+    root.currency_symbol = currency.symbol.trim().to_string();
     apply_pdf_presentation_prefs(&mut root, &prefs);
     let work_dir = typst::typst_work_dir();
     let vnode_ctx = Arc::new(VnodeImageContext::new(
@@ -1450,6 +1461,7 @@ fn render_template(
     // (`label <gmail.com> does not exist`). Escape that field here; `EmailHref` stays
     // suitable for a quoted `mailto:` string.
     sanitize_customer_email(&mut ctx);
+    sanitize_currency_symbol(&mut ctx);
     let mut env = Environment::new();
     // Print/iterate of missing names must fail; a silent empty substitution would
     // still compile the rest of the layout and look like the default template.
@@ -1508,6 +1520,24 @@ fn sanitize_customer_email(ctx: &mut serde_json::Value) {
     customer.insert(
         "EmailHref".to_string(),
         serde_json::Value::String(typst_string(email)),
+    );
+}
+
+/// Make `CurrencySymbol` safe to drop into Typst markup.
+fn sanitize_currency_symbol(ctx: &mut serde_json::Value) {
+    let Some(obj) = ctx.as_object_mut() else {
+        return;
+    };
+    let Some(symbol) = obj
+        .get("CurrencySymbol")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+    else {
+        return;
+    };
+    obj.insert(
+        "CurrencySymbol".to_string(),
+        serde_json::Value::String(typst_markup(symbol)),
     );
 }
 
@@ -1849,6 +1879,35 @@ mod tests {
         assert_eq!(typst_string("a\"b\\c".into()), r#"a\"b\\c"#);
     }
 
+    #[test]
+    fn currency_symbol_is_markup_safe() {
+        let mut root = sample_example_invoice_root();
+        root.currency_symbol = "$".into();
+        let asset_dir = std::env::temp_dir().join("lariv-invoice-pdf-currency-symbol");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        let dollar = render_template(
+            "#let money(n) = [{% if CurrencySymbol %}{{ CurrencySymbol }} {% endif %}#fmt-num(n)]",
+            &root,
+            serde_json::json!({}),
+            &asset_dir,
+            None,
+        )
+        .expect("render dollar");
+        assert_eq!(dollar, r"#let money(n) = [\$ #fmt-num(n)]");
+
+        root.currency_symbol = String::new();
+        let bare = render_template(
+            "#let money(n) = [{% if CurrencySymbol %}{{ CurrencySymbol }} {% endif %}#fmt-num(n)]",
+            &root,
+            serde_json::json!({}),
+            &asset_dir,
+            None,
+        )
+        .expect("render bare");
+        let _ = std::fs::remove_dir_all(&asset_dir);
+        assert_eq!(bare, "#let money(n) = [#fmt-num(n)]");
+    }
+
     #[tokio::test]
     async fn plain_customer_email_compiles() {
         let mut root = sample_example_invoice_root();
@@ -1895,6 +1954,7 @@ mod tests {
         .expect("render");
         let _ = std::fs::remove_dir_all(&asset_dir);
         assert!(out.contains("Sixty-Three Thousand Seven Hundred And Twenty Rupees"));
+        assert!(out.contains("#let money(n) = [₹ #fmt-num(n)]"));
         assert!(out.contains("Acme Industries Pvt. Ltd."));
         assert!(out.contains("INV/2025-26/0042"));
         assert!(out.contains("351234567890"));
@@ -2066,6 +2126,7 @@ mod tests {
             taxes: vec![],
             lines: vec![],
             payments: vec![],
+            currency_symbol: String::new(),
             company_name: "Test Co".into(),
             company_address: "Test address".into(),
             company_phone: String::new(),

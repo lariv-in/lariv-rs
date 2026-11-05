@@ -121,7 +121,7 @@ fn map_bootstrap() -> String {
     script.push_str("\nif (!window.LarivMap) {\nconst maplibregl = await import(\"");
     script.push_str(&href);
     script.push_str("\");\n");
-    script.push_str(include_str!("client.js"));
+    script.push_str(include_str!("map/client.js"));
     script.push_str("\nwindow.dispatchEvent(new Event(\"lariv-map-ready\"));\n}\n</script>");
     script
 }

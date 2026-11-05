@@ -8,6 +8,7 @@
    Length and weight values are {value, unit}; other variables are scalars.
    Product.VariableTypes maps those names to types.
    Customer includes CustomerType, CIN, Phone, Email (Typst-markup-escaped), EmailHref (for a mailto string), and address parts (AddressLine1, City, State, …).
+   CurrencySymbol is the accounting currency symbol, already escaped for Typst markup (empty when the currency has none).
    Optional: Sites (list of { ID, Name, Address }) from deployment addons.
    Functions: num2words, num2wordsAnd, num2wordsRupees, invoiceGrandTotalWords, vnodeImage, urlImage.
    Filters: typst (escape markup; `@` in an email is a label unless escaped), typstStr (escape a Typst string). #}
@@ -38,7 +39,7 @@
   [#grouped#frac]
 }
 
-#let inr(n) = [₹ #fmt-num(n)]
+#let money(n) = [{% if CurrencySymbol %}{{ CurrencySymbol }} {% endif %}#fmt-num(n)]
 
 #let qty-unit(unit) = {
   if unit == "Number" [ No.]
@@ -273,7 +274,7 @@
     [#fmt-qty(ln.qty)#qty-unit(ln.unit)],
     fmt-num(ln.rate),
     tax-label(ln),
-    inr(line-untaxed(ln)),
+    money(line-untaxed(ln)),
   )).flatten(),
 )
 
@@ -296,11 +297,11 @@
   table(
     columns: (1.4fr, 1fr),
     align: (left, right),
-    [Untaxed Amount], inr(untaxed-total),
-    ..tax-totals.pairs().map(((name, amt)) => (name, inr(amt))).flatten(),
-    [*Total*], [*#inr(grand-total)*],
-    ..payments.map(p => ([Paid on #p.date], inr(float(str(p.amount))))).flatten(),
-    [*Amount Due*], [*#inr(amount-due)*],
+    [Untaxed Amount], money(untaxed-total),
+    ..tax-totals.pairs().map(((name, amt)) => (name, money(amt))).flatten(),
+    [*Total*], [*#money(grand-total)*],
+    ..payments.map(p => ([Paid on #p.date], money(float(str(p.amount))))).flatten(),
+    [*Amount Due*], [*#money(amount-due)*],
   ),
 )
 
@@ -314,9 +315,9 @@
       hsn,
       str(calc.round(row.qty, digits: 1)),
       str(calc.round(row.pct, digits: 1)),
-      inr(row.untaxed),
-      inr(sgst),
-      inr(cgst),
+      money(row.untaxed),
+      money(sgst),
+      money(cgst),
     )
   }).flatten(),
 )

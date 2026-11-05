@@ -45,6 +45,7 @@ Root context (PascalCase field names):
 • Taxes[] — invoice-level taxes: Name, Percentage, TaxType (levied or withholding)
 • Lines[] — Product.Name, Product.HSNCode, Product.Reference, Product.VariableTypes, Quantity, Rate, Amount, Remarks, Variables, VariableLines, line Taxes[]. Quantity multiplies Rate, the price of one product. Amount is the line pre-tax total. Variables holds typed measures ({kind, value, unit}). VariableLines is one name-and-value string per variable.
 • Payments[] — Amount, Datetime / DatetimeDisplay
+• CurrencySymbol — accounting currency symbol (journal currency, or the default when journals differ). Already escaped for Typst markup, so {{ CurrencySymbol }} is safe (`$` is not math mode). Empty when the currency has no symbol.
 • Sites[] — optional related sites from deployment addons: ID, Name, Address (empty list if none; use Sites|default([]) )
 
 Template functions:

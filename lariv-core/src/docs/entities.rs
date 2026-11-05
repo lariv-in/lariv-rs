@@ -23,7 +23,7 @@
 //! impl ActiveModelBehavior for ActiveModel {}
 //! ```
 //!
-//! Re-export from `entities/mod.rs`:
+//! Re-export from `entities.rs`:
 //!
 //! ```ignore
 //! pub mod item;
