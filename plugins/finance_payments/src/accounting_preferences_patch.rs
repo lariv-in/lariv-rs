@@ -1,14 +1,18 @@
 //! Patches the payment journal template onto `/finance/preferences`.
 
+use chrono::Utc;
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_plugin_finance_accounts::{
-    accounting_preferences_patch::{AccountingPreferenceGroup, AccountingPreferencesAddon},
+    accounting_preferences_patch::{
+        AccountingPreferenceGroup, AccountingPreferencesAddon, str_to_opt_string,
+    },
     scope::{load_account_parent_label, load_default_journal_form, load_journal_display_label},
 };
 use maud::html;
-use sea_orm::DatabaseConnection;
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
 
 use crate::{
+    entities::payment_preferences,
     forms::{PaymentPreferencesForm, PaymentPreferencesFormField},
     logic::preferences::load_payment_preferences,
 };
@@ -48,11 +52,16 @@ impl AccountingPreferencesAddon for PaymentsAccountingPreferencesAddon {
     }
 
     async fn render_groups(&self, db: &DatabaseConnection) -> Vec<AccountingPreferenceGroup> {
-        let _pay = load_payment_preferences(db).await;
+        let pay = load_payment_preferences(db).await;
+        let number_format = pay.payment_number_format.unwrap_or_default();
         let (journal_id, journal_display, journal_lines) = payment_template_form(db).await;
         let payments = html! {
             (PaymentPreferencesForm::render_inputs(
                 &FormCtx::form::<PaymentPreferencesForm>(CsrfToken::current())
+                    .value(
+                        PaymentPreferencesFormField::PaymentNumberFormat,
+                        &number_format,
+                    )
                     .value(PaymentPreferencesFormField::JournalId, &journal_id)
                     .display(PaymentPreferencesFormField::JournalId, &journal_display)
                     .value(PaymentPreferencesFormField::JournalLines, &journal_lines),
@@ -72,13 +81,18 @@ impl AccountingPreferencesAddon for PaymentsAccountingPreferencesAddon {
         let payment = post
             .deserialize::<PaymentPreferencesForm>()
             .map_err(|e| e.to_string())?;
-        let _pay_prefs = load_payment_preferences(db).await;
         crate::payment_journal_template::save_payment_template(
             db,
             &payment.journal_id,
             &payment.journal_lines,
         )
-        .await
+        .await?;
+        let pay_prefs = load_payment_preferences(db).await;
+        let mut pay_am: payment_preferences::ActiveModel = pay_prefs.into();
+        pay_am.payment_number_format = Set(str_to_opt_string(&payment.payment_number_format));
+        pay_am.updated_at = Set(Some(Utc::now()));
+        pay_am.update(db).await.map_err(|e| e.to_string())?;
+        Ok(())
     }
 }
 

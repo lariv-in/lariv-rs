@@ -12,11 +12,13 @@ pub async fn load_payment_preferences<C: ConnectionTrait>(db: &C) -> payment_pre
         id: Set(1),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
+        payment_number_format: Set(None),
     };
     am.insert(db).await.unwrap_or(payment_preferences::Model {
         id: 1,
         created_at: Some(now),
         updated_at: Some(now),
+        payment_number_format: None,
     })
 }
 

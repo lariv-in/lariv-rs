@@ -1,7 +1,8 @@
 //! Customers list, detail, and journal under Accounting.
 
+use axum::body::Body;
 use axum::extract::{Path, Query};
-use axum::http::{HeaderMap, Uri};
+use axum::http::{HeaderMap, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 use lariv_plugin_customer::entities::customer::Entity as CustomerEntity;
 use lariv_plugin_customer::keys::CUSTOMER_TABLE;
@@ -226,6 +227,55 @@ pub async fn journal(
         empty: journal.is_empty(),
     };
     respond_page(&page, &chrome, &ctx, &htmx)
+}
+
+/// `GET /finance/customers/{id}/statement.xlsx` — posted invoices and payments.
+pub async fn statement_xlsx(
+    Cap(state): Cap<CustomerState>,
+    RequireAuth(ctx): RequireAuth,
+    Path(id): Path<i64>,
+) -> Response {
+    let Some(customer) = load_customer(&state.db, id).await else {
+        return (StatusCode::NOT_FOUND, "Customer not found").into_response();
+    };
+    let bytes = match crate::xlsx::build_customer_statement(&state.db, id, &ctx.timezone).await {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            tracing::error!(error = %err, customer_id = id, "customer statement workbook failed");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Could not export invoices and payments.",
+            )
+                .into_response();
+        }
+    };
+    let filename = statement_filename(id, &customer.name);
+    (
+        StatusCode::OK,
+        [
+            (
+                header::CONTENT_TYPE,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string(),
+            ),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{filename}\""),
+            ),
+        ],
+        Body::from(bytes),
+    )
+        .into_response()
+}
+
+fn statement_filename(id: i64, name: &str) -> String {
+    let slug: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let slug = slug.trim_matches('_');
+    let slug = if slug.is_empty() { "customer" } else { slug };
+    let stamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+    format!("{slug}_{id}_{stamp}.xlsx")
 }
 
 /// Display name for a customer detail page, when the customer exists.

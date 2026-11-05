@@ -31,6 +31,8 @@ pub struct CreatePaymentInput {
     pub journal_lines: Option<Vec<JournalLineSpec>>,
     /// Untaxed base the withholding percent applies to. Standalone payments use the amount.
     pub withholding_base: Option<Decimal>,
+    /// Trimmed payment number. Blank or `None` assigns one from Payment number format.
+    pub number: Option<String>,
 }
 
 pub fn parse_payment_amount(s: &str) -> Result<Decimal, String> {
@@ -157,6 +159,7 @@ pub struct NewPayment {
     pub journal_id: i64,
     pub lines: Vec<JournalLineSpec>,
     pub withholding_tax_ids: Vec<i64>,
+    pub number: Option<String>,
 }
 
 pub async fn prepare_payment(
@@ -209,6 +212,7 @@ pub async fn prepare_payment(
         journal_id,
         lines,
         withholding_tax_ids: input.withholding_tax_ids,
+        number: input.number,
     })
 }
 
@@ -223,10 +227,17 @@ pub async fn insert_payment<C: ConnectionTrait>(
     let (je_id, _) = insert_journal_entry(db, new.datetime, new.journal_id, doc_id, &new.lines)
         .await
         .map_err(|e| e.to_string())?;
+    let number = crate::logic::payment_number::resolve_payment_number(
+        db,
+        new.number.as_deref(),
+        new.datetime,
+    )
+    .await?;
     let pay = payment::ActiveModel {
         customer_id: Set(new.customer_id),
         amount: Set(new.amount),
         datetime: Set(new.datetime),
+        number: Set(number.clone()),
         journal_entry_id: Set(je_id),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
@@ -234,7 +245,14 @@ pub async fn insert_payment<C: ConnectionTrait>(
     }
     .insert(db)
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("uix_payments_number") {
+            format!("payment number {number} is already used")
+        } else {
+            msg
+        }
+    })?;
     update_source_doc_id(db, doc_id, pay.id)
         .await
         .map_err(|e| e.to_string())?;

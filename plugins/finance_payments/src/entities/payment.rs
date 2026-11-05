@@ -16,6 +16,8 @@ pub struct Model {
     #[sea_orm(column_type = "Decimal(Some((19, 6)))")]
     pub amount: Decimal,
     pub datetime: DateTime<Utc>,
+    #[sea_orm(unique)]
+    pub number: String,
     pub journal_entry_id: i64,
 }
 

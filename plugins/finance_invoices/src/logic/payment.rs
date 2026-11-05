@@ -33,6 +33,8 @@ pub struct PayPostedInvoiceInput {
     pub withholding_tax_ids: Vec<i64>,
     /// `None` evaluates the payment template. `Some` writes these lines.
     pub journal_lines: Option<Vec<JournalLineSpec>>,
+    /// Trimmed payment number. Blank or `None` assigns one from Payment number format.
+    pub number: Option<String>,
 }
 
 pub struct PayPostedInvoiceResult {
@@ -318,6 +320,7 @@ pub async fn pay_posted_invoice(
             withholding_tax_ids: input.withholding_tax_ids,
             journal_lines: Some(lines),
             withholding_base: Some(withholding_base),
+            number: input.number,
         },
     )
     .await?;

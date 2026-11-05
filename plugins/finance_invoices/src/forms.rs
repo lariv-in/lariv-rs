@@ -8,6 +8,7 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_plugin_crm::routes::CustomerFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
+use lariv_plugin_finance_payments::preferences_hints::PAYMENT_NUMBER_HINT;
 use lariv_plugin_finance_taxes::routes::TaxMultiSelectRouteTag;
 
 use crate::components::{
@@ -258,6 +259,9 @@ impl FormWidget for InvoicePayJournalLines {
 pub struct InvoicePaymentForm {
     #[form(widget = HiddenPostedInvoiceId)]
     pub posted_invoice_id: i64,
+
+    #[form(label = "Number", widget = Text, hint = PAYMENT_NUMBER_HINT)]
+    pub number: String,
 
     #[form(label = "Settlement amount", required, widget = Text)]
     pub amount: String,

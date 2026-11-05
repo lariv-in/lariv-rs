@@ -2335,6 +2335,7 @@ impl RenderTemplate for InvoicePayModalPage {
                                 InvoicePaymentFormField::PostedInvoiceId,
                                 self.form.posted_invoice_id.to_string(),
                             )
+                            .value(InvoicePaymentFormField::Number, &self.form.number)
                             .value(InvoicePaymentFormField::Amount, &self.form.amount)
                             .value(InvoicePaymentFormField::Datetime, &self.form.datetime)
                             .value(

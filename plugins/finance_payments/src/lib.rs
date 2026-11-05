@@ -12,6 +12,7 @@ pub mod keys;
 pub mod logic;
 pub mod migrations;
 pub mod payment_journal_template;
+pub mod preferences_hints;
 pub mod routes;
 pub mod source_docs;
 pub mod state;

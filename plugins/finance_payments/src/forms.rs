@@ -12,6 +12,7 @@ use lariv_plugin_finance_taxes::journal_template_editor::input_journal_template_
 use lariv_plugin_finance_taxes::routes::TaxMultiSelectRouteTag;
 
 use crate::payment_journal_template::{FORMULA_VARIABLES_HINT, empty_lines_json};
+use crate::preferences_hints::{PAYMENT_NUMBER_FORMAT_HINT, PAYMENT_NUMBER_HINT};
 use crate::routes::PaymentJournalLinesRouteTag;
 
 /// Account and formula lines stored as JSON.
@@ -51,6 +52,9 @@ impl FormWidget for PaymentJournalLines {
 
 #[html_form]
 pub struct PaymentForm {
+    #[form(label = "Number", widget = Text, hint = PAYMENT_NUMBER_HINT)]
+    pub number: String,
+
     #[form(
         label = "Customer",
         required,
@@ -83,6 +87,13 @@ pub struct PaymentForm {
 
 #[html_form]
 pub struct PaymentPreferencesForm {
+    #[form(
+        label = "Payment number format",
+        widget = Text,
+        hint = PAYMENT_NUMBER_FORMAT_HINT
+    )]
+    pub payment_number_format: String,
+
     #[form(
         label = "Journal",
         widget = ForeignKey,

@@ -123,6 +123,10 @@ async fn load_payment_page(
     }
     let sort = q.sort.as_deref().unwrap_or("").trim();
     query = match sort {
+        s if s.eq_ignore_ascii_case("Number DESC") => query.order_by_desc(payment::Column::Number),
+        s if s.eq_ignore_ascii_case("Number ASC") || s.eq_ignore_ascii_case("Number") => {
+            query.order_by_asc(payment::Column::Number)
+        }
         s if s.eq_ignore_ascii_case("Amount DESC") => query.order_by_desc(payment::Column::Amount),
         s if s.eq_ignore_ascii_case("Amount ASC") || s.eq_ignore_ascii_case("Amount") => {
             query.order_by_asc(payment::Column::Amount)
@@ -147,6 +151,7 @@ async fn load_payment_page(
         let fmt = currency_fmts.get(&p.journal_entry_id).unwrap_or(&fallback);
         rows.push(PaymentRow {
             id: p.id,
+            number: p.number,
             customer_label: customer_label(db, p.customer_id).await,
             amount: fmt.display(p.amount),
             datetime: DatetimeLabel::display(p.datetime, timezone).into_string(),
@@ -234,6 +239,7 @@ pub async fn create_get(
     let customer_id = q.customer_id.filter(|id| *id > 0).unwrap_or(0);
     let customer_display = customer_label(&state.db, customer_id).await;
     let form = PaymentForm {
+        number: String::new(),
         customer_id,
         amount: String::new(),
         datetime: ctx.datetime_local_input(Utc::now()).into_string(),
@@ -306,6 +312,7 @@ pub async fn create_post(
         withholding_tax_ids: form.taxes.clone(),
         journal_lines: Some(submitted.lines),
         withholding_base: None,
+        number: Some(form.number.clone()),
     };
     match create_payment(&state.db, input).await {
         Ok(payment) => respond_create_modal_done(
@@ -361,6 +368,7 @@ pub async fn detail(
         let currency = load_journal_entry_currency_format(&state.db, p.journal_entry_id).await;
         PaymentDetailPage {
             id: p.id,
+            number: p.number,
             customer_label: customer_label(&state.db, p.customer_id).await,
             customer_href: customer_href(&state.db, p.customer_id).await,
             amount: currency.display(p.amount),
@@ -371,6 +379,7 @@ pub async fn detail(
     } else {
         PaymentDetailPage {
             id,
+            number: String::new(),
             customer_label: String::new(),
             customer_href: None,
             amount: String::new(),

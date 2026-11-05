@@ -3,8 +3,9 @@
 use maud::{Markup, PreEscaped, html};
 
 use lariv_core::components::{
-    Crumb, DetailHeader, FieldLink, FieldText, ShellChrome, SlotCapability, SlotRegistrar,
-    breadcrumbs, detail, detail_header, field_link, field_text, label,
+    ButtonDownload, Crumb, DetailHeader, FieldLink, FieldText, HtmlAttrs, ShellChrome,
+    SlotCapability, SlotRegistrar, breadcrumbs, button_download, detail, detail_header, field_link,
+    field_text, label,
 };
 use lariv_core::http::ProvideRequestCaps;
 use lariv_core::template::{
@@ -19,7 +20,23 @@ use lariv_plugin_finance_accounts::templates::{
     layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
 };
 
-use crate::routes::{CustomerDetailRouteTag, CustomerJournalRouteTag, CustomerListRouteTag};
+use crate::routes::{
+    CustomerDetailRouteTag, CustomerJournalRouteTag, CustomerListRouteTag,
+    CustomerStatementExportRouteTag,
+};
+
+fn statement_export_button(id: i64) -> Markup {
+    let href = CustomerStatementExportRouteTag::new(id).path();
+    button_download(ButtonDownload {
+        label: "Export Excel",
+        href: &href,
+        icon_name: Some("arrow-down-tray"),
+        classes: "btn-outline btn-sm",
+        attrs: HtmlAttrs::new()
+            .set("aria-label", "Export Excel")
+            .set("title", "Export invoices and payments"),
+    })
+}
 
 fn customers_list_crumbs() -> Markup {
     breadcrumbs(&[Crumb {
@@ -158,7 +175,7 @@ impl CustomerDetailPage {
         detail(html! {
             (detail_header(DetailHeader {
                 title: &self.name,
-                actions: html! {},
+                actions: statement_export_button(self.id),
             }))
             (label("Kind", field_text(FieldText { value: self.kind, classes: "" })))
             (label(self.party_label, party))
@@ -209,6 +226,9 @@ impl CustomerJournalPage {
             html! {}
         };
         html! {
+            div class="mb-4 flex justify-end" {
+                (statement_export_button(self.id))
+            }
             div class="flex flex-col gap-8" {
                 (empty)
                 (PreEscaped(self.sections_html.as_str()))

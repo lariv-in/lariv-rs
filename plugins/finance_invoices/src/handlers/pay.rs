@@ -99,6 +99,7 @@ pub async fn pay_get(
         &q,
         InvoicePaymentForm {
             posted_invoice_id: id,
+            number: String::new(),
             amount,
             datetime: ctx.datetime_local_input(Utc::now()).into_string(),
             taxes: vec![],
@@ -148,6 +149,7 @@ pub async fn pay_post(
         datetime: parse_invoice_datetime(&form.datetime, &ctx.timezone),
         withholding_tax_ids: form.taxes.clone(),
         journal_lines: Some(submitted.lines),
+        number: Some(form.number.clone()),
     };
     match pay_posted_invoice(&state.db, input).await {
         Ok(result) => {

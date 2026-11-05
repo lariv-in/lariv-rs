@@ -5,6 +5,7 @@ pub mod handlers;
 pub mod journal;
 pub mod routes;
 pub mod templates;
+mod xlsx;
 
 pub struct FinanceCustomersTag;
 

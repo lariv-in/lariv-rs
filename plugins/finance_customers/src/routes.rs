@@ -11,5 +11,6 @@ lariv_core::define_plugin_routes! {
         get CustomerListRouteTag, "/finance/customers", handlers::list, fragment(CUSTOMER_TABLE), authorize(FinanceCustomersView, []);
         get CustomerDetailRouteTag, "/finance/customers/{id}", handlers::detail, authorize(FinanceCustomersView, []);
         get CustomerJournalRouteTag, "/finance/customers/{id}/journal", handlers::journal, authorize(FinanceCustomersView, []);
+        get CustomerStatementExportRouteTag, "/finance/customers/{id}/statement.xlsx", bare handlers::statement_xlsx, file, authorize(FinanceCustomersView, []);
     ]
 }

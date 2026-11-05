@@ -50,9 +50,17 @@ fn payment_crumbs(label: &str) -> Markup {
     ])
 }
 
-fn payment_detail_menu(id: i64) -> Markup {
+fn payment_heading(number: &str, id: i64) -> String {
+    if number.is_empty() {
+        format!("#{id}")
+    } else {
+        number.to_string()
+    }
+}
+
+fn payment_detail_menu(id: i64, heading: &str) -> Markup {
     detail_sidebar_menu(
-        format!("Payment #{id}"),
+        format!("Payment {heading}"),
         &[DetailMenuNavItem {
             title: "Payment Detail",
             url: PaymentDetailRouteTag::new(id).url(),
@@ -147,6 +155,7 @@ lariv_core::define_register_items! {
 #[derive(Clone)]
 pub struct PaymentRow {
     pub id: i64,
+    pub number: String,
     pub customer_label: String,
     pub amount: String,
     pub datetime: String,
@@ -198,12 +207,20 @@ fn payment_filter_panel(page: &PaymentListPage) -> Markup {
 
 impl PaymentListPage {
     pub fn render_table(&self) -> Markup {
+        let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
         let amount_sort = column_sort_url(&self.path_and_query, "Amount", &self.sort);
         let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
+        let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
         let amount_label = format!("Amount{}", sort_indicator(&self.sort, "Amount"));
         let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
         let push_history = self.filter_url.is_empty();
         let headers = [
+            TableColumnHeader {
+                key: "Number",
+                label: &number_label,
+                sort_url: Some(&number_sort),
+                push_url: push_history,
+            },
             TableColumnHeader {
                 key: "Customer",
                 label: "Customer",
@@ -230,6 +247,10 @@ impl PaymentListPage {
             .map(|p| TableRow {
                 attrs: row_attr_navigate(&PaymentDetailRouteTag::new(p.id).url()),
                 cells: vec![
+                    field_text(FieldText {
+                        value: &p.number,
+                        classes: "",
+                    }),
                     field_text(FieldText {
                         value: &p.customer_label,
                         classes: "",
@@ -356,6 +377,7 @@ impl RenderTemplate for PaymentCreateModalPage {
                                 self.form.customer_id.to_string(),
                             )
                             .display(PaymentFormField::CustomerId, &self.customer_display)
+                            .value(PaymentFormField::Number, &self.form.number)
                             .value(PaymentFormField::Amount, &self.form.amount)
                             .value(PaymentFormField::Datetime, &self.form.datetime)
                             .value(PaymentFormField::JournalLines, &self.form.journal_lines)
@@ -380,6 +402,7 @@ impl RenderTemplate for PaymentCreateModalPage {
 #[derive(Generic)]
 pub struct PaymentDetailPage {
     pub id: i64,
+    pub number: String,
     pub customer_label: String,
     pub customer_href: Option<String>,
     pub amount: String,
@@ -393,7 +416,8 @@ impl PaymentDetailPage {
         html! {
             (detail(html! {
                 (container_column("", html! {
-                    (field_title(FieldTitle { value: &format!("Payment #{}", self.id), classes: "" }))
+                    (field_title(FieldTitle { value: &payment_heading(&self.number, self.id), classes: "" }))
+                    (label("Number", field_text(FieldText { value: &self.number, classes: "" })))
                     (label("Customer", optional_link(&self.customer_href, &self.customer_label)))
                     (label("Amount", field_text(FieldText { value: &self.amount, classes: "" })))
                     (label("Withholding taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
@@ -407,26 +431,26 @@ impl PaymentDetailPage {
 
 impl RenderAppPane for PaymentDetailPage {
     fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
-        let label = format!("#{}", self.id);
+        let label = payment_heading(&self.number, self.id);
         layout_with_entity_sidebar_crumbs(
-            payment_detail_menu(self.id),
+            payment_detail_menu(self.id, &label),
             payment_crumbs(&label),
             self.body(),
         )
     }
     fn render_main(&self) -> lariv_core::components::MainContentHtml {
-        let label = format!("#{}", self.id);
+        let label = payment_heading(&self.number, self.id);
         layout_main_with_crumbs(payment_crumbs(&label), self.body())
     }
 }
 
 impl RenderTemplate for PaymentDetailPage {
     fn render(&self, chrome: &ShellChrome) -> Markup {
-        let label = format!("#{}", self.id);
+        let label = payment_heading(&self.number, self.id);
         app_scaffold_with_sidebar(
             "Payment",
             chrome,
-            payment_detail_menu(self.id),
+            payment_detail_menu(self.id, &label),
             payment_crumbs(&label),
             self.body(),
         )

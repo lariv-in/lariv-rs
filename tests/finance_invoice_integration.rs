@@ -756,6 +756,7 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
             datetime: Utc::now(),
             withholding_tax_ids: Vec::new(),
             journal_lines: None,
+            number: None,
         },
     )
     .await;
