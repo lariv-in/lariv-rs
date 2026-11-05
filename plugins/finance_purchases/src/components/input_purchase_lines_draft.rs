@@ -122,10 +122,12 @@ lineTaxPickHref(fkSlot) {
 },
 formatDec(n) {
 	if (typeof n !== 'number' || !isFinite(n)) return '—';
-	let s = n.toFixed(6);
-	s = s.replace(/0+$/, '');
-	s = s.replace(/\.$/, '');
-	return s || '0';
+	let places = Number(this.minorUnit);
+	if (!isFinite(places)) places = 2;
+	places = Math.max(0, Math.min(6, Math.trunc(places)));
+	let s = n.toFixed(places);
+	if (places === 0) s = s.replace(/\.$/, '');
+	return s;
 },
 blankLine() {
 	return { product_id: 0, quantity: '1', rate: '', calculated_rate: '', product_label: '', fk_slot: this.allocFkSlot(), line_taxes: [], has_formula: false, variable_rows: [], pre_tax: '', price_error: '', remarks: '' };
@@ -489,7 +491,7 @@ impl Default for InputPurchaseLinesDraft<'_> {
     }
 }
 
-fn preview_parts(preview: &str) -> (String, String, String, String) {
+fn preview_parts(preview: &str) -> (String, String, String, String, i32) {
     #[derive(serde::Deserialize, Default)]
     struct Preview {
         #[serde(default)]
@@ -500,6 +502,8 @@ fn preview_parts(preview: &str) -> (String, String, String, String) {
         tax_kind_by_id: serde_json::Map<String, serde_json::Value>,
         #[serde(default)]
         all_taxes: Vec<serde_json::Value>,
+        #[serde(default)]
+        minor_unit: Option<i32>,
     }
 
     let parsed: Preview = serde_json::from_str(preview).unwrap_or_default();
@@ -507,7 +511,8 @@ fn preview_parts(preview: &str) -> (String, String, String, String) {
     let tax_pct = serde_json::to_string(&parsed.tax_pct_by_id).unwrap_or_else(|_| "{}".into());
     let tax_kind = serde_json::to_string(&parsed.tax_kind_by_id).unwrap_or_else(|_| "{}".into());
     let all_taxes = serde_json::to_string(&parsed.all_taxes).unwrap_or_else(|_| "[]".into());
-    (products, tax_pct, tax_kind, all_taxes)
+    let minor_unit = parsed.minor_unit.unwrap_or(2).clamp(0, 6);
+    (products, tax_pct, tax_kind, all_taxes, minor_unit)
 }
 
 /// Render the draft purchase lines editor.
@@ -530,7 +535,8 @@ pub fn input_purchase_lines_draft(opts: InputPurchaseLinesDraft<'_>) -> Markup {
     } else {
         opts.defaults.trim()
     };
-    let (products_json, tax_pct_json, tax_kind_json, all_taxes_json) = preview_parts(opts.preview);
+    let (products_json, tax_pct_json, tax_kind_json, all_taxes_json, minor_unit) =
+        preview_parts(opts.preview);
     let product_pick_base =
         serde_json::to_string(product_pick_url).unwrap_or_else(|_| "\"\"".into());
     let tax_pick_base = serde_json::to_string(tax_pick_url).unwrap_or_else(|_| "\"\"".into());
@@ -538,7 +544,7 @@ pub fn input_purchase_lines_draft(opts: InputPurchaseLinesDraft<'_>) -> Markup {
     let price_url = serde_json::to_string(&crate::routes::PurchaseLinePriceRouteTag.url())
         .unwrap_or_else(|_| "\"\"".into());
     let alpine_data = format!(
-        "{{ lines: {defaults}, products: {products_json}, tax_pct_by_id: {tax_pct_json}, tax_kind_by_id: {tax_kind_json}, all_taxes: {all_taxes_json}, product_pick_base: {product_pick_base}, tax_pick_base: {tax_pick_base}, price_url: {price_url}, {methods} }}",
+        "{{ lines: {defaults}, products: {products_json}, tax_pct_by_id: {tax_pct_json}, tax_kind_by_id: {tax_kind_json}, all_taxes: {all_taxes_json}, minorUnit: {minor_unit}, product_pick_base: {product_pick_base}, tax_pick_base: {tax_pick_base}, price_url: {price_url}, {methods} }}",
         methods = PURCHASE_LINES_DRAFT_ALPINE_METHODS.trim_end_matches(',')
     );
 

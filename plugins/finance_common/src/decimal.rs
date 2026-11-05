@@ -1,6 +1,6 @@
 //! Six-decimal finance arithmetic (mirrors Go fields.DecimalSix).
 
-use rust_decimal::Decimal;
+use rust_decimal::{Decimal, RoundingStrategy};
 
 pub fn normalize(d: Decimal) -> Decimal {
     d.round_dp(6).normalize()
@@ -49,8 +49,9 @@ pub fn decimal_display(d: Decimal) -> String {
 
 /// Format a monetary amount for display.
 ///
-/// Pads fractional digits to at least `minor_unit`, keeps any extra significant
-/// digits beyond that, then appends `symbol` when non-empty (`"{number} {symbol}"`).
+/// Rounds half away from zero to `minor_unit` fractional digits (clamped to
+/// `0..=6`), pads to exactly that many digits, then appends `symbol` when
+/// non-empty (`"{number} {symbol}"`).
 pub fn decimal_display_currency(d: Decimal, minor_unit: i32, symbol: &str) -> String {
     let number = decimal_display_currency_number(d, minor_unit);
     let symbol = symbol.trim();
@@ -62,20 +63,38 @@ pub fn decimal_display_currency(d: Decimal, minor_unit: i32, symbol: &str) -> St
 }
 
 fn decimal_display_currency_number(d: Decimal, minor_unit: i32) -> String {
-    let minor = minor_unit.clamp(0, 6) as usize;
-    let s = normalize(d).to_string();
-    let (int_part, frac_part) = match s.split_once('.') {
-        Some((i, f)) => (i.to_string(), f.to_string()),
-        None => (s, String::new()),
+    let minor = minor_unit.clamp(0, 6).cast_unsigned();
+    let rounded = d.round_dp_with_strategy(minor, RoundingStrategy::MidpointAwayFromZero);
+    format_fixed_dp(rounded, minor)
+}
+
+/// Print `d` with exactly `dp` fractional digits.
+///
+/// `round_dp` leaves the scale unchanged when it is already at most `dp`, so
+/// `10.5` rounded to 2 places would otherwise display as `10.5`.
+fn format_fixed_dp(d: Decimal, dp: u32) -> String {
+    if dp == 0 {
+        return d.to_string();
+    }
+    let negative = d.is_sign_negative() && !d.is_zero();
+    let abs = d.abs().to_string();
+    let (int_part, frac_part) = match abs.split_once('.') {
+        Some((int_part, frac_part)) => (int_part, frac_part),
+        None => (abs.as_str(), ""),
     };
-    let mut frac = frac_part.trim_end_matches('0').to_string();
-    while frac.len() < minor {
+    let mut frac = frac_part.to_string();
+    let places = dp as usize;
+    if frac.len() > places {
+        frac.truncate(places);
+    }
+    while frac.len() < places {
         frac.push('0');
     }
-    if frac.is_empty() {
-        int_part
+    let number = format!("{int_part}.{frac}");
+    if negative {
+        format!("-{number}")
     } else {
-        format!("{int_part}.{frac}")
+        number
     }
 }
 
@@ -128,15 +147,11 @@ mod tests {
     }
 
     #[test]
-    fn currency_keeps_extra_significant_digits() {
-        assert_eq!(
-            decimal_display_currency(d("10.505"), 2, "USD"),
-            "10.505 USD"
-        );
-        assert_eq!(
-            decimal_display_currency(d("1.2345"), 2, "INR"),
-            "1.2345 INR"
-        );
+    fn currency_rounds_to_minor_unit() {
+        assert_eq!(decimal_display_currency(d("10.505"), 2, "USD"), "10.51 USD");
+        assert_eq!(decimal_display_currency(d("1.2345"), 2, "INR"), "1.23 INR");
+        assert_eq!(decimal_display_currency(d("1.235"), 2, "INR"), "1.24 INR");
+        assert_eq!(decimal_display_currency(d("-1.235"), 2, "INR"), "-1.24 INR");
     }
 
     #[test]

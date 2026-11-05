@@ -4,7 +4,8 @@ use axum::{
 };
 use chrono::Utc;
 use maud::{Markup, html};
-use sea_orm::DatabaseConnection;
+use rust_decimal::Decimal;
+use sea_orm::{DatabaseConnection, EntityTrait};
 
 use lariv_core::components::{ManyToManyItem, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{CsrfToken, HtmlFormBody};
@@ -14,12 +15,14 @@ use lariv_plugin_finance_accounts::journal_lines_editor::input_journal_lines;
 use lariv_plugin_finance_accounts::logic::custom_source_doc::{
     ensure_posting_accounts, parse_submitted_journal_lines,
 };
-use lariv_plugin_finance_common::decimal::decimal_display;
+use lariv_plugin_finance_accounts::scope::load_journal_currency_format;
+use lariv_plugin_finance_common::decimal::decimal_display_currency;
 use lariv_plugin_finance_payments::logic::parse_payment_amount;
 use lariv_plugin_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
+    entities::PostedInvoiceEntity,
     forms::InvoicePaymentForm,
     handlers::ModalNameQuery,
     keys::INVOICE_PAY_MODAL,
@@ -71,9 +74,16 @@ pub async fn pay_get(
 ) -> Response {
     let open = posted_invoice_open_balance(&state.db, id)
         .await
-        .unwrap_or(rust_decimal::Decimal::ZERO);
-    let amount = if open > rust_decimal::Decimal::ZERO {
-        decimal_display(open)
+        .unwrap_or(Decimal::ZERO);
+    let amount = if open > Decimal::ZERO {
+        let journal_id = lariv_core::web::opt_or_log(
+            PostedInvoiceEntity::find_by_id(id).one(&state.db).await,
+            "find posted invoice for pay amount",
+        )
+        .map(|row| row.journal_id)
+        .unwrap_or(0);
+        let currency = load_journal_currency_format(&state.db, journal_id).await;
+        decimal_display_currency(open, currency.minor_unit, "")
     } else {
         String::new()
     };

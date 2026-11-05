@@ -389,6 +389,8 @@ pub async fn load_quotation_payment_term_lines(
 
 pub fn quotation_payment_term_line_display(
     line: &quotation_payment_term_line::Model,
+    minor_unit: i32,
+    symbol: &str,
     date_fmt: &str,
 ) -> PaymentTermLineDisplayRow {
     let due_display = match line.date_kind {
@@ -404,7 +406,7 @@ pub fn quotation_payment_term_line_display(
     let amount_display = match line.amount_kind {
         PaymentTermAmountKind::Absolute => line
             .amount
-            .map(decimal::decimal_display)
+            .map(|amount| decimal::decimal_display_currency(amount, minor_unit, symbol))
             .unwrap_or_else(|| "—".to_string()),
         PaymentTermAmountKind::Relative => line
             .amount_percentage
@@ -422,11 +424,21 @@ pub async fn quotation_payment_term_display_rows(
     quotation_id: i64,
     date_fmt: &str,
 ) -> Vec<PaymentTermLineDisplayRow> {
+    let currency =
+        crate::logic::invoice_line_editor::quotation_invoice_currency_format(db, quotation_id)
+            .await;
     load_quotation_payment_term_lines(db, quotation_id)
         .await
         .unwrap_or_default()
         .iter()
-        .map(|line| quotation_payment_term_line_display(line, date_fmt))
+        .map(|line| {
+            quotation_payment_term_line_display(
+                line,
+                currency.minor_unit,
+                &currency.symbol,
+                date_fmt,
+            )
+        })
         .collect()
 }
 

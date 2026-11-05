@@ -62,6 +62,8 @@ struct InvoiceLineEditorPreview {
     tax_pct_by_id: std::collections::HashMap<String, String>,
     tax_kind_by_id: std::collections::HashMap<String, String>,
     all_taxes: Vec<InvoiceLineTaxMeta>,
+    /// Default accounting currency's minor unit, clamped to the storage scale.
+    minor_unit: i32,
 }
 
 pub async fn invoice_line_editor_preview_json(db: &DatabaseConnection) -> String {
@@ -112,11 +114,13 @@ pub async fn invoice_line_editor_preview_json(db: &DatabaseConnection) -> String
         });
     }
 
+    let currency = load_default_currency_format(db).await;
     let preview = InvoiceLineEditorPreview {
         products: product_opts,
         tax_pct_by_id,
         tax_kind_by_id,
         all_taxes,
+        minor_unit: currency.minor_unit.clamp(0, 6),
     };
     serde_json::to_string(&preview).unwrap_or_else(|_| "{}".to_string())
 }
@@ -278,6 +282,58 @@ async fn currency_for_journal_or_default(
     }
 }
 
+async fn currency_for_product_ids(db: &DatabaseConnection, product_ids: &[i64]) -> CurrencyFormat {
+    let mut journal_id = None;
+    let mut mixed_journals = false;
+    for &product_id in product_ids {
+        if product_id <= 0 {
+            continue;
+        }
+        if let Ok(Some(template)) =
+            lariv_plugin_finance_products::journal_template::load_template(db, product_id).await
+        {
+            match journal_id {
+                Some(existing) if existing != template.journal_id => mixed_journals = true,
+                None => journal_id = Some(template.journal_id),
+                _ => {}
+            }
+        }
+    }
+    if mixed_journals {
+        load_default_currency_format(db).await
+    } else {
+        currency_for_journal_or_default(db, journal_id).await
+    }
+}
+
+/// Currency for a draft invoice: the shared product journal, or the default when journals differ.
+pub async fn draft_invoice_currency_format(
+    db: &DatabaseConnection,
+    draft_id: i64,
+) -> CurrencyFormat {
+    let lines = DraftInvoiceLineEntity::find()
+        .filter(draft_invoice_line::Column::DraftInvoiceId.eq(draft_id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let product_ids = lines.iter().map(|line| line.product_id).collect::<Vec<_>>();
+    currency_for_product_ids(db, &product_ids).await
+}
+
+/// Currency for a quotation: the shared product journal, or the default when journals differ.
+pub async fn quotation_invoice_currency_format(
+    db: &DatabaseConnection,
+    quotation_id: i64,
+) -> CurrencyFormat {
+    let lines = QuotationInvoiceLineEntity::find()
+        .filter(quotation_invoice_line::Column::QuotationInvoiceId.eq(quotation_id))
+        .all(db)
+        .await
+        .unwrap_or_default();
+    let product_ids = lines.iter().map(|line| line.product_id).collect::<Vec<_>>();
+    currency_for_product_ids(db, &product_ids).await
+}
+
 pub async fn invoice_customer_name(db: &DatabaseConnection, party: BillTo) -> String {
     PartyLabels::one(db, party).await
 }
@@ -352,27 +408,8 @@ pub async fn draft_invoice_line_display_rows(
         .all(db)
         .await
         .unwrap_or_default();
-    let mut journal_id = None;
-    let mut mixed_journals = false;
-    for ln in &lines {
-        if ln.product_id > 0 {
-            if let Ok(Some(template)) =
-                lariv_plugin_finance_products::journal_template::load_template(db, ln.product_id)
-                    .await
-            {
-                match journal_id {
-                    Some(existing) if existing != template.journal_id => mixed_journals = true,
-                    None => journal_id = Some(template.journal_id),
-                    _ => {}
-                }
-            }
-        }
-    }
-    let currency = if mixed_journals {
-        load_default_currency_format(db).await
-    } else {
-        currency_for_journal_or_default(db, journal_id).await
-    };
+    let product_ids = lines.iter().map(|ln| ln.product_id).collect::<Vec<_>>();
+    let currency = currency_for_product_ids(db, &product_ids).await;
 
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {
@@ -532,26 +569,8 @@ pub async fn quotation_invoice_line_display_rows(
         .all(db)
         .await
         .unwrap_or_default();
-    let mut journal_id = None;
-    let mut mixed_journals = false;
-    for ln in &lines {
-        if ln.product_id > 0
-            && let Ok(Some(template)) =
-                lariv_plugin_finance_products::journal_template::load_template(db, ln.product_id)
-                    .await
-        {
-            match journal_id {
-                Some(existing) if existing != template.journal_id => mixed_journals = true,
-                None => journal_id = Some(template.journal_id),
-                _ => {}
-            }
-        }
-    }
-    let currency = if mixed_journals {
-        load_default_currency_format(db).await
-    } else {
-        currency_for_journal_or_default(db, journal_id).await
-    };
+    let product_ids = lines.iter().map(|ln| ln.product_id).collect::<Vec<_>>();
+    let currency = currency_for_product_ids(db, &product_ids).await;
     let mut rows = Vec::with_capacity(lines.len());
     for ln in lines {
         let tax_ids = load_quotation_line_tax_ids(db, ln.id)

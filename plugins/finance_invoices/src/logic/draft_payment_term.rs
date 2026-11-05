@@ -655,6 +655,8 @@ pub async fn posted_payment_term_to_draft<C: ConnectionTrait>(
 
 pub fn draft_payment_term_line_display(
     line: &draft_payment_term_line::Model,
+    minor_unit: i32,
+    symbol: &str,
     date_fmt: &str,
 ) -> PaymentTermLineDisplayRow {
     let due_display = match line.date_kind {
@@ -674,7 +676,7 @@ pub fn draft_payment_term_line_display(
     let amount_display = match line.amount_kind {
         PaymentTermAmountKind::Absolute => line
             .amount
-            .map(decimal::decimal_display)
+            .map(|amount| decimal::decimal_display_currency(amount, minor_unit, symbol))
             .unwrap_or_else(|| "—".to_string()),
         PaymentTermAmountKind::Relative => line
             .amount_percentage
@@ -704,11 +706,15 @@ pub async fn draft_payment_term_display_rows(
     draft_id: i64,
     date_fmt: &str,
 ) -> Vec<PaymentTermLineDisplayRow> {
+    let currency =
+        crate::logic::invoice_line_editor::draft_invoice_currency_format(db, draft_id).await;
     load_draft_payment_term_lines(db, draft_id)
         .await
         .unwrap_or_default()
         .iter()
-        .map(|l| draft_payment_term_line_display(l, date_fmt))
+        .map(|l| {
+            draft_payment_term_line_display(l, currency.minor_unit, &currency.symbol, date_fmt)
+        })
         .collect()
 }
 

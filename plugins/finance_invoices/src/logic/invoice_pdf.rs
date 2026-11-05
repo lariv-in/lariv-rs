@@ -357,7 +357,7 @@ async fn load_draft_payment_term_pdf(
     anchor: DateTime<Utc>,
     tz: &str,
     date_fmt: &str,
-    _currency: &CurrencyFormat,
+    currency: &CurrencyFormat,
 ) -> Result<PdfPaymentTerm, InvoicePdfError> {
     let lines = load_draft_payment_term_lines(db, draft_id)
         .await
@@ -365,7 +365,8 @@ async fn load_draft_payment_term_pdf(
     let pdf_lines: Vec<PdfPaymentTermLine> = lines
         .iter()
         .map(|l| {
-            let display = draft_payment_term_line_display(l, date_fmt);
+            let display =
+                draft_payment_term_line_display(l, currency.minor_unit, &currency.symbol, date_fmt);
             let due_date = resolve_due_date(l, anchor, tz).unwrap_or_else(|_| {
                 l.due_date.unwrap_or_else(|| {
                     anchor
@@ -926,6 +927,7 @@ async fn load_quotation_payment_term_pdf(
     anchor: DateTime<Utc>,
     tz: &str,
     date_fmt: &str,
+    currency: &CurrencyFormat,
 ) -> Result<PdfPaymentTerm, InvoicePdfError> {
     let lines = load_quotation_payment_term_lines(db, quotation_id)
         .await
@@ -933,7 +935,12 @@ async fn load_quotation_payment_term_pdf(
     let pdf_lines: Vec<PdfPaymentTermLine> = lines
         .iter()
         .map(|l| {
-            let display = quotation_payment_term_line_display(l, date_fmt);
+            let display = quotation_payment_term_line_display(
+                l,
+                currency.minor_unit,
+                &currency.symbol,
+                date_fmt,
+            );
             let due_date = resolve_quotation_due_date(l, anchor, tz).unwrap_or_else(|_| {
                 l.due_date.unwrap_or_else(|| {
                     anchor
@@ -975,8 +982,15 @@ pub async fn render_quotation_invoice_pdf(
     let prefs = load_invoice_preferences(db).await;
     let currency = load_default_currency_format(db).await;
     let date_fmt = invoice_date_format(&prefs);
-    let payment_term =
-        load_quotation_payment_term_pdf(db, quotation.id, quotation.datetime, tz, date_fmt).await?;
+    let payment_term = load_quotation_payment_term_pdf(
+        db,
+        quotation.id,
+        quotation.datetime,
+        tz,
+        date_fmt,
+        &currency,
+    )
+    .await?;
     let root = build_pdf_root(
         db,
         quotation.id,

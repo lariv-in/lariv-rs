@@ -341,7 +341,7 @@ async fn load_draft_payment_term_pdf(
     anchor: DateTime<Utc>,
     tz: &str,
     date_fmt: &str,
-    _currency: &CurrencyFormat,
+    currency: &CurrencyFormat,
 ) -> Result<PdfPaymentTerm, PurchasePdfError> {
     let lines = load_draft_purchase_payment_term_lines(db, draft_id)
         .await
@@ -349,7 +349,8 @@ async fn load_draft_payment_term_pdf(
     let pdf_lines: Vec<PdfPaymentTermLine> = lines
         .iter()
         .map(|l| {
-            let display = draft_payment_term_line_display(l, date_fmt);
+            let display =
+                draft_payment_term_line_display(l, currency.minor_unit, &currency.symbol, date_fmt);
             let due_date = resolve_due_date(l, anchor, tz).unwrap_or_else(|_| {
                 l.due_date.unwrap_or_else(|| {
                     anchor
