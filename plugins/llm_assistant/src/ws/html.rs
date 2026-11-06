@@ -1,12 +1,13 @@
 //! HTMX OOB HTML fragments for assistant WebSocket streaming.
 
+use crate::components::hitl::{HitlApproval, hitl_approval, hitl_resolved};
 use crate::{
     content::ZWSP,
     context_usage::{ContextUsageView, format_token_count},
     genai::{Content, Part, Role},
 };
+use lariv_core::components::HtmlAttrs;
 use lariv_core::components::markdown::render_markdown;
-use lariv_core::components::{HitlApproval, HtmlAttrs, hitl_approval, hitl_resolved};
 
 pub fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -371,7 +372,7 @@ mod tests {
 
     #[test]
     fn assistant_bubble_skips_thought_text() {
-        use lariv_core::genai::Part;
+        use crate::genai::Part;
         let html = assistant_bubble_html(&Content {
             role: Role::Model,
             parts: vec![
@@ -456,7 +457,7 @@ mod tests {
 
     #[test]
     fn tool_response_shows_file_data_label() {
-        use lariv_core::genai::{FileData, FunctionResponse, Part};
+        use crate::genai::{FileData, FunctionResponse, Part};
         let content = Content {
             role: Role::User,
             parts: vec![

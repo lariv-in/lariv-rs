@@ -2,24 +2,72 @@ use crate::create_modals::{FORM_CREATE, FORM_RESPONSE_CREATE};
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
+use lariv_core::components::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::components::{
-    ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay, DeleteConfirmation,
-    DetailHeader, FieldText, FilterClauseView, FormOpts, LayoutMain, LayoutSidebar,
-    ListFilterBuilder, ObjectList, PaginationPage, ShellChrome, ShellScaffold, ShellSimple,
-    SidebarMenu, SidebarNavLink, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
-    TableColumnHeader, TableListContent, TablePagination, TableRow, breadcrumbs, button_modal_form,
-    button_submit, column_sort_url, data_table, data_table_list_refresh, delete_confirmation,
-    detail, detail_header, field_text, filter_error_banner, form, form_hx_get_route,
-    form_hx_post_selector, form_hx_post_url, label, layout_main, layout_sidebar,
-    list_filter_builder, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
-    row_attr_select, shell_scaffold, shell_simple, sidebar_menu, sidebar_nav_items_pane,
-    sort_indicator, table_button_columns, table_button_filter, table_create_button,
-    table_list_content, table_pagination, table_pagination_picker,
+    ButtonModalForm,
+    ButtonSubmit,
+    Crumb,
+    DataTable,
+    DataTableDisplay,
+    DeleteConfirmation,
+    DetailHeader,
+    FieldText,
+    FilterClauseView,
+    FormOpts,
+    LayoutMain,
+    LayoutSidebar,
+    ListFilterBuilder,
+    ObjectList,
+    ShellChrome,
+    ShellScaffold,
+    ShellSimple,
+    SidebarMenu,
+    SidebarNavLink,
+    SlotCapability,
+    SlotRegistrar,
+    SwapKey,
+    TableButtonFilter,
+    TableColumnHeader,
+    TableListContent,
+    TableRow,
+    breadcrumbs,
+    button_modal_form,
+    button_submit,
+    column_sort_url,
+    data_table,
+    data_table_list_refresh,
+    delete_confirmation,
+    detail,
+    detail_header,
+    field_text,
+    filter_error_banner,
+    form,
+    form_hx_get_route,
+    form_hx_post_selector,
+    form_hx_post_url,
+    label,
+    layout_main,
+    layout_sidebar,
+    list_filter_builder,
+    modal,
+    modal_keyed,
+    row_attr_navigate_route,
+    row_attr_select,
+    shell_scaffold,
+    shell_simple,
+    sidebar_menu,
+    sidebar_nav_items_pane,
+    sort_indicator,
+    table_button_columns,
+    table_button_filter,
+    table_create_button,
+    table_list_content,
+    render_pagination,
+    render_picker_pagination,
 };
-use lariv_core::html_form::{CsrfToken, FormCtx, FormCtxBuilder, HtmlForm};
+use lariv_core::html_form::{CsrfToken, FormCtx, FormCtxBuilder, HtmlForm, fk_value};
 use lariv_core::http::{ProvideRequestCaps, RouteQueryBuilder};
 use lariv_core::list_filters::{FilterField, FilterRowError};
-use lariv_core::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
 };
@@ -178,50 +226,6 @@ fn form_response_create_url(form_id: i64) -> String {
         .query("FormId", form_id)
         .build()
 }
-
-fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
-    let hx_target = key.selector();
-    let owned = pagination_pages(path_and_query, number, num_pages, true);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
-fn render_picker_pagination(
-    key: SwapKey,
-    path_and_query: &str,
-    number: u32,
-    num_pages: u32,
-) -> Markup {
-    let hx_target = key.selector();
-    let owned = pagination_pages(path_and_query, number, num_pages, false);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination_picker(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
 #[derive(Clone)]
 pub struct FormRow {
     pub id: i64,
@@ -699,7 +703,7 @@ impl RenderTemplate for FormEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = FormDeleteGetRouteTag::new(self.id).url();
         let created_by_id_s = fk_value(self.created_by_id);
-        let access_choices = access_status_choice_pairs();
+        let access_choices = SurveyForm::access_status_choices();
         let ctx = survey_form_ctx(
             &self.title,
             &self.description,
@@ -769,7 +773,7 @@ impl RenderTemplate for FormCreateModalPage {
             self.form_name.as_str()
         };
         let created_by_id_s = fk_value(self.created_by_id);
-        let access_choices = access_status_choice_pairs();
+        let access_choices = SurveyForm::access_status_choices();
         let ctx = survey_form_ctx(
             &self.title,
             &self.description,
@@ -1375,14 +1379,6 @@ fn response_form_ctx<T: ResponseModalFields>(page: &T) -> FormCtx<'_> {
     ctx
 }
 
-fn fk_value(id: i64) -> String {
-    if id <= 0 {
-        String::new()
-    } else {
-        id.to_string()
-    }
-}
-
 fn survey_form_ctx<'a>(
     title: &'a str,
     description: &'a str,
@@ -1393,7 +1389,7 @@ fn survey_form_ctx<'a>(
     questions_json: &'a str,
     created_by_id: &'a str,
     author_display: &'a str,
-    access_choices: &'a [(String, String)],
+    access_choices: &'a [(&'a str, &'a str)],
 ) -> FormCtxBuilder<'a, SurveyForm> {
     FormCtx::form::<SurveyForm>(CsrfToken::current())
         .value(SurveyFormField::Title, title)
@@ -1408,12 +1404,6 @@ fn survey_form_ctx<'a>(
         .choices(SurveyFormField::AccessStatus, access_choices)
 }
 
-fn access_status_choice_pairs() -> Vec<(String, String)> {
-    SurveyForm::access_status_choices()
-        .iter()
-        .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
-        .collect()
-}
 
 #[derive(Generic)]
 pub struct ConfirmDeletePage {

@@ -15,8 +15,8 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use lariv_core::components::{FieldText, SharedChromeFolder, field_text, label};
 use lariv_core::http::Cap;
 use lariv_core::web::Htmx;
+use lariv_formula::decimal::dec_sub;
 use lariv_plugin_finance_accounts::scope::{CurrencyFormat, load_default_currency_format};
-use lariv_plugin_finance_common::decimal::dec_sub;
 use lariv_plugin_finance_customers::handlers::{customer_page_name, respond_customer_page};
 use lariv_plugin_finance_customers::journal::{
     CustomerJournalRegistrar, CustomerJournalRegistry, CustomerJournalRender,
@@ -28,6 +28,7 @@ use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::components::fiscal_year_environment_selector;
 use crate::handlers::hub::{CustomerHubTable, HubQuery, customer_hub_table};
+use crate::hub_table_addon::InvoiceHubTableRegistry;
 use crate::keys::{
     CUSTOMER_CANCELLED_INVOICES_TABLE, CUSTOMER_DRAFT_INVOICES_TABLE, CUSTOMER_INVOICES_TABLE,
     CUSTOMER_QUOTATIONS_TABLE,
@@ -292,6 +293,9 @@ async fn table(ctx: &CustomerJournalRender, tab: &str, heading: &str, query: &st
     } else {
         format!("{filter_url}?{query}")
     };
+    // Journal overview has no Cap extract for hub-table addons; dedicated tab
+    // routes pass the mounted registry below.
+    let empty = InvoiceHubTableRegistry::default();
     customer_hub_table(
         &ctx.db,
         CustomerHubTable {
@@ -305,6 +309,7 @@ async fn table(ctx: &CustomerJournalRender, tab: &str, heading: &str, query: &st
             cookie_header: ctx.cookie_header.as_deref(),
             timezone: &ctx.timezone,
             embed_selection: query.is_empty(),
+            hub_table: &empty,
         },
         &HubQuery::default(),
     )
@@ -335,6 +340,7 @@ fn section_key(tab: &str) -> &'static str {
 
 async fn respond_table(
     state: &InvoicesState,
+    hub_table: &InvoiceHubTableRegistry,
     chrome: &SharedChromeFolder,
     ctx: &lariv_plugin_users::state::AuthContext,
     htmx: &Htmx,
@@ -379,6 +385,7 @@ async fn respond_table(
             cookie_header: cookie_header(headers).as_deref(),
             timezone: &ctx.timezone,
             embed_selection: !partial,
+            hub_table,
         },
         q,
     )
@@ -410,6 +417,7 @@ async fn respond_table(
 
 pub async fn quotations(
     Cap(state): Cap<InvoicesState>,
+    Cap(hub_table): Cap<InvoiceHubTableRegistry>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -420,6 +428,7 @@ pub async fn quotations(
 ) -> Response {
     respond_table(
         &state,
+        &hub_table,
         &chrome,
         &ctx,
         &htmx,
@@ -435,6 +444,7 @@ pub async fn quotations(
 
 pub async fn draft_invoices(
     Cap(state): Cap<InvoicesState>,
+    Cap(hub_table): Cap<InvoiceHubTableRegistry>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -445,6 +455,7 @@ pub async fn draft_invoices(
 ) -> Response {
     respond_table(
         &state,
+        &hub_table,
         &chrome,
         &ctx,
         &htmx,
@@ -460,6 +471,7 @@ pub async fn draft_invoices(
 
 pub async fn invoices(
     Cap(state): Cap<InvoicesState>,
+    Cap(hub_table): Cap<InvoiceHubTableRegistry>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -469,13 +481,14 @@ pub async fn invoices(
     Query(q): Query<HubQuery>,
 ) -> Response {
     respond_table(
-        &state, &chrome, &ctx, &htmx, &headers, &uri, id, "posted", "Invoices", &q,
+        &state, &hub_table, &chrome, &ctx, &htmx, &headers, &uri, id, "posted", "Invoices", &q,
     )
     .await
 }
 
 pub async fn cancelled(
     Cap(state): Cap<InvoicesState>,
+    Cap(hub_table): Cap<InvoiceHubTableRegistry>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -486,6 +499,7 @@ pub async fn cancelled(
 ) -> Response {
     respond_table(
         &state,
+        &hub_table,
         &chrome,
         &ctx,
         &htmx,

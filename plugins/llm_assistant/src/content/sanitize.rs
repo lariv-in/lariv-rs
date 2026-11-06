@@ -4,8 +4,8 @@
 use std::borrow::Cow;
 
 #[cfg(test)]
-use lariv_core::genai::part_is_empty;
-use lariv_core::genai::{Content, Part};
+use crate::genai::part_is_empty;
+use crate::genai::{Content, Part};
 use serde_json::Value;
 
 /// Zero-width space used when a part would otherwise fail Chat validateContent.
@@ -99,7 +99,7 @@ pub fn elide_attachment_parts_for_api(contents: &mut [Content]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lariv_core::genai::{Blob, FileData, Part, Role};
+    use crate::genai::{Blob, FileData, Part, Role};
 
     #[test]
     fn empty_part_is_empty() {

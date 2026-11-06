@@ -7,7 +7,7 @@ use sea_orm::{
     EntityTrait, QueryFilter, QueryOrder, TransactionTrait,
 };
 
-use lariv_plugin_finance_common::decimal::{self, parse_decimal};
+use lariv_formula::decimal::{self, parse_decimal};
 
 use crate::entities::{
     quotation_invoice, quotation_invoice_line, quotation_payment_term, quotation_payment_term_line,

@@ -10,8 +10,8 @@ use sea_orm::{
     sea_query::{Expr, Query as SeaQuery, SelectStatement},
 };
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
-use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
+use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, sort_desc};
+use lariv_core::html_form::{HtmlFormBody, UrlencodedFields, fk_value};
 use lariv_core::http::Cap;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
@@ -89,20 +89,6 @@ fn hub_query_from_uri(uri: &Uri) -> OvertimeListQuery {
         .ok()
         .and_then(|fields| fields.deserialize().ok())
         .unwrap_or_default()
-}
-
-fn sort_desc(sort: &str) -> bool {
-    sort.split_whitespace()
-        .last()
-        .is_some_and(|d| d.eq_ignore_ascii_case("DESC"))
-}
-
-fn fk_value(id: i64) -> String {
-    if id <= 0 {
-        String::new()
-    } else {
-        id.to_string()
-    }
 }
 
 fn approved_id_subquery() -> SelectStatement {

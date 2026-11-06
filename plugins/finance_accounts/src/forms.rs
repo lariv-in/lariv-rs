@@ -4,6 +4,9 @@ use lariv_core::html_form::{
     widgets::{Checkbox, Number, Select, Text, Textarea},
 };
 use lariv_formula::variable_schema_input::VariableSchemaList;
+use lariv_formula::variable_values_editor::{
+    empty_variable_values_fields, input_variable_values_fields,
+};
 use maud::{Markup, PreEscaped, html};
 
 use crate::journal_lines_editor::input_journal_lines;
@@ -13,7 +16,6 @@ use crate::routes::{
     AccountSelectRouteTag, CurrencySelectRouteTag, CustomSourceDocFillJournalLinesRouteTag,
     CustomSourceDocTemplateSelectRouteTag, JournalSelectRouteTag, SourceDocSelectRouteTag,
 };
-use crate::variable_values_editor::{empty_variable_values_fields, input_variable_values_fields};
 use lariv_plugin_filesystem::routes::VNodeSelectRouteTag;
 
 /// Account and formula lines stored as JSON.

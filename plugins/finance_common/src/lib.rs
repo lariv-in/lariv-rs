@@ -1,11 +1,7 @@
-//! Shared helpers for finance plugins (decimal formatting, Typst PDF, schema utilities).
+//! Shared helpers for finance plugins.
 
-pub mod decimal;
 pub mod environment;
 pub mod fiscal_year;
-pub mod schema;
-#[cfg(feature = "typst")]
-pub mod typst;
 
 use lariv_core::components::document_title;
 

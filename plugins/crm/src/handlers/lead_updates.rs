@@ -23,16 +23,14 @@ use crate::{
     handlers::ModalNameQuery,
     keys::{LEAD_UPDATE_DELETE_MODAL, LEAD_UPDATE_EDIT_MODAL, LEAD_UPDATE_SAVED_EVENT},
     routes::{LeadDefaultRouteTag, LeadDetailRouteTag},
-    scope::{
-        find_lead_scoped, find_lead_update_scoped, lead_display_name, user_display_label,
-        user_exists,
-    },
+    scope::{find_lead_scoped, find_lead_update_scoped, lead_display_name},
     state::CrmState,
     templates::{
         ConfirmDeletePage, LeadUpdateDetailPage, LeadUpdateEditModalPage, LeadUpdateItem,
         LeadUpdatesPanel,
     },
 };
+use lariv_plugin_users::lookup::{user_display_label, user_exists};
 
 use axum::extract::Query;
 

@@ -2,6 +2,7 @@
 
 use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, Select};
 
+use lariv_core::components::{sort_desc, sort_key};
 use lariv_plugin_hr::logic::person::person_display_name;
 use lariv_plugin_hr::scope::scope_by_user;
 use lariv_plugin_users::state::AuthContext;
@@ -33,11 +34,8 @@ pub fn apply_applicant_sort(
     sort: Option<&str>,
 ) -> Select<ApplicantEntity> {
     let sort = sort.unwrap_or("").trim();
-    let desc = sort
-        .split_whitespace()
-        .last()
-        .is_some_and(|d| d.eq_ignore_ascii_case("DESC"));
-    let key = sort.split_whitespace().next().unwrap_or("");
+    let desc = sort_desc(sort);
+    let key = sort_key(sort);
     let column = if key.eq_ignore_ascii_case("Name") {
         applicant::Column::Name
     } else if key.eq_ignore_ascii_case("Mobile") {

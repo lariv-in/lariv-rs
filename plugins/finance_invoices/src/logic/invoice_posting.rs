@@ -11,6 +11,7 @@ use sea_orm::{
     Statement, TransactionTrait,
 };
 
+use lariv_formula::decimal;
 use lariv_plugin_finance_accounts::logic::custom_source_doc::{
     SubmittedJournalLines, doc_line_indexes, index_of_item, journal_specs_editor_json,
     stored_journal_line_specs,
@@ -19,7 +20,6 @@ use lariv_plugin_finance_accounts::logic::journal::{
     JournalLineSpec, create_source_doc, insert_journal_entry, update_source_doc_id,
 };
 use lariv_plugin_finance_accounts::scope::load_journal_entry_items;
-use lariv_plugin_finance_common::decimal;
 use lariv_plugin_finance_creditnotes::logic::{CreateCreditNoteInput, create_credit_note};
 use lariv_plugin_finance_products::journal_template::{
     self, ParsedTemplateLine, evaluate_template_lines,

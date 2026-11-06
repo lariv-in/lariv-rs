@@ -37,6 +37,7 @@ pub mod apps;
 mod archive;
 pub mod chat_attachments;
 pub mod compaction;
+pub mod components;
 pub mod config;
 pub mod content;
 pub mod context_usage;

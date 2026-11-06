@@ -2,23 +2,22 @@ use crate::create_modals::TAX_CREATE;
 use frunk::Generic;
 use maud::{Markup, html};
 
+use lariv_core::components::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::components::table::table_grid_content;
 use lariv_core::components::{
     ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay, DeleteConfirmation,
-    FieldText, FieldTitle, FilterClauseView, FormOpts, ListFilterBuilder, ObjectList,
-    PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
-    TableColumnHeader, TableListContent, TablePagination, TableRow, breadcrumbs, button_modal_form,
-    button_submit, column_sort_url, container_column, container_row, data_table,
-    delete_confirmation, detail, field_text, field_title, filter_error_banner, form,
-    form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector, form_hx_post_url,
-    list_filter_builder, modal, modal_keyed, pagination_pages, row_attr_navigate_route,
-    row_attr_select_multi, sort_indicator, table_button_columns, table_button_filter,
-    table_create_button, table_list_content, table_pagination,
+    FieldText, FieldTitle, FilterClauseView, FormOpts, ListFilterBuilder, ObjectList, ShellChrome,
+    SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TableListContent,
+    TableRow, breadcrumbs, button_modal_form, button_submit, column_sort_url, container_column,
+    container_row, data_table, delete_confirmation, detail, field_text, field_title,
+    filter_error_banner, form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_selector,
+    form_hx_post_url, list_filter_builder, modal, modal_keyed, render_pagination,
+    render_picker_pagination, row_attr_navigate_route, row_attr_select_multi, sort_indicator,
+    table_button_columns, table_button_filter, table_create_button, table_list_content,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
 use lariv_core::list_filters::{FilterField, FilterRowError};
-use lariv_core::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
 };
@@ -29,7 +28,7 @@ use lariv_plugin_finance_accounts::accounting_detail_menu::{
 };
 use lariv_plugin_finance_accounts::templates::{
     app_scaffold, app_scaffold_with_sidebar, layout_main_with_crumbs,
-    layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs, render_picker_pagination,
+    layout_with_entity_sidebar_crumbs, layout_with_sidebar_crumbs,
 };
 
 use super::forms::{TaxForm, TaxFormField, tax_type_choices};
@@ -188,25 +187,6 @@ fn tax_list_filter(page: &TaxListPage) -> Markup {
         extra: html! {},
     })
 }
-
-fn render_pagination(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
-    let owned = pagination_pages(path_and_query, number, num_pages, true);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination(TablePagination {
-        pages: &pages,
-        hx_target: &TAX_TABLE.selector(),
-    })
-}
-
 #[derive(Clone)]
 pub struct TaxRow {
     pub id: i64,
@@ -297,6 +277,7 @@ impl TaxListPage {
             };
         }
         let pagination = render_pagination(
+            TAX_TABLE,
             &self.path_and_query,
             self.taxes.number,
             self.taxes.num_pages,
@@ -624,7 +605,7 @@ impl RenderPickerSelect for TaxMultiSelectPage {
             };
         }
         let pagination = render_picker_pagination(
-            TAX_MULTI_SELECT_MODAL,
+            TAX_MULTI_SELECT_TABLE,
             &self.path_and_query,
             self.taxes.number,
             self.taxes.num_pages,

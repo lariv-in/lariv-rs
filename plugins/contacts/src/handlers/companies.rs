@@ -8,17 +8,15 @@ use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::sea_query::Condition;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryFilter};
 
+use lariv_core::components::picker::respond_picker_select;
 use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx};
-use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
+use lariv_core::html_form::{HtmlFormBody, opt_string};
 use lariv_core::http::Cap;
-use lariv_core::list_filters::{
-    CmpOp, FilterClause, FilterField, JoinOp, apply_filters, parse_list_filters, text_column,
-};
-use lariv_core::picker::respond_picker_select;
+use lariv_core::list_filters::{FilterField, apply_filters, clauses_from_query, text_column};
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-    respond_create_modal_done_fk, respond_edit_modal_done,
+    path_and_query, respond_create_modal_done_fk, respond_edit_modal_done,
 };
 use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
@@ -57,44 +55,12 @@ pub struct CompanySelectQuery {
     pub target_input: Option<String>,
 }
 
-fn path_and_query(uri: &Uri) -> String {
-    uri.path_and_query()
-        .map(|pq| pq.as_str().to_string())
-        .unwrap_or_else(|| uri.path().to_string())
-}
-
-fn opt_string(s: String) -> Option<String> {
-    if s.trim().is_empty() { None } else { Some(s) }
-}
-
 fn companies_list_url() -> String {
     CompanyDefaultRouteTag.url()
 }
 
 fn company_fields() -> Vec<FilterField> {
     vec![text_column("name", "Name", company::Column::Name)]
-}
-
-fn clauses_from_query(query: &str, typeahead: bool) -> Vec<FilterClause> {
-    let mut clauses = parse_list_filters(query);
-    if !clauses.is_empty() || !typeahead {
-        return clauses;
-    }
-    let Some(name) = UrlencodedFields::parse(query.as_bytes())
-        .ok()
-        .and_then(|fields| fields.get_first("Name").map(str::to_string))
-        .filter(|name| !name.trim().is_empty())
-    else {
-        return clauses;
-    };
-    clauses.push(FilterClause {
-        index: 0,
-        join: JoinOp::And,
-        field: "name".into(),
-        op: CmpOp::Eq,
-        values: vec![name.trim().to_string()],
-    });
-    clauses
 }
 
 async fn query_companies(
@@ -145,7 +111,7 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<CompanyListQuery>,
 ) -> maud::Markup {
-    let clauses = clauses_from_query(uri.query().unwrap_or(""), false);
+    let clauses = clauses_from_query(uri.query().unwrap_or(""), None);
     let fields = company_fields();
     let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
     let companies =
@@ -421,7 +387,7 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<CompanySelectQuery>,
 ) -> maud::Markup {
-    let clauses = clauses_from_query(uri.query().unwrap_or(""), true);
+    let clauses = clauses_from_query(uri.query().unwrap_or(""), Some("name"));
     let fields = company_fields();
     let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
     let companies = load_company_rows(

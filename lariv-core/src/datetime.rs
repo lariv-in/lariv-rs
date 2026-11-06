@@ -47,6 +47,11 @@ pub fn format_date(d: NaiveDate) -> String {
     d.format(DATE_FMT).to_string()
 }
 
+/// Format an optional calendar date; empty string when `None`.
+pub fn format_optional_date(d: Option<NaiveDate>) -> String {
+    d.map(format_date).unwrap_or_default()
+}
+
 /// Format a clock time for a `type="time"` input (`HH:MM:SS`).
 pub fn format_time(t: NaiveTime) -> String {
     t.format("%H:%M:%S").to_string()

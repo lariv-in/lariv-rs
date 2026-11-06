@@ -10,7 +10,7 @@ use sea_orm::{
     DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Statement, TransactionTrait,
 };
 
-use lariv_plugin_finance_common::decimal;
+use lariv_formula::decimal;
 
 use crate::{
     account_validation::validate_leaf_account_balance_type,

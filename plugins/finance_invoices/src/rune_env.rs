@@ -74,13 +74,15 @@ fn search_invoices(
     ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
     args: &[rune::Value],
 ) -> Result<rune::Value, String> {
+    use std::collections::HashMap;
+
+    use chrono::{DateTime, Utc};
     use serde::Deserialize;
-    use serde_json::json;
 
     use crate::entities::draft_invoice::{self, Entity as DraftInvoiceEntity};
     use crate::entities::posted_invoice::{self, Entity as PostedInvoiceEntity};
     use lariv_core::db::trigram;
-    use lariv_core::rune_env::{block_on_async, json_to_rune, rune_to_json};
+    use lariv_core::rune_env::{block_on_async, rune_to_json};
 
     #[derive(Debug, Deserialize, Default)]
     struct SearchArgs {
@@ -88,6 +90,32 @@ fn search_invoices(
         query: String,
         #[serde(default)]
         limit: u64,
+    }
+
+    fn opt_string(value: Option<String>) -> Result<rune::Value, String> {
+        match value {
+            Some(s) => rune::to_value(s).map_err(|e| e.to_string()),
+            None => Ok(rune::Value::from(())),
+        }
+    }
+
+    fn hit(
+        id: i64,
+        number: rune::Value,
+        reference: Option<String>,
+        customer_id: i64,
+        datetime: DateTime<Utc>,
+    ) -> Result<rune::Value, String> {
+        let mut row: HashMap<String, rune::Value> = HashMap::new();
+        row.insert("id".into(), rune::Value::from(id));
+        row.insert("number".into(), number);
+        row.insert("reference".into(), opt_string(reference)?);
+        row.insert("customer_id".into(), rune::Value::from(customer_id));
+        row.insert(
+            "datetime".into(),
+            rune::to_value(datetime.to_rfc3339()).map_err(|e| e.to_string())?,
+        );
+        rune::to_value(row).map_err(|e| e.to_string())
     }
 
     let value = args
@@ -126,26 +154,42 @@ fn search_invoices(
         .map_err(|e| e.to_string())?;
         Ok::<_, String>((drafts, posted))
     })?;
-    json_to_rune(json!({
-        "drafts": drafts.into_iter().map(|d| {
-            json!({
-                "id": d.id,
-                "number": d.number,
-                "reference": d.reference,
-                "customer_id": d.customer_id,
-                "datetime": d.datetime,
-            })
-        }).collect::<Vec<_>>(),
-        "posted": posted.into_iter().map(|p| {
-            json!({
-                "id": p.id,
-                "number": p.number,
-                "reference": p.reference,
-                "customer_id": p.customer_id,
-                "datetime": p.datetime,
-            })
-        }).collect::<Vec<_>>(),
-    }))
+
+    let drafts = drafts
+        .into_iter()
+        .map(|d| {
+            hit(
+                d.id,
+                opt_string(d.number)?,
+                d.reference,
+                d.customer_id,
+                d.datetime,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let posted = posted
+        .into_iter()
+        .map(|p| {
+            hit(
+                p.id,
+                rune::to_value(p.number).map_err(|e| e.to_string())?,
+                p.reference,
+                p.customer_id,
+                p.datetime,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut out: HashMap<String, rune::Value> = HashMap::new();
+    out.insert(
+        "drafts".into(),
+        rune::to_value(drafts).map_err(|e| e.to_string())?,
+    );
+    out.insert(
+        "posted".into(),
+        rune::to_value(posted).map_err(|e| e.to_string())?,
+    );
+    rune::to_value(out).map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "cap-llm")]

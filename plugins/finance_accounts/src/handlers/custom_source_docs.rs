@@ -18,6 +18,9 @@ use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     respond_create_modal_done,
 };
+use lariv_formula::variable_values_editor::{
+    empty_variable_values_fields, input_variable_values_fields, values_json_from_form_map,
+};
 use lariv_plugin_users::middleware::RequireAuth;
 use lariv_plugin_users::role_authorization::scope_allowed;
 
@@ -55,9 +58,6 @@ use crate::{
         CustomSourceDocDeleteItem, CustomSourceDocDeleteModalPage, CustomSourceDocDetailPage,
         CustomSourceDocFormPage, CustomSourceDocIndexCreateModalPage, CustomSourceDocIndexPage,
         CustomSourceDocIndexRow, CustomSourceDocLineRow,
-    },
-    variable_values_editor::{
-        empty_variable_values_fields, input_variable_values_fields, values_json_from_form_map,
     },
 };
 
@@ -587,7 +587,7 @@ async fn load_line_rows(
 }
 
 fn decimal_text(amount: rust_decimal::Decimal) -> String {
-    lariv_plugin_finance_common::decimal::decimal_display(amount)
+    lariv_formula::decimal::decimal_display(amount)
 }
 
 async fn user_name(db: &sea_orm::DatabaseConnection, user_id: i64) -> String {

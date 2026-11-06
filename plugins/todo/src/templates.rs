@@ -6,13 +6,43 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-    ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldText, FormOpts, LayoutMain,
-    LayoutSidebar, ObjectList, PaginationPage, ShellChrome, ShellScaffold, SidebarMenu,
-    SidebarNavLink, TableColumnHeader, TablePagination, TableRow, breadcrumbs, button_modal_form,
-    button_submit, column_sort_url, data_table_list, delete_confirmation, field_text, form,
-    form_hx_post_selector, form_hx_post_url, icon, layout_main, layout_sidebar, modal, modal_keyed,
-    pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu,
-    sidebar_nav_items_pane, sort_indicator, table_create_button, table_pagination,
+    ButtonModalForm,
+    ButtonSubmit,
+    Crumb,
+    DeleteConfirmation,
+    FieldText,
+    FormOpts,
+    LayoutMain,
+    LayoutSidebar,
+    ObjectList,
+    ShellChrome,
+    ShellScaffold,
+    SidebarMenu,
+    SidebarNavLink,
+    TableColumnHeader,
+    TableRow,
+    breadcrumbs,
+    button_modal_form,
+    button_submit,
+    column_sort_url,
+    data_table_list,
+    delete_confirmation,
+    field_text,
+    form,
+    form_hx_post_selector,
+    form_hx_post_url,
+    icon,
+    layout_main,
+    layout_sidebar,
+    modal,
+    modal_keyed,
+    row_attr_navigate_route,
+    shell_scaffold,
+    sidebar_menu,
+    sidebar_nav_items_pane,
+    sort_indicator,
+    table_create_button,
+    render_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
@@ -115,25 +145,6 @@ fn todo_menu(current_path: &str) -> Markup {
         children: sidebar_nav_items_pane(&links, current_path),
     })
 }
-
-fn render_pagination(path_and_query: &str, number: u32, num_pages: u32) -> Markup {
-    let owned = pagination_pages(path_and_query, number, num_pages, true);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination(TablePagination {
-        pages: &pages,
-        hx_target: &TODO_PAGE_TABLE.selector(),
-    })
-}
-
 pub struct TodoPageRow {
     pub id: i64,
     pub title: String,
@@ -176,6 +187,7 @@ impl TodoPageListPage {
             "btn-primary btn-sm btn-square",
         );
         let pagination = render_pagination(
+            TODO_PAGE_TABLE,
             &self.path_and_query,
             self.pages.number,
             self.pages.num_pages,

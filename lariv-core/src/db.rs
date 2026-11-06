@@ -23,6 +23,8 @@ pub mod location;
 pub mod migration_sql;
 pub mod null_text;
 pub mod phone;
+#[cfg(feature = "plugin-users")]
+pub mod phonenumber;
 pub mod trigram;
 
 /// Capability tag for the shared SeaORM connection.

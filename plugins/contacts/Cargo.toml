@@ -11,7 +11,7 @@ description = "Lariv contacts plugin"
 default = []
 
 [dependencies]
-lariv_core = { package = "lariv-core", path = "../../lariv-core" }
+lariv_core = { package = "lariv-core", path = "../../lariv-core", features = ["plugin-users"] }
 lariv-rs-macros = { workspace = true }
 lariv-plugin-users = { path = "../users" }
 axum = { workspace = true }
@@ -20,7 +20,6 @@ frunk = { workspace = true }
 frunk_core = { workspace = true }
 http = { workspace = true }
 maud = { workspace = true }
-phonenumber = { workspace = true }
 sea-orm = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }

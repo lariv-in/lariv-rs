@@ -5,7 +5,7 @@ use axum::{
 };
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
+use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, sort_desc};
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
 use lariv_core::web::{
@@ -62,12 +62,6 @@ fn journal_query_from_uri(uri: &Uri) -> LeaveJournalQuery {
         .unwrap_or_default()
 }
 
-fn journal_sort_desc(sort: &str) -> bool {
-    sort.split_whitespace()
-        .last()
-        .is_some_and(|direction| direction.eq_ignore_ascii_case("DESC"))
-}
-
 pub async fn leave_journal(
     Cap(state): Cap<LeavesState>,
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -86,7 +80,7 @@ pub async fn leave_journal(
         .sort
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "Datetime DESC".to_string());
-    let desc = journal_sort_desc(&sort);
+    let desc = sort_desc(&sort);
     let mut query =
         LeaveJournalEntity::find().filter(leave_journal::Column::UserId.eq(employee.user_id));
     query = match sort.split_whitespace().next().unwrap_or("") {

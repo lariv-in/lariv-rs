@@ -6,10 +6,10 @@ use axum::{
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
+use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, sort_desc, sort_key};
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
-use lariv_core::picker::respond_picker_select;
+use lariv_core::components::picker::respond_picker_select;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     modal_edit_post_url, respond_create_modal_done, respond_edit_modal_done,
@@ -72,13 +72,9 @@ pub async fn list(
     let mut query = scope_allowed::<crate::routes::JobFormView, _>(JobFormEntity::find())
         .filter(prepared.condition.clone());
     let sort = q.sort.as_deref().unwrap_or("");
-    query = match sort.split_whitespace().next().unwrap_or("") {
+    query = match sort_key(sort) {
         s if s.eq_ignore_ascii_case("Title") => {
-            if sort
-                .split_whitespace()
-                .last()
-                .is_some_and(|d| d.eq_ignore_ascii_case("DESC"))
-            {
+            if sort_desc(sort) {
                 query.order_by_desc(job_form::Column::JobTitle)
             } else {
                 query.order_by_asc(job_form::Column::JobTitle)

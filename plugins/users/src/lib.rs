@@ -48,6 +48,7 @@ pub mod handlers;
 pub mod jwt;
 pub mod keys;
 pub mod layers;
+pub mod lookup;
 pub mod middleware;
 pub mod migrations;
 pub mod password;

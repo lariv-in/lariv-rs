@@ -11,17 +11,17 @@
 //! LARIV_LATENCY_PDF=/path/to/file.pdf cargo test --test genai_files_latency -- --ignored --nocapture
 //! ```
 
-#![cfg(feature = "cap-llm")]
+#![cfg(feature = "plugin-llm-assistant")]
 
 use std::path::PathBuf;
 use std::time::Instant;
 
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
-use lariv_rs::genai::{
-    ASSISTANT_SYSTEM_PROMPT, Blob, Content, FileData, FunctionDeclaration, GenaiClient, Part, Role,
-};
 use lariv_rs::plugins::llm_assistant::config::{
     DEFAULT_CHAT_MAX_OUTPUT_TOKENS, DEFAULT_CHAT_MODEL,
+};
+use lariv_rs::plugins::llm_assistant::genai::{
+    ASSISTANT_SYSTEM_PROMPT, Blob, Content, FileData, FunctionDeclaration, GenaiClient, Part, Role,
 };
 
 /// Matches the user-reported attachment size (~265 KiB).
@@ -105,7 +105,7 @@ fn fake_tool_round_pair(round: usize) -> (Content, Content) {
     let model = Content {
         role: Role::Model,
         parts: vec![Part {
-            function_call: Some(lariv_rs::genai::FunctionCall {
+            function_call: Some(lariv_rs::plugins::llm_assistant::genai::FunctionCall {
                 id: format!("call-{round}"),
                 name: "list_skills".into(),
                 args: Some(serde_json::json!({})),
@@ -117,7 +117,7 @@ fn fake_tool_round_pair(round: usize) -> (Content, Content) {
     let tool = Content {
         role: Role::User,
         parts: vec![Part {
-            function_response: Some(lariv_rs::genai::FunctionResponse {
+            function_response: Some(lariv_rs::plugins::llm_assistant::genai::FunctionResponse {
                 function_response_id: format!("call-{round}"),
                 name: "list_skills".into(),
                 response: Some(serde_json::json!({ "skills": [] })),

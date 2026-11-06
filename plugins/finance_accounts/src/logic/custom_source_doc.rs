@@ -9,7 +9,7 @@ use sea_orm::{
 use serde::Deserialize;
 use serde_json::Value;
 
-use lariv_plugin_finance_common::decimal::{self, decimal_display};
+use lariv_formula::decimal::{self, decimal_display};
 
 use crate::{
     entities::{

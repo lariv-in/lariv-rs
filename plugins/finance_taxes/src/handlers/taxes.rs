@@ -18,10 +18,10 @@ use lariv_core::list_filters::{
     text_column,
 };
 
+use lariv_core::components::picker::respond_picker_select;
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
@@ -114,7 +114,7 @@ fn path_and_query(uri: &Uri) -> String {
 }
 
 fn parse_percentage(s: &str) -> Option<Decimal> {
-    lariv_plugin_finance_common::decimal::parse_decimal(s)
+    lariv_formula::decimal::parse_decimal(s)
 }
 
 async fn journal_display(db: &sea_orm::DatabaseConnection, raw: &str) -> String {

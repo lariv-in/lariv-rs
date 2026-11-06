@@ -10,7 +10,7 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_plugin_finance_common::decimal::{self, parse_decimal};
+use lariv_formula::decimal::{self, parse_decimal};
 use lariv_plugin_finance_taxes::entities::tax::{self, Entity as TaxEntity, Model as TaxModel};
 
 use crate::entities::{

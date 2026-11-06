@@ -9,18 +9,67 @@ use crate::forms::{
 };
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-    ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay, DeleteConfirmation,
-    FieldText, FieldTitle, FilterClauseView, FormOpts, LayoutMain, LayoutSidebar,
-    ListFilterBuilder, ManyToManyItem, Modal, ObjectList, PaginationPage, ShellChrome,
-    ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability, SlotRegistrar,
-    SwapKey, TableButtonFilter, TableColumnHeader, TableListContent, TablePagination, TableRow,
-    breadcrumbs, button_modal_form, button_submit, column_sort_url, container_column,
-    container_row, data_table, delete_confirmation, detail, field_text, field_title,
-    filter_error_banner, form, form_hx_get_route, form_hx_post_main, form_hx_post_route,
-    form_hx_post_url, label, layout_main, layout_sidebar, list_filter_builder, modal, modal_keyed,
-    pagination_pages, row_attr_navigate_route, shell_scaffold, sidebar_menu,
-    sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_columns,
-    table_button_filter, table_list_content, table_pagination,
+    ButtonModalForm,
+    ButtonSubmit,
+    Crumb,
+    DataTable,
+    DataTableDisplay,
+    DeleteConfirmation,
+    FieldText,
+    FieldTitle,
+    FilterClauseView,
+    FormOpts,
+    LayoutMain,
+    LayoutSidebar,
+    ListFilterBuilder,
+    ManyToManyItem,
+    Modal,
+    ObjectList,
+    ShellChrome,
+    ShellScaffold,
+    SidebarMenu,
+    SidebarMenuItem,
+    SidebarNavLink,
+    SlotCapability,
+    SlotRegistrar,
+    SwapKey,
+    TableButtonFilter,
+    TableColumnHeader,
+    TableListContent,
+    TableRow,
+    breadcrumbs,
+    button_modal_form,
+    button_submit,
+    column_sort_url,
+    container_column,
+    container_row,
+    data_table,
+    delete_confirmation,
+    detail,
+    field_text,
+    field_title,
+    filter_error_banner,
+    form,
+    form_hx_get_route,
+    form_hx_post_main,
+    form_hx_post_route,
+    form_hx_post_url,
+    label,
+    layout_main,
+    layout_sidebar,
+    list_filter_builder,
+    modal,
+    modal_keyed,
+    row_attr_navigate_route,
+    shell_scaffold,
+    sidebar_menu,
+    sidebar_menu_item_pane,
+    sidebar_nav_items_pane,
+    sort_indicator,
+    table_button_columns,
+    table_button_filter,
+    table_list_content,
+    render_pagination_push,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
@@ -205,32 +254,6 @@ fn route_detail_menu(id: i64, path: &str, active: &str) -> Markup {
         },
     })
 }
-
-fn render_pagination(
-    key: SwapKey,
-    path_and_query: &str,
-    number: u32,
-    num_pages: u32,
-    push_url: bool,
-) -> Markup {
-    let hx_target = key.selector();
-    let owned = pagination_pages(path_and_query, number, num_pages, push_url);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
 #[derive(Clone, Debug)]
 pub struct RouteRow {
     pub id: i64,
@@ -387,12 +410,7 @@ impl RouteListPage {
                 ..Default::default()
             }))
         };
-        let pagination = render_pagination(
-            ROUTES_TABLE,
-            &self.path_and_query,
-            self.routes.number,
-            self.routes.num_pages,
-            true,
+        let pagination = render_pagination_push(ROUTES_TABLE, &self.path_and_query, self.routes.number, self.routes.num_pages, true,
         );
         data_table_filtered(
             ROUTES_TABLE,

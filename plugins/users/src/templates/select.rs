@@ -1,13 +1,26 @@
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    FieldText, FilterClauseView, ListFilterBuilder, ObjectList, PaginationPage, ShellChrome,
-    SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow, button_fk_select,
-    column_sort_url, field_text, form_hx_get_picker_route, list_filter_builder, row_attr_select,
-    sort_indicator, table_button_filter, table_pagination_picker,
+    FieldText,
+    FilterClauseView,
+    ListFilterBuilder,
+    ObjectList,
+    ShellChrome,
+    TableButtonFilter,
+    TableColumnHeader,
+    TableRow,
+    button_fk_select,
+    column_sort_url,
+    field_text,
+    form_hx_get_picker_route,
+    list_filter_builder,
+    row_attr_select,
+    sort_indicator,
+    table_button_filter,
+    render_picker_pagination,
 };
 use lariv_core::list_filters::{FilterField, FilterRowError};
-use lariv_core::picker::{RenderPickerSelect, picker_create_button};
+use lariv_core::components::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::template::RenderTemplate;
 
 use crate::create_modals::USER_CREATE;
@@ -29,31 +42,6 @@ pub struct UserSelectPage {
     pub current_user_name: String,
     pub page_size: u32,
 }
-
-fn render_picker_pagination(
-    key: SwapKey,
-    path_and_query: &str,
-    number: u32,
-    num_pages: u32,
-) -> Markup {
-    let hx_target = key.selector();
-    let owned = lariv_core::components::pagination_pages(path_and_query, number, num_pages, false);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination_picker(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
 impl RenderPickerSelect for UserSelectPage {
     fn render_table(&self) -> Markup {
         let target = if self.target_input.is_empty() {

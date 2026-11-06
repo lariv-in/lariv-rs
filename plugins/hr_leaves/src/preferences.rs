@@ -47,12 +47,6 @@ fn schedule_token(value: &str) -> &'static str {
     }
 }
 
-fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
-    choices
-        .iter()
-        .map(|(key, label)| ((*key).to_string(), (*label).to_string()))
-        .collect()
-}
 
 fn render_inputs(
     timezone: &str,
@@ -61,9 +55,9 @@ fn render_inputs(
     privilege_allocated: &str,
     privilege_consecutive: &str,
 ) -> Markup {
-    let schedule_kinds = choice_pairs(LeaveCalcPreferencesForm::schedule_kind_choices());
-    let months = choice_pairs(LeaveCalcPreferencesForm::month_choices());
-    let days = choice_pairs(LeaveCalcPreferencesForm::day_choices());
+    let schedule_kinds = LeaveCalcPreferencesForm::schedule_kind_choices();
+    let months = LeaveCalcPreferencesForm::month_choices();
+    let days = LeaveCalcPreferencesForm::day_choices();
     let x_data = format!(
         "{{ casualSchedule: '{}', sickSchedule: '{}' }}",
         schedule_token(&casual.schedule_kind),

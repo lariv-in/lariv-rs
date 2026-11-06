@@ -1,13 +1,39 @@
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    Crumb, DataTable, DataTableDisplay, FieldPhone, FieldText, FilterClauseView, ListFilterBuilder,
-    ObjectList, PaginationPage, ShellChrome, SidebarMenu, SidebarNavLink, SwapKey,
-    TableButtonFilter, TableColumnHeader, TableListContent, TablePagination, TableRow, breadcrumbs,
-    column_sort_url, data_table, field_phone, field_text, filter_error_banner, form_hx_get_route,
-    list_filter_builder, row_attr_navigate_route, sidebar_menu, sidebar_nav_items_pane,
-    sort_indicator, table_button_columns, table_button_filter, table_create_button,
-    table_list_content, table_pagination,
+    Crumb,
+    DataTable,
+    DataTableDisplay,
+    FieldPhone,
+    FieldText,
+    FilterClauseView,
+    ListFilterBuilder,
+    ObjectList,
+    ShellChrome,
+    SidebarMenu,
+    SidebarNavLink,
+    SwapKey,
+    TableButtonFilter,
+    TableColumnHeader,
+    TableListContent,
+    TableRow,
+    breadcrumbs,
+    column_sort_url,
+    data_table,
+    field_phone,
+    field_text,
+    filter_error_banner,
+    form_hx_get_route,
+    list_filter_builder,
+    row_attr_navigate_route,
+    sidebar_menu,
+    sidebar_nav_items_pane,
+    sort_indicator,
+    table_button_columns,
+    table_button_filter,
+    table_create_button,
+    table_list_content,
+    render_pagination_push,
 };
 use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::RenderTemplate;
@@ -80,33 +106,6 @@ pub(crate) fn filtered_data_table(
         body_only: false,
     })
 }
-
-fn render_pagination(
-    key: SwapKey,
-    path_and_query: &str,
-    number: u32,
-    num_pages: u32,
-    push_url: bool,
-) -> Markup {
-    let hx_target = key.selector();
-    let owned =
-        lariv_core::components::pagination_pages(path_and_query, number, num_pages, push_url);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
 fn users_list_crumbs() -> Markup {
     breadcrumbs(&[Crumb {
         label: "Users",
@@ -239,12 +238,7 @@ impl UserListPage {
                 "btn-square btn-outline btn-sm",
             ))
         };
-        let pagination = render_pagination(
-            USER_TABLE,
-            &self.path_and_query,
-            self.users.number,
-            self.users.num_pages,
-            true,
+        let pagination = render_pagination_push(USER_TABLE, &self.path_and_query, self.users.number, self.users.num_pages, true,
         );
         filtered_data_table(
             USER_TABLE,

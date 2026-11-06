@@ -10,7 +10,7 @@ use sea_orm::{
 };
 use sha2::{Digest, Sha256};
 
-use lariv_core::genai::GenaiClient;
+use crate::genai::GenaiClient;
 
 use super::entities::gemini_file_cache::{self, Entity as CacheEntity};
 

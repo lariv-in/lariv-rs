@@ -2,17 +2,17 @@
 
 use maud::{Markup, html};
 
+use lariv_core::components::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::components::{
     ButtonSubmit, DataTable, DataTableDisplay, FilterClauseView, FormOpts, ListFilterBuilder,
-    ObjectList, PaginationPage, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader,
-    TableListContent, TablePagination, TableRow, button_submit, column_sort_url, data_table,
-    filter_error_banner, form, form_hx_get_picker_route, form_hx_post_url, list_filter_builder,
-    modal_keyed, pagination_pages, row_attr_select, sort_indicator, table_button_filter,
-    table_list_content, table_pagination_picker,
+    ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TableListContent,
+    TableRow, button_submit, column_sort_url, data_table, filter_error_banner, form,
+    form_hx_get_picker_route, form_hx_post_url, list_filter_builder, modal_keyed,
+    render_picker_pagination, row_attr_select, sort_indicator, table_button_filter,
+    table_list_content,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::list_filters::{FilterField, FilterRowError};
-use lariv_core::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::template::RenderTemplate;
 use lariv_core::web::modal_create_post_query;
 
@@ -226,29 +226,5 @@ fn filtered_data_table(
         column_keys: &column_keys,
         instance_id: "",
         body_only: false,
-    })
-}
-
-fn render_picker_pagination(
-    key: SwapKey,
-    path_and_query: &str,
-    number: u32,
-    num_pages: u32,
-) -> Markup {
-    let hx_target = key.selector();
-    let owned = pagination_pages(path_and_query, number, num_pages, false);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination_picker(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
     })
 }

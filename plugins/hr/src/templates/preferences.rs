@@ -32,12 +32,6 @@ fn schedule_x_data(casual: &str, sick: &str) -> String {
     )
 }
 
-fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
-    choices
-        .iter()
-        .map(|(key, label)| ((*key).to_string(), (*label).to_string()))
-        .collect()
-}
 
 fn id_card_format_field(value: &str) -> Markup {
     html! {
@@ -98,9 +92,9 @@ pub struct LeaveCalcPreferencesPage {
 
 impl LeaveCalcPreferencesPage {
     fn body(&self) -> Markup {
-        let schedule_kinds = choice_pairs(LeaveCalcPreferencesForm::schedule_kind_choices());
-        let months = choice_pairs(LeaveCalcPreferencesForm::month_choices());
-        let days = choice_pairs(LeaveCalcPreferencesForm::day_choices());
+        let schedule_kinds = LeaveCalcPreferencesForm::schedule_kind_choices();
+        let months = LeaveCalcPreferencesForm::month_choices();
+        let days = LeaveCalcPreferencesForm::day_choices();
         form(
             &CsrfToken::current(),
             FormOpts {

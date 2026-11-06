@@ -2,14 +2,44 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldDate, FieldText,
-    FieldTextarea, FilterClauseView, FormOpts, HtmlAttrs, ListFilterBuilder, ObjectList,
-    PaginationPage, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination,
-    TableRow, button_modal_form, button_submit, column_sort_url, container_column,
-    delete_confirmation, detail, detail_header, field_date, field_text, field_textarea, form,
-    form_hx_get_route, form_hx_post_selector, form_hx_post_url, label, list_filter_builder, modal,
-    modal_keyed, pagination_pages, row_attr_navigate, sort_indicator, table_button_filter,
-    table_pagination,
+    ButtonModalForm,
+    ButtonSubmit,
+    DeleteConfirmation,
+    DetailHeader,
+    FieldDate,
+    FieldText,
+    FieldTextarea,
+    FilterClauseView,
+    FormOpts,
+    HtmlAttrs,
+    ListFilterBuilder,
+    ObjectList,
+    ShellChrome,
+    TableButtonFilter,
+    TableColumnHeader,
+    TableRow,
+    button_modal_form,
+    button_submit,
+    column_sort_url,
+    container_column,
+    delete_confirmation,
+    detail,
+    detail_header,
+    field_date,
+    field_text,
+    field_textarea,
+    form,
+    form_hx_get_route,
+    form_hx_post_selector,
+    form_hx_post_url,
+    label,
+    list_filter_builder,
+    modal,
+    modal_keyed,
+    row_attr_navigate,
+    sort_indicator,
+    table_button_filter,
+    render_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::list_filters::{FilterField, FilterRowError};
@@ -39,26 +69,6 @@ pub struct HolidayRow {
     pub date: String,
     pub detail_href: String,
 }
-
-fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
-    let hx_target = key.selector();
-    let owned = pagination_pages(path_and_query, number, num_pages, true);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
 fn holiday_form_inputs(title: &str, description: &str, date: &str) -> Markup {
     HolidayForm::render_inputs(
         &FormCtx::form::<HolidayForm>(CsrfToken::current())

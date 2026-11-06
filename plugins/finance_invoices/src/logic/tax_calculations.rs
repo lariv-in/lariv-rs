@@ -3,7 +3,7 @@
 use rust_decimal::Decimal;
 use std::collections::HashSet;
 
-use lariv_plugin_finance_common::decimal;
+use lariv_formula::decimal;
 use lariv_plugin_finance_taxes::entities::{TaxKind, tax};
 
 #[derive(Clone, Debug, Default)]

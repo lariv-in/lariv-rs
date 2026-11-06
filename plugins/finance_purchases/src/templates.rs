@@ -4,23 +4,23 @@ use maud::{Markup, PreEscaped, html};
 use lariv_plugin_contacts::routes::{CompanyDetailRouteTag, ContactDetailRouteTag};
 use lariv_plugin_finance_accounts::routes::JournalEntryDetailRouteTag;
 
+use lariv_core::components::picker::RenderPickerSelect;
 use lariv_core::components::{
     ButtonDeletePost, ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay,
     DeleteConfirmation, DetailHeader, FieldLink, FieldText, FieldTextarea, FieldTitle,
-    FilterClauseView, FormOpts, ListFilterBuilder, ManyToManyItem, ObjectList, PaginationPage,
-    ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-    TableListContent, TablePagination, TableRow, breadcrumbs, button_delete_post_route,
-    button_modal_form, button_modal_route, button_submit, column_sort_url, container_column,
-    container_row, data_table, data_table_list_refresh, delete_confirmation, detail, detail_header,
-    field_link, field_text, field_textarea, field_title, filter_error_banner, form,
-    form_hx_get_route, form_hx_post_main_url, form_hx_post_selector, form_hx_post_url, label,
-    list_filter_builder, modal, modal_keyed, pagination_pages, row_attr_navigate,
-    row_attr_select_multi, sort_indicator, table_button_bulk_actions, table_button_columns,
-    table_button_filter, table_list_content, table_pagination,
+    FilterClauseView, FormOpts, ListFilterBuilder, ManyToManyItem, ObjectList, ShellChrome,
+    SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TableListContent,
+    TableRow, breadcrumbs, button_delete_post_route, button_modal_form, button_modal_route,
+    button_submit, column_sort_url, container_column, container_row, data_table,
+    data_table_list_refresh, delete_confirmation, detail, detail_header, field_link, field_text,
+    field_textarea, field_title, filter_error_banner, form, form_hx_get_route,
+    form_hx_post_main_url, form_hx_post_selector, form_hx_post_url, label, list_filter_builder,
+    modal, modal_keyed, render_pagination, row_attr_navigate, row_attr_select_multi,
+    sort_indicator, table_button_bulk_actions, table_button_columns, table_button_filter,
+    table_list_content,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm, csrf_hidden_field};
 use lariv_core::http::ProvideRequestCaps;
-use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
 };
@@ -97,26 +97,6 @@ lariv_core::define_register_items! {
     items: [];
     hook: SlotsHook;
 }
-
-fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
-    let hx_target = key.selector();
-    let owned = pagination_pages(path_and_query, number, num_pages, true);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
 fn purchases_list_crumbs() -> Markup {
     breadcrumbs(&[Crumb {
         label: "Purchases",

@@ -1,3 +1,4 @@
+use lariv_core::components::{sort_desc, sort_key};
 use lariv_plugin_users::role_authorization::{current_auth, scope_allowed};
 use lariv_plugin_users::roles::Superuser;
 use sea_orm::{
@@ -5,7 +6,7 @@ use sea_orm::{
     RelationTrait, Select,
 };
 
-use lariv_plugin_users::entities::user::{self, Entity as UserEntity};
+use lariv_plugin_users::entities::user;
 
 use super::entities::{
     periodic_task::{self, Entity as PeriodicTaskEntity},
@@ -64,16 +65,6 @@ pub async fn find_log_scoped(db: &DatabaseConnection, id: i64) -> Option<task_lo
             .await,
         "find by id",
     )
-}
-
-fn sort_key(sort: &str) -> &str {
-    sort.split_whitespace().next().unwrap_or("")
-}
-
-fn sort_desc(sort: &str) -> bool {
-    sort.split_whitespace()
-        .last()
-        .is_some_and(|d| d.eq_ignore_ascii_case("DESC"))
 }
 
 pub fn apply_task_sort(mut query: Select<TaskEntity>, sort: Option<&str>) -> Select<TaskEntity> {
@@ -157,14 +148,6 @@ pub fn apply_status_sort(
     }
 }
 
-pub async fn user_exists(db: &DatabaseConnection, id: i64) -> bool {
-    if id <= 0 {
-        return false;
-    }
-    lariv_core::web::opt_or_log(UserEntity::find_by_id(id).one(db).await, "find user by id")
-        .is_some()
-}
-
 pub async fn task_display_label(db: &DatabaseConnection, id: i64) -> String {
     if id <= 0 {
         return String::new();
@@ -174,14 +157,7 @@ pub async fn task_display_label(db: &DatabaseConnection, id: i64) -> String {
         .unwrap_or_default()
 }
 
-pub async fn user_display_label(db: &DatabaseConnection, id: i64) -> String {
-    if id <= 0 {
-        return String::new();
-    }
-    lariv_core::web::opt_or_log(UserEntity::find_by_id(id).one(db).await, "find user by id")
-        .map(|u| u.name)
-        .unwrap_or_default()
-}
+pub use lariv_plugin_users::lookup::{user_display_label, user_exists};
 
 pub async fn status_exists(db: &DatabaseConnection, id: i64) -> bool {
     if id <= 0 {

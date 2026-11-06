@@ -7,19 +7,13 @@ authors.workspace = true
 repository.workspace = true
 description = "Lariv finance_common plugin"
 
-[features]
-default = []
-typst = ["lariv_core/typst"]
-
 [dependencies]
 lariv_core = { package = "lariv-core", path = "../../lariv-core" }
 lariv-rs-macros = { workspace = true }
 chrono = { workspace = true }
 maud = { workspace = true }
-rust_decimal = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-typst = { workspace = true }
 
 [lints]
 workspace = true

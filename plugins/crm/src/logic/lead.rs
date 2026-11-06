@@ -12,7 +12,7 @@ use crate::entities::{
 };
 use crate::lead_source::LeadSource;
 use crate::logic::lead_timeline::append_lead_timeline;
-use crate::scope::sql_lead_active;
+use crate::scope::lead_active_condition;
 
 pub async fn err_if_lead_sealed<C: ConnectionTrait>(db: &C, lead_id: i64) -> Result<(), String> {
     if lead_id == 0 {
@@ -99,7 +99,7 @@ pub async fn update_lead<C: ConnectionTrait>(
 pub async fn delete_lead<C: ConnectionTrait>(db: &C, lead_id: i64) -> Result<(), String> {
     err_if_lead_sealed(db, lead_id).await?;
     let existing = LeadEntity::find_by_id(lead_id)
-        .filter(sql_lead_active())
+        .filter(lead_active_condition())
         .one(db)
         .await
         .map_err(|e| e.to_string())?

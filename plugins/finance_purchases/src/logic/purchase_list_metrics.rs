@@ -9,7 +9,7 @@ use sea_orm::{
     Statement,
 };
 
-use lariv_plugin_finance_common::decimal;
+use lariv_formula::decimal;
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
 use crate::entities::{draft_purchase, draft_purchase_line, posted_purchase_line};

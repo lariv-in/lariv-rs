@@ -1,6 +1,6 @@
 //! Part kind strings + IsPartType matching (concrete payloads before text catch-all).
 
-use lariv_core::genai::{Part, part_is_empty};
+use crate::genai::{Part, part_is_empty};
 
 pub const KIND_INLINE_DATA: &str = "inlineData";
 pub const KIND_FILE_DATA: &str = "fileData";

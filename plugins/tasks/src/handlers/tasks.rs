@@ -11,8 +11,10 @@ use sea_orm::{
     QuerySelect,
 };
 
+use lariv_core::components::picker::respond_picker_select;
 use lariv_core::components::{
-    FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, table_rows_instance_id,
+    FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, sort_desc, sort_key,
+    table_rows_instance_id,
 };
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
@@ -20,7 +22,6 @@ use lariv_core::list_filters::{
     FilterField, apply_filters, choice_i64_column, foreign_key_column, parse_list_filters,
     text_column, with_search_key,
 };
-use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryI64, QueryPage, QueryPageSize, html_built_page_or_app_layout,
@@ -420,11 +421,8 @@ fn nearest_loaded_parent(
 }
 
 fn sort_ids(ids: &mut [i64], nodes: &std::collections::HashMap<i64, TaskNode>, sort: &str) {
-    let key = sort.split_whitespace().next().unwrap_or("");
-    let desc = sort
-        .split_whitespace()
-        .last()
-        .is_some_and(|dir| dir.eq_ignore_ascii_case("DESC"));
+    let key = sort_key(sort);
+    let desc = sort_desc(sort);
     ids.sort_by(|a, b| {
         let (Some(left), Some(right)) = (nodes.get(a), nodes.get(b)) else {
             return a.cmp(b);

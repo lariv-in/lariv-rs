@@ -3,8 +3,8 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
+use crate::genai::FunctionDeclaration;
 use crate::llm_tools::{LlmTool, ToolCtx};
-use lariv_core::genai::FunctionDeclaration;
 use lariv_core::rune_env::standard_library_names;
 
 pub struct ListRuneEnvTool;

@@ -6,9 +6,9 @@ use frunk::{HCons, HNil, hlist::HList};
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
 
+use crate::genai::{FunctionDeclaration, FunctionResponsePart};
 use lariv_core::app::App;
 use lariv_core::capability::{CapHookExt, CapStore, Capability, HasCapTag};
-use lariv_core::genai::{FunctionDeclaration, FunctionResponsePart};
 use lariv_core::rune_env::RuneEnvCapability;
 use lariv_core::tag::Tagged;
 use lariv_core::traits::add::{AddCapability, CapTagAbsent};

@@ -6,7 +6,7 @@
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DbErr, EntityTrait};
 
-use lariv_core::genai::GenaiClient;
+use crate::genai::GenaiClient;
 
 use super::config::{
     COMPACTION_THRESHOLD_PERCENT, DEFAULT_CHAT_MAX_OUTPUT_TOKENS, DEFAULT_CHAT_MODEL,

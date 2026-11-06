@@ -8,8 +8,8 @@ use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 
+use crate::genai::util::{content_answer_text, content_is_thought_only};
 use crate::llm_tools::{HitlGate, LlmToolsCapability, ToolCtx, ToolResult};
-use lariv_core::genai::util::{content_answer_text, content_is_thought_only};
 use lariv_core::rune_env::RuneEnvCapability;
 use lariv_plugin_filesystem::storage::{DynFilestore, erase_store};
 
@@ -911,9 +911,7 @@ pub async fn session_transcript_html(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lariv_core::genai::{
-        FileData, FunctionCall, FunctionResponseFileData, FunctionResponsePart,
-    };
+    use crate::genai::{FileData, FunctionCall, FunctionResponseFileData, FunctionResponsePart};
 
     #[test]
     fn detects_function_call() {

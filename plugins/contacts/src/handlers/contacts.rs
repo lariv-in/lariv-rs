@@ -10,18 +10,18 @@ use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
 };
 
+use lariv_core::components::picker::respond_picker_select;
 use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx};
-use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
+use lariv_core::html_form::{HtmlFormBody, opt_string};
 use lariv_core::http::Cap;
 use lariv_core::list_filters::{
-    CmpOp, FilterClause, FilterField, JoinOp, apply_filters, foreign_key_column,
-    parse_list_filters, text_column, with_search_key,
+    FilterField, apply_filters, clauses_from_query, foreign_key_column, text_column,
+    with_search_key,
 };
-use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
-    respond_create_modal_done_fk_extra, respond_edit_modal_done,
+    path_and_query, respond_create_modal_done_fk_extra, respond_edit_modal_done,
 };
 use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
@@ -63,16 +63,6 @@ pub struct ContactSelectQuery {
     pub target_input: Option<String>,
 }
 
-fn path_and_query(uri: &Uri) -> String {
-    uri.path_and_query()
-        .map(|pq| pq.as_str().to_string())
-        .unwrap_or_else(|| uri.path().to_string())
-}
-
-fn opt_string(s: String) -> Option<String> {
-    if s.trim().is_empty() { None } else { Some(s) }
-}
-
 fn checkbox_on(raw: &str) -> bool {
     raw == "on" || raw == "true" || raw == "1"
 }
@@ -91,29 +81,6 @@ fn contact_fields() -> Vec<FilterField> {
         ),
         text_column("name", "Name", contact::Column::Name),
     ]
-}
-
-/// Picker typeahead still submits `Name`. Indexed `filter.*` clauses win when present.
-fn clauses_from_query(query: &str, typeahead: bool) -> Vec<FilterClause> {
-    let mut clauses = parse_list_filters(query);
-    if !clauses.is_empty() || !typeahead {
-        return clauses;
-    }
-    let Some(name) = UrlencodedFields::parse(query.as_bytes())
-        .ok()
-        .and_then(|fields| fields.get_first("Name").map(str::to_string))
-        .filter(|name| !name.trim().is_empty())
-    else {
-        return clauses;
-    };
-    clauses.push(FilterClause {
-        index: 0,
-        join: JoinOp::And,
-        field: "name".into(),
-        op: CmpOp::Eq,
-        values: vec![name.trim().to_string()],
-    });
-    clauses
 }
 
 async fn fill_company_display(db: &sea_orm::DatabaseConnection, rows: &mut [FilterClauseView]) {
@@ -225,7 +192,7 @@ pub async fn list(
     uri: Uri,
     Query(q): Query<ContactListQuery>,
 ) -> maud::Markup {
-    let clauses = clauses_from_query(uri.query().unwrap_or(""), false);
+    let clauses = clauses_from_query(uri.query().unwrap_or(""), None);
     let fields = contact_fields();
     let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
     let contacts =
@@ -531,7 +498,7 @@ pub async fn select(
     uri: Uri,
     Query(q): Query<ContactSelectQuery>,
 ) -> maud::Markup {
-    let clauses = clauses_from_query(uri.query().unwrap_or(""), true);
+    let clauses = clauses_from_query(uri.query().unwrap_or(""), Some("name"));
     let fields = contact_fields();
     let applied = apply_filters(state.db.get_database_backend(), &fields, &clauses);
     let contacts = load_contact_rows(
@@ -559,11 +526,11 @@ pub async fn select(
 
 #[cfg(test)]
 mod tests {
-    use super::clauses_from_query;
+    use lariv_core::list_filters::clauses_from_query;
 
     #[test]
     fn filter_query_accepts_the_indexed_field_name() {
-        let clauses = clauses_from_query("filter.0.field=company_id&filter.0.value=8", false);
+        let clauses = clauses_from_query("filter.0.field=company_id&filter.0.value=8", None);
         assert_eq!(clauses.len(), 1);
         assert_eq!(clauses[0].field, "company_id");
         assert_eq!(clauses[0].value(), "8");

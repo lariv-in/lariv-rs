@@ -11,12 +11,12 @@ use lariv_core::components::{ManyToManyItem, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{CsrfToken, HtmlFormBody};
 use lariv_core::http::Cap;
 use lariv_core::web::{Htmx, html_built_page_with_slots, respond_create_modal_done};
+use lariv_formula::decimal::decimal_display_currency;
 use lariv_plugin_finance_accounts::journal_lines_editor::input_journal_lines;
 use lariv_plugin_finance_accounts::logic::custom_source_doc::{
     ensure_posting_accounts, parse_submitted_journal_lines,
 };
 use lariv_plugin_finance_accounts::scope::load_journal_currency_format;
-use lariv_plugin_finance_common::decimal::decimal_display_currency;
 use lariv_plugin_finance_payments::logic::parse_payment_amount;
 use lariv_plugin_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 use lariv_plugin_users::middleware::RequireAuth;

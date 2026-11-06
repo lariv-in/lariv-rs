@@ -1,5 +1,6 @@
 //! Purchase hub table sort keys and SQL expressions.
 
+use lariv_core::components::{sort_desc, sort_key};
 use sea_orm::sea_query::{Expr, Order, SimpleExpr};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -23,9 +24,8 @@ pub fn parse_hub_sort(sort: &str) -> Option<(HubSortKey, bool)> {
     if sort.is_empty() {
         return None;
     }
-    let mut parts = sort.split_whitespace();
-    let key = parts.next()?;
-    let desc = parts.next().is_some_and(|d| d.eq_ignore_ascii_case("DESC"));
+    let key = sort_key(sort);
+    let desc = sort_desc(sort);
     let key = if key.eq_ignore_ascii_case("ID") {
         HubSortKey::Id
     } else if key.eq_ignore_ascii_case("Number") {

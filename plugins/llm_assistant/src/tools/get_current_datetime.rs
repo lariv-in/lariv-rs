@@ -6,8 +6,8 @@ use chrono_tz::Tz;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::genai::FunctionDeclaration;
 use crate::llm_tools::{LlmTool, ToolCtx};
-use lariv_core::genai::FunctionDeclaration;
 
 pub struct GetCurrentDatetimeTool;
 

@@ -11,7 +11,8 @@ use sea_orm::{
 };
 
 use lariv_core::components::{
-    FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, table_rows_instance_id,
+    FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx, sort_desc, sort_key,
+    table_rows_instance_id,
 };
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
@@ -141,11 +142,8 @@ fn apply_sort(
     mut query: sea_orm::Select<PeriodicTaskEntity>,
     sort: &str,
 ) -> sea_orm::Select<PeriodicTaskEntity> {
-    let key = sort.split_whitespace().next().unwrap_or("");
-    let desc = sort
-        .split_whitespace()
-        .last()
-        .is_some_and(|d| d.eq_ignore_ascii_case("DESC"));
+    let key = sort_key(sort);
+    let desc = sort_desc(sort);
     if key.eq_ignore_ascii_case("AssignedTo") {
         query = query.join(
             JoinType::LeftJoin,

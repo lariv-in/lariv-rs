@@ -4917,7 +4917,6 @@ dependencies = [
  "phonenumber",
  "pulldown-cmark",
  "rand 0.10.2",
- "reqwest",
  "rune",
  "rust_decimal",
  "sea-orm",
@@ -4986,7 +4985,6 @@ dependencies = [
  "lariv-plugin-users",
  "lariv-rs-macros",
  "maud",
- "phonenumber",
  "sea-orm",
  "serde",
  "tracing",
@@ -5159,10 +5157,8 @@ dependencies = [
  "lariv-core",
  "lariv-rs-macros",
  "maud",
- "rust_decimal",
  "serde",
  "serde_json",
- "typst",
 ]
 
 [[package]]

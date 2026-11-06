@@ -7,12 +7,12 @@ use sea_orm::{
     TransactionTrait,
 };
 
+use lariv_formula::decimal::{self, parse_decimal};
 use lariv_plugin_customer::entities::customer::Entity as CustomerEntity;
 use lariv_plugin_finance_accounts::logic::custom_source_doc::journal_specs_editor_json;
 use lariv_plugin_finance_accounts::logic::journal::{
     JournalLineSpec, create_source_doc, insert_journal_entry, update_source_doc_id,
 };
-use lariv_plugin_finance_common::decimal::{self, parse_decimal};
 use lariv_plugin_finance_taxes::entities::tax::{self, TaxKind};
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 

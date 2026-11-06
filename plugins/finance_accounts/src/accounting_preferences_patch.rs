@@ -34,9 +34,7 @@ pub fn str_to_opt_i64(s: &str) -> Option<i64> {
 
 /// Hidden-input value for an optional FK. Missing ids stay blank.
 pub fn opt_i64_form_value(id: Option<i64>) -> String {
-    id.filter(|id| *id > 0)
-        .map(|id| id.to_string())
-        .unwrap_or_default()
+    id.map(lariv_core::html_form::fk_value).unwrap_or_default()
 }
 
 /// Parse an optional text field from a form string (empty → `None`).

@@ -2,19 +2,20 @@
 
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
-    FromQueryResult, QueryFilter, Statement,
+    FromQueryResult, JoinType, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait,
+    Select,
+    sea_query::{
+        Expr, ExprTrait, Func, Order, extension::postgres::PgExpr,
+    },
 };
 
 use lariv_plugin_contacts::entities::{
-    company::Entity as CompanyEntity, contact::Entity as ContactEntity,
+    company::{self, Entity as CompanyEntity},
+    contact::{self, Entity as ContactEntity},
 };
 use lariv_plugin_contacts::routes::{CompanyDetailRouteTag, ContactDetailRouteTag};
 
 use crate::entities::customer::{self, Entity as CustomerEntity};
-
-const NAME_EXPR: &str = "CASE WHEN c.is_individual \
-     THEN COALESCE(NULLIF(ct.name, ''), '#' || CAST(c.id AS TEXT)) \
-     ELSE COALESCE(NULLIF(co.name, ''), '#' || CAST(c.id AS TEXT)) END";
 
 #[derive(Debug, Clone, FromQueryResult)]
 struct CustomerSqlRow {
@@ -37,6 +38,45 @@ pub struct ListedCustomer {
 pub struct NamedCustomer {
     pub id: i64,
     pub name: String,
+}
+
+/// Display name: contact or company name, else `#<customer id>`.
+fn customer_name_expr() -> Expr {
+    Expr::case(
+        Expr::col((CustomerEntity, customer::Column::IsIndividual)).eq(true),
+        party_display_name(Expr::col((ContactEntity, contact::Column::Name))),
+    )
+    .finally(party_display_name(Expr::col((
+        CompanyEntity,
+        company::Column::Name,
+    ))))
+    .into()
+}
+
+fn party_display_name(name: Expr) -> Expr {
+    Expr::case(name.clone().eq("").or(name.clone().is_null()), fallback_id_label())
+        .finally(name)
+        .into()
+}
+
+fn fallback_id_label() -> Expr {
+    Expr::val("#").concatenate(
+        Expr::col((CustomerEntity, customer::Column::Id)).cast_as("text"),
+    )
+}
+
+fn customers_with_parties() -> Select<CustomerEntity> {
+    CustomerEntity::find()
+        .join(JoinType::LeftJoin, customer::Relation::Individual.def())
+        .join(JoinType::LeftJoin, customer::Relation::Company.def())
+}
+
+fn apply_name_search(query: Select<CustomerEntity>, needle: &str, like: &str) -> Select<CustomerEntity> {
+    if needle.is_empty() {
+        query
+    } else {
+        query.filter(Func::lower(customer_name_expr()).like(like))
+    }
 }
 
 /// `customer_id` must already point at `customers`.
@@ -92,34 +132,27 @@ pub async fn list_customers(
 ) -> Result<(Vec<ListedCustomer>, u64), String> {
     let needle = needle.trim().to_string();
     let like = format!("%{}%", needle.to_lowercase().replace('%', "\\%"));
-    let direction = if sort.to_ascii_uppercase().contains("DESC") {
-        "DESC"
+    let name_order = if sort.to_ascii_uppercase().as_str().contains("DESC") {
+        Order::Desc
     } else {
-        "ASC"
+        Order::Asc
     };
-    let backend = db.get_database_backend();
-    let listed = CustomerSqlRow::find_by_statement(Statement::from_sql_and_values(
-        backend,
-        format!(
-            "SELECT c.id, {NAME_EXPR} AS name, c.is_individual, c.company_id, c.individual_id \
-             FROM customers AS c \
-             LEFT JOIN crm_contacts AS ct ON ct.id = c.individual_id \
-             LEFT JOIN crm_companies AS co ON co.id = c.company_id \
-             WHERE ($1 = '' OR lower({NAME_EXPR}) LIKE $2) \
-             ORDER BY 2 {direction}, c.id \
-             LIMIT $3 OFFSET $4"
-        ),
-        [
-            needle.clone().into(),
-            like.clone().into(),
-            (limit as i64).into(),
-            (offset as i64).into(),
-        ],
-    ))
-    .all(db)
-    .await
-    .map_err(|err| err.to_string())?;
     let total = count_matching(db, &needle, &like).await?;
+    let listed = apply_name_search(customers_with_parties(), &needle, &like)
+        .select_only()
+        .column(customer::Column::Id)
+        .column_as(customer_name_expr(), "name")
+        .column(customer::Column::IsIndividual)
+        .column(customer::Column::CompanyId)
+        .column(customer::Column::IndividualId)
+        .order_by(customer_name_expr(), name_order)
+        .order_by_asc(customer::Column::Id)
+        .limit(limit)
+        .offset(offset)
+        .into_model::<CustomerSqlRow>()
+        .all(db)
+        .await
+        .map_err(|err| err.to_string())?;
     let rows = listed
         .into_iter()
         .map(|row| ListedCustomer {
@@ -144,28 +177,19 @@ pub async fn search(
 ) -> Result<(Vec<NamedCustomer>, u64), String> {
     let needle = needle.trim().to_string();
     let like = format!("%{}%", needle.to_lowercase().replace('%', "\\%"));
-    let listed = NamedCustomer::find_by_statement(Statement::from_sql_and_values(
-        db.get_database_backend(),
-        format!(
-            "SELECT c.id, {NAME_EXPR} AS name \
-             FROM customers AS c \
-             LEFT JOIN crm_contacts AS ct ON ct.id = c.individual_id \
-             LEFT JOIN crm_companies AS co ON co.id = c.company_id \
-             WHERE ($1 = '' OR lower({NAME_EXPR}) LIKE $2) \
-             ORDER BY 2, c.id \
-             LIMIT $3 OFFSET $4"
-        ),
-        [
-            needle.clone().into(),
-            like.clone().into(),
-            (limit as i64).into(),
-            (offset as i64).into(),
-        ],
-    ))
-    .all(db)
-    .await
-    .map_err(|err| err.to_string())?;
     let total = count_matching(db, &needle, &like).await?;
+    let listed = apply_name_search(customers_with_parties(), &needle, &like)
+        .select_only()
+        .column(customer::Column::Id)
+        .column_as(customer_name_expr(), "name")
+        .order_by_asc(customer_name_expr())
+        .order_by_asc(customer::Column::Id)
+        .limit(limit)
+        .offset(offset)
+        .into_model::<NamedCustomer>()
+        .all(db)
+        .await
+        .map_err(|err| err.to_string())?;
     Ok((listed, total))
 }
 
@@ -210,25 +234,10 @@ async fn party_name(db: &DatabaseConnection, row: &customer::Model) -> String {
 }
 
 async fn count_matching(db: &DatabaseConnection, needle: &str, like: &str) -> Result<u64, String> {
-    let row = db
-        .query_one_raw(Statement::from_sql_and_values(
-            db.get_database_backend(),
-            format!(
-                "SELECT COUNT(*) AS total \
-                 FROM customers AS c \
-                 LEFT JOIN crm_contacts AS ct ON ct.id = c.individual_id \
-                 LEFT JOIN crm_companies AS co ON co.id = c.company_id \
-                 WHERE ($1 = '' OR lower({NAME_EXPR}) LIKE $2)"
-            ),
-            [needle.to_string().into(), like.to_string().into()],
-        ))
+    apply_name_search(customers_with_parties(), needle, like)
+        .count(db)
         .await
-        .map_err(|err| err.to_string())?;
-    let Some(row) = row else {
-        return Ok(0);
-    };
-    let total: i64 = row.try_get("", "total").map_err(|err| err.to_string())?;
-    Ok(u64::try_from(total.max(0)).unwrap_or(0))
+        .map_err(|err| err.to_string())
 }
 
 async fn find_or_insert<C: ConnectionTrait>(

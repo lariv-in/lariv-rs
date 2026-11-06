@@ -2,14 +2,46 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldDate, FieldDatetime,
-    FieldText, FieldTextarea, FilterClauseView, FormOpts, ListFilterBuilder, ObjectList,
-    PaginationPage, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination,
-    TableRow, button_modal_form, button_submit, column_sort_url, container_column,
-    data_table_list_opts, delete_confirmation, detail, detail_header, field_date, field_datetime,
-    field_text, field_textarea, form, form_hx_get_url, form_hx_post_selector, form_hx_post_url,
-    label, list_filter_builder, modal, modal_keyed, pagination_pages, row_attr_navigate,
-    sort_indicator, table_button_filter, table_pagination,
+    ButtonModalForm,
+    ButtonSubmit,
+    DeleteConfirmation,
+    DetailHeader,
+    FieldDate,
+    FieldDatetime,
+    FieldText,
+    FieldTextarea,
+    FilterClauseView,
+    FormOpts,
+    ListFilterBuilder,
+    ObjectList,
+    ShellChrome,
+    TableButtonFilter,
+    TableColumnHeader,
+    TableRow,
+    button_modal_form,
+    button_submit,
+    column_sort_url,
+    container_column,
+    data_table_list_opts,
+    delete_confirmation,
+    detail,
+    detail_header,
+    field_date,
+    field_datetime,
+    field_text,
+    field_textarea,
+    form,
+    form_hx_get_url,
+    form_hx_post_selector,
+    form_hx_post_url,
+    label,
+    list_filter_builder,
+    modal,
+    modal_keyed,
+    row_attr_navigate,
+    sort_indicator,
+    table_button_filter,
+    render_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::list_filters::{FilterField, FilterRowError};
@@ -52,32 +84,6 @@ pub struct LeaveRow {
     pub detail_href: String,
 }
 
-fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
-    let hx_target = key.selector();
-    let owned = pagination_pages(path_and_query, number, num_pages, true);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
-fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
-    choices
-        .iter()
-        .map(|(key, label)| ((*key).to_string(), (*label).to_string()))
-        .collect()
-}
-
 fn leave_form_inputs(
     date: &str,
     leave_type: &str,
@@ -86,7 +92,7 @@ fn leave_form_inputs(
     user_display: &str,
     show_user: bool,
 ) -> Markup {
-    let leave_types = choice_pairs(LeaveApplicationForm::leave_type_choices());
+    let leave_types = LeaveApplicationForm::leave_type_choices();
     LeaveApplicationForm::render_inputs(
         &FormCtx::form::<LeaveApplicationForm>(CsrfToken::current())
             .flag(LeaveApplicationFormFlag::PickUser, show_user)
@@ -100,7 +106,7 @@ fn leave_form_inputs(
 }
 
 fn give_leave_form_inputs(leave_type: &str, amount: &str) -> Markup {
-    let leave_types = choice_pairs(GiveLeaveForm::leave_type_choices());
+    let leave_types = GiveLeaveForm::leave_type_choices();
     GiveLeaveForm::render_inputs(
         &FormCtx::form::<GiveLeaveForm>(CsrfToken::current())
             .value(GiveLeaveFormField::LeaveType, leave_type)

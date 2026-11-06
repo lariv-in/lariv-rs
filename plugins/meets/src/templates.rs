@@ -3,20 +3,74 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay, DeleteConfirmation,
-    DetailHeader, FieldText, FilterClauseView, FormOpts, LayoutMain, LayoutSidebar,
-    ListFilterBuilder, MeetsMediaSource, MeetsVideoStage, ObjectList, PaginationPage, ShellAuth,
-    ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotRegistrar,
-    SwapKey, TableButtonFilter, TableColumnHeader, TableListContent, TablePagination, TableRow,
-    breadcrumbs, button_link_route, button_modal_form, button_modal_route,
-    button_post_fragment_route_swap, button_post_route, button_submit, column_sort_url,
-    container_column, data_table, delete_confirmation, detail, detail_header, field_text,
-    filter_error_banner, form, form_hx_get_route, form_hx_post_main_url, form_hx_post_redirect,
-    form_hx_post_selector, form_hx_post_url, label, layout_main, layout_sidebar,
-    list_filter_builder, meets_media_source, meets_video_stage, modal, modal_keyed,
-    pagination_pages, row_attr_navigate_route, shell_auth, shell_scaffold, sidebar_menu,
-    sidebar_menu_item_pane, sort_indicator, table_button_columns, table_button_filter,
-    table_create_button, table_list_content, table_pagination,
+    ButtonModalForm,
+    ButtonSubmit,
+    Crumb,
+    DataTable,
+    DataTableDisplay,
+    DeleteConfirmation,
+    DetailHeader,
+    FieldText,
+    FilterClauseView,
+    FormOpts,
+    LayoutMain,
+    LayoutSidebar,
+    ListFilterBuilder,
+    MeetsMediaSource,
+    MeetsVideoStage,
+    ObjectList,
+    ShellAuth,
+    ShellChrome,
+    ShellScaffold,
+    SidebarMenu,
+    SidebarMenuItem,
+    SlotCapability,
+    SlotRegistrar,
+    SwapKey,
+    TableButtonFilter,
+    TableColumnHeader,
+    TableListContent,
+    TableRow,
+    breadcrumbs,
+    button_link_route,
+    button_modal_form,
+    button_modal_route,
+    button_post_fragment_route_swap,
+    button_post_route,
+    button_submit,
+    column_sort_url,
+    container_column,
+    data_table,
+    delete_confirmation,
+    detail,
+    detail_header,
+    field_text,
+    filter_error_banner,
+    form,
+    form_hx_get_route,
+    form_hx_post_main_url,
+    form_hx_post_redirect,
+    form_hx_post_selector,
+    form_hx_post_url,
+    label,
+    layout_main,
+    layout_sidebar,
+    list_filter_builder,
+    meets_media_source,
+    meets_video_stage,
+    modal,
+    modal_keyed,
+    row_attr_navigate_route,
+    shell_auth,
+    shell_scaffold,
+    sidebar_menu,
+    sidebar_menu_item_pane,
+    sort_indicator,
+    table_button_columns,
+    table_button_filter,
+    table_create_button,
+    table_list_content,
+    render_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
@@ -152,26 +206,6 @@ fn room_crumbs_with(code: &str, suffix: Option<&str>) -> Markup {
 fn room_crumbs(code: &str) -> Markup {
     room_crumbs_with(code, None)
 }
-
-fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
-    let hx_target = key.selector();
-    let owned = pagination_pages(path_and_query, number, num_pages, true);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
 #[derive(Clone)]
 pub struct RoomRow {
     pub code: String,

@@ -26,7 +26,7 @@ pub const FORM_RESPONSE_CREATE: CreateModal<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lariv_core::picker::picker_create_button;
+    use lariv_core::components::picker::picker_create_button;
 
     #[test]
     fn form_picker_create_button_embeds_target_input() {

@@ -15,7 +15,7 @@ pub const USER_CREATE: CreateModal<UsersCreateGetRouteTag, UsersCreatePostRouteT
 #[cfg(test)]
 mod tests {
     use super::USER_CREATE;
-    use lariv_core::picker::picker_create_button;
+    use lariv_core::components::picker::picker_create_button;
 
     #[test]
     fn user_picker_create_button_embeds_target_input() {

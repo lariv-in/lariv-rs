@@ -25,6 +25,7 @@ use rune::{Any, Context, Diagnostics, FromValue, Module, Source, Sources, Value,
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
+pub mod decimal;
 pub mod length;
 pub mod weight;
 
@@ -1779,3 +1780,5 @@ mod tests {
 
 pub mod variable_schema_input;
 pub mod variable_value_input;
+pub mod variable_values_editor;
+pub mod variables;

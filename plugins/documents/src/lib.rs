@@ -9,7 +9,6 @@
 //! `update_document`.
 
 pub mod apps;
-pub mod create_modals;
 pub mod detail_actions;
 pub mod document_type;
 pub mod entities;

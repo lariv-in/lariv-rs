@@ -2,6 +2,7 @@ use crate::create_modals::ACCOUNT_CREATE;
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
+use lariv_core::components::picker::RenderPickerSelect;
 use lariv_core::components::{
     ButtonModalForm, ButtonSubmit, Crumb, DeleteConfirmation, FieldLink, FieldText, FieldTitle,
     FilterClauseView, FormOpts, ListFilterBuilder, ManyToManyItem, ObjectList, ShellChrome,
@@ -14,7 +15,6 @@ use lariv_core::components::{
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::RouteQueryBuilder;
 use lariv_core::list_filters::{FilterField, FilterRowError};
-use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_core::web::{
     modal_create_href_for_picker, modal_create_href_for_table, modal_create_post_query,

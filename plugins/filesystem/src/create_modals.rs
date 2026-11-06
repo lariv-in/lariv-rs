@@ -16,7 +16,7 @@ pub const V_NODE_CREATE: CreateModal<VNodeCreateGetRouteTag, VNodeCreatePostRout
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lariv_core::picker::picker_create_button;
+    use lariv_core::components::picker::picker_create_button;
     use lariv_core::web::{CreateModal, modal_create_href_for_picker};
 
     #[test]

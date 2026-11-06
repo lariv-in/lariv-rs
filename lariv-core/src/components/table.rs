@@ -498,6 +498,68 @@ fn table_pagination_with_swap(opts: TablePagination<'_>, swap: &str) -> Markup {
     }
 }
 
+/// HTMX list pagination for a swap region (`outerMorph`, push URL).
+pub fn render_pagination(
+    key: SwapKey,
+    path_and_query: &str,
+    number: u32,
+    num_pages: u32,
+) -> Markup {
+    render_pagination_with(key, path_and_query, number, num_pages, true, false)
+}
+
+/// Like [`render_pagination`] with an explicit `hx-push-url` flag.
+pub fn render_pagination_push(
+    key: SwapKey,
+    path_and_query: &str,
+    number: u32,
+    num_pages: u32,
+    push_url: bool,
+) -> Markup {
+    render_pagination_with(key, path_and_query, number, num_pages, push_url, false)
+}
+
+/// FK picker pagination (`outerHTML`, no push URL).
+pub fn render_picker_pagination(
+    key: SwapKey,
+    path_and_query: &str,
+    number: u32,
+    num_pages: u32,
+) -> Markup {
+    render_pagination_with(key, path_and_query, number, num_pages, false, true)
+}
+
+fn render_pagination_with(
+    key: SwapKey,
+    path_and_query: &str,
+    number: u32,
+    num_pages: u32,
+    push_url: bool,
+    picker: bool,
+) -> Markup {
+    let hx_target = key.selector();
+    let owned = pagination_pages(path_and_query, number, num_pages, push_url);
+    let pages: Vec<PaginationPage<'_>> = owned
+        .iter()
+        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
+            ellipsis: *ellipsis,
+            url: url.as_str(),
+            push_url: *push_url,
+            active: *active,
+            label: label.as_str(),
+        })
+        .collect();
+    let opts = TablePagination {
+        pages: &pages,
+        hx_target: &hx_target,
+    };
+    if picker {
+        table_pagination_picker(opts)
+    } else {
+        table_pagination(opts)
+    }
+}
+
 /// Build pagination page entries for a window around the current page.
 pub fn pagination_pages(
     path_and_query: &str,
@@ -578,23 +640,31 @@ fn page_url(path_and_query: &str, page: u32) -> String {
     format!("{path}?{qs}")
 }
 
+/// First whitespace-separated token of a list `sort` query (`"Name ASC"` → `"Name"`).
+pub fn sort_key(sort: &str) -> &str {
+    sort.trim().split_whitespace().next().unwrap_or("")
+}
+
+/// Whether a list `sort` query requests descending order (`"Name DESC"`).
+pub fn sort_desc(sort: &str) -> bool {
+    sort.trim()
+        .split_whitespace()
+        .last()
+        .is_some_and(|d| d.eq_ignore_ascii_case("DESC"))
+}
+
 /// Cycle sort clause for a column: ASC → DESC → cleared. Different column → ASC.
 pub fn next_sort_clause(current: &str, column_key: &str) -> Option<String> {
     let current = current.trim();
     if current.is_empty() {
         return Some(format!("{column_key} ASC"));
     }
-    let parts: Vec<&str> = current.split_whitespace().collect();
-    if parts.is_empty() {
+    let cur_col = sort_key(current);
+    if cur_col.is_empty() {
         return Some(format!("{column_key} ASC"));
     }
-    let cur_col = parts[0];
-    let cur_dir = parts
-        .last()
-        .map(|s| s.to_ascii_uppercase())
-        .unwrap_or_else(|| "ASC".into());
     if cur_col.eq_ignore_ascii_case(column_key) {
-        if cur_dir == "DESC" {
+        if sort_desc(current) {
             None
         } else {
             Some(format!("{column_key} DESC"))
@@ -609,15 +679,11 @@ pub fn sort_indicator(current_sort: &str, column_key: &str) -> &'static str {
     if current.is_empty() {
         return "";
     }
-    let parts: Vec<&str> = current.split_whitespace().collect();
-    if parts.is_empty() || !parts[0].eq_ignore_ascii_case(column_key) {
+    let key = sort_key(current);
+    if key.is_empty() || !key.eq_ignore_ascii_case(column_key) {
         return "";
     }
-    if parts.len() >= 2 && parts.last().is_some_and(|d| d.eq_ignore_ascii_case("DESC")) {
-        " ▼"
-    } else {
-        " ▲"
-    }
+    if sort_desc(current) { " ▼" } else { " ▲" }
 }
 
 /// Build a sort URL preserving query string, cycling the column, resetting page to 1.

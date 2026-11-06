@@ -5,25 +5,78 @@ use crate::create_modals::{PERIODIC_TASK_CREATE, TASK_CREATE, TASK_STATUS_CREATE
 use frunk::Generic;
 use maud::{Markup, html};
 
+use lariv_core::components::picker::RenderPickerSelect;
 use lariv_core::components::{
-    ButtonModalForm, ButtonPost, ButtonSubmit, DataTable, DataTableDisplay, DeleteConfirmation,
-    DetailHeader, FieldDuration, FieldText, FilterClauseView, FormOpts, HeadSlotTag, HtmlAttrs,
-    LayoutMain, LayoutSidebar, ListFilterBuilder, ObjectList, PaginationPage, ShellChrome,
-    ShellScaffold, SidebarMenu, SidebarMenuItem, SlotCapability, SlotOf, SlotRegistrar, SwapKey,
-    TableButtonFilter, TableColumnHeader, TableListContent, TablePagination, TableRow,
-    TopbarItemsSlotTag, button_modal_form, button_post, button_submit, column_sort_url,
-    container_column, data_table, delete_confirmation, detail, detail_header, field_duration,
-    field_text, filter_error_banner, form, form_hx_get_route, form_hx_post_route,
-    form_hx_post_selector, form_hx_post_url, icon, label, layout_main, layout_sidebar,
-    list_filter_builder, modal, modal_keyed, pagination_pages, row_attr_navigate, row_attr_select,
-    shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sort_indicator, table_button_columns,
-    table_button_filter, table_create_button, table_list_content, table_pagination,
-    table_pagination_picker,
+    ButtonModalForm,
+    ButtonPost,
+    ButtonSubmit,
+    DataTable,
+    DataTableDisplay,
+    DeleteConfirmation,
+    DetailHeader,
+    FieldDuration,
+    FieldText,
+    FilterClauseView,
+    FormOpts,
+    HeadSlotTag,
+    HtmlAttrs,
+    LayoutMain,
+    LayoutSidebar,
+    ListFilterBuilder,
+    ObjectList,
+    ShellChrome,
+    ShellScaffold,
+    SidebarMenu,
+    SidebarMenuItem,
+    SlotCapability,
+    SlotOf,
+    SlotRegistrar,
+    SwapKey,
+    TableButtonFilter,
+    TableColumnHeader,
+    TableListContent,
+    TableRow,
+    TopbarItemsSlotTag,
+    button_modal_form,
+    button_post,
+    button_submit,
+    column_sort_url,
+    container_column,
+    data_table,
+    delete_confirmation,
+    detail,
+    detail_header,
+    field_duration,
+    field_text,
+    filter_error_banner,
+    form,
+    form_hx_get_route,
+    form_hx_post_route,
+    form_hx_post_selector,
+    form_hx_post_url,
+    icon,
+    label,
+    layout_main,
+    layout_sidebar,
+    list_filter_builder,
+    modal,
+    modal_keyed,
+    render_pagination,
+    render_picker_pagination,
+    row_attr_navigate,
+    row_attr_select,
+    shell_scaffold,
+    sidebar_menu,
+    sidebar_menu_item_pane,
+    sort_indicator,
+    table_button_columns,
+    table_button_filter,
+    table_create_button,
+    table_list_content,
 };
-use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
+use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm, fk_value};
 use lariv_core::http::{ProvideRequestCaps, RouteQueryBuilder};
 use lariv_core::list_filters::{FilterField, FilterRowError};
-use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
 };
@@ -139,14 +192,6 @@ fn scaffold_main(crumbs: Markup, body: Markup) -> lariv_core::components::MainCo
         breadcrumbs: crumbs,
         content: body,
     })
-}
-
-fn fk_value(id: i64) -> String {
-    if id <= 0 {
-        String::new()
-    } else {
-        id.to_string()
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -354,26 +399,6 @@ fn task_table_row(task: &TaskRow, mode: StatusButtonMode) -> TableRow {
         children: task_table_rows(&task.children, mode),
     }
 }
-
-fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
-    let hx_target = key.selector();
-    let owned = pagination_pages(path_and_query, number, num_pages, true);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
 fn filtered_table(
     key: SwapKey,
     title: &str,
@@ -921,32 +946,18 @@ impl RenderPickerSelect for TaskSelectPage {
                 ..Default::default()
             }))
         };
-        let owned = pagination_pages(
-            &self.path_and_query,
-            self.tasks.number,
-            self.tasks.num_pages,
-            false,
-        );
-        let pages: Vec<PaginationPage<'_>> = owned
-            .iter()
-            .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-                ellipsis: *ellipsis,
-                url: url.as_str(),
-                push_url: *push_url,
-                active: *active,
-                label: label.as_str(),
-            })
-            .collect();
         filtered_table(
             TASK_SELECT_TABLE,
             "Select task",
             actions,
             &headers,
             &rows,
-            table_pagination_picker(TablePagination {
-                pages: &pages,
-                hx_target: &TASK_SELECT_TABLE.selector(),
-            }),
+            render_picker_pagination(
+                TASK_SELECT_TABLE,
+                &self.path_and_query,
+                self.tasks.number,
+                self.tasks.num_pages,
+            ),
             &self.path_and_query,
             &self.filter_errors,
             None,

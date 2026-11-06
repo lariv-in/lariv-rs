@@ -1,6 +1,7 @@
 use frunk::Generic;
 use maud::{Markup, html};
 
+use lariv_core::components::picker::RenderPickerSelect;
 use lariv_core::components::{
     ButtonModalForm, ButtonSubmit, Crumb, DetailHeader, FieldLink, FieldText, FilterClauseView,
     FormOpts, ListFilterBuilder, ObjectList, ShellChrome, TableButtonFilter, TableColumnHeader,
@@ -11,7 +12,6 @@ use lariv_core::components::{
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::list_filters::{FilterField, FilterRowError};
-use lariv_core::picker::RenderPickerSelect;
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_core::web::{modal_create_post_url, modal_edit_post_url};
 

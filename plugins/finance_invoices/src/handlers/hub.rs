@@ -33,7 +33,7 @@ use crate::{
         expr_open_balance, expr_posted_final_due, expr_tax_levied_approx, parse_hub_sort,
         sort_order,
     },
-    hub_table_addon::enrich_hub_rows,
+    hub_table_addon::{InvoiceHubTableRegistry, enrich_hub_rows},
     invoice_addon_key::InvoiceAddonKey,
     keys::INVOICE_HUB_TABLE,
     logic::{
@@ -980,6 +980,7 @@ struct HubTableRequest<'a> {
     filter_url: String,
     push_history: bool,
     heading: String,
+    hub_table: &'a InvoiceHubTableRegistry,
 }
 
 async fn load_hub_page(
@@ -1051,7 +1052,7 @@ async fn load_hub_page(
         .map(|(start_year, label)| crate::components::FiscalYearOption { start_year, label })
         .collect();
     let selected_fiscal_year_start = selected_fiscal_year_start_for_ui(&env);
-    let extra_columns = enrich_hub_rows(db, &mut rows).await;
+    let extra_columns = enrich_hub_rows(db, req.hub_table, &mut rows).await;
     let filters = filter_clause_views(db, &clauses, &applied.errors).await;
     let extra_filters = render_extra_filter_inputs(db, &params).await.into_string();
     let invoices = ObjectList::from_page(rows, page_num, req.q.page_size.get(), total);
@@ -1094,6 +1095,7 @@ pub struct CustomerHubTable<'a> {
     pub timezone: &'a str,
     /// Alpine selection root. The journal page includes it; later HTMX swaps return the table only.
     pub embed_selection: bool,
+    pub hub_table: &'a InvoiceHubTableRegistry,
 }
 
 pub async fn customer_hub_table(
@@ -1115,6 +1117,7 @@ pub async fn customer_hub_table(
             filter_url: spec.filter_url.to_string(),
             push_history: false,
             heading: spec.heading.to_string(),
+            hub_table: spec.hub_table,
         },
     )
     .await;
@@ -1123,6 +1126,7 @@ pub async fn customer_hub_table(
 
 pub async fn hub(
     Cap(state): Cap<InvoicesState>,
+    Cap(hub_table): Cap<InvoiceHubTableRegistry>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -1148,6 +1152,7 @@ pub async fn hub(
             filter_url: String::new(),
             push_history: true,
             heading: String::new(),
+            hub_table: &hub_table,
         },
     )
     .await;

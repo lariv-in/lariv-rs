@@ -10,15 +10,16 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
+use lariv_core::components::picker::respond_picker_select;
 use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     respond_create_modal_done, respond_edit_modal_done,
 };
+use lariv_formula::variables;
 use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
@@ -40,7 +41,6 @@ use crate::{
         CustomSourceDocTemplateListPage, CustomSourceDocTemplateRow,
         CustomSourceDocTemplateSelectPage,
     },
-    variables,
 };
 
 use super::util::{optional_fk, optional_fk_form_value, path_and_query, vnode_display, vnode_link};

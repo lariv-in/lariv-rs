@@ -7,7 +7,7 @@ use chrono::Utc;
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, sea_query::Expr};
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
+use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, sort_desc};
 use lariv_core::datetime::parse_date;
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
@@ -78,12 +78,6 @@ fn hub_query_from_uri(uri: &Uri) -> LeaveListQuery {
         .ok()
         .and_then(|fields| fields.deserialize().ok())
         .unwrap_or_default()
-}
-
-fn sort_desc(sort: &str) -> bool {
-    sort.split_whitespace()
-        .last()
-        .is_some_and(|d| d.eq_ignore_ascii_case("DESC"))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

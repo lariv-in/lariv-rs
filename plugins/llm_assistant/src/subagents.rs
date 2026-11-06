@@ -11,8 +11,8 @@ use serde_json::{Value, json};
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
+use crate::genai::util::content_answer_text;
 use crate::llm_tools::{HitlGate, SubagentHost};
-use lariv_core::genai::util::content_answer_text;
 use lariv_plugin_filesystem::storage::DynFilestore;
 
 use super::{

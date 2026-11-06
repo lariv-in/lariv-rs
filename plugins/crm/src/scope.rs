@@ -1,4 +1,4 @@
-use chrono::NaiveDate;
+use lariv_core::components::{sort_desc, sort_key};
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, JoinType, QueryFilter, QueryOrder,
@@ -10,7 +10,6 @@ use lariv_plugin_contacts::entities::{
     company::{self, Entity as CompanyEntity},
     contact::{self, Entity as ContactEntity},
 };
-use lariv_plugin_users::entities::user::Entity as UserEntity;
 
 use super::entities::{
     converted_lead::{self, Entity as ConvertedLeadEntity},
@@ -21,25 +20,31 @@ use super::entities::{
     lead_update::{self, Entity as LeadUpdateEntity},
 };
 
-pub fn sql_lead_not_converted() -> sea_orm::sea_query::SimpleExpr {
-    Expr::cust("NOT EXISTS (SELECT 1 FROM crm_converted_leads c WHERE c.lead_id = crm_leads.id)")
+fn converted_lead_ids_subquery() -> SelectStatement {
+    SeaQuery::select()
+        .column(converted_lead::Column::LeadId)
+        .from(ConvertedLeadEntity)
+        .to_owned()
 }
 
-pub fn sql_lead_not_failed() -> sea_orm::sea_query::SimpleExpr {
-    Expr::cust("NOT EXISTS (SELECT 1 FROM crm_failed_leads f WHERE f.lead_id = crm_leads.id)")
+fn failed_lead_ids_subquery() -> SelectStatement {
+    SeaQuery::select()
+        .column(failed_lead::Column::LeadId)
+        .from(FailedLeadEntity)
+        .to_owned()
 }
 
-pub fn sql_lead_active() -> sea_orm::sea_query::SimpleExpr {
-    Expr::cust(
-        "NOT EXISTS (SELECT 1 FROM crm_converted_leads c WHERE c.lead_id = crm_leads.id) \
-         AND NOT EXISTS (SELECT 1 FROM crm_failed_leads f WHERE f.lead_id = crm_leads.id)",
-    )
+/// Leads with no converted/failed row (same shape as overtime/leaves pending filters).
+pub fn lead_active_condition() -> Condition {
+    Condition::all()
+        .add(lead::Column::Id.not_in_subquery(converted_lead_ids_subquery()))
+        .add(lead::Column::Id.not_in_subquery(failed_lead_ids_subquery()))
 }
 
 pub async fn find_active_lead(db: &DatabaseConnection, id: i64) -> Option<lead::Model> {
     lariv_core::web::opt_or_log(
         scope_allowed::<super::routes::CrmView, _>(LeadEntity::find_by_id(id))
-            .filter(sql_lead_active())
+            .filter(lead_active_condition())
             .one(db)
             .await,
         "find by id",
@@ -135,16 +140,6 @@ fn lead_ids_with_tags_subquery(tag_ids: &[i64]) -> SelectStatement {
         .from(lead_tag_link::Entity)
         .and_where(lead_tag_link::Column::LeadTagId.is_in(tag_ids.to_vec()));
     sub
-}
-
-fn sort_key(sort: &str) -> &str {
-    sort.trim().split_whitespace().next().unwrap_or("")
-}
-
-fn sort_desc(sort: &str) -> bool {
-    sort.split_whitespace()
-        .last()
-        .is_some_and(|d| d.eq_ignore_ascii_case("DESC"))
 }
 
 pub fn join_active_lead_relations(
@@ -325,29 +320,6 @@ pub fn apply_failed_lead_sort(
         }
         _ => query.order_by_desc(failed_lead::Column::Id),
     }
-}
-
-pub fn format_due_date(due_date: Option<NaiveDate>) -> String {
-    due_date
-        .map(lariv_core::datetime::format_date)
-        .unwrap_or_default()
-}
-
-pub async fn user_exists(db: &DatabaseConnection, id: i64) -> bool {
-    if id <= 0 {
-        return false;
-    }
-    lariv_core::web::opt_or_log(UserEntity::find_by_id(id).one(db).await, "find user by id")
-        .is_some()
-}
-
-pub async fn user_display_label(db: &DatabaseConnection, id: i64) -> String {
-    if id <= 0 {
-        return String::new();
-    }
-    lariv_core::web::opt_or_log(UserEntity::find_by_id(id).one(db).await, "find user by id")
-        .map(|u| u.name)
-        .unwrap_or_default()
 }
 
 pub use lariv_plugin_contacts::scope::company_display_label;

@@ -12,10 +12,11 @@ use lariv_plugin_contacts::entities::{
 };
 
 use crate::logic::BillTo;
+use lariv_core::typst;
+use lariv_formula::decimal::decimal_display_currency;
 use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_format,
 };
-use lariv_plugin_finance_common::{decimal::decimal_display_currency, typst};
 use lariv_plugin_finance_products::{
     entities::product::{Entity as ProductEntity, ProductKind},
     journal_template, pricing,

@@ -34,6 +34,10 @@ pub mod state;
 pub mod templates;
 pub mod xlsx;
 
+pub use hub_table_addon::{
+    InvoiceHubTableAddon, InvoiceHubTableCap, InvoiceHubTableRegistrar, InvoiceHubTableRegistry,
+    InvoiceHubTableTag,
+};
 pub use invoice_addon_key::InvoiceAddonKey;
 pub use invoice_pdf_assets::VnodeImageContext;
 pub use invoice_pdf_template::DEFAULT_INVOICE_PDF_TEMPLATE;
@@ -60,6 +64,7 @@ lariv_core::define_passthrough_cap!(FinanceInvoicesStateCap, FinanceInvoicesTag,
 lariv_core::define_plugin_install! {
     plugin: FinanceInvoicesTag;
     steps: [
+        cap_attach(hub_table_addon::InvoiceHubTableTag, hub_table_addon::InvoiceHubTableCap, hub_table_addon::InvoiceHubTableCap::<frunk::HNil>::new()),
         cap_hook(lariv_plugin_finance_accounts::accounting_sidebar::AccountingSidebarTag, lariv_plugin_finance_accounts::accounting_sidebar::AccountingSidebarCap, accounting_sidebar::Hook),
         cap_hook(lariv_plugin_finance_accounts::SourceDocTag, lariv_plugin_finance_accounts::SourceDocCap, source_docs::Hook),
         cap_hook(lariv_plugin_finance_customers::journal::CustomerJournalTag, lariv_plugin_finance_customers::journal::CustomerJournalCap, customer_journal::Hook),
@@ -79,6 +84,7 @@ lariv_core::define_plugin_install! {
 lariv_core::define_plugin_install! {
     plugin: FinanceInvoicesTag;
     steps: [
+        cap_attach(hub_table_addon::InvoiceHubTableTag, hub_table_addon::InvoiceHubTableCap, hub_table_addon::InvoiceHubTableCap::<frunk::HNil>::new()),
         cap_hook(lariv_plugin_finance_accounts::accounting_sidebar::AccountingSidebarTag, lariv_plugin_finance_accounts::accounting_sidebar::AccountingSidebarCap, accounting_sidebar::Hook),
         cap_hook(lariv_plugin_finance_accounts::SourceDocTag, lariv_plugin_finance_accounts::SourceDocCap, source_docs::Hook),
         cap_hook(lariv_plugin_finance_customers::journal::CustomerJournalTag, lariv_plugin_finance_customers::journal::CustomerJournalCap, customer_journal::Hook),

@@ -2,11 +2,29 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    Crumb, FieldText, FieldTitle, ObjectList, PaginationPage, ShellChrome, SlotCapability,
-    SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TablePagination, TableRow,
-    breadcrumbs, column_sort_url, container_column, data_table_list_refresh, detail, field_text,
-    field_title, label, page_size_only_filter_form, pagination_pages, row_attr_navigate_route,
-    sort_indicator, table_button_filter, table_pagination,
+    Crumb,
+    FieldText,
+    FieldTitle,
+    ObjectList,
+    ShellChrome,
+    SlotCapability,
+    SlotRegistrar,
+    TableButtonFilter,
+    TableColumnHeader,
+    TableRow,
+    breadcrumbs,
+    column_sort_url,
+    container_column,
+    data_table_list_refresh,
+    detail,
+    field_text,
+    field_title,
+    label,
+    page_size_only_filter_form,
+    row_attr_navigate_route,
+    sort_indicator,
+    table_button_filter,
+    render_pagination,
 };
 use lariv_core::http::ProvideRequestCaps;
 use lariv_core::template::{
@@ -82,26 +100,6 @@ lariv_core::define_register_items! {
     items: [];
     hook: SlotsHook;
 }
-
-fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
-    let hx_target = key.selector();
-    let owned = pagination_pages(path_and_query, number, num_pages, true);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
 #[derive(Clone)]
 pub struct CreditNoteRow {
     pub id: i64,

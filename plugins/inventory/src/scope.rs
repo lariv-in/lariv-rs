@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use lariv_core::components::{sort_desc, sort_key};
 use lariv_plugin_users::entities::user::{self, Entity as UserEntity};
 use lariv_plugin_users::role_authorization::scope_allowed;
 use rust_decimal::Decimal;
@@ -433,16 +434,6 @@ pub async fn on_hand_by_customer(
         .collect();
     rows.sort_by_key(|(customer_id, _)| *customer_id);
     rows
-}
-
-fn sort_key(sort: &str) -> &str {
-    sort.split_whitespace().next().unwrap_or("")
-}
-
-fn sort_desc(sort: &str) -> bool {
-    sort.split_whitespace()
-        .last()
-        .is_some_and(|dir| dir.eq_ignore_ascii_case("DESC"))
 }
 
 pub fn apply_stock_sort(query: Select<StockEntity>, sort: &str) -> Select<StockEntity> {

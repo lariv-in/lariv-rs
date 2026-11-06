@@ -6,12 +6,36 @@ use maud::{Markup, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-    ButtonSubmit, DataTable, DataTableDisplay, FieldText, FilterClauseView, FormOpts,
-    ListFilterBuilder, ObjectList, PaginationPage, ShellChrome, SwapKey, TableButtonFilter,
-    TableColumnHeader, TableListContent, TablePagination, TableRow, button_submit, column_sort_url,
-    data_table, field_text, filter_error_banner, form, form_hx_get_route, form_hx_post_url,
-    list_filter_builder, modal_keyed, pagination_pages, row_attr_navigate, sort_indicator,
-    table_button_filter, table_create_button, table_list_content, table_pagination,
+    ButtonSubmit,
+    DataTable,
+    DataTableDisplay,
+    FieldText,
+    FilterClauseView,
+    FormOpts,
+    ListFilterBuilder,
+    ObjectList,
+    ShellChrome,
+    SwapKey,
+    TableButtonFilter,
+    TableColumnHeader,
+    TableListContent,
+    TableRow,
+    button_submit,
+    column_sort_url,
+    data_table,
+    field_text,
+    filter_error_banner,
+    form,
+    form_hx_get_route,
+    form_hx_post_url,
+    list_filter_builder,
+    modal_keyed,
+    row_attr_navigate,
+    sort_indicator,
+    table_button_filter,
+    table_create_button,
+    table_list_content,
+    render_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::{FragmentGet, ProvideRequestCaps, RouteUrl};
@@ -89,26 +113,6 @@ fn filtered_data_table(
         body_only: false,
     })
 }
-
-fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
-    let hx_target = key.selector();
-    let owned = pagination_pages(path_and_query, number, num_pages, true);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
 pub struct CustomerRow {
     pub id: i64,
     pub name: String,

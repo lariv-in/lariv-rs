@@ -59,12 +59,14 @@ use crate::{
 pub const REQUEST_BODY_LIMIT_BYTES: usize = 50 * 1024 * 1024;
 
 pub mod route_tag;
+pub mod url;
 
 pub use route_tag::{
     AppPaneGet, AppPanePost, BoostPost, FileDownloadGet, FileDownloadPost, FkSelectGet,
     FragmentGet, FragmentPost, GenerationPost, ModalGet, RouteQueryBuilder, RouteTag, RouteUrl,
     nav_url, trailing_slash,
 };
+pub use url::{header_str, split_query, url_path_and_query};
 
 /// Capability tag identifying the HTTP router on the app HList.
 ///

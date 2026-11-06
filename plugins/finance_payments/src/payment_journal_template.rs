@@ -6,6 +6,7 @@
 //! expands both.
 
 use chrono::Utc;
+use lariv_formula::decimal;
 use lariv_formula::{
     Measure, VariableDef, VariableSchema, VariableType, VariableValues, eval_formula,
     validate_formula,
@@ -13,7 +14,6 @@ use lariv_formula::{
 use lariv_plugin_finance_accounts::entities::account::Entity as AccountEntity;
 use lariv_plugin_finance_accounts::entities::journal::Entity as JournalEntity;
 use lariv_plugin_finance_accounts::logic::journal::JournalLineSpec;
-use lariv_plugin_finance_common::decimal;
 use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,

@@ -67,7 +67,6 @@
 //! | [`apps`] | Dashboard app tile catalog |
 //! | [`export`] | XLSX export table catalog |
 //! | [`rune_env`] | Rune script native bindings |
-//! | [`genai`] | Gemini HTTP client |
 //! | [`views`] | Named view registry (PWA offline page) |
 //!
 //! # Plugin authoring
@@ -109,7 +108,6 @@ pub mod db;
 pub mod docs;
 pub mod duration;
 pub mod export;
-pub mod genai;
 pub mod hooks;
 pub mod html_form;
 pub mod http;
@@ -119,7 +117,6 @@ pub mod layers;
 pub(crate) mod length;
 pub mod list_filters;
 pub mod migration;
-pub mod picker;
 pub mod plugin_install;
 pub mod plugin_routes;
 pub mod role_registry;

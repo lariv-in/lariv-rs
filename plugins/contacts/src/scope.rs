@@ -1,3 +1,4 @@
+use lariv_core::components::{sort_desc, sort_key};
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, JoinType, QueryFilter, QueryOrder, QuerySelect,
@@ -25,16 +26,6 @@ pub async fn find_company_scoped(db: &DatabaseConnection, id: i64) -> Option<com
             .await,
         "find company scoped",
     )
-}
-
-fn sort_key(sort: &str) -> &str {
-    sort.trim().split_whitespace().next().unwrap_or("")
-}
-
-fn sort_desc(sort: &str) -> bool {
-    sort.split_whitespace()
-        .last()
-        .is_some_and(|d| d.eq_ignore_ascii_case("DESC"))
 }
 
 pub fn apply_contact_sort(

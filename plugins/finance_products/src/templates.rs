@@ -2,23 +2,22 @@ use crate::create_modals::PRODUCT_CREATE;
 use frunk::Generic;
 use maud::{Markup, html};
 
+use lariv_core::components::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::components::table::table_grid_content;
 use lariv_core::components::{
     ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay, DeleteConfirmation,
     FieldText, FieldTitle, FilterClauseView, FormOpts, ListFilterBuilder, ManyToManyItem,
-    ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar, SwapKey,
-    TableButtonFilter, TableColumnHeader, TableListContent, TablePagination, TableRow, breadcrumbs,
-    button_modal_form, button_submit, column_sort_url, container_column, container_row, data_table,
-    delete_confirmation, detail, field_text, field_title, filter_error_banner, form,
-    form_hx_get_route, form_hx_post_selector, form_hx_post_url, label, list_filter_builder, modal,
-    modal_keyed, pagination_pages, row_attr_navigate_route, row_attr_select_extra, sort_indicator,
-    table_button_columns, table_button_filter, table_create_button, table_list_content,
-    table_pagination,
+    ObjectList, ShellChrome, SlotCapability, SlotRegistrar, SwapKey, TableButtonFilter,
+    TableColumnHeader, TableListContent, TableRow, breadcrumbs, button_modal_form, button_submit,
+    column_sort_url, container_column, container_row, data_table, delete_confirmation, detail,
+    field_text, field_title, filter_error_banner, form, form_hx_get_route, form_hx_post_selector,
+    form_hx_post_url, label, list_filter_builder, modal, modal_keyed, render_pagination,
+    row_attr_navigate_route, row_attr_select_extra, sort_indicator, table_button_columns,
+    table_button_filter, table_create_button, table_list_content,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::ProvideRequestCaps;
 use lariv_core::list_filters::{FilterField, FilterRowError};
-use lariv_core::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::template::{
     RenderAppPane, RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar,
 };
@@ -33,13 +32,6 @@ use lariv_plugin_finance_accounts::templates::{
 };
 
 use super::forms::{ProductForm, ProductFormField};
-
-fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
-    choices
-        .iter()
-        .map(|(key, label)| ((*key).to_string(), (*label).to_string()))
-        .collect()
-}
 
 fn data_table_with_filter_errors(
     key: SwapKey,
@@ -211,26 +203,6 @@ fn product_select_filter(page: &ProductSelectPage) -> Markup {
         },
     })
 }
-
-fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
-    let hx_target = key.selector();
-    let owned = pagination_pages(path_and_query, number, num_pages, true);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
 #[derive(Clone)]
 pub struct ProductRow {
     pub id: i64,
@@ -490,7 +462,7 @@ pub struct ProductEditModalPage {
 impl RenderTemplate for ProductEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = ProductDeleteGetRouteTag::new(self.id).url();
-        let kind_choices = choice_pairs(ProductForm::product_kind_choices());
+        let kind_choices = ProductForm::product_kind_choices();
         modal_keyed(
             PRODUCT_EDIT_MODAL,
             &self.form_name,
@@ -564,7 +536,7 @@ impl RenderTemplate for ProductCreateModalPage {
         } else {
             self.form_name.as_str()
         };
-        let kind_choices = choice_pairs(ProductForm::product_kind_choices());
+        let kind_choices = ProductForm::product_kind_choices();
         modal_keyed(
             PRODUCT_CREATE_MODAL,
             "",

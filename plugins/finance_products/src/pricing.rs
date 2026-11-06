@@ -6,12 +6,12 @@
 use rust_decimal::Decimal;
 use serde::Serialize;
 
+use lariv_formula::decimal;
+pub use lariv_formula::variables::{load_schema, schema_entries_from_stored, store_schema};
 use lariv_formula::{
     VariableSchema, VariableValues, display_variable_name, eval_formula, format_value_lines,
-    format_values_display, parse_schema, parse_schema_list, parse_values, persist_values,
-    schema_to_entries, schema_to_json, validate_formula,
+    format_values_display, parse_values, persist_values, validate_formula,
 };
-use lariv_plugin_finance_common::decimal;
 
 #[derive(Clone, Debug)]
 pub struct PricedLine {
@@ -68,28 +68,6 @@ fn mentions_ident(formula: &str, name: &str) -> bool {
 
 fn is_ident_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
-}
-
-pub fn load_schema(raw: &str) -> Result<VariableSchema, String> {
-    let raw = raw.trim();
-    if raw.is_empty() || raw == "{}" {
-        return Ok(VariableSchema::new());
-    }
-    let value: serde_json::Value =
-        serde_json::from_str(raw).map_err(|e| format!("invalid variables: {e}"))?;
-    parse_schema(&value).map_err(|e| e.to_string())
-}
-
-pub fn schema_entries_from_stored(raw: &str) -> Vec<String> {
-    load_schema(raw)
-        .map(|schema| schema_to_entries(&schema))
-        .unwrap_or_default()
-}
-
-pub fn store_schema(entries: &[String]) -> Result<(String, VariableSchema), String> {
-    let schema = parse_schema_list(entries).map_err(|e| e.to_string())?;
-    let json = schema_to_json(&schema).to_string();
-    Ok((json, schema))
 }
 
 pub fn validate_price_formula(

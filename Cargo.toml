@@ -138,7 +138,7 @@ full = [
     "plugin-finance-customers",
 ]
 cap-llm = ["lariv-core/cap-llm", "lariv-plugin-llm-assistant?/cap-llm", "lariv-plugin-documents?/cap-llm", "lariv-plugin-forms?/cap-llm", "lariv-plugin-finance-taxes?/cap-llm", "lariv-plugin-finance-products?/cap-llm", "lariv-plugin-finance-invoices?/cap-llm", "lariv-plugin-finance-purchases?/cap-llm"]
-typst = ["lariv-core/typst", "lariv-plugin-finance-common?/typst"]
+typst = ["lariv-core/typst"]
 plugin-users = ["lariv-core/plugin-users", "dep:lariv-plugin-users"]
 plugin-dashboard = ["plugin-users", "dep:lariv-plugin-dashboard"]
 plugin-blog = ["plugin-users", "dep:lariv-plugin-blog"]
@@ -253,7 +253,7 @@ required-features = ["plugin-dashboard", "plugin-users"]
 [[test]]
 name = "genai_files_latency"
 path = "tests/genai_files_latency.rs"
-required-features = ["cap-llm"]
+required-features = ["plugin-llm-assistant"]
 
 [[test]]
 name = "plugin_compile"

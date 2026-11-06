@@ -131,60 +131,6 @@ impl NodePermissions {
         self.contains(class_flag)
     }
 
-    pub fn from_access(
-        owner_view: bool,
-        owner_change: bool,
-        owner_open: bool,
-        role_view: bool,
-        role_change: bool,
-        role_open: bool,
-        other_view: bool,
-        other_change: bool,
-        other_open: bool,
-        anyone_view: bool,
-        anyone_change: bool,
-        anyone_open: bool,
-    ) -> Self {
-        let mut permissions = Self::empty();
-        if owner_view {
-            permissions |= Self::USER_READ;
-        }
-        if owner_change {
-            permissions |= Self::USER_WRITE;
-        }
-        if owner_open {
-            permissions |= Self::USER_EXECUTE;
-        }
-        if role_view {
-            permissions |= Self::ROLE_READ;
-        }
-        if role_change {
-            permissions |= Self::ROLE_WRITE;
-        }
-        if role_open {
-            permissions |= Self::ROLE_EXECUTE;
-        }
-        if other_view {
-            permissions |= Self::OTHER_READ;
-        }
-        if other_change {
-            permissions |= Self::OTHER_WRITE;
-        }
-        if other_open {
-            permissions |= Self::OTHER_EXECUTE;
-        }
-        if anyone_view {
-            permissions |= Self::ALL_READ;
-        }
-        if anyone_change {
-            permissions |= Self::ALL_WRITE;
-        }
-        if anyone_open {
-            permissions |= Self::ALL_EXECUTE;
-        }
-        permissions
-    }
-
     pub fn owner_view(self) -> bool {
         self.contains(Self::USER_READ)
     }

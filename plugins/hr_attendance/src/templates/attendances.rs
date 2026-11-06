@@ -2,17 +2,51 @@ use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
 use lariv_core::components::{
-    ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldDatetime, FieldText,
-    FieldTextarea, FilterClauseView, FormOpts, ListFilterBuilder, LocationRangeInput, Modal,
-    ObjectList, PaginationPage, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader,
-    TablePagination, TableRow, button_modal_form, button_submit, column_sort_url, container_column,
-    delete_confirmation, detail, detail_header, field_datetime, field_text, field_textarea, form,
-    form_hx_get_route, form_hx_post_route, form_hx_post_selector, form_hx_post_url, icon, label,
-    list_filter_builder, location_range_input, modal, modal_keyed, pagination_pages,
-    row_attr_navigate, sort_indicator, table_button_filter, table_pagination,
+    ButtonModalForm,
+    ButtonSubmit,
+    DeleteConfirmation,
+    DetailHeader,
+    FieldDatetime,
+    FieldText,
+    FieldTextarea,
+    FilterClauseView,
+    FormOpts,
+    ListFilterBuilder,
+    LocationRangeInput,
+    Modal,
+    ObjectList,
+    ShellChrome,
+    TableButtonFilter,
+    TableColumnHeader,
+    TableRow,
+    button_modal_form,
+    button_submit,
+    column_sort_url,
+    container_column,
+    delete_confirmation,
+    detail,
+    detail_header,
+    field_datetime,
+    field_text,
+    field_textarea,
+    form,
+    form_hx_get_route,
+    form_hx_post_route,
+    form_hx_post_selector,
+    form_hx_post_url,
+    icon,
+    label,
+    list_filter_builder,
+    location_range_input,
+    modal,
+    modal_keyed,
+    row_attr_navigate,
+    sort_indicator,
+    table_button_filter,
+    render_pagination,
 };
 use lariv_core::db::location::LatLng;
-use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
+use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm, fk_value};
 use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_core::web::modal_create_post_url;
@@ -67,34 +101,6 @@ fn punch_button<R: lariv_core::http::RouteUrl + lariv_core::http::FragmentPost>(
         (PreEscaped("</form>"))
     }
 }
-
-fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
-    let hx_target = key.selector();
-    let owned = pagination_pages(path_and_query, number, num_pages, true);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
-fn fk_value(id: i64) -> String {
-    if id <= 0 {
-        String::new()
-    } else {
-        id.to_string()
-    }
-}
-
 /// Alpine state for the punch bar. Location is watched for the whole time the
 /// bar is on screen; punch in and punch out submit the latest fix.
 const PUNCH_LOCATION_STATE: &str = r#"{

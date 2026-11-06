@@ -6,6 +6,7 @@ use lariv_core::components::{
     SwapKey, TableColumnHeader, TableListContent, TableRow, data_table, filter_error_banner,
     layout_main, layout_sidebar, table_button_columns, table_list_content,
 };
+pub use lariv_core::components::{render_pagination, render_picker_pagination};
 use lariv_core::list_filters::FilterRowError;
 
 use lariv_plugin_finance_common::finance_page_title;
@@ -44,63 +45,6 @@ pub fn app_scaffold_with_sidebar(
         breadcrumbs: crumbs,
         body,
         ..Default::default()
-    })
-}
-
-pub fn render_pagination(
-    key: lariv_core::components::SwapKey,
-    path_and_query: &str,
-    number: u32,
-    num_pages: u32,
-) -> Markup {
-    let hx_target = key.selector();
-    use lariv_core::components::{
-        PaginationPage, TablePagination, pagination_pages, table_pagination,
-    };
-
-    let owned = pagination_pages(path_and_query, number, num_pages, true);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
-/// Pagination for FK picker modals — swaps the closest table (`outerHTML`).
-pub fn render_picker_pagination(
-    key: lariv_core::components::SwapKey,
-    path_and_query: &str,
-    number: u32,
-    num_pages: u32,
-) -> Markup {
-    let hx_target = key.selector();
-    use lariv_core::components::{
-        PaginationPage, TablePagination, pagination_pages, table_pagination_picker,
-    };
-
-    let owned = pagination_pages(path_and_query, number, num_pages, false);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination_picker(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
     })
 }
 

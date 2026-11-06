@@ -70,7 +70,7 @@
 }
 #let tax-label(ln) = {
   let names = ln.taxes.map(t => t.name)
-  if names.len() == 0 { [—] } else { names.join(", ") }
+  if names.len() == 0 { [—] } else { names.join("\n") }
 }
 
 #let dict-sum-prefix(d, prefix) = {
@@ -264,7 +264,7 @@
 )
 
 #table(
-  columns: (0.4fr, 1.5fr, 1.8fr, 0.7fr, 0.85fr, 1.2fr, 1fr),
+  columns: (0.4fr, 1.5fr, 1.8fr, 0.7fr, 0.85fr, 0.85fr, 1fr),
   align: (center, left, left, right, right, center, right),
   [*Sl*], [*Name*], [*Remarks*], [*Qty*], [*Rate*], [*Taxes*], [*Amount*],
   ..lines.enumerate().map(((i, ln)) => (

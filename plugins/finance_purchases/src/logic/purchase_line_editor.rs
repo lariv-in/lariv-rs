@@ -7,10 +7,10 @@ use sea_orm::{
 use serde::Serialize;
 
 use crate::logic::bill_to::{BillTo, PartyLabels};
+use lariv_formula::decimal;
 use lariv_plugin_finance_accounts::scope::{
     CurrencyFormat, load_default_currency_format, load_journal_currency_format,
 };
-use lariv_plugin_finance_common::decimal;
 use lariv_plugin_finance_products::{
     entities::product::Entity as ProductEntity, preferences::load_product_tax_ids, pricing,
 };

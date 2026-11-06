@@ -27,8 +27,6 @@ pub mod source_doc_label;
 pub mod source_doc_registry;
 pub mod state;
 pub mod templates;
-pub mod variable_values_editor;
-pub mod variables;
 
 pub use account_select::account_select_url_with_balance_type as account_select_route_url;
 pub use account_validation::validate_leaf_account_balance_type;

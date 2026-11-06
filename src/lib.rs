@@ -14,8 +14,8 @@ pub use lariv_core::rune_env;
 pub use lariv_core::typst;
 pub use lariv_core::{
     app, apps, auth_hooks, capability, command, components, config, datetime, db, docs, duration,
-    export, genai, hooks, html_form, http, layers, migration, picker, plugin_install,
-    plugin_routes, role_registry, tag, template, traits, views, web,
+    export, hooks, html_form, http, layers, migration, plugin_install, plugin_routes,
+    role_registry, tag, template, traits, views, web,
 };
 pub use lariv_core::{
     define_passthrough_cap, define_plugin_install, define_register_apps, define_register_export,

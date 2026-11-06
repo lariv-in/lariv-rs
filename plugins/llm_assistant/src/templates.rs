@@ -5,20 +5,83 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-    APP_LAYOUT, ButtonModal, ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay,
-    DeleteConfirmation, DetailHeader, FieldDuration, FieldManyToMany, FieldMarkdown, FieldText,
-    FilterClauseView, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, ListFilterBuilder,
-    MAIN_CONTENT, ManyToManyItem, ObjectList, PaginationPage, RenderSlot, RightSidebarSlotTag,
-    ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability,
-    SlotCtx, SlotOf, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
-    TableListContent, TablePagination, TableRow, breadcrumbs, button_modal, button_modal_form,
-    button_post_route, button_submit, column_sort_url, container_column, container_row, data_table,
-    data_table_list, detail, detail_header, field_duration, field_many_to_many, field_markdown,
-    field_text, filter_error_banner, form, form_hx_get_route, form_hx_post_selector,
-    form_hx_post_url, icon, label, layout_main, layout_sidebar, list_filter_builder, modal,
-    modal_keyed, page_size_only_filter_form, pagination_pages, row_attr_navigate_route,
-    shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
-    table_button_columns, table_button_filter, table_list_content, table_pagination,
+    APP_LAYOUT,
+    ButtonModal,
+    ButtonModalForm,
+    ButtonSubmit,
+    Crumb,
+    DataTable,
+    DataTableDisplay,
+    DeleteConfirmation,
+    DetailHeader,
+    FieldDuration,
+    FieldManyToMany,
+    FieldMarkdown,
+    FieldText,
+    FilterClauseView,
+    FormOpts,
+    HtmlAttrs,
+    LayoutMain,
+    LayoutSidebar,
+    ListFilterBuilder,
+    MAIN_CONTENT,
+    ManyToManyItem,
+    ObjectList,
+    RenderSlot,
+    RightSidebarSlotTag,
+    ShellChrome,
+    ShellScaffold,
+    SidebarMenu,
+    SidebarMenuItem,
+    SidebarNavLink,
+    SlotCapability,
+    SlotCtx,
+    SlotOf,
+    SlotRegistrar,
+    SwapKey,
+    TableButtonFilter,
+    TableColumnHeader,
+    TableListContent,
+    TableRow,
+    breadcrumbs,
+    button_modal,
+    button_modal_form,
+    button_post_route,
+    button_submit,
+    column_sort_url,
+    container_column,
+    container_row,
+    data_table,
+    data_table_list,
+    detail,
+    detail_header,
+    field_duration,
+    field_many_to_many,
+    field_markdown,
+    field_text,
+    filter_error_banner,
+    form,
+    form_hx_get_route,
+    form_hx_post_selector,
+    form_hx_post_url,
+    icon,
+    label,
+    layout_main,
+    layout_sidebar,
+    list_filter_builder,
+    modal,
+    modal_keyed,
+    page_size_only_filter_form,
+    row_attr_navigate_route,
+    shell_scaffold,
+    sidebar_menu,
+    sidebar_menu_item_pane,
+    sidebar_nav_items_pane,
+    sort_indicator,
+    table_button_columns,
+    table_button_filter,
+    table_list_content,
+    render_pagination_push,
 };
 use lariv_core::html_form::{CSRF_FIELD, CsrfToken, FormCtx, HtmlForm, csrf_hidden_field};
 use lariv_core::http::{ProvideRequestCaps, RouteQueryBuilder};
@@ -391,32 +454,6 @@ fn data_table_filtered(
         body_only: false,
     })
 }
-
-fn render_pagination(
-    key: SwapKey,
-    path_and_query: &str,
-    number: u32,
-    num_pages: u32,
-    push_url: bool,
-) -> Markup {
-    let hx_target = key.selector();
-    let owned = pagination_pages(path_and_query, number, num_pages, push_url);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
 const ASSISTANT_CHAT_SCRIPT: &str = r##"
 (function() {
   if (window.__llmAssistantChatBound) return;
@@ -951,12 +988,7 @@ impl HistoryListPage {
                 ..Default::default()
             }))
         };
-        let pagination = render_pagination(
-            HISTORY_TABLE,
-            &self.path_and_query,
-            self.sessions.number,
-            self.sessions.num_pages,
-            true,
+        let pagination = render_pagination_push(HISTORY_TABLE, &self.path_and_query, self.sessions.number, self.sessions.num_pages, true,
         );
         data_table_list(HISTORY_TABLE, "", actions, &headers, &rows, pagination)
     }
@@ -1080,12 +1112,7 @@ impl SkillListPage {
                 }))
             }
         };
-        let pagination = render_pagination(
-            SKILLS_TABLE,
-            &self.path_and_query,
-            self.skills.number,
-            self.skills.num_pages,
-            true,
+        let pagination = render_pagination_push(SKILLS_TABLE, &self.path_and_query, self.skills.number, self.skills.num_pages, true,
         );
         data_table_filtered(
             SKILLS_TABLE,
@@ -1516,12 +1543,7 @@ impl CronJobListPage {
                 ..Default::default()
             }))
         };
-        let pagination = render_pagination(
-            CRON_JOBS_TABLE,
-            &self.path_and_query,
-            self.jobs.number,
-            self.jobs.num_pages,
-            true,
+        let pagination = render_pagination_push(CRON_JOBS_TABLE, &self.path_and_query, self.jobs.number, self.jobs.num_pages, true,
         );
         data_table_filtered(
             CRON_JOBS_TABLE,

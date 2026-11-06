@@ -7,7 +7,7 @@ use sea_orm::{
 };
 use thiserror::Error;
 
-use lariv_core::genai::{Content, GenaiError, Role};
+use crate::genai::{Content, GenaiError, Role};
 
 use super::{
     config::COMPACTION_MAX_OUTPUT_TOKENS,
@@ -242,7 +242,7 @@ fn truncate_json(v: &serde_json::Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lariv_core::genai::{FunctionCall, FunctionResponse, Part};
+    use crate::genai::{FunctionCall, FunctionResponse, Part};
 
     fn turn(id: i64, role: Role, text: &str) -> SessionTurn {
         SessionTurn {

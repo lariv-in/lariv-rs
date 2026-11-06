@@ -14,8 +14,8 @@ use std::str::FromStr;
 
 use crate::entities::{cancelled_invoice, draft_invoice, posted_invoice, quotation_invoice};
 use crate::hub_sort::{
-    expr_ar_amount, expr_line_product_count, expr_line_untaxed, expr_open_balance,
-    expr_posted_final_due, expr_tax_levied_approx,
+    expr_ar_amount, expr_id_text, expr_line_product_count, expr_line_untaxed, expr_open_balance,
+    expr_posted_final_due, expr_product_exists, expr_tax_levied_approx,
 };
 use crate::logic::InvoiceListMetrics;
 use lariv_core::datetime::parse_date;
@@ -119,15 +119,13 @@ fn quotation_fields(tz: String) -> Vec<FilterField> {
                 "quotation_invoices",
             )
         }),
-        decimal_expr_field("total", "Total amount", true, || Expr::cust("0")),
-        decimal_expr_field("tax", "Tax levied", true, || Expr::cust("0")),
-        product_field(|id| {
-            format!(
-                "EXISTS (SELECT 1 FROM quotation_invoice_lines \
-                  WHERE quotation_invoice_lines.quotation_invoice_id = quotation_invoices.id \
-                    AND quotation_invoice_lines.product_id = {id})"
-            )
-        }),
+        decimal_expr_field("total", "Total amount", true, || Expr::val(0)),
+        decimal_expr_field("tax", "Tax levied", true, || Expr::val(0)),
+        product_field(
+            "quotation_invoice_lines",
+            "quotation_invoice_id",
+            "quotation_invoices",
+        ),
         number_expr_field("product_count", "Number of products", || {
             expr_line_product_count(
                 "quotation_invoice_lines",
@@ -135,7 +133,7 @@ fn quotation_fields(tz: String) -> Vec<FilterField> {
                 "quotation_invoices",
             )
         }),
-        date_expr_field("final_due", "Final due date", true, || Expr::cust("0")),
+        date_expr_field("final_due", "Final due date", true, || Expr::val(0)),
     ]
 }
 
@@ -159,19 +157,13 @@ fn draft_fields(tz: String) -> Vec<FilterField> {
         decimal_expr_field("untaxed", "Untaxed amount", false, || {
             expr_line_untaxed("draft_invoice_lines", "draft_invoice_id", "draft_invoices")
         }),
-        decimal_expr_field("total", "Total amount", true, || Expr::cust("0")),
-        decimal_expr_field("tax", "Tax levied", true, || Expr::cust("0")),
-        product_field(|id| {
-            format!(
-                "EXISTS (SELECT 1 FROM draft_invoice_lines \
-                  WHERE draft_invoice_lines.draft_invoice_id = draft_invoices.id \
-                    AND draft_invoice_lines.product_id = {id})"
-            )
-        }),
+        decimal_expr_field("total", "Total amount", true, || Expr::val(0)),
+        decimal_expr_field("tax", "Tax levied", true, || Expr::val(0)),
+        product_field("draft_invoice_lines", "draft_invoice_id", "draft_invoices"),
         number_expr_field("product_count", "Number of products", || {
             expr_line_product_count("draft_invoice_lines", "draft_invoice_id", "draft_invoices")
         }),
-        date_expr_field("final_due", "Final due date", true, || Expr::cust("0")),
+        date_expr_field("final_due", "Final due date", true, || Expr::val(0)),
     ]
 }
 
@@ -212,13 +204,11 @@ fn posted_fields(tz: String) -> Vec<FilterField> {
                 "posted_invoice_id",
             )
         }),
-        product_field(|id| {
-            format!(
-                "EXISTS (SELECT 1 FROM posted_invoice_lines \
-                  WHERE posted_invoice_lines.posted_invoice_id = posted_invoices.id \
-                    AND posted_invoice_lines.product_id = {id})"
-            )
-        }),
+        product_field(
+            "posted_invoice_lines",
+            "posted_invoice_id",
+            "posted_invoices",
+        ),
         number_expr_field("product_count", "Number of products", || {
             expr_line_product_count(
                 "posted_invoice_lines",
@@ -249,15 +239,13 @@ fn cancelled_fields(tz: String) -> Vec<FilterField> {
                 "cancelled_invoices",
             )
         }),
-        decimal_expr_field("total", "Total amount", true, || Expr::cust("0")),
-        decimal_expr_field("tax", "Tax levied", true, || Expr::cust("0")),
-        product_field(|id| {
-            format!(
-                "EXISTS (SELECT 1 FROM cancelled_invoice_lines \
-                  WHERE cancelled_invoice_lines.cancelled_invoice_id = cancelled_invoices.id \
-                    AND cancelled_invoice_lines.product_id = {id})"
-            )
-        }),
+        decimal_expr_field("total", "Total amount", true, || Expr::val(0)),
+        decimal_expr_field("tax", "Tax levied", true, || Expr::val(0)),
+        product_field(
+            "cancelled_invoice_lines",
+            "cancelled_invoice_id",
+            "cancelled_invoices",
+        ),
         number_expr_field("product_count", "Number of products", || {
             expr_line_product_count(
                 "cancelled_invoice_lines",
@@ -272,9 +260,7 @@ fn cancelled_fields(tz: String) -> Vec<FilterField> {
 }
 
 fn id_field(table: &'static str) -> FilterField {
-    text_expr_field("id", "ID", move || {
-        Expr::cust(format!("CAST({table}.id AS TEXT)"))
-    })
+    text_expr_field("id", "ID", move || expr_id_text(table))
 }
 
 fn text_expr_field<F>(key: &'static str, label: &'static str, expr: F) -> FilterField
@@ -387,10 +373,11 @@ where
     )
 }
 
-fn product_field<F>(exists: F) -> FilterField
-where
-    F: Fn(i64) -> String + Send + 'static,
-{
+fn product_field(
+    lines_table: &'static str,
+    fk: &'static str,
+    invoice_table: &'static str,
+) -> FilterField {
     custom(
         "product",
         "Product",
@@ -409,7 +396,7 @@ where
             if id <= 0 {
                 return Err(format!("invalid id: {raw}"));
             }
-            Ok(one(Expr::cust(exists(id))))
+            Ok(one(expr_product_exists(lines_table, fk, invoice_table, id)))
         },
     )
 }
@@ -562,7 +549,10 @@ mod tests {
         let applied = apply_filters(DatabaseBackend::Postgres, &fields, &good);
         assert!(applied.errors.is_empty(), "{:?}", applied.errors);
         let rendered = sql(applied.condition);
-        assert!(rendered.contains("product_id = 12"), "{rendered}");
+        assert!(
+            rendered.contains("EXISTS") && rendered.contains("\"product_id\" = 12"),
+            "{rendered}"
+        );
     }
 
     #[test]

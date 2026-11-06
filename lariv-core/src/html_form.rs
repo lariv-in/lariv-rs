@@ -85,6 +85,20 @@ pub fn preprocess_numeric_form_value(s: &str) -> std::borrow::Cow<'_, str> {
     }
 }
 
+/// Blank or whitespace-only form strings become `None` for optional DB columns.
+/// Form field value for an optional foreign key: empty when `id <= 0`.
+pub fn fk_value(id: i64) -> String {
+    if id <= 0 {
+        String::new()
+    } else {
+        id.to_string()
+    }
+}
+
+pub fn opt_string(s: String) -> Option<String> {
+    if s.trim().is_empty() { None } else { Some(s) }
+}
+
 /// HTML forms send empty inputs as `""`; serde's `Option<i64>` rejects that.
 pub fn empty_str_as_none<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
 where
@@ -236,6 +250,43 @@ fn parse_form_vec_i64(s: &str) -> Result<Vec<i64>, String> {
     s.parse::<i64>().map(|n| vec![n]).map_err(|e| e.to_string())
 }
 
+/// Convert static or owned `(value, label)` lists into form choice storage.
+pub trait IntoFormChoices {
+    fn into_form_choices(self) -> Vec<(String, String)>;
+}
+
+impl IntoFormChoices for Vec<(String, String)> {
+    fn into_form_choices(self) -> Vec<(String, String)> {
+        self
+    }
+}
+
+impl IntoFormChoices for &[(String, String)] {
+    fn into_form_choices(self) -> Vec<(String, String)> {
+        self.to_vec()
+    }
+}
+
+impl IntoFormChoices for &Vec<(String, String)> {
+    fn into_form_choices(self) -> Vec<(String, String)> {
+        self.clone()
+    }
+}
+
+impl<'a> IntoFormChoices for &'a [(&'a str, &'a str)] {
+    fn into_form_choices(self) -> Vec<(String, String)> {
+        self.iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect()
+    }
+}
+
+impl<'a> IntoFormChoices for &&'a [(&'a str, &'a str)] {
+    fn into_form_choices(self) -> Vec<(String, String)> {
+        (*self).into_form_choices()
+    }
+}
+
 /// Compile-time HTML input name for a form field (generated per `#[html_form]` struct).
 pub trait FormFieldKey: Copy {
     fn html_name(self) -> &'static str;
@@ -304,8 +355,10 @@ impl<'a, F: HtmlForm> FormCtxBuilder<'a, F> {
         self
     }
 
-    pub fn choices(mut self, field: impl FormFieldKey, choices: &'a [(String, String)]) -> Self {
-        self.ctx = self.ctx.set_choices(field.choices_key(), choices);
+    pub fn choices(mut self, field: impl FormFieldKey, choices: impl IntoFormChoices) -> Self {
+        self.ctx = self
+            .ctx
+            .set_choices(field.choices_key(), choices.into_form_choices());
         self
     }
 
@@ -516,7 +569,7 @@ pub struct FormCtx<'a> {
     checked: HashMap<&'a str, bool>,
     errors: HashMap<&'a str, &'a str>,
     flags: HashMap<&'a str, bool>,
-    choices: HashMap<&'a str, &'a [(String, String)]>,
+    choices: HashMap<&'a str, Vec<(String, String)>>,
     m2m: HashMap<&'a str, &'a [ManyToManyItem]>,
     lists: HashMap<&'a str, &'a [String]>,
     displays: HashMap<&'a str, &'a str>,
@@ -564,7 +617,7 @@ impl<'a> FormCtx<'a> {
         self
     }
 
-    pub fn set_choices(mut self, key: &'a str, choices: &'a [(String, String)]) -> Self {
+    pub fn set_choices(mut self, key: &'a str, choices: Vec<(String, String)>) -> Self {
         self.choices.insert(key, choices);
         self
     }
@@ -663,7 +716,7 @@ impl<'a> FormCtx<'a> {
     }
 
     pub fn choices_of(&self, key: &str) -> &[(String, String)] {
-        self.choices.get(key).copied().unwrap_or(&[])
+        self.choices.get(key).map(Vec::as_slice).unwrap_or(&[])
     }
 
     pub fn m2m_of(&self, name: &str) -> &[ManyToManyItem] {

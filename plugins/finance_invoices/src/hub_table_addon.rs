@@ -1,21 +1,24 @@
 //! Extra columns on the invoice hub list table, registered by other plugins.
 //!
-//! Deployments can attach related data such as sites without the core invoice
-//! plugin knowing those entities.
+//! Invoices attaches [`InvoiceHubTableCap`]; deployments and sibling plugins
+//! register columns with `cap_hook(InvoiceHubTableTag, InvoiceHubTableCap, Hook)`.
+//! Handlers extract [`Cap`](lariv_core::http::Cap)`<`[`InvoiceHubTableRegistry`]`>`.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::marker::PhantomData;
 
 use async_trait::async_trait;
+use frunk::{HCons, HNil, hlist::HList};
+use lariv_core::app::App;
+use lariv_core::capability::{CapHookExt, Capability, HasCapTag};
+use lariv_core::tag::Tagged;
+use lariv_core::traits::add::{AddCapability, CapTagAbsent};
 use sea_orm::DatabaseConnection;
 
 use crate::invoice_addon_key::InvoiceAddonKey;
 
-static ADDONS: OnceLock<Mutex<Vec<&'static dyn InvoiceHubTableAddon>>> = OnceLock::new();
-
-fn addon_list() -> &'static Mutex<Vec<&'static dyn InvoiceHubTableAddon>> {
-    ADDONS.get_or_init(|| Mutex::new(Vec::new()))
-}
+/// Capability tag for the invoice hub table column registry.
+pub struct InvoiceHubTableTag;
 
 /// One plugin's extra column on the invoice hub table.
 #[async_trait]
@@ -36,19 +39,129 @@ pub trait InvoiceHubTableAddon: Send + Sync {
     ) -> HashMap<InvoiceAddonKey, String>;
 }
 
-/// Register a hub-table column addon (idempotent by [`InvoiceHubTableAddon::id`]).
-pub fn register_invoice_hub_table_addon(addon: &'static dyn InvoiceHubTableAddon) {
-    let mut list = addon_list().lock().unwrap_or_else(|e| e.into_inner());
-    if !list.iter().any(|a| a.id() == addon.id()) {
-        list.push(addon);
+/// Folded list of hub-table column addons (mounted capability value).
+#[derive(Clone, Default)]
+pub struct InvoiceHubTableRegistry {
+    addons: Vec<&'static dyn InvoiceHubTableAddon>,
+}
+
+impl InvoiceHubTableRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register a column addon; duplicate ids are ignored (install-order first wins).
+    pub fn register_addon(mut self, addon: &'static dyn InvoiceHubTableAddon) -> Self {
+        if !self
+            .addons
+            .iter()
+            .any(|existing| existing.id() == addon.id())
+        {
+            self.addons.push(addon);
+        }
+        self
+    }
+
+    pub fn addons(&self) -> &[&'static dyn InvoiceHubTableAddon] {
+        &self.addons
     }
 }
 
-fn addons() -> Vec<&'static dyn InvoiceHubTableAddon> {
-    addon_list()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone()
+/// Plugin hook for registering hub-table columns at install time.
+pub trait InvoiceHubTableRegistrar: Sized {
+    fn register_invoice_hub_table(
+        self,
+        registry: InvoiceHubTableRegistry,
+    ) -> InvoiceHubTableRegistry;
+}
+
+/// Builder-phase invoice hub table capability.
+#[derive(Clone, Default)]
+pub struct InvoiceHubTableCap<Hooks> {
+    pub hooks: Hooks,
+    pub items: InvoiceHubTableRegistry,
+    _tag: PhantomData<fn() -> InvoiceHubTableTag>,
+}
+
+impl<Hooks> InvoiceHubTableCap<Hooks> {
+    pub fn new() -> Self
+    where
+        Hooks: Default,
+    {
+        Self {
+            hooks: Hooks::default(),
+            items: InvoiceHubTableRegistry::new(),
+            _tag: PhantomData,
+        }
+    }
+
+    pub fn add_hook<HTag, H>(self, hook: H) -> InvoiceHubTableCap<HCons<Tagged<HTag, H>, Hooks>> {
+        InvoiceHubTableCap {
+            hooks: HCons {
+                head: Tagged::new(hook),
+                tail: self.hooks,
+            },
+            items: self.items,
+            _tag: PhantomData,
+        }
+    }
+}
+
+impl<Hooks> HasCapTag for InvoiceHubTableCap<Hooks> {
+    type Tag = InvoiceHubTableTag;
+}
+
+impl<Hooks, Plugin, Hook> CapHookExt<Plugin, Hook> for InvoiceHubTableCap<Hooks> {
+    type Hooked = InvoiceHubTableCap<HCons<Tagged<Plugin, Hook>, Hooks>>;
+
+    fn prepend_cap_hook(self, hook: Hook) -> Self::Hooked {
+        self.add_hook::<Plugin, Hook>(hook)
+    }
+}
+
+/// Fold registrar hooks over the registry (tail first = install order).
+pub trait FoldInvoiceHubTableRegistrarHooks {
+    fn fold(self, registry: InvoiceHubTableRegistry) -> InvoiceHubTableRegistry;
+}
+
+impl FoldInvoiceHubTableRegistrarHooks for HNil {
+    fn fold(self, registry: InvoiceHubTableRegistry) -> InvoiceHubTableRegistry {
+        registry
+    }
+}
+
+impl<Plugin, H, Tail> FoldInvoiceHubTableRegistrarHooks for HCons<Tagged<Plugin, H>, Tail>
+where
+    Tail: FoldInvoiceHubTableRegistrarHooks,
+    H: InvoiceHubTableRegistrar + Copy,
+{
+    fn fold(self, registry: InvoiceHubTableRegistry) -> InvoiceHubTableRegistry {
+        let registry = self.tail.fold(registry);
+        self.head.value.register_invoice_hub_table(registry)
+    }
+}
+
+impl<Hooks> Capability for InvoiceHubTableCap<Hooks>
+where
+    Hooks: FoldInvoiceHubTableRegistrarHooks,
+{
+    type Value = InvoiceHubTableRegistry;
+    type Output = Tagged<InvoiceHubTableTag, InvoiceHubTableRegistry>;
+    type Hooks = Hooks;
+    type Items = InvoiceHubTableRegistry;
+
+    fn mount(self) -> Self::Output {
+        let registry = self.hooks.fold(self.items);
+        Tagged::new(registry)
+    }
+}
+
+/// Attach an empty hub-table capability (prefer `cap_attach` in install steps).
+pub fn with_invoice_hub_table<L, Proof>(app: App<L>) -> App<HCons<InvoiceHubTableCap<HNil>, L>>
+where
+    L: HList + CapTagAbsent<InvoiceHubTableTag, Proof>,
+{
+    app.add_capability(InvoiceHubTableCap::<HNil>::new())
 }
 
 /// Header metadata for one registered extra column.
@@ -64,9 +177,10 @@ pub struct InvoiceHubExtraColumn {
 /// `extra_cells`).
 pub async fn enrich_hub_rows(
     db: &DatabaseConnection,
+    registry: &InvoiceHubTableRegistry,
     rows: &mut [super::templates::InvoiceRow],
 ) -> Vec<InvoiceHubExtraColumn> {
-    let registered = addons();
+    let registered = registry.addons();
     let columns: Vec<InvoiceHubExtraColumn> = registered
         .iter()
         .map(|addon| InvoiceHubExtraColumn {
@@ -87,7 +201,7 @@ pub async fn enrich_hub_rows(
     keys.dedup();
 
     let mut maps = Vec::with_capacity(registered.len());
-    for addon in &registered {
+    for addon in registered {
         maps.push(addon.cell_values(db, &keys).await);
     }
 

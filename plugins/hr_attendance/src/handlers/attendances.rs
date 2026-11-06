@@ -11,7 +11,7 @@ use sea_orm::{
 
 use lariv_core::list_filters::clauses_for;
 
-use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx};
+use lariv_core::components::{ObjectList, SharedChromeFolder, SlotCtx, sort_desc};
 use lariv_core::html_form::{HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
 use lariv_core::web::{
@@ -71,12 +71,6 @@ fn hub_query_from_uri(uri: &Uri) -> AttendanceListQuery {
         .ok()
         .and_then(|fields| fields.deserialize().ok())
         .unwrap_or_default()
-}
-
-fn sort_desc(sort: &str) -> bool {
-    sort.split_whitespace()
-        .last()
-        .is_some_and(|d| d.eq_ignore_ascii_case("DESC"))
 }
 
 fn parse_user_id(raw: Option<&str>) -> Option<i64> {

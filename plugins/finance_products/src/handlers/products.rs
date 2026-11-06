@@ -4,7 +4,7 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
 };
 use chrono::Utc;
-use lariv_plugin_finance_common::decimal::{self, dec_is_zero};
+use lariv_formula::decimal::{self, dec_is_zero};
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::sea_query::Condition;
 use sea_orm::{
@@ -18,10 +18,10 @@ use lariv_core::list_filters::{
 };
 use serde::Deserialize;
 
+use lariv_core::components::picker::respond_picker_select;
 use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
-use lariv_core::picker::respond_picker_select;
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,

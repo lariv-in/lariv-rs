@@ -4,8 +4,9 @@
 //! result is a signed journal amount: debit positive, credit negative.
 
 use chrono::Utc;
+use lariv_formula::decimal;
+use lariv_formula::variables;
 use lariv_formula::{VariableSchema, VariableValues, eval_formula, parse_values, validate_formula};
-use lariv_plugin_finance_common::decimal;
 use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
@@ -17,7 +18,6 @@ use crate::entities::account::{self, Entity as AccountEntity};
 use crate::entities::custom_source_doc_journal_entry_item_template::{
     self, Entity as ItemTemplateEntity,
 };
-use crate::variables;
 
 pub const FORMULA_VARIABLES_HINT: &str = "\
 Every variable defined above.

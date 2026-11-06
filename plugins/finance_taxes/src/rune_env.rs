@@ -39,7 +39,7 @@ fn search_taxes(
     use crate::entities::tax::{self, Entity as TaxEntity};
     use lariv_core::db::trigram;
     use lariv_core::rune_env::{block_on_async, json_to_rune, rune_to_json};
-    use lariv_plugin_finance_common::decimal;
+    use lariv_formula::decimal;
 
     #[derive(Debug, Deserialize, Default)]
     struct SearchArgs {

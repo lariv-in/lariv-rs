@@ -8,7 +8,7 @@ use sea_orm::{
 };
 use serde::Deserialize;
 
-use lariv_plugin_finance_common::decimal::{self, parse_decimal};
+use lariv_formula::decimal::{self, parse_decimal};
 use lariv_plugin_finance_products::{
     entities::product::Entity as ProductEntity, preferences::load_product_tax_ids, pricing,
 };

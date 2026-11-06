@@ -1,7 +1,6 @@
 //! Contacts plugin — people and companies.
 
 pub mod apps;
-pub mod create_modals;
 pub mod entities;
 pub mod forms;
 pub mod handlers;

@@ -9,8 +9,8 @@ use sea_orm::{
     EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, Statement, TransactionTrait,
 };
 
+use lariv_formula::decimal;
 use lariv_plugin_finance_accounts::logic::journal::JournalLineSpec;
-use lariv_plugin_finance_common::decimal;
 use lariv_plugin_finance_payments::logic::{
     CreatePaymentInput, build_payment_lines, insert_payment, prepare_payment,
 };

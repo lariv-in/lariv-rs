@@ -2,6 +2,7 @@ use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select, sea_query::Expr,
 };
 
+use lariv_core::components::{sort_desc, sort_key};
 use lariv_plugin_users::role_authorization::{principal_allowed, roles_for};
 use lariv_plugin_users::{middleware::roles_allowed, state::AuthContext};
 
@@ -90,16 +91,6 @@ pub async fn find_ex_employee_scoped(
             .await,
         "find by id",
     )
-}
-
-fn sort_key(sort: &str) -> &str {
-    sort.trim().split_whitespace().next().unwrap_or("")
-}
-
-fn sort_desc(sort: &str) -> bool {
-    sort.split_whitespace()
-        .last()
-        .is_some_and(|d| d.eq_ignore_ascii_case("DESC"))
 }
 
 macro_rules! apply_person_sort {

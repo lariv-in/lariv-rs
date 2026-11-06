@@ -3,12 +3,12 @@ use maud::{Markup, html};
 
 use lariv_core::components::{
     ButtonClear, ButtonModalForm, ButtonSubmit, Crumb, FieldLink, FieldText, FieldTitle, FormOpts,
-    ManyToManyItem, ObjectList, PaginationPage, ShellChrome, SlotCapability, SlotRegistrar,
-    SwapKey, TableButtonFilter, TableColumnHeader, TableRow, breadcrumbs, button_clear,
-    button_modal_form, button_submit, column_sort_url, container_column, container_row,
-    data_table_list_refresh, detail, field_link, field_text, field_title, form, form_hx_get_url,
-    form_hx_post_url, label, list_filter_common_inputs, page_size_only_filter_form,
-    pagination_pages, row_attr_navigate, sort_indicator, table_button_filter,
+    ManyToManyItem, ObjectList, ShellChrome, SlotCapability, SlotRegistrar, SwapKey,
+    TableButtonFilter, TableColumnHeader, TableRow, breadcrumbs, button_clear, button_modal_form,
+    button_submit, column_sort_url, container_column, container_row, data_table_list_refresh,
+    detail, field_link, field_text, field_title, form, form_hx_get_url, form_hx_post_url, label,
+    list_filter_common_inputs, page_size_only_filter_form, render_pagination_push,
+    row_attr_navigate, sort_indicator, table_button_filter,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::{ProvideRequestCaps, RouteQueryBuilder};
@@ -70,32 +70,6 @@ fn payment_detail_menu(id: i64, heading: &str) -> Markup {
         html! {},
     )
 }
-
-fn render_pagination(
-    key: SwapKey,
-    path_and_query: &str,
-    number: u32,
-    num_pages: u32,
-    push: bool,
-) -> Markup {
-    let hx_target = key.selector();
-    let owned = pagination_pages(path_and_query, number, num_pages, push);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    lariv_core::components::table_pagination(lariv_core::components::TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
 fn journal_entry_link(id: i64) -> Markup {
     if id > 0 {
         field_link(FieldLink {
@@ -268,7 +242,7 @@ impl PaymentListPage {
                 children: Vec::new(),
             })
             .collect();
-        let pagination = render_pagination(
+        let pagination = render_pagination_push(
             self.table_key,
             &self.path_and_query,
             self.payments.number,

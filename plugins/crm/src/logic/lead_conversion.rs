@@ -8,7 +8,7 @@ use crate::entities::{
 };
 use crate::logic::lead::err_if_lead_sealed;
 use crate::logic::lead_timeline::append_lead_timeline;
-use crate::scope::{find_active_lead, find_converted_lead_scoped, sql_lead_active};
+use crate::scope::{find_active_lead, find_converted_lead_scoped, lead_active_condition};
 use lariv_plugin_contacts::entities::{
     company::Entity as CompanyEntity, contact::Entity as ContactEntity,
 };
@@ -110,7 +110,7 @@ pub async fn clear_converted_for_lead(
 pub async fn lead_is_active(db: &DatabaseConnection, lead_id: i64) -> bool {
     lariv_core::web::opt_or_log(
         LeadEntity::find_by_id(lead_id)
-            .filter(sql_lead_active())
+            .filter(lead_active_condition())
             .one(db)
             .await,
         "find by id",

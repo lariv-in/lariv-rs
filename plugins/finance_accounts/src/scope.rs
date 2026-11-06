@@ -7,7 +7,8 @@ use sea_orm::{
     QuerySelect, Select,
 };
 
-use lariv_plugin_finance_common::{decimal::decimal_display_currency, fiscal_year::FiscalYear};
+use lariv_formula::decimal::decimal_display_currency;
+use lariv_plugin_finance_common::fiscal_year::FiscalYear;
 
 use crate::{
     account_validation::{BALANCE_TYPE_SCOPE_QUERY_PARAM, account_descendant_ids},

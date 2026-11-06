@@ -3,17 +3,61 @@ use maud::{Markup, html};
 
 use lariv_core::components::table::table_grid_content;
 use lariv_core::components::{
-    ButtonModalForm, ButtonSubmit, DataTable, DataTableDisplay, DeleteConfirmation, DetailHeader,
-    FieldText, FilterClauseView, FormOpts, LayoutMain, LayoutSidebar, ListFilterBuilder,
-    ObjectList, PaginationPage, ShellChrome, ShellScaffold, ShellTopbar, SlotCapability,
-    SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TableListContent,
-    TablePagination, TableRow, app_layout_pane, button_modal_form, button_modal_route,
-    button_submit, column_sort_url, container_column, data_table, delete_confirmation, detail,
-    detail_header, field_text, filter_error_banner, form, form_hx_get_route,
-    form_hx_post_multipart_url, form_hx_post_selector, form_hx_post_url, form_post_multipart,
-    label, layout_main, layout_sidebar, list_filter_builder, modal, modal_keyed, pagination_pages,
-    row_attr_navigate, shell_scaffold, shell_topbar, sort_indicator, table_button_columns,
-    table_button_filter, table_list_content, table_pagination,
+    ButtonModalForm,
+    ButtonSubmit,
+    DataTable,
+    DataTableDisplay,
+    DeleteConfirmation,
+    DetailHeader,
+    FieldText,
+    FilterClauseView,
+    FormOpts,
+    LayoutMain,
+    LayoutSidebar,
+    ListFilterBuilder,
+    ObjectList,
+    ShellChrome,
+    ShellScaffold,
+    ShellTopbar,
+    SlotCapability,
+    SlotRegistrar,
+    SwapKey,
+    TableButtonFilter,
+    TableColumnHeader,
+    TableListContent,
+    TableRow,
+    app_layout_pane,
+    button_modal_form,
+    button_modal_route,
+    button_submit,
+    column_sort_url,
+    container_column,
+    data_table,
+    delete_confirmation,
+    detail,
+    detail_header,
+    field_text,
+    filter_error_banner,
+    form,
+    form_hx_get_route,
+    form_hx_post_multipart_url,
+    form_hx_post_selector,
+    form_hx_post_url,
+    form_post_multipart,
+    label,
+    layout_main,
+    layout_sidebar,
+    list_filter_builder,
+    modal,
+    modal_keyed,
+    row_attr_navigate,
+    shell_scaffold,
+    shell_topbar,
+    sort_indicator,
+    table_button_columns,
+    table_button_filter,
+    table_list_content,
+    render_pagination,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, FormFieldKey, HtmlForm, render_field_specs};
 use lariv_core::http::ProvideRequestCaps;
@@ -195,20 +239,14 @@ pub struct EmployeeFormValues {
     pub manager_required: bool,
 }
 
-fn choice_pairs(choices: &[(&str, &str)]) -> Vec<(String, String)> {
-    choices
-        .iter()
-        .map(|(key, label)| ((*key).to_string(), (*label).to_string()))
-        .collect()
-}
 
 fn employee_form_inputs(values: &EmployeeFormValues, include_admin_dates: bool) -> Markup {
-    let gender = choice_pairs(EmployeeForm::gender_choices());
-    let marital = choice_pairs(EmployeeForm::marital_status_choices());
-    let nationality = choice_pairs(EmployeeForm::nationality_choices());
-    let disability = choice_pairs(EmployeeForm::disability_type_choices());
-    let blood = choice_pairs(EmployeeForm::blood_group_choices());
-    let account = choice_pairs(EmployeeForm::account_type_choices());
+    let gender = EmployeeForm::gender_choices();
+    let marital = EmployeeForm::marital_status_choices();
+    let nationality = EmployeeForm::nationality_choices();
+    let disability = EmployeeForm::disability_type_choices();
+    let blood = EmployeeForm::blood_group_choices();
+    let account = EmployeeForm::account_type_choices();
 
     let photo_hint = if values.photograph_display.is_empty() {
         String::new()
@@ -468,12 +506,6 @@ fn person_form_inputs(name: &str, mobile: &str, email: &str) -> Markup {
     )
 }
 
-fn gender_choice_pairs() -> Vec<(String, String)> {
-    ApplicantForm::gender_choices()
-        .iter()
-        .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
-        .collect()
-}
 
 #[derive(Clone, Default)]
 pub struct ApplicantFormValues {
@@ -491,7 +523,7 @@ pub struct ApplicantFormValues {
 }
 
 fn applicant_form_inputs(values: &ApplicantFormValues) -> Markup {
-    let choices = gender_choice_pairs();
+    let choices = ApplicantForm::gender_choices();
     ApplicantForm::render_inputs(
         &FormCtx::form::<ApplicantForm>(CsrfToken::current())
             .value(ApplicantFormField::Name, &values.name)
@@ -516,26 +548,6 @@ fn person_fields(name: &str, mobile: &str, email: &str) -> Markup {
         (label("Email", field_text(FieldText { value: email, classes: "" })))
     }
 }
-
-fn render_pagination(key: SwapKey, path_and_query: &str, number: u32, num_pages: u32) -> Markup {
-    let hx_target = key.selector();
-    let owned = pagination_pages(path_and_query, number, num_pages, true);
-    let pages: Vec<PaginationPage<'_>> = owned
-        .iter()
-        .map(|(ellipsis, url, push_url, active, label)| PaginationPage {
-            ellipsis: *ellipsis,
-            url: url.as_str(),
-            push_url: *push_url,
-            active: *active,
-            label: label.as_str(),
-        })
-        .collect();
-    table_pagination(TablePagination {
-        pages: &pages,
-        hx_target: &hx_target,
-    })
-}
-
 pub fn data_table_with_filter_errors(
     key: SwapKey,
     title: &str,

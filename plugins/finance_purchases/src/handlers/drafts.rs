@@ -10,21 +10,21 @@ use chrono::Utc;
 use maud::Markup;
 use sea_orm::{DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder};
 
+use lariv_core::components::picker::respond_picker_select;
 use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::{CsrfToken, HtmlFormBody, UrlencodedFields};
 use lariv_core::http::Cap;
-use lariv_core::picker::respond_picker_select;
 use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     respond_create_modal_done, respond_edit_modal_done,
 };
 use lariv_plugin_users::middleware::RequireAuth;
 
+use lariv_formula::decimal;
 use lariv_plugin_finance_accounts::journal_lines_editor::{PostJournalSection, post_journal_modal};
 use lariv_plugin_finance_accounts::logic::custom_source_doc::{
     ensure_posting_accounts, parse_submitted_journal_lines,
 };
-use lariv_plugin_finance_common::decimal;
 use lariv_plugin_finance_products::{entities::product::Entity as ProductEntity, pricing};
 use lariv_plugin_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 

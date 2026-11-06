@@ -6,6 +6,7 @@
 use axum::http::{HeaderMap, Uri};
 
 use lariv_core::components::nav_origin::from_dashboard;
+use lariv_core::http::{header_str, split_query, url_path_and_query};
 
 /// Apps launchpad path (`url()` adds the trailing slash).
 pub use lariv_core::components::nav_origin::DASHBOARD_URL;
@@ -47,11 +48,6 @@ pub fn dashboard_app_href(href: &str) -> String {
         _ => path,
     };
     append_from_dashboard(&href)
-}
-
-/// Navigation URL: trailing slash plus the current request's dashboard origin.
-pub fn nav_url(path: &str) -> String {
-    with_nav_origin(&lariv_core::http::trailing_slash(path))
 }
 
 /// Merge `from=dashboard` onto `href` when this request arrived from the apps grid.
@@ -100,7 +96,7 @@ fn url_is_dashboard_origin(url: Option<&str>) -> bool {
     let Some(url) = url else {
         return false;
     };
-    let (path, query) = path_and_query(url);
+    let (path, query) = url_path_and_query(url);
     is_dashboard_launchpad(path) || is_dashboard_app_path(path) || query_has_from_dashboard(query)
 }
 
@@ -114,38 +110,12 @@ fn query_has_from_dashboard(query: Option<&str>) -> bool {
     })
 }
 
-fn split_query(href: &str) -> (&str, Option<&str>) {
-    match href.split_once('?') {
-        Some((path, query)) => (path, Some(query)),
-        None => (href, None),
-    }
-}
-
-fn path_and_query(url: &str) -> (&str, Option<&str>) {
-    let url = url.trim();
-    let without_fragment = url.split_once('#').map(|(p, _)| p).unwrap_or(url);
-    let (before_query, query) = split_query(without_fragment);
-    let path = if let Some(scheme_end) = before_query.find("://") {
-        let after_scheme = &before_query[scheme_end + 3..];
-        match after_scheme.find('/') {
-            Some(i) => &after_scheme[i..],
-            None => "/",
-        }
-    } else {
-        before_query
-    };
-    (path, query)
-}
-
-fn header_str<'a>(headers: &'a HeaderMap, name: &'static str) -> Option<&'a str> {
-    headers.get(name).and_then(|v| v.to_str().ok())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use axum::http::{HeaderValue, Uri};
     use lariv_core::components::nav_origin::scope_from_dashboard;
+    use lariv_core::http::nav_url;
 
     fn uri(s: &str) -> Uri {
         s.parse().unwrap()
