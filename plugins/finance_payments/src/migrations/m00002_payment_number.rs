@@ -1,4 +1,5 @@
 //! Unique payment numbers, backfilled from Payment number format.
+use lariv_core::db::migration_sql::exec_sql;
 
 use std::collections::{HashMap, HashSet};
 
@@ -16,19 +17,27 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let conn = manager.get_connection();
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
             "ALTER TABLE payment_preferences ADD COLUMN IF NOT EXISTS payment_number_format text",
         )
         .await?;
-        conn.execute_unprepared("ALTER TABLE payments ADD COLUMN IF NOT EXISTS number text")
-            .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE payments ADD COLUMN IF NOT EXISTS number text",
+        )
+        .await?;
 
         let format = load_payment_number_format(conn).await?;
         backfill_payment_numbers(conn, &format).await?;
 
-        conn.execute_unprepared("ALTER TABLE payments ALTER COLUMN number SET NOT NULL")
-            .await?;
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
+            "ALTER TABLE payments ALTER COLUMN number SET NOT NULL",
+        )
+        .await?;
+        exec_sql(
+            manager,
             "CREATE UNIQUE INDEX IF NOT EXISTS uix_payments_number ON payments (number)",
         )
         .await?;
@@ -36,12 +45,10 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let conn = manager.get_connection();
-        conn.execute_unprepared("DROP INDEX IF EXISTS uix_payments_number")
-            .await?;
-        conn.execute_unprepared("ALTER TABLE payments DROP COLUMN IF EXISTS number")
-            .await?;
-        conn.execute_unprepared(
+        exec_sql(manager, "DROP INDEX IF EXISTS uix_payments_number").await?;
+        exec_sql(manager, "ALTER TABLE payments DROP COLUMN IF EXISTS number").await?;
+        exec_sql(
+            manager,
             "ALTER TABLE payment_preferences DROP COLUMN IF EXISTS payment_number_format",
         )
         .await?;

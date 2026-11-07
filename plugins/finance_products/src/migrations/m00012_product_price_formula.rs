@@ -1,4 +1,5 @@
 //! Product variable schema and price formula.
+use lariv_core::db::migration_sql::exec_sql;
 
 use sea_orm_migration::prelude::*;
 
@@ -8,12 +9,13 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let conn = manager.get_connection();
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS variables text NOT NULL DEFAULT '{}'",
         )
         .await?;
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS price_formula text NOT NULL DEFAULT ''",
         )
         .await?;
@@ -21,11 +23,16 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let conn = manager.get_connection();
-        conn.execute_unprepared("ALTER TABLE products DROP COLUMN IF EXISTS price_formula")
-            .await?;
-        conn.execute_unprepared("ALTER TABLE products DROP COLUMN IF EXISTS variables")
-            .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE products DROP COLUMN IF EXISTS price_formula",
+        )
+        .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE products DROP COLUMN IF EXISTS variables",
+        )
+        .await?;
         Ok(())
     }
 }

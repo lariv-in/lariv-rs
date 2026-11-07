@@ -1,3 +1,4 @@
+use lariv_core::db::migration_sql::is_postgres;
 use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QuerySelect};
 use sea_orm_migration::prelude::*;
 
@@ -60,16 +61,18 @@ impl MigrationTrait for Migration {
         set_user_id_not_null(manager, HrEmployees::Table, HrEmployees::UserId).await?;
         set_user_id_not_null(manager, HrExEmployees::Table, HrExEmployees::UserId).await?;
 
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_hr_applicants_user_id")
-                    .from(HrApplicants::Table, HrApplicants::UserId)
-                    .to(Users::Table, Users::Id)
-                    .on_delete(ForeignKeyAction::Cascade)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_hr_applicants_user_id")
+                        .from(HrApplicants::Table, HrApplicants::UserId)
+                        .to(Users::Table, Users::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+        };
         manager
             .create_index(
                 Index::create()
@@ -81,16 +84,18 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_hr_probations_user_id")
-                    .from(HrProbations::Table, HrProbations::UserId)
-                    .to(Users::Table, Users::Id)
-                    .on_delete(ForeignKeyAction::Cascade)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_hr_probations_user_id")
+                        .from(HrProbations::Table, HrProbations::UserId)
+                        .to(Users::Table, Users::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+        };
         manager
             .create_index(
                 Index::create()
@@ -102,16 +107,18 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_hr_employees_user_id")
-                    .from(HrEmployees::Table, HrEmployees::UserId)
-                    .to(Users::Table, Users::Id)
-                    .on_delete(ForeignKeyAction::Cascade)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_hr_employees_user_id")
+                        .from(HrEmployees::Table, HrEmployees::UserId)
+                        .to(Users::Table, Users::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+        };
         manager
             .create_index(
                 Index::create()
@@ -123,16 +130,18 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_hr_ex_employees_user_id")
-                    .from(HrExEmployees::Table, HrExEmployees::UserId)
-                    .to(Users::Table, Users::Id)
-                    .on_delete(ForeignKeyAction::Cascade)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_hr_ex_employees_user_id")
+                        .from(HrExEmployees::Table, HrExEmployees::UserId)
+                        .to(Users::Table, Users::Id)
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+        };
         manager
             .create_index(
                 Index::create()
@@ -148,14 +157,16 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_hr_ex_employees_user_id")
-                    .table(HrExEmployees::Table)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_hr_ex_employees_user_id")
+                        .table(HrExEmployees::Table)
+                        .to_owned(),
+                )
+                .await?;
+        };
         manager
             .drop_index(
                 Index::drop()
@@ -173,14 +184,16 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_hr_employees_user_id")
-                    .table(HrEmployees::Table)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_hr_employees_user_id")
+                        .table(HrEmployees::Table)
+                        .to_owned(),
+                )
+                .await?;
+        };
         manager
             .drop_index(
                 Index::drop()
@@ -198,14 +211,16 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_hr_probations_user_id")
-                    .table(HrProbations::Table)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_hr_probations_user_id")
+                        .table(HrProbations::Table)
+                        .to_owned(),
+                )
+                .await?;
+        };
         manager
             .drop_index(
                 Index::drop()
@@ -223,14 +238,16 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_hr_applicants_user_id")
-                    .table(HrApplicants::Table)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_hr_applicants_user_id")
+                        .table(HrApplicants::Table)
+                        .to_owned(),
+                )
+                .await?;
+        };
         manager
             .drop_index(
                 Index::drop()
@@ -272,14 +289,17 @@ async fn set_user_id_not_null(
     table: impl IntoIden,
     user_id: impl IntoIden,
 ) -> Result<(), DbErr> {
-    manager
-        .alter_table(
-            Table::alter()
-                .table(table)
-                .modify_column(ColumnDef::new(user_id).big_integer().not_null())
-                .to_owned(),
-        )
-        .await
+    if is_postgres(manager) {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(table)
+                    .modify_column(ColumnDef::new(user_id).big_integer().not_null())
+                    .to_owned(),
+            )
+            .await?;
+    }
+    Ok(())
 }
 
 async fn backfill_applicants<C: ConnectionTrait>(conn: &C) -> Result<(), DbErr> {

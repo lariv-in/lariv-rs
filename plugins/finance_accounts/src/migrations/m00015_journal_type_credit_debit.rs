@@ -1,4 +1,4 @@
-use lariv_core::db::migration_sql::exec_sql;
+use lariv_core::db::migration_sql::{exec_sql, is_postgres};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -69,10 +69,22 @@ $$;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        exec_sql(manager, UP).await
+        if is_postgres(manager) {
+            return exec_sql(manager, UP).await;
+        }
+        // SQLite stores journal_type as text, so only the data rewrite applies.
+        exec_sql(
+            manager,
+            "UPDATE journals SET journal_type = 'Debit' WHERE journal_type = 'General'",
+        )
+        .await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        exec_sql(manager, DOWN).await
+        if is_postgres(manager) {
+            exec_sql(manager, DOWN).await
+        } else {
+            Ok(())
+        }
     }
 }

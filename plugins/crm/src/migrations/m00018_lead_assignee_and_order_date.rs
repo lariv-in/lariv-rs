@@ -1,4 +1,4 @@
-use lariv_core::db::migration_sql::exec_sql;
+use lariv_core::db::migration_sql::{exec_sql, is_postgres};
 use sea_orm_migration::prelude::*;
 
 const UP_POSTGRES: &str = r#"
@@ -31,12 +31,6 @@ enum CrmLeads {
     OrderExpectedDate,
 }
 
-#[derive(Iden)]
-enum Users {
-    Table,
-    Id,
-}
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -61,17 +55,6 @@ impl MigrationTrait for Migration {
             )
             .await?;
         manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_crm_leads_assigned_to_id")
-                    .from(CrmLeads::Table, CrmLeads::AssignedToId)
-                    .to(Users::Table, Users::Id)
-                    .on_delete(ForeignKeyAction::SetNull)
-                    .on_update(ForeignKeyAction::Cascade)
-                    .to_owned(),
-            )
-            .await?;
-        manager
             .create_index(
                 Index::create()
                     .if_not_exists()
@@ -92,14 +75,16 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
-        manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_crm_leads_assigned_to_id")
-                    .table(CrmLeads::Table)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_crm_leads_assigned_to_id")
+                        .table(CrmLeads::Table)
+                        .to_owned(),
+                )
+                .await?;
+        };
         manager
             .alter_table(
                 Table::alter()

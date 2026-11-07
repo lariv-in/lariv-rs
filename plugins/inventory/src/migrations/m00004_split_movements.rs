@@ -1,6 +1,6 @@
 //! Split stock movements into in, out, and process tables.
+use lariv_core::db::migration_sql::{exec_sql, is_postgres};
 
-use lariv_core::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -129,17 +129,19 @@ impl MigrationTrait for Migration {
             "inventory_stock_movements_out",
         )
         .await?;
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_inventory_stock_movements_in_delivery_challan")
-                    .from(MovementsIn::Table, Header::DeliveryChallan)
-                    .to(FilesystemNodes::Table, FilesystemNodes::Id)
-                    .on_delete(ForeignKeyAction::Restrict)
-                    .on_update(ForeignKeyAction::Cascade)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_inventory_stock_movements_in_delivery_challan")
+                        .from(MovementsIn::Table, Header::DeliveryChallan)
+                        .to(FilesystemNodes::Table, FilesystemNodes::Id)
+                        .on_delete(ForeignKeyAction::Restrict)
+                        .on_update(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+        };
         manager
             .create_index(
                 Index::create()
@@ -369,39 +371,45 @@ async fn party_fks(
     table: impl Iden + Copy + 'static,
     prefix: &str,
 ) -> Result<(), DbErr> {
-    manager
-        .create_foreign_key(
-            ForeignKey::create()
-                .name(format!("fk_{prefix}_customer_individual"))
-                .from(table, Header::CustomerIndividual)
-                .to(CrmContacts::Table, CrmContacts::Id)
-                .on_delete(ForeignKeyAction::Restrict)
-                .on_update(ForeignKeyAction::Cascade)
-                .to_owned(),
-        )
-        .await?;
-    manager
-        .create_foreign_key(
-            ForeignKey::create()
-                .name(format!("fk_{prefix}_customer_company"))
-                .from(table, Header::CustomerCompany)
-                .to(CrmCompanies::Table, CrmCompanies::Id)
-                .on_delete(ForeignKeyAction::Restrict)
-                .on_update(ForeignKeyAction::Cascade)
-                .to_owned(),
-        )
-        .await?;
-    manager
-        .create_foreign_key(
-            ForeignKey::create()
-                .name(format!("fk_{prefix}_driver_id"))
-                .from(table, Header::DriverId)
-                .to(CrmContacts::Table, CrmContacts::Id)
-                .on_delete(ForeignKeyAction::Restrict)
-                .on_update(ForeignKeyAction::Cascade)
-                .to_owned(),
-        )
-        .await?;
+    if is_postgres(manager) {
+        manager
+            .create_foreign_key(
+                ForeignKey::create()
+                    .name(format!("fk_{prefix}_customer_individual"))
+                    .from(table, Header::CustomerIndividual)
+                    .to(CrmContacts::Table, CrmContacts::Id)
+                    .on_delete(ForeignKeyAction::Restrict)
+                    .on_update(ForeignKeyAction::Cascade)
+                    .to_owned(),
+            )
+            .await?;
+    };
+    if is_postgres(manager) {
+        manager
+            .create_foreign_key(
+                ForeignKey::create()
+                    .name(format!("fk_{prefix}_customer_company"))
+                    .from(table, Header::CustomerCompany)
+                    .to(CrmCompanies::Table, CrmCompanies::Id)
+                    .on_delete(ForeignKeyAction::Restrict)
+                    .on_update(ForeignKeyAction::Cascade)
+                    .to_owned(),
+            )
+            .await?;
+    };
+    if is_postgres(manager) {
+        manager
+            .create_foreign_key(
+                ForeignKey::create()
+                    .name(format!("fk_{prefix}_driver_id"))
+                    .from(table, Header::DriverId)
+                    .to(CrmContacts::Table, CrmContacts::Id)
+                    .on_delete(ForeignKeyAction::Restrict)
+                    .on_update(ForeignKeyAction::Cascade)
+                    .to_owned(),
+            )
+            .await?;
+    };
     for (suffix, col) in [
         ("customer_individual", Header::CustomerIndividual),
         ("customer_company", Header::CustomerCompany),
@@ -427,28 +435,32 @@ async fn line_fks(
     parent: impl Iden + Copy + 'static,
     prefix: &str,
 ) -> Result<(), DbErr> {
-    manager
-        .create_foreign_key(
-            ForeignKey::create()
-                .name(format!("fk_{prefix}_stock_id"))
-                .from(table, LineCol::StockId)
-                .to(Stocks::Table, Stocks::Id)
-                .on_delete(ForeignKeyAction::Restrict)
-                .on_update(ForeignKeyAction::Cascade)
-                .to_owned(),
-        )
-        .await?;
-    manager
-        .create_foreign_key(
-            ForeignKey::create()
-                .name(format!("fk_{prefix}_movement_id"))
-                .from(table, LineCol::MovementId)
-                .to(parent, Header::Id)
-                .on_delete(ForeignKeyAction::Cascade)
-                .on_update(ForeignKeyAction::Cascade)
-                .to_owned(),
-        )
-        .await?;
+    if is_postgres(manager) {
+        manager
+            .create_foreign_key(
+                ForeignKey::create()
+                    .name(format!("fk_{prefix}_stock_id"))
+                    .from(table, LineCol::StockId)
+                    .to(Stocks::Table, Stocks::Id)
+                    .on_delete(ForeignKeyAction::Restrict)
+                    .on_update(ForeignKeyAction::Cascade)
+                    .to_owned(),
+            )
+            .await?;
+    };
+    if is_postgres(manager) {
+        manager
+            .create_foreign_key(
+                ForeignKey::create()
+                    .name(format!("fk_{prefix}_movement_id"))
+                    .from(table, LineCol::MovementId)
+                    .to(parent, Header::Id)
+                    .on_delete(ForeignKeyAction::Cascade)
+                    .on_update(ForeignKeyAction::Cascade)
+                    .to_owned(),
+            )
+            .await?;
+    };
     manager
         .create_index(
             Index::create()
@@ -636,60 +648,70 @@ async fn create_old_line_table(manager: &SchemaManager<'_>) -> Result<(), DbErr>
 }
 
 async fn old_fks(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    manager
-        .create_foreign_key(
-            ForeignKey::create()
-                .name("fk_inventory_stock_movements_customer_individual")
-                .from(OldMovements::Table, Header::CustomerIndividual)
-                .to(CrmContacts::Table, CrmContacts::Id)
-                .on_delete(ForeignKeyAction::Restrict)
-                .on_update(ForeignKeyAction::Cascade)
-                .to_owned(),
-        )
-        .await?;
-    manager
-        .create_foreign_key(
-            ForeignKey::create()
-                .name("fk_inventory_stock_movements_customer_company")
-                .from(OldMovements::Table, Header::CustomerCompany)
-                .to(CrmCompanies::Table, CrmCompanies::Id)
-                .on_delete(ForeignKeyAction::Restrict)
-                .on_update(ForeignKeyAction::Cascade)
-                .to_owned(),
-        )
-        .await?;
-    manager
-        .create_foreign_key(
-            ForeignKey::create()
-                .name("fk_inventory_stock_movements_driver_id")
-                .from(OldMovements::Table, Header::DriverId)
-                .to(CrmContacts::Table, CrmContacts::Id)
-                .on_delete(ForeignKeyAction::Restrict)
-                .on_update(ForeignKeyAction::Cascade)
-                .to_owned(),
-        )
-        .await?;
-    manager
-        .create_foreign_key(
-            ForeignKey::create()
-                .name("fk_inventory_stock_movement_lines_stock_id")
-                .from(OldLines::Table, LineCol::StockId)
-                .to(Stocks::Table, Stocks::Id)
-                .on_delete(ForeignKeyAction::Restrict)
-                .on_update(ForeignKeyAction::Cascade)
-                .to_owned(),
-        )
-        .await?;
-    manager
-        .create_foreign_key(
-            ForeignKey::create()
-                .name("fk_inventory_stock_movement_lines_movement_id")
-                .from(OldLines::Table, Alias::new("stock_movement_id"))
-                .to(OldMovements::Table, Header::Id)
-                .on_delete(ForeignKeyAction::Cascade)
-                .on_update(ForeignKeyAction::Cascade)
-                .to_owned(),
-        )
-        .await?;
+    if is_postgres(manager) {
+        manager
+            .create_foreign_key(
+                ForeignKey::create()
+                    .name("fk_inventory_stock_movements_customer_individual")
+                    .from(OldMovements::Table, Header::CustomerIndividual)
+                    .to(CrmContacts::Table, CrmContacts::Id)
+                    .on_delete(ForeignKeyAction::Restrict)
+                    .on_update(ForeignKeyAction::Cascade)
+                    .to_owned(),
+            )
+            .await?;
+    };
+    if is_postgres(manager) {
+        manager
+            .create_foreign_key(
+                ForeignKey::create()
+                    .name("fk_inventory_stock_movements_customer_company")
+                    .from(OldMovements::Table, Header::CustomerCompany)
+                    .to(CrmCompanies::Table, CrmCompanies::Id)
+                    .on_delete(ForeignKeyAction::Restrict)
+                    .on_update(ForeignKeyAction::Cascade)
+                    .to_owned(),
+            )
+            .await?;
+    };
+    if is_postgres(manager) {
+        manager
+            .create_foreign_key(
+                ForeignKey::create()
+                    .name("fk_inventory_stock_movements_driver_id")
+                    .from(OldMovements::Table, Header::DriverId)
+                    .to(CrmContacts::Table, CrmContacts::Id)
+                    .on_delete(ForeignKeyAction::Restrict)
+                    .on_update(ForeignKeyAction::Cascade)
+                    .to_owned(),
+            )
+            .await?;
+    };
+    if is_postgres(manager) {
+        manager
+            .create_foreign_key(
+                ForeignKey::create()
+                    .name("fk_inventory_stock_movement_lines_stock_id")
+                    .from(OldLines::Table, LineCol::StockId)
+                    .to(Stocks::Table, Stocks::Id)
+                    .on_delete(ForeignKeyAction::Restrict)
+                    .on_update(ForeignKeyAction::Cascade)
+                    .to_owned(),
+            )
+            .await?;
+    };
+    if is_postgres(manager) {
+        manager
+            .create_foreign_key(
+                ForeignKey::create()
+                    .name("fk_inventory_stock_movement_lines_movement_id")
+                    .from(OldLines::Table, Alias::new("stock_movement_id"))
+                    .to(OldMovements::Table, Header::Id)
+                    .on_delete(ForeignKeyAction::Cascade)
+                    .on_update(ForeignKeyAction::Cascade)
+                    .to_owned(),
+            )
+            .await?;
+    };
     Ok(())
 }

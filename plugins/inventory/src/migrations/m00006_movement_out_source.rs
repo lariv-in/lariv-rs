@@ -90,17 +90,19 @@ impl MigrationTrait for Migration {
                         .to_owned(),
                 )
                 .await?;
-            manager
-                .create_foreign_key(
-                    ForeignKey::create()
-                        .name("fk_inventory_stock_movements_out_source_process_id")
-                        .from(MovementsOut::Table, MovementsOut::SourceProcessId)
-                        .to(MovementsProcess::Table, MovementsProcess::Id)
-                        .on_delete(ForeignKeyAction::Restrict)
-                        .on_update(ForeignKeyAction::Cascade)
-                        .to_owned(),
-                )
-                .await?;
+            if is_postgres(manager) {
+                manager
+                    .create_foreign_key(
+                        ForeignKey::create()
+                            .name("fk_inventory_stock_movements_out_source_process_id")
+                            .from(MovementsOut::Table, MovementsOut::SourceProcessId)
+                            .to(MovementsProcess::Table, MovementsProcess::Id)
+                            .on_delete(ForeignKeyAction::Restrict)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .to_owned(),
+                    )
+                    .await?;
+            };
             // NOT VALID so outs saved before a source was required stay readable.
             // Inserts and updates must name exactly one in movement or one process movement.
             exec_sql(
@@ -130,22 +132,26 @@ impl MigrationTrait for Migration {
                  DROP CONSTRAINT IF EXISTS ck_inventory_stock_movements_out_source",
             )
             .await?;
-            manager
-                .drop_foreign_key(
-                    ForeignKey::drop()
-                        .name("fk_inventory_stock_movements_out_source_process_id")
-                        .table(MovementsOut::Table)
-                        .to_owned(),
-                )
-                .await?;
-            manager
-                .drop_foreign_key(
-                    ForeignKey::drop()
-                        .name("fk_inventory_stock_movements_out_source_in_id")
-                        .table(MovementsOut::Table)
-                        .to_owned(),
-                )
-                .await?;
+            if is_postgres(manager) {
+                manager
+                    .drop_foreign_key(
+                        ForeignKey::drop()
+                            .name("fk_inventory_stock_movements_out_source_process_id")
+                            .table(MovementsOut::Table)
+                            .to_owned(),
+                    )
+                    .await?;
+            };
+            if is_postgres(manager) {
+                manager
+                    .drop_foreign_key(
+                        ForeignKey::drop()
+                            .name("fk_inventory_stock_movements_out_source_in_id")
+                            .table(MovementsOut::Table)
+                            .to_owned(),
+                    )
+                    .await?;
+            }
         }
         for name in [
             "idx_inventory_stock_movements_out_source_process_id",

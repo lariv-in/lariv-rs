@@ -1,6 +1,8 @@
 //! Fold quotation service lines into `quotation_lines`.
+use lariv_core::db::migration_sql::{
+    self, FK_QUOTATION_LINE_PRODUCT, FK_QUOTATION_LINE_TAX, exec_sql,
+};
 
-use lariv_core::db::migration_sql::{self, FK_QUOTATION_LINE_PRODUCT, FK_QUOTATION_LINE_TAX};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -52,7 +54,7 @@ END $$;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.get_connection().execute_unprepared(UP).await?;
+        exec_sql(manager, UP).await?;
         migration_sql::exec_sql(
             manager,
             r#"

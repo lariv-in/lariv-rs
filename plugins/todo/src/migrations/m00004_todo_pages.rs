@@ -5,6 +5,7 @@
 //! do not share a page.
 
 use lariv_core::db::migration_sql::{exec_sql, is_postgres};
+use sea_orm::{DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -54,6 +55,8 @@ impl MigrationTrait for Migration {
         .await?;
         if is_postgres(manager) {
             add_page_fk_postgres(manager).await?;
+        } else if repair_interrupted_rebuild(manager).await? {
+            // The copy already holds `todo_page_id`. Only the final rename was left.
         } else {
             rebuild_sqlite(manager, true).await?;
         }
@@ -140,16 +143,18 @@ async fn add_page_fk_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> 
         "ALTER TABLE todos ALTER COLUMN todo_page_id SET NOT NULL",
     )
     .await?;
-    manager
-        .create_foreign_key(
-            ForeignKey::create()
-                .name("fk_todos_todo_page_id")
-                .from(Todos::Table, Todos::TodoPageId)
-                .to(TodoPages::Table, TodoPages::Id)
-                .on_delete(ForeignKeyAction::Cascade)
-                .to_owned(),
-        )
-        .await?;
+    if is_postgres(manager) {
+        manager
+            .create_foreign_key(
+                ForeignKey::create()
+                    .name("fk_todos_todo_page_id")
+                    .from(Todos::Table, Todos::TodoPageId)
+                    .to(TodoPages::Table, TodoPages::Id)
+                    .on_delete(ForeignKeyAction::Cascade)
+                    .to_owned(),
+            )
+            .await?;
+    };
     manager
         .create_index(
             Index::create()
@@ -164,14 +169,16 @@ async fn add_page_fk_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> 
 }
 
 async fn drop_page_fk_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
-    manager
-        .drop_foreign_key(
-            ForeignKey::drop()
-                .name("fk_todos_todo_page_id")
-                .table(Todos::Table)
-                .to_owned(),
-        )
-        .await?;
+    if is_postgres(manager) {
+        manager
+            .drop_foreign_key(
+                ForeignKey::drop()
+                    .name("fk_todos_todo_page_id")
+                    .table(Todos::Table)
+                    .to_owned(),
+            )
+            .await?;
+    };
     manager
         .drop_index(
             Index::drop()
@@ -189,6 +196,36 @@ async fn drop_page_fk_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr>
         )
         .await?;
     Ok(())
+}
+
+/// A failed rename leaves `todos__page` and no `todos`. Finish that rename.
+async fn repair_interrupted_rebuild(manager: &SchemaManager<'_>) -> Result<bool, DbErr> {
+    let copy = table_exists(manager, TEMP_TODOS).await?;
+    let todos = table_exists(manager, "todos").await?;
+    if copy && !todos {
+        exec_sql(manager, r#"ALTER TABLE "todos__page" RENAME TO "todos""#).await?;
+        exec_sql(
+            manager,
+            "UPDATE sqlite_sequence SET name = 'todos' WHERE name = 'todos__page'",
+        )
+        .await?;
+        return Ok(true);
+    }
+    if copy {
+        exec_sql(manager, r#"DROP TABLE "todos__page""#).await?;
+    }
+    Ok(false)
+}
+
+async fn table_exists(manager: &SchemaManager<'_>, table: &str) -> Result<bool, DbErr> {
+    let row = manager
+        .get_connection()
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            format!("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '{table}'"),
+        ))
+        .await?;
+    Ok(row.is_some())
 }
 
 /// SQLite cannot add a `NOT NULL` foreign key to an existing table. Copy `todos`

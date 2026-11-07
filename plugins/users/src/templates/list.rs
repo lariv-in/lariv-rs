@@ -1,39 +1,13 @@
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    Crumb,
-    DataTable,
-    DataTableDisplay,
-    FieldPhone,
-    FieldText,
-    FilterClauseView,
-    ListFilterBuilder,
-    ObjectList,
-    ShellChrome,
-    SidebarMenu,
-    SidebarNavLink,
-    SwapKey,
-    TableButtonFilter,
-    TableColumnHeader,
-    TableListContent,
-    TableRow,
-    breadcrumbs,
-    column_sort_url,
-    data_table,
-    field_phone,
-    field_text,
-    filter_error_banner,
-    form_hx_get_route,
-    list_filter_builder,
-    row_attr_navigate_route,
-    sidebar_menu,
-    sidebar_nav_items_pane,
-    sort_indicator,
-    table_button_columns,
-    table_button_filter,
-    table_create_button,
+    Crumb, DataTable, DataTableDisplay, FieldPhone, FieldText, FilterClauseView, ListFilterBuilder,
+    ObjectList, ShellChrome, SidebarMenu, SidebarNavLink, SwapKey, TableButtonFilter,
+    TableColumnHeader, TableListContent, TableRow, breadcrumbs, column_sort_url, data_table,
+    field_phone, field_text, filter_error_banner, form_hx_get_route, list_filter_builder,
+    render_pagination_push, row_attr_navigate_route, sidebar_menu, sidebar_nav_items_pane,
+    sort_indicator, table_button_columns, table_button_filter, table_create_button,
     table_list_content,
-    render_pagination_push,
 };
 use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::RenderTemplate;
@@ -238,7 +212,12 @@ impl UserListPage {
                 "btn-square btn-outline btn-sm",
             ))
         };
-        let pagination = render_pagination_push(USER_TABLE, &self.path_and_query, self.users.number, self.users.num_pages, true,
+        let pagination = render_pagination_push(
+            USER_TABLE,
+            &self.path_and_query,
+            self.users.number,
+            self.users.num_pages,
+            true,
         );
         filtered_data_table(
             USER_TABLE,

@@ -2,39 +2,12 @@ use frunk::Generic;
 use maud::{Markup, html};
 
 use lariv_core::components::{
-    ButtonModalForm,
-    ButtonSubmit,
-    DeleteConfirmation,
-    DetailHeader,
-    FieldText,
-    FilterClauseView,
-    FormOpts,
-    ListFilterBuilder,
-    ObjectList,
-    ShellChrome,
-    TableButtonFilter,
-    TableColumnHeader,
-    TableRow,
-    button_modal_form,
-    button_submit,
-    column_sort_url,
-    container_column,
-    delete_confirmation,
-    detail,
-    detail_header,
-    field_text,
-    form,
-    form_hx_get_route,
-    form_hx_post_selector,
-    form_hx_post_url,
-    label,
-    list_filter_builder,
-    modal,
-    modal_keyed,
-    row_attr_navigate,
-    sort_indicator,
-    table_button_filter,
-    render_pagination,
+    ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText, FilterClauseView,
+    FormOpts, ListFilterBuilder, ObjectList, ShellChrome, TableButtonFilter, TableColumnHeader,
+    TableRow, button_modal_form, button_submit, column_sort_url, container_column,
+    delete_confirmation, detail, detail_header, field_text, form, form_hx_get_route,
+    form_hx_post_selector, form_hx_post_url, label, list_filter_builder, modal, modal_keyed,
+    render_pagination, row_attr_navigate, sort_indicator, table_button_filter,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::list_filters::{FilterField, FilterRowError};
@@ -67,7 +40,6 @@ fn detail_sidebar(menu: Markup, roles: &[String]) -> Option<Markup> {
         Some(maud::PreEscaped(raw))
     }
 }
-
 
 #[derive(Clone, Default)]
 pub struct ApplicantFormValues {

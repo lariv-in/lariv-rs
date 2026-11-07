@@ -9,36 +9,45 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(FilesystemNodes::Table)
-                    .add_column(
-                        ColumnDef::new(FilesystemNodes::OwnerId)
-                            .big_integer()
-                            .null(),
-                    )
-                    .add_column(ColumnDef::new(FilesystemNodes::RoleId).big_integer().null())
-                    .add_column(
-                        ColumnDef::new(FilesystemNodes::Permissions)
-                            .integer()
-                            .not_null()
-                            .default(NodePermissions::legacy().bits()),
-                    )
-                    .to_owned(),
-            )
-            .await?;
+        // SQLite allows one ALTER TABLE option per statement.
+        for column in [
+            ColumnDef::new(FilesystemNodes::OwnerId)
+                .big_integer()
+                .null()
+                .take(),
+            ColumnDef::new(FilesystemNodes::RoleId)
+                .big_integer()
+                .null()
+                .take(),
+            ColumnDef::new(FilesystemNodes::Permissions)
+                .integer()
+                .not_null()
+                .default(NodePermissions::legacy().bits())
+                .take(),
+        ] {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(FilesystemNodes::Table)
+                        .add_column(column)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_filesystem_nodes_owner_id")
-                    .from(FilesystemNodes::Table, FilesystemNodes::OwnerId)
-                    .to(Users::Table, Users::Id)
-                    .on_delete(ForeignKeyAction::SetNull)
-                    .to_owned(),
-            )
-            .await?;
+        // SQLite cannot add a foreign key to an existing table.
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_filesystem_nodes_owner_id")
+                        .from(FilesystemNodes::Table, FilesystemNodes::OwnerId)
+                        .to(Users::Table, Users::Id)
+                        .on_delete(ForeignKeyAction::SetNull)
+                        .to_owned(),
+                )
+                .await?;
+        }
         manager
             .create_index(
                 Index::create()
@@ -50,16 +59,18 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_filesystem_nodes_role_id")
-                    .from(FilesystemNodes::Table, FilesystemNodes::RoleId)
-                    .to(Roles::Table, Roles::Id)
-                    .on_delete(ForeignKeyAction::SetNull)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_filesystem_nodes_role_id")
+                        .from(FilesystemNodes::Table, FilesystemNodes::RoleId)
+                        .to(Roles::Table, Roles::Id)
+                        .on_delete(ForeignKeyAction::SetNull)
+                        .to_owned(),
+                )
+                .await?;
+        }
         manager
             .create_index(
                 Index::create()
@@ -83,14 +94,16 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_filesystem_nodes_owner_id")
-                    .table(FilesystemNodes::Table)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_filesystem_nodes_owner_id")
+                        .table(FilesystemNodes::Table)
+                        .to_owned(),
+                )
+                .await?;
+        }
         manager
             .drop_index(
                 Index::drop()
@@ -99,14 +112,16 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
-        manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_filesystem_nodes_role_id")
-                    .table(FilesystemNodes::Table)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_filesystem_nodes_role_id")
+                        .table(FilesystemNodes::Table)
+                        .to_owned(),
+                )
+                .await?;
+        }
         manager
             .drop_index(
                 Index::drop()
@@ -115,16 +130,20 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(FilesystemNodes::Table)
-                    .drop_column(FilesystemNodes::OwnerId)
-                    .drop_column(FilesystemNodes::RoleId)
-                    .drop_column(FilesystemNodes::Permissions)
-                    .to_owned(),
-            )
-            .await?;
+        for column in [
+            FilesystemNodes::OwnerId,
+            FilesystemNodes::RoleId,
+            FilesystemNodes::Permissions,
+        ] {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(FilesystemNodes::Table)
+                        .drop_column(column)
+                        .to_owned(),
+                )
+                .await?;
+        }
         Ok(())
     }
 }

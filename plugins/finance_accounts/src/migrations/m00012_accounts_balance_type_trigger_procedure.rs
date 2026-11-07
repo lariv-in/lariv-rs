@@ -1,4 +1,4 @@
-use lariv_core::db::migration_sql::exec_sql;
+use lariv_core::db::migration_sql::{exec_sql, is_postgres};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -16,11 +16,17 @@ CREATE TRIGGER accounts_enforce_parent_balance_type_biud
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        if !is_postgres(manager) {
+            return Ok(());
+        }
         exec_sql(manager, DROP_TRIGGER).await?;
         exec_sql(manager, CREATE_TRIGGER).await
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        if !is_postgres(manager) {
+            return Ok(());
+        }
         exec_sql(manager, DROP_TRIGGER).await?;
         exec_sql(manager, CREATE_TRIGGER).await
     }

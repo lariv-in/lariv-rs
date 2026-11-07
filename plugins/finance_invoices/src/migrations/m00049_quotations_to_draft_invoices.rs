@@ -2,6 +2,7 @@
 //!
 //! Leaves `quotations` / `quotation_lines` / `quotation_line_taxes` /
 //! `quotation_preferences` in place but unused.
+use lariv_core::db::migration_sql::exec_sql;
 
 use sea_orm_migration::prelude::*;
 
@@ -135,7 +136,7 @@ BEGIN
 END $$;
 "#
         );
-        manager.get_connection().execute_unprepared(&sql).await?;
+        exec_sql(manager, &sql).await?;
         Ok(())
     }
 

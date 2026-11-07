@@ -3,6 +3,7 @@
 //! `m00009` seeded `pre_tax` and `-pre_tax`. Databases that already applied
 //! that seed rewrite those exact formulas. Fresh installs already store
 //! `unit_rate`.
+use lariv_core::db::migration_sql::exec_sql;
 
 use sea_orm_migration::prelude::*;
 
@@ -66,12 +67,12 @@ UPDATE purchase_service_preference_journal_items
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.get_connection().execute_unprepared(UP).await?;
+        exec_sql(manager, UP).await?;
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.get_connection().execute_unprepared(DOWN).await?;
+        exec_sql(manager, DOWN).await?;
         Ok(())
     }
 }

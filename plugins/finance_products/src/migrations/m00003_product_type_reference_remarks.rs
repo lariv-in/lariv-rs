@@ -1,3 +1,4 @@
+use lariv_core::db::migration_sql::{exec_sql, is_postgres};
 use sea_orm_migration::prelude::extension::postgres::PgExpr;
 use sea_orm_migration::prelude::extension::postgres::Type;
 use sea_orm_migration::prelude::*;
@@ -29,49 +30,87 @@ enum ProductType {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .create_type(
-                Type::create()
-                    .as_enum(ProductType::Enum)
-                    .values([ProductType::Goods, ProductType::Services, ProductType::Both])
-                    .to_owned(),
+        if is_postgres(manager) {
+            manager
+                .create_type(
+                    Type::create()
+                        .as_enum(ProductType::Enum)
+                        .values([ProductType::Goods, ProductType::Services, ProductType::Both])
+                        .to_owned(),
+                )
+                .await?;
+        };
+
+        if is_postgres(manager) {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Products::Table)
+                        .add_column(
+                            ColumnDef::new(Products::ProductType)
+                                .custom(ProductType::Enum)
+                                .not_null()
+                                .default("Goods"),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Products::Table)
+                        .add_column(ColumnDef::new(Products::Reference).text())
+                        .to_owned(),
+                )
+                .await?;
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Products::Table)
+                        .add_column(ColumnDef::new(Products::Remarks).text())
+                        .to_owned(),
+                )
+                .await?;
+        } else {
+            // A failed attempt may already have added these columns.
+            exec_sql(
+                manager,
+                "ALTER TABLE products ADD COLUMN product_type text NOT NULL DEFAULT 'Goods'",
             )
             .await?;
+            exec_sql(manager, "ALTER TABLE products ADD COLUMN reference text").await?;
+            exec_sql(manager, "ALTER TABLE products ADD COLUMN remarks text").await?;
+        }
 
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(Products::Table)
-                    .add_column(
-                        ColumnDef::new(Products::ProductType)
-                            .custom(ProductType::Enum)
-                            .not_null()
-                            .default("Goods"),
-                    )
-                    .add_column(ColumnDef::new(Products::Reference).text())
-                    .add_column(ColumnDef::new(Products::Remarks).text())
-                    .to_owned(),
+        if is_postgres(manager) {
+            let update = Query::update()
+                .table(Products::Table)
+                .value(
+                    Products::Reference,
+                    Expr::val("LEGACY-")
+                        .concat(Expr::col(Products::Id).cast_as(Alias::new("TEXT"))),
+                )
+                .and_where(Expr::col(Products::Reference).is_null())
+                .to_owned();
+            manager.get_connection().execute(&update).await?;
+        } else {
+            exec_sql(
+                manager,
+                "UPDATE products SET reference = 'LEGACY-' || id WHERE reference IS NULL",
             )
             .await?;
+        }
 
-        let update = Query::update()
-            .table(Products::Table)
-            .value(
-                Products::Reference,
-                Expr::val("LEGACY-").concat(Expr::col(Products::Id).cast_as(Alias::new("TEXT"))),
-            )
-            .and_where(Expr::col(Products::Reference).is_null())
-            .to_owned();
-        manager.get_connection().execute(&update).await?;
-
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(Products::Table)
-                    .modify_column(ColumnDef::new(Products::Reference).text().not_null())
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Products::Table)
+                        .modify_column(ColumnDef::new(Products::Reference).text().not_null())
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .create_index(
@@ -101,14 +140,31 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(Products::Table)
                     .drop_column(Products::Remarks)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Products::Table)
                     .drop_column(Products::Reference)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Products::Table)
                     .drop_column(Products::ProductType)
                     .to_owned(),
             )
             .await?;
 
-        manager
-            .drop_type(Type::drop().name(ProductType::Enum).to_owned())
-            .await
+        if is_postgres(manager) {
+            manager
+                .drop_type(Type::drop().name(ProductType::Enum).to_owned())
+                .await?;
+        }
+        Ok(())
     }
 }

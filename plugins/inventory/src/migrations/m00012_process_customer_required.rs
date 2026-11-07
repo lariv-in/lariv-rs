@@ -4,7 +4,7 @@
 //! input stock, then of a process that output that stock.
 
 use lariv_core::db::migration_sql::{exec_sql, is_postgres};
-use sea_orm::{ConnectionTrait, Statement};
+use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -64,6 +64,9 @@ WHERE customer_id IS NULL
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        if !is_postgres(manager) && repair_interrupted_rebuild(manager).await? {
+            return Ok(());
+        }
         exec_sql(manager, FROM_IN).await?;
         // A process can feed another process. Repeat so a filled row can fill the next.
         for _ in 0..8 {
@@ -117,6 +120,40 @@ async fn null_customer_count(manager: &SchemaManager<'_>) -> Result<i64, DbErr> 
         .await?
         .ok_or_else(|| DbErr::Custom("process customer count returned no row".into()))?;
     row.try_get("", "n")
+}
+
+/// The rename can fail after the original table is dropped, because SQLite's
+/// statement cache still sees the old name. The next process finishes the rename.
+async fn repair_interrupted_rebuild(manager: &SchemaManager<'_>) -> Result<bool, DbErr> {
+    let copy = table_exists(manager, "inventory_stock_movements_process__customer").await?;
+    let table = table_exists(manager, "inventory_stock_movements_process").await?;
+    if copy && !table {
+        exec_sql(
+            manager,
+            r#"ALTER TABLE "inventory_stock_movements_process__customer" RENAME TO "inventory_stock_movements_process""#,
+        )
+        .await?;
+        return Ok(true);
+    }
+    if copy {
+        exec_sql(
+            manager,
+            r#"DROP TABLE "inventory_stock_movements_process__customer""#,
+        )
+        .await?;
+    }
+    Ok(false)
+}
+
+async fn table_exists(manager: &SchemaManager<'_>, table: &str) -> Result<bool, DbErr> {
+    let row = manager
+        .get_connection()
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            format!("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '{table}'"),
+        ))
+        .await?;
+    Ok(row.is_some())
 }
 
 /// SQLite cannot `ALTER COLUMN … SET NOT NULL`.

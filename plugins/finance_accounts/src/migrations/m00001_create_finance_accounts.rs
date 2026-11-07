@@ -1,4 +1,4 @@
-use lariv_core::db::migration_sql::exec_sql;
+use lariv_core::db::migration_sql::{exec_sql, is_postgres};
 use sea_orm_migration::prelude::extension::postgres::Type;
 use sea_orm_migration::prelude::*;
 
@@ -58,16 +58,26 @@ $$;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .create_type(
-                Type::create()
-                    .as_enum(BalanceTypeKind::Enum)
-                    .values([BalanceTypeKind::Credit, BalanceTypeKind::Debit])
-                    .to_owned(),
-            )
-            .await?;
+        // SQLite has no enum types. `balance_type` is text holding "Credit" / "Debit".
+        if is_postgres(manager) {
+            manager
+                .create_type(
+                    Type::create()
+                        .as_enum(BalanceTypeKind::Enum)
+                        .values([BalanceTypeKind::Credit, BalanceTypeKind::Debit])
+                        .to_owned(),
+                )
+                .await?;
+            exec_sql(manager, NORMALIZE_BALANCE_TYPE).await?;
+        }
 
-        exec_sql(manager, NORMALIZE_BALANCE_TYPE).await?;
+        let mut balance_type = ColumnDef::new(Accounts::BalanceType);
+        if is_postgres(manager) {
+            balance_type.custom(BalanceTypeKind::Enum);
+        } else {
+            balance_type.text();
+        }
+        let balance_type = balance_type.not_null().take();
 
         manager
             .create_table(
@@ -92,11 +102,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(false),
                     )
-                    .col(
-                        ColumnDef::new(Accounts::BalanceType)
-                            .custom(BalanceTypeKind::Enum)
-                            .not_null(),
-                    )
+                    .col(balance_type)
                     .col(ColumnDef::new(Accounts::ParentId).big_integer())
                     .foreign_key(
                         ForeignKey::create()
@@ -137,8 +143,11 @@ impl MigrationTrait for Migration {
         manager
             .drop_table(Table::drop().table(Accounts::Table).to_owned())
             .await?;
-        manager
-            .drop_type(Type::drop().name(BalanceTypeKind::Enum).to_owned())
-            .await
+        if is_postgres(manager) {
+            manager
+                .drop_type(Type::drop().name(BalanceTypeKind::Enum).to_owned())
+                .await?;
+        }
+        Ok(())
     }
 }

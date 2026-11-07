@@ -1,3 +1,4 @@
+use lariv_core::db::migration_sql::is_postgres;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -105,28 +106,33 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_payments_payment_batch_id")
-                    .from(Payments::Table, Payments::PaymentBatchId)
-                    .to(PaymentBatches::Table, PaymentBatches::Id)
-                    .on_delete(ForeignKeyAction::Restrict)
-                    .on_update(ForeignKeyAction::Cascade)
-                    .to_owned(),
-            )
-            .await
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_payments_payment_batch_id")
+                        .from(Payments::Table, Payments::PaymentBatchId)
+                        .to(PaymentBatches::Table, PaymentBatches::Id)
+                        .on_delete(ForeignKeyAction::Restrict)
+                        .on_update(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+        }
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_payments_payment_batch_id")
-                    .table(Payments::Table)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_payments_payment_batch_id")
+                        .table(Payments::Table)
+                        .to_owned(),
+                )
+                .await?;
+        };
 
         manager
             .alter_table(

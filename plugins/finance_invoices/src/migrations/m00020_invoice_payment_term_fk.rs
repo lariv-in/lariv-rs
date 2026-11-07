@@ -1,5 +1,5 @@
 //! Invert payment-term ownership: invoices point at terms.
-use lariv_core::db::migration_sql::exec_sql;
+use lariv_core::db::migration_sql::{exec_sql, is_postgres};
 
 use sea_orm_migration::prelude::*;
 
@@ -28,56 +28,32 @@ enum CancelledInvoices {
 enum DraftPaymentTerms {
     Table,
     Id,
-    DraftInvoiceId,
 }
 
 #[derive(DeriveIden)]
 enum PostedPaymentTerms {
     Table,
     Id,
-    PostedInvoiceId,
-    CancelledInvoiceId,
 }
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(DraftInvoices::Table)
-                    .add_column(
-                        ColumnDef::new(DraftInvoices::DraftPaymentTermId)
-                            .big_integer()
-                            .null(),
-                    )
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(PostedInvoices::Table)
-                    .add_column(
-                        ColumnDef::new(PostedInvoices::PostedPaymentTermId)
-                            .big_integer()
-                            .null(),
-                    )
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(CancelledInvoices::Table)
-                    .add_column(
-                        ColumnDef::new(CancelledInvoices::PostedPaymentTermId)
-                            .big_integer()
-                            .null(),
-                    )
-                    .to_owned(),
-            )
-            .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE draft_invoices ADD COLUMN draft_payment_term_id bigint NULL",
+        )
+        .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE posted_invoices ADD COLUMN posted_payment_term_id bigint NULL",
+        )
+        .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE cancelled_invoices ADD COLUMN posted_payment_term_id bigint NULL",
+        )
+        .await?;
 
         exec_sql(
             manager,
@@ -132,101 +108,111 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(DraftInvoices::Table)
-                    .add_foreign_key(
-                        TableForeignKey::new()
-                            .name("fk_draft_invoices_draft_payment_term_id")
-                            .from_tbl(DraftInvoices::Table)
-                            .from_col(DraftInvoices::DraftPaymentTermId)
-                            .to_tbl(DraftPaymentTerms::Table)
-                            .to_col(DraftPaymentTerms::Id)
-                            .on_delete(ForeignKeyAction::SetNull),
-                    )
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(PostedInvoices::Table)
-                    .add_foreign_key(
-                        TableForeignKey::new()
-                            .name("fk_posted_invoices_posted_payment_term_id")
-                            .from_tbl(PostedInvoices::Table)
-                            .from_col(PostedInvoices::PostedPaymentTermId)
-                            .to_tbl(PostedPaymentTerms::Table)
-                            .to_col(PostedPaymentTerms::Id)
-                            .on_delete(ForeignKeyAction::SetNull),
-                    )
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(CancelledInvoices::Table)
-                    .add_foreign_key(
-                        TableForeignKey::new()
-                            .name("fk_cancelled_invoices_posted_payment_term_id")
-                            .from_tbl(CancelledInvoices::Table)
-                            .from_col(CancelledInvoices::PostedPaymentTermId)
-                            .to_tbl(PostedPaymentTerms::Table)
-                            .to_col(PostedPaymentTerms::Id)
-                            .on_delete(ForeignKeyAction::SetNull),
-                    )
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(DraftInvoices::Table)
+                        .add_foreign_key(
+                            TableForeignKey::new()
+                                .name("fk_draft_invoices_draft_payment_term_id")
+                                .from_tbl(DraftInvoices::Table)
+                                .from_col(DraftInvoices::DraftPaymentTermId)
+                                .to_tbl(DraftPaymentTerms::Table)
+                                .to_col(DraftPaymentTerms::Id)
+                                .on_delete(ForeignKeyAction::SetNull),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+        }
+        if is_postgres(manager) {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(PostedInvoices::Table)
+                        .add_foreign_key(
+                            TableForeignKey::new()
+                                .name("fk_posted_invoices_posted_payment_term_id")
+                                .from_tbl(PostedInvoices::Table)
+                                .from_col(PostedInvoices::PostedPaymentTermId)
+                                .to_tbl(PostedPaymentTerms::Table)
+                                .to_col(PostedPaymentTerms::Id)
+                                .on_delete(ForeignKeyAction::SetNull),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+        }
+        if is_postgres(manager) {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(CancelledInvoices::Table)
+                        .add_foreign_key(
+                            TableForeignKey::new()
+                                .name("fk_cancelled_invoices_posted_payment_term_id")
+                                .from_tbl(CancelledInvoices::Table)
+                                .from_col(CancelledInvoices::PostedPaymentTermId)
+                                .to_tbl(PostedPaymentTerms::Table)
+                                .to_col(PostedPaymentTerms::Id)
+                                .on_delete(ForeignKeyAction::SetNull),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+        }
 
-        manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_draft_payment_terms_draft_invoice_id")
-                    .table(DraftPaymentTerms::Table)
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_posted_payment_terms_posted_invoice_id")
-                    .table(PostedPaymentTerms::Table)
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_posted_payment_terms_cancelled_invoice_id")
-                    .table(PostedPaymentTerms::Table)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_draft_payment_terms_draft_invoice_id")
+                        .table(DraftPaymentTerms::Table)
+                        .to_owned(),
+                )
+                .await?;
+        };
+        if is_postgres(manager) {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_posted_payment_terms_posted_invoice_id")
+                        .table(PostedPaymentTerms::Table)
+                        .to_owned(),
+                )
+                .await?;
+        };
+        if is_postgres(manager) {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_posted_payment_terms_cancelled_invoice_id")
+                        .table(PostedPaymentTerms::Table)
+                        .to_owned(),
+                )
+                .await?;
+        };
         exec_sql(manager,
             "ALTER TABLE posted_payment_terms DROP CONSTRAINT IF EXISTS chk_posted_payment_terms_one_owner",
         )
         .await?;
 
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(DraftPaymentTerms::Table)
-                    .drop_column(DraftPaymentTerms::DraftInvoiceId)
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(PostedPaymentTerms::Table)
-                    .drop_column(PostedPaymentTerms::PostedInvoiceId)
-                    .drop_column(PostedPaymentTerms::CancelledInvoiceId)
-                    .to_owned(),
-            )
-            .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE draft_payment_terms DROP COLUMN draft_invoice_id",
+        )
+        .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE posted_payment_terms DROP COLUMN posted_invoice_id",
+        )
+        .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE posted_payment_terms DROP COLUMN cancelled_invoice_id",
+        )
+        .await?;
 
         Ok(())
     }

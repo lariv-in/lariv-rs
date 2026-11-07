@@ -1,3 +1,4 @@
+use lariv_core::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -14,16 +15,19 @@ enum DraftInvoices {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(DraftInvoices::Table)
-                    .drop_column(DraftInvoices::AccountReceivableId)
-                    .drop_column(DraftInvoices::AccountRevenueId)
-                    .drop_column(DraftInvoices::JournalId)
-                    .to_owned(),
-            )
-            .await
+        // SQLite cannot drop a column that an inline foreign key still names.
+        exec_sql(
+            manager,
+            "ALTER TABLE draft_invoices DROP COLUMN account_receivable_id",
+        )
+        .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE draft_invoices DROP COLUMN account_revenue_id",
+        )
+        .await?;
+        exec_sql(manager, "ALTER TABLE draft_invoices DROP COLUMN journal_id").await?;
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -37,12 +41,26 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(DraftInvoices::Table)
                     .add_column(
                         ColumnDef::new(DraftInvoices::AccountRevenueId)
                             .big_integer()
                             .not_null()
                             .default(0),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(DraftInvoices::Table)
                     .add_column(
                         ColumnDef::new(DraftInvoices::JournalId)
                             .big_integer()
@@ -51,6 +69,7 @@ impl MigrationTrait for Migration {
                     )
                     .to_owned(),
             )
-            .await
+            .await?;
+        Ok(())
     }
 }

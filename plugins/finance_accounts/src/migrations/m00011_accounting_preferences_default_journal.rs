@@ -1,3 +1,4 @@
+use lariv_core::db::migration_sql::is_postgres;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -29,20 +30,24 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_accounting_preferences_default_journal_id")
-                    .from(
-                        AccountingPreferences::Table,
-                        AccountingPreferences::DefaultJournalId,
-                    )
-                    .to(Journals::Table, Journals::Id)
-                    .on_update(ForeignKeyAction::Cascade)
-                    .on_delete(ForeignKeyAction::SetNull)
-                    .to_owned(),
-            )
-            .await
+        // SQLite cannot add a foreign key to an existing table.
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_accounting_preferences_default_journal_id")
+                        .from(
+                            AccountingPreferences::Table,
+                            AccountingPreferences::DefaultJournalId,
+                        )
+                        .to(Journals::Table, Journals::Id)
+                        .on_update(ForeignKeyAction::Cascade)
+                        .on_delete(ForeignKeyAction::SetNull)
+                        .to_owned(),
+                )
+                .await?;
+        }
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {

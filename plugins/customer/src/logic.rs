@@ -4,9 +4,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
     FromQueryResult, JoinType, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait,
     Select,
-    sea_query::{
-        Expr, ExprTrait, Func, Order, extension::postgres::PgExpr,
-    },
+    sea_query::{Expr, ExprTrait, Func, Order, extension::postgres::PgExpr},
 };
 
 use lariv_plugin_contacts::entities::{
@@ -54,15 +52,16 @@ fn customer_name_expr() -> Expr {
 }
 
 fn party_display_name(name: Expr) -> Expr {
-    Expr::case(name.clone().eq("").or(name.clone().is_null()), fallback_id_label())
-        .finally(name)
-        .into()
+    Expr::case(
+        name.clone().eq("").or(name.clone().is_null()),
+        fallback_id_label(),
+    )
+    .finally(name)
+    .into()
 }
 
 fn fallback_id_label() -> Expr {
-    Expr::val("#").concatenate(
-        Expr::col((CustomerEntity, customer::Column::Id)).cast_as("text"),
-    )
+    Expr::val("#").concatenate(Expr::col((CustomerEntity, customer::Column::Id)).cast_as("text"))
 }
 
 fn customers_with_parties() -> Select<CustomerEntity> {
@@ -71,7 +70,11 @@ fn customers_with_parties() -> Select<CustomerEntity> {
         .join(JoinType::LeftJoin, customer::Relation::Company.def())
 }
 
-fn apply_name_search(query: Select<CustomerEntity>, needle: &str, like: &str) -> Select<CustomerEntity> {
+fn apply_name_search(
+    query: Select<CustomerEntity>,
+    needle: &str,
+    like: &str,
+) -> Select<CustomerEntity> {
     if needle.is_empty() {
         query
     } else {

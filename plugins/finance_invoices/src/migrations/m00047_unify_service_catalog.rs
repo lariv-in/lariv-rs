@@ -1,4 +1,5 @@
 //! Point invoice service lines at unified service products and drop obsolete snapshot columns.
+use lariv_core::db::migration_sql::{exec_sql, exec_sql_conn};
 
 use lariv_plugin_finance_products::migrations::PRODUCT_SERVICE_ID_MAP;
 use sea_orm_migration::prelude::*;
@@ -27,32 +28,43 @@ impl MigrationTrait for Migration {
             // `fk_*` while Postgres still keeps the original `*_service_id_fkey`
             // pointing at `services`, which rejects product ids.
             drop_service_fks(conn, table).await?;
-            conn.execute_unprepared(&format!(
-                r#"UPDATE {table} AS line
+            exec_sql(
+                manager,
+                &format!(
+                    r#"UPDATE {table} AS line
                    SET service_id = map.product_id
                    FROM {PRODUCT_SERVICE_ID_MAP} AS map
                    WHERE line.service_id = map.service_id"#
-            ))
+                ),
+            )
             .await?;
             add_service_product_fk(conn, table).await?;
-            conn.execute_unprepared(&format!(
-                r#"ALTER TABLE {table}
+            exec_sql(
+                manager,
+                &format!(
+                    r#"ALTER TABLE {table}
                    DROP COLUMN IF EXISTS service_reference,
                    DROP COLUMN IF EXISTS base_price_formula"#
-            ))
+                ),
+            )
             .await?;
         }
         for table in GOODS_TABLES {
-            conn.execute_unprepared(&format!(
-                r#"ALTER TABLE {table}
+            exec_sql(
+                manager,
+                &format!(
+                    r#"ALTER TABLE {table}
                    DROP COLUMN IF EXISTS product_reference,
                    DROP COLUMN IF EXISTS base_price_formula"#
-            ))
+                ),
+            )
             .await?;
         }
         // Purchases m00007 still copies from `services` when that plugin stack is
         // present. Without purchase catalogs, drop the legacy sales services tables.
-        conn.execute_unprepared(
+        exec_sql_conn(
+            conn,
+            conn.get_database_backend(),
             r#"
             DO $$
             BEGIN
@@ -75,19 +87,25 @@ impl MigrationTrait for Migration {
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let conn = manager.get_connection();
         for table in GOODS_TABLES {
-            conn.execute_unprepared(&format!(
-                r#"ALTER TABLE {table}
+            exec_sql(
+                manager,
+                &format!(
+                    r#"ALTER TABLE {table}
                    ADD COLUMN IF NOT EXISTS product_reference text,
                    ADD COLUMN IF NOT EXISTS base_price_formula text NOT NULL DEFAULT '0'"#
-            ))
+                ),
+            )
             .await?;
         }
         for table in SERVICE_TABLES {
-            conn.execute_unprepared(&format!(
-                r#"ALTER TABLE {table}
+            exec_sql(
+                manager,
+                &format!(
+                    r#"ALTER TABLE {table}
                    ADD COLUMN IF NOT EXISTS service_reference text,
                    ADD COLUMN IF NOT EXISTS base_price_formula text NOT NULL DEFAULT '0'"#
-            ))
+                ),
+            )
             .await?;
             rewrite_service_fk_down(conn, table).await?;
         }
@@ -100,9 +118,11 @@ async fn drop_service_fks(conn: &impl sea_orm::ConnectionTrait, table: &str) -> 
         format!("fk_{table}_service_id"),
         format!("{table}_service_id_fkey"),
     ] {
-        conn.execute_unprepared(&format!(
-            "ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {fk}"
-        ))
+        exec_sql_conn(
+            conn,
+            conn.get_database_backend(),
+            &format!("ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {fk}"),
+        )
         .await?;
     }
     Ok(())
@@ -113,12 +133,16 @@ async fn add_service_product_fk(
     table: &str,
 ) -> Result<(), DbErr> {
     let fk = format!("fk_{table}_service_id");
-    conn.execute_unprepared(&format!(
-        r#"ALTER TABLE {table}
+    exec_sql_conn(
+        conn,
+        conn.get_database_backend(),
+        &format!(
+            r#"ALTER TABLE {table}
            ADD CONSTRAINT {fk}
            FOREIGN KEY (service_id) REFERENCES products(id)
            ON UPDATE CASCADE ON DELETE SET NULL"#
-    ))
+        ),
+    )
     .await?;
     Ok(())
 }
@@ -129,12 +153,16 @@ async fn rewrite_service_fk_down(
 ) -> Result<(), DbErr> {
     drop_service_fks(conn, table).await?;
     let fk = format!("fk_{table}_service_id");
-    conn.execute_unprepared(&format!(
-        r#"ALTER TABLE {table}
+    exec_sql_conn(
+        conn,
+        conn.get_database_backend(),
+        &format!(
+            r#"ALTER TABLE {table}
            ADD CONSTRAINT {fk}
            FOREIGN KEY (service_id) REFERENCES services(id)
            ON UPDATE CASCADE ON DELETE SET NULL"#
-    ))
+        ),
+    )
     .await?;
     Ok(())
 }

@@ -1,4 +1,5 @@
 //! Products store one tax classification code: HSN for goods, SAC for services.
+use lariv_core::db::migration_sql::exec_sql;
 
 use sea_orm_migration::prelude::*;
 
@@ -27,7 +28,7 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.get_connection().execute_unprepared(UP).await?;
+        exec_sql(manager, UP).await?;
         Ok(())
     }
 

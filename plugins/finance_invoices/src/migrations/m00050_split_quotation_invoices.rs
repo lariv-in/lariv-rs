@@ -2,6 +2,7 @@
 //!
 //! Copies every current draft invoice (lines, taxes, payment terms) into
 //! parallel quotation tables, preserving ids, then deletes the draft rows.
+use lariv_core::db::migration_sql::exec_sql;
 
 use lariv_core::db::trigram;
 use sea_orm_migration::prelude::*;
@@ -171,7 +172,7 @@ DROP TABLE IF EXISTS quotation_payment_terms;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let db = manager.get_connection();
-        db.execute_unprepared(UP_SQL).await?;
+        exec_sql(manager, UP_SQL).await?;
         let backend = manager.get_database_backend();
         trigram::create_gin_index(
             db,
@@ -197,7 +198,7 @@ impl MigrationTrait for Migration {
         let backend = manager.get_database_backend();
         trigram::drop_gin_index(db, backend, "quotation_invoices_number_trgm_idx").await?;
         trigram::drop_gin_index(db, backend, "quotation_invoices_reference_trgm_idx").await?;
-        db.execute_unprepared(DOWN_SQL).await?;
+        exec_sql(manager, DOWN_SQL).await?;
         Ok(())
     }
 }

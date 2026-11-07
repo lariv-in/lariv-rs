@@ -1,4 +1,5 @@
 use lariv_core::db::migration_sql::exec_sql;
+use sea_orm::DbBackend;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -10,11 +11,12 @@ async fn purge_and_drop(manager: &SchemaManager<'_>, table: &str) -> Result<(), 
         &format!("DELETE FROM {table} WHERE deleted_at IS NOT NULL"),
     )
     .await?;
-    exec_sql(
-        manager,
-        &format!("ALTER TABLE {table} DROP COLUMN IF EXISTS deleted_at"),
-    )
-    .await
+    // SQLite accepts DROP COLUMN, but not DROP COLUMN IF EXISTS.
+    let drop_deleted_at = match manager.get_database_backend() {
+        DbBackend::Postgres => "DROP COLUMN IF EXISTS deleted_at",
+        _ => "DROP COLUMN deleted_at",
+    };
+    exec_sql(manager, &format!("ALTER TABLE {table} {drop_deleted_at}")).await
 }
 
 #[async_trait::async_trait]
@@ -76,11 +78,11 @@ impl MigrationTrait for Migration {
             "llm_assistant_session_message_tool_responses",
             "llm_assistant_session_message_media_resolutions",
         ] {
-            exec_sql(
-                manager,
-                &format!("ALTER TABLE {table} ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ"),
-            )
-            .await?;
+            let add_deleted_at = match manager.get_database_backend() {
+                DbBackend::Postgres => "ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ",
+                _ => "ADD COLUMN deleted_at timestamp_with_timezone_text",
+            };
+            exec_sql(manager, &format!("ALTER TABLE {table} {add_deleted_at}")).await?;
         }
         exec_sql(manager,
             "CREATE INDEX IF NOT EXISTS idx_llm_assistant_sessions_deleted_at ON llm_assistant_sessions (deleted_at)",

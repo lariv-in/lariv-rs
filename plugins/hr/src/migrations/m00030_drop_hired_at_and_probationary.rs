@@ -43,6 +43,13 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(Expr::current_timestamp()),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(HrEmployees::Table)
                     .add_column(
                         ColumnDef::new(HrEmployees::IsProbationary)
                             .boolean()

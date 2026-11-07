@@ -55,21 +55,18 @@ enum PostedPaymentTermLines {
 enum DraftInvoices {
     Table,
     PaymentTermType,
-    PaymentTermId,
 }
 
 #[derive(DeriveIden)]
 enum PostedInvoices {
     Table,
     PaymentTermType,
-    PaymentTermId,
 }
 
 #[derive(DeriveIden)]
 enum CancelledInvoices {
     Table,
     PaymentTermType,
-    PaymentTermId,
 }
 
 #[async_trait::async_trait]
@@ -302,30 +299,42 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(DraftInvoices::Table)
                     .drop_column(DraftInvoices::PaymentTermType)
-                    .drop_column(DraftInvoices::PaymentTermId)
                     .to_owned(),
             )
             .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE draft_invoices DROP COLUMN payment_term_id",
+        )
+        .await?;
 
         manager
             .alter_table(
                 Table::alter()
                     .table(PostedInvoices::Table)
                     .drop_column(PostedInvoices::PaymentTermType)
-                    .drop_column(PostedInvoices::PaymentTermId)
                     .to_owned(),
             )
             .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE posted_invoices DROP COLUMN payment_term_id",
+        )
+        .await?;
 
         manager
             .alter_table(
                 Table::alter()
                     .table(CancelledInvoices::Table)
                     .drop_column(CancelledInvoices::PaymentTermType)
-                    .drop_column(CancelledInvoices::PaymentTermId)
                     .to_owned(),
             )
             .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE cancelled_invoices DROP COLUMN payment_term_id",
+        )
+        .await?;
 
         exec_sql(manager, "DROP TABLE IF EXISTS payment_terms CASCADE").await?;
         exec_sql(

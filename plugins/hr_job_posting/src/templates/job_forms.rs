@@ -1,47 +1,18 @@
 use frunk::Generic;
 use maud::{Markup, html};
 
+use lariv_core::components::picker::RenderPickerSelect;
 use lariv_core::components::{
-    ButtonModalForm,
-    ButtonSubmit,
-    DeleteConfirmation,
-    DetailHeader,
-    FieldText,
-    FilterClauseView,
-    FormOpts,
-    InputDatetime,
-    ListFilterBuilder,
-    ObjectList,
-    ShellChrome,
-    TableButtonFilter,
-    TableColumnHeader,
-    TableRow,
-    button_modal_form,
-    button_submit,
-    column_sort_url,
-    data_table_list_refresh,
-    delete_confirmation,
-    detail,
-    detail_header,
-    field_text,
-    form,
-    form_hx_get_route,
-    form_hx_post_selector,
-    form_hx_post_url,
-    input_datetime,
-    list_filter_builder,
-    modal,
-    modal_keyed,
-    render_pagination,
-    render_picker_pagination,
-    row_attr_navigate,
-    row_attr_select,
-    sort_indicator,
-    table_button_filter,
+    ButtonModalForm, ButtonSubmit, DeleteConfirmation, DetailHeader, FieldText, FilterClauseView,
+    FormOpts, InputDatetime, ListFilterBuilder, ObjectList, ShellChrome, TableButtonFilter,
+    TableColumnHeader, TableRow, button_modal_form, button_submit, column_sort_url,
+    data_table_list_refresh, delete_confirmation, detail, detail_header, field_text, form,
+    form_hx_get_route, form_hx_post_selector, form_hx_post_url, input_datetime,
+    list_filter_builder, modal, modal_keyed, render_pagination, render_picker_pagination,
+    row_attr_navigate, row_attr_select, sort_indicator, table_button_filter,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::list_filters::{FilterField, FilterRowError};
-use lariv_core::components::picker::RenderPickerSelect;
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_core::web::modal_create_post_url;
 

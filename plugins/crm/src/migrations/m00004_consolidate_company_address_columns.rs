@@ -1,4 +1,5 @@
 use lariv_core::db::migration_sql::exec_sql;
+use sea_orm::{ConnectionTrait, Statement};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -46,18 +47,30 @@ impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         match manager.get_connection().get_database_backend() {
             sea_orm::DatabaseBackend::Postgres => exec_sql(manager, UP_POSTGRES).await,
-            // Fresh SQLite creates never had the legacy names; DROP IF EXISTS is enough.
+            // Fresh SQLite creates never had `address_line1` / `address_line2`.
+            // SQLite rejects DROP COLUMN IF EXISTS, so drop only a column that is present.
             sea_orm::DatabaseBackend::Sqlite => {
-                exec_sql(
-                    manager,
-                    "ALTER TABLE crm_companies DROP COLUMN IF EXISTS address_line1",
-                )
-                .await?;
-                exec_sql(
-                    manager,
-                    "ALTER TABLE crm_companies DROP COLUMN IF EXISTS address_line2",
-                )
-                .await
+                for (legacy, current) in [
+                    ("address_line1", "address_line_1"),
+                    ("address_line2", "address_line_2"),
+                ] {
+                    if !column_exists(manager, legacy).await? {
+                        continue;
+                    }
+                    exec_sql(
+                        manager,
+                        &format!(
+                            "UPDATE crm_companies SET {current} = {legacy} WHERE {current} IS NULL AND {legacy} IS NOT NULL"
+                        ),
+                    )
+                    .await?;
+                    exec_sql(
+                        manager,
+                        &format!("ALTER TABLE crm_companies DROP COLUMN {legacy}"),
+                    )
+                    .await?;
+                }
+                Ok(())
             }
             _ => Ok(()),
         }
@@ -66,4 +79,15 @@ impl MigrationTrait for Migration {
     async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
         Ok(())
     }
+}
+
+async fn column_exists(manager: &SchemaManager<'_>, column: &str) -> Result<bool, DbErr> {
+    let row = manager
+        .get_connection()
+        .query_one_raw(Statement::from_string(
+            manager.get_database_backend(),
+            format!("SELECT 1 FROM pragma_table_info('crm_companies') WHERE name = '{column}'"),
+        ))
+        .await?;
+    Ok(row.is_some())
 }

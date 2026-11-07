@@ -1,4 +1,4 @@
-use lariv_core::db::migration_sql::exec_sql;
+use lariv_core::db::migration_sql::{exec_sql, is_postgres};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -31,6 +31,13 @@ $fn$ LANGUAGE plpgsql
 "#;
 
 async fn execute_if_exists(manager: &SchemaManager<'_>, sql: &str) -> Result<(), DbErr> {
+    if !is_postgres(manager) {
+        return match exec_sql(manager, sql).await {
+            Ok(()) => Ok(()),
+            Err(err) if err.to_string().contains("no such table") => Ok(()),
+            Err(err) => Err(err),
+        };
+    }
     // Invoice/creditnote tables may not exist yet depending on plugin install order.
     let wrapped = format!(
         r#"
@@ -218,7 +225,9 @@ impl MigrationTrait for Migration {
         .await?;
         exec_sql(manager, "DELETE FROM accounts WHERE deleted_at IS NOT NULL").await?;
 
-        exec_sql(manager, REWRITE_FUNCTION).await?;
+        if is_postgres(manager) {
+            exec_sql(manager, REWRITE_FUNCTION).await?;
+        }
 
         for (index, table) in [
             ("idx_journal_entry_items_deleted_at", "journal_entry_items"),

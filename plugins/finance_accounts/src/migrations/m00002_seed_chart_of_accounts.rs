@@ -1,4 +1,4 @@
-use lariv_core::db::migration_sql::exec_sql;
+use lariv_core::db::migration_sql::{exec_sql, is_postgres};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -517,11 +517,19 @@ $$;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        exec_sql(manager, NORMALIZE_BALANCE_TYPE).await?;
+        if is_postgres(manager) {
+            exec_sql(manager, NORMALIZE_BALANCE_TYPE).await?;
+        }
 
         let conn = manager.get_connection();
 
         for &(name, code, is_group, balance_type) in SEED_ACCOUNTS {
+            // CAST(... AS balance_type) is numeric affinity on SQLite and stores 0.
+            let balance_expr = if is_postgres(manager) {
+                Expr::val(balance_type).cast_as(BalanceTypeEnum::Enum)
+            } else {
+                Expr::val(balance_type)
+            };
             let insert = Query::insert()
                 .into_table(Accounts::Table)
                 .columns([
@@ -538,9 +546,7 @@ impl MigrationTrait for Migration {
                     name.into(),
                     code.into(),
                     is_group.into(),
-                    Expr::val(balance_type)
-                        .cast_as(BalanceTypeEnum::Enum)
-                        .into(),
+                    balance_expr.into(),
                 ])
                 .to_owned();
             conn.execute(&insert).await?;

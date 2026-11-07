@@ -1,3 +1,4 @@
+use lariv_core::db::migration_sql::is_postgres;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -31,20 +32,22 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_custom_source_doc_templates_attached_vnode_id")
-                    .from(
-                        CustomSourceDocTemplates::Table,
-                        CustomSourceDocTemplates::AttachedVnodeId,
-                    )
-                    .to(FilesystemNodes::Table, FilesystemNodes::Id)
-                    .on_update(ForeignKeyAction::Cascade)
-                    .on_delete(ForeignKeyAction::SetNull)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_custom_source_doc_templates_attached_vnode_id")
+                        .from(
+                            CustomSourceDocTemplates::Table,
+                            CustomSourceDocTemplates::AttachedVnodeId,
+                        )
+                        .to(FilesystemNodes::Table, FilesystemNodes::Id)
+                        .on_update(ForeignKeyAction::Cascade)
+                        .on_delete(ForeignKeyAction::SetNull)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .create_index(
@@ -58,14 +61,16 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_custom_source_doc_templates_attached_vnode_id")
-                    .table(CustomSourceDocTemplates::Table)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_custom_source_doc_templates_attached_vnode_id")
+                        .table(CustomSourceDocTemplates::Table)
+                        .to_owned(),
+                )
+                .await?;
+        }
         manager
             .drop_index(
                 Index::drop()

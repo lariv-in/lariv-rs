@@ -1,3 +1,4 @@
+use lariv_core::db::migration_sql::is_postgres;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -24,34 +25,45 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(Products::Table)
                     .add_column(ColumnDef::new(Products::InventoryAccountId).big_integer())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Products::Table)
                     .add_column(ColumnDef::new(Products::CostOfSalesAccountId).big_integer())
                     .to_owned(),
             )
             .await?;
 
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_products_inventory_account_id")
-                    .from(Products::Table, Products::InventoryAccountId)
-                    .to(Accounts::Table, Accounts::Id)
-                    .on_update(ForeignKeyAction::Cascade)
-                    .on_delete(ForeignKeyAction::Restrict)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_products_inventory_account_id")
+                        .from(Products::Table, Products::InventoryAccountId)
+                        .to(Accounts::Table, Accounts::Id)
+                        .on_update(ForeignKeyAction::Cascade)
+                        .on_delete(ForeignKeyAction::Restrict)
+                        .to_owned(),
+                )
+                .await?;
+        };
 
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_products_cost_of_sales_account_id")
-                    .from(Products::Table, Products::CostOfSalesAccountId)
-                    .to(Accounts::Table, Accounts::Id)
-                    .on_update(ForeignKeyAction::Cascade)
-                    .on_delete(ForeignKeyAction::Restrict)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_products_cost_of_sales_account_id")
+                        .from(Products::Table, Products::CostOfSalesAccountId)
+                        .to(Accounts::Table, Accounts::Id)
+                        .on_update(ForeignKeyAction::Cascade)
+                        .on_delete(ForeignKeyAction::Restrict)
+                        .to_owned(),
+                )
+                .await?;
+        };
 
         manager
             .create_index(
@@ -99,9 +111,17 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(Products::Table)
                     .drop_column(Products::CostOfSalesAccountId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Products::Table)
                     .drop_column(Products::InventoryAccountId)
                     .to_owned(),
             )
-            .await
+            .await?;
+        Ok(())
     }
 }

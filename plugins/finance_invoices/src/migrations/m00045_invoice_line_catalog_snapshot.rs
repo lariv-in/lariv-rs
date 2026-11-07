@@ -3,6 +3,7 @@
 //!
 //! Tolerates the unified product catalog (`reference` / `base_price_formula`
 //! dropped, services optionally already folded into `products`).
+use lariv_core::db::migration_sql::{exec_sql, exec_sql_conn};
 
 use sea_orm_migration::prelude::*;
 
@@ -26,8 +27,10 @@ impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let conn = manager.get_connection();
         for table in GOODS_TABLES {
-            conn.execute_unprepared(&format!(
-                r#"ALTER TABLE {table}
+            exec_sql(
+                manager,
+                &format!(
+                    r#"ALTER TABLE {table}
                    ADD COLUMN IF NOT EXISTS product_name text,
                    ADD COLUMN IF NOT EXISTS product_reference text,
                    ADD COLUMN IF NOT EXISTS product_remarks text,
@@ -35,10 +38,13 @@ impl MigrationTrait for Migration {
                    ADD COLUMN IF NOT EXISTS variable_types text,
                    ADD COLUMN IF NOT EXISTS base_price_formula text,
                    ADD COLUMN IF NOT EXISTS sales_price_formula text"#
-            ))
+                ),
+            )
             .await?;
-            conn.execute_unprepared(&format!(
-                r#"
+            exec_sql(
+                manager,
+                &format!(
+                    r#"
                 DO $migration$
                 DECLARE
                     has_reference boolean;
@@ -83,10 +89,11 @@ impl MigrationTrait for Migration {
                 END
                 $migration$;
                 "#
-            ))
+                ),
+            )
             .await?;
             // Orphans (product already gone): keep the row with placeholders.
-            conn.execute_unprepared(&format!(
+            exec_sql(manager, &format!(
                 r#"UPDATE {table}
                    SET product_name = COALESCE(product_name, format('Product #%s', product_id::text)),
                        hsn_code = COALESCE(hsn_code, 0),
@@ -96,21 +103,26 @@ impl MigrationTrait for Migration {
                    WHERE product_name IS NULL"#
             ))
             .await?;
-            conn.execute_unprepared(&format!(
-                r#"ALTER TABLE {table}
+            exec_sql(
+                manager,
+                &format!(
+                    r#"ALTER TABLE {table}
                    ALTER COLUMN product_name SET NOT NULL,
                    ALTER COLUMN hsn_code SET NOT NULL,
                    ALTER COLUMN variable_types SET NOT NULL,
                    ALTER COLUMN base_price_formula SET NOT NULL,
                    ALTER COLUMN sales_price_formula SET NOT NULL,
                    ALTER COLUMN product_id DROP NOT NULL"#
-            ))
+                ),
+            )
             .await?;
             rewrite_product_fk(conn, table).await?;
         }
         for table in SERVICE_TABLES {
-            conn.execute_unprepared(&format!(
-                r#"ALTER TABLE {table}
+            exec_sql(
+                manager,
+                &format!(
+                    r#"ALTER TABLE {table}
                    ADD COLUMN IF NOT EXISTS service_name text,
                    ADD COLUMN IF NOT EXISTS service_reference text,
                    ADD COLUMN IF NOT EXISTS service_remarks text,
@@ -118,10 +130,13 @@ impl MigrationTrait for Migration {
                    ADD COLUMN IF NOT EXISTS variable_types text,
                    ADD COLUMN IF NOT EXISTS base_price_formula text,
                    ADD COLUMN IF NOT EXISTS sales_price_formula text"#
-            ))
+                ),
+            )
             .await?;
-            conn.execute_unprepared(&format!(
-                r#"
+            exec_sql(
+                manager,
+                &format!(
+                    r#"
                 DO $migration$
                 DECLARE
                     has_services boolean;
@@ -183,9 +198,10 @@ impl MigrationTrait for Migration {
                 END
                 $migration$;
                 "#
-            ))
+                ),
+            )
             .await?;
-            conn.execute_unprepared(&format!(
+            exec_sql(manager, &format!(
                 r#"UPDATE {table}
                    SET service_name = COALESCE(service_name, format('Service #%s', service_id::text)),
                        sac_code = COALESCE(sac_code, 0),
@@ -195,15 +211,18 @@ impl MigrationTrait for Migration {
                    WHERE service_name IS NULL"#
             ))
             .await?;
-            conn.execute_unprepared(&format!(
-                r#"ALTER TABLE {table}
+            exec_sql(
+                manager,
+                &format!(
+                    r#"ALTER TABLE {table}
                    ALTER COLUMN service_name SET NOT NULL,
                    ALTER COLUMN sac_code SET NOT NULL,
                    ALTER COLUMN variable_types SET NOT NULL,
                    ALTER COLUMN base_price_formula SET NOT NULL,
                    ALTER COLUMN sales_price_formula SET NOT NULL,
                    ALTER COLUMN service_id DROP NOT NULL"#
-            ))
+                ),
+            )
             .await?;
             rewrite_service_fk(conn, table).await?;
         }
@@ -211,10 +230,11 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let conn = manager.get_connection();
         for table in GOODS_TABLES {
-            conn.execute_unprepared(&format!(
-                r#"ALTER TABLE {table}
+            exec_sql(
+                manager,
+                &format!(
+                    r#"ALTER TABLE {table}
                    DROP COLUMN IF EXISTS product_name,
                    DROP COLUMN IF EXISTS product_reference,
                    DROP COLUMN IF EXISTS product_remarks,
@@ -222,12 +242,15 @@ impl MigrationTrait for Migration {
                    DROP COLUMN IF EXISTS variable_types,
                    DROP COLUMN IF EXISTS base_price_formula,
                    DROP COLUMN IF EXISTS sales_price_formula"#
-            ))
+                ),
+            )
             .await?;
         }
         for table in SERVICE_TABLES {
-            conn.execute_unprepared(&format!(
-                r#"ALTER TABLE {table}
+            exec_sql(
+                manager,
+                &format!(
+                    r#"ALTER TABLE {table}
                    DROP COLUMN IF EXISTS service_name,
                    DROP COLUMN IF EXISTS service_reference,
                    DROP COLUMN IF EXISTS service_remarks,
@@ -235,7 +258,8 @@ impl MigrationTrait for Migration {
                    DROP COLUMN IF EXISTS variable_types,
                    DROP COLUMN IF EXISTS base_price_formula,
                    DROP COLUMN IF EXISTS sales_price_formula"#
-            ))
+                ),
+            )
             .await?;
         }
         Ok(())
@@ -255,21 +279,29 @@ async fn rewrite_product_fk(
         _ => None,
     };
     if let Some(old) = legacy {
-        conn.execute_unprepared(&format!(
-            "ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {old}"
-        ))
+        exec_sql_conn(
+            conn,
+            conn.get_database_backend(),
+            &format!("ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {old}"),
+        )
         .await?;
     }
-    conn.execute_unprepared(&format!(
-        "ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {fk}"
-    ))
+    exec_sql_conn(
+        conn,
+        conn.get_database_backend(),
+        &format!("ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {fk}"),
+    )
     .await?;
-    conn.execute_unprepared(&format!(
-        r#"ALTER TABLE {table}
+    exec_sql_conn(
+        conn,
+        conn.get_database_backend(),
+        &format!(
+            r#"ALTER TABLE {table}
            ADD CONSTRAINT {fk}
            FOREIGN KEY (product_id) REFERENCES products(id)
            ON UPDATE CASCADE ON DELETE SET NULL"#
-    ))
+        ),
+    )
     .await?;
     Ok(())
 }
@@ -279,13 +311,18 @@ async fn rewrite_service_fk(
     table: &str,
 ) -> Result<(), DbErr> {
     let fk = format!("fk_{table}_service_id");
-    conn.execute_unprepared(&format!(
-        "ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {fk}"
-    ))
+    exec_sql_conn(
+        conn,
+        conn.get_database_backend(),
+        &format!("ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {fk}"),
+    )
     .await?;
     // Prefer legacy `services` while it still exists; otherwise the unified catalog.
-    conn.execute_unprepared(&format!(
-        r#"
+    exec_sql_conn(
+        conn,
+        conn.get_database_backend(),
+        &format!(
+            r#"
         DO $migration$
         BEGIN
             IF to_regclass('public.services') IS NOT NULL THEN
@@ -306,7 +343,8 @@ async fn rewrite_service_fk(
         END
         $migration$;
         "#
-    ))
+        ),
+    )
     .await?;
     Ok(())
 }

@@ -1,3 +1,4 @@
+use lariv_core::db::migration_sql::is_postgres;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -26,18 +27,21 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(PaymentTermRelatives::Table)
-                    .modify_column(
-                        ColumnDef::new(PaymentTermRelatives::Duration)
-                            .big_integer()
-                            .not_null(),
-                    )
-                    .to_owned(),
-            )
-            .await
+        if is_postgres(manager) {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(PaymentTermRelatives::Table)
+                        .modify_column(
+                            ColumnDef::new(PaymentTermRelatives::Duration)
+                                .big_integer()
+                                .not_null(),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+        }
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {

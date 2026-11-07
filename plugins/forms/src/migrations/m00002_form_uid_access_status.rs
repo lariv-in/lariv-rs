@@ -117,6 +117,13 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(Forms::Table)
                     .drop_column(Forms::Uid)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Forms::Table)
                     .drop_column(Forms::AccessStatus)
                     .to_owned(),
             )

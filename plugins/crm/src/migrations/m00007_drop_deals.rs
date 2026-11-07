@@ -15,17 +15,6 @@ END $$;
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-#[derive(DeriveIden)]
-enum CrmConvertedLeads {
-    Table,
-    DealId,
-}
-
-#[derive(DeriveIden)]
-enum CrmDeals {
-    Table,
-}
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -33,27 +22,42 @@ impl MigrationTrait for Migration {
             return exec_sql(manager, UP_POSTGRES).await;
         }
 
-        manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_crm_converted_leads_deal_id")
-                    .table(CrmConvertedLeads::Table)
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(CrmConvertedLeads::Table)
-                    .drop_column(CrmConvertedLeads::DealId)
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .drop_table(Table::drop().table(CrmDeals::Table).to_owned())
-            .await
+        // `deal_id` is declared in a foreign key, so SQLite will not drop the column.
+        exec_sql(manager, "PRAGMA foreign_keys = OFF").await?;
+        exec_sql(
+            manager,
+            r#"
+CREATE TABLE "crm_converted_leads__nodeal" (
+    "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "created_at" timestamp_with_timezone_text,
+    "lead_id" integer NOT NULL,
+    "converted_at" timestamp_with_timezone_text NOT NULL,
+    "company_id" integer NOT NULL,
+    "contact_id" integer NOT NULL,
+    FOREIGN KEY ("lead_id") REFERENCES "crm_leads" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    FOREIGN KEY ("company_id") REFERENCES "crm_companies" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    FOREIGN KEY ("contact_id") REFERENCES "crm_contacts" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+)"#,
+        )
+        .await?;
+        exec_sql(
+            manager,
+            r#"
+INSERT INTO "crm_converted_leads__nodeal" (
+    id, created_at, lead_id, converted_at, company_id, contact_id
+)
+SELECT id, created_at, lead_id, converted_at, company_id, contact_id
+FROM crm_converted_leads"#,
+        )
+        .await?;
+        exec_sql(manager, r#"DROP TABLE "crm_converted_leads""#).await?;
+        exec_sql(
+            manager,
+            r#"ALTER TABLE "crm_converted_leads__nodeal" RENAME TO "crm_converted_leads""#,
+        )
+        .await?;
+        exec_sql(manager, "DROP TABLE IF EXISTS crm_deals").await?;
+        exec_sql(manager, "PRAGMA foreign_keys = ON").await
     }
 
     async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {

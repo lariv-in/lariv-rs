@@ -205,6 +205,7 @@ where
         COMPOSITE_MIGRATIONS.with(|cell| {
             *cell.borrow_mut() = Some(migrations);
         });
+        crate::db::migration_sql::repair_sqlite_rebuild_copies(db).await?;
         CompositeMigrator::up(db, None).await?;
         // Peer plugins may have been installed in either order. Attach foreign keys
         // that were skipped while the referenced table was still absent.

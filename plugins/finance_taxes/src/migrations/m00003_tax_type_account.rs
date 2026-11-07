@@ -1,3 +1,4 @@
+use lariv_core::db::migration_sql::is_postgres;
 use sea_orm_migration::prelude::extension::postgres::Type;
 use sea_orm_migration::prelude::*;
 
@@ -30,14 +31,16 @@ enum Accounts {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .create_type(
-                Type::create()
-                    .as_enum(TaxKind::Enum)
-                    .values([TaxKind::Levied, TaxKind::Withholding])
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .create_type(
+                    Type::create()
+                        .as_enum(TaxKind::Enum)
+                        .values([TaxKind::Levied, TaxKind::Withholding])
+                        .to_owned(),
+                )
+                .await?;
+        };
 
         manager
             .alter_table(
@@ -49,6 +52,13 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default("levied"),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Taxes::Table)
                     .add_column(ColumnDef::new(Taxes::AccountId).big_integer())
                     .to_owned(),
             )
@@ -65,23 +75,26 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(Taxes::Table)
-                    .add_foreign_key(
-                        TableForeignKey::new()
-                            .name("fk_taxes_account_id")
-                            .from_tbl(Taxes::Table)
-                            .from_col(Taxes::AccountId)
-                            .to_tbl(Accounts::Table)
-                            .to_col(Accounts::Id)
-                            .on_update(ForeignKeyAction::Cascade)
-                            .on_delete(ForeignKeyAction::Restrict),
-                    )
-                    .to_owned(),
-            )
-            .await
+        if is_postgres(manager) {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Taxes::Table)
+                        .add_foreign_key(
+                            TableForeignKey::new()
+                                .name("fk_taxes_account_id")
+                                .from_tbl(Taxes::Table)
+                                .from_col(Taxes::AccountId)
+                                .to_tbl(Accounts::Table)
+                                .to_col(Accounts::Id)
+                                .on_update(ForeignKeyAction::Cascade)
+                                .on_delete(ForeignKeyAction::Restrict),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+        }
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -94,19 +107,38 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        if is_postgres(manager) {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Taxes::Table)
+                        .drop_foreign_key(Alias::new("fk_taxes_account_id"))
+                        .to_owned(),
+                )
+                .await?;
+        }
         manager
             .alter_table(
                 Table::alter()
                     .table(Taxes::Table)
-                    .drop_foreign_key(Alias::new("fk_taxes_account_id"))
                     .drop_column(Taxes::AccountId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Taxes::Table)
                     .drop_column(Taxes::TaxType)
                     .to_owned(),
             )
             .await?;
 
-        manager
-            .drop_type(Type::drop().name(TaxKind::Enum).to_owned())
-            .await
+        if is_postgres(manager) {
+            manager
+                .drop_type(Type::drop().name(TaxKind::Enum).to_owned())
+                .await?;
+        }
+        Ok(())
     }
 }

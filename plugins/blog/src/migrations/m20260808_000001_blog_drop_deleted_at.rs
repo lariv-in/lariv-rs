@@ -1,4 +1,5 @@
 use lariv_core::db::migration_sql::exec_sql;
+use sea_orm::DbBackend;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -22,31 +23,26 @@ impl MigrationTrait for Migration {
         exec_sql(manager, "DROP INDEX IF EXISTS idx_blogs_deleted_at").await?;
         exec_sql(manager, "DROP INDEX IF EXISTS idx_blog_tags_deleted_at").await?;
 
-        exec_sql(
-            manager,
-            "ALTER TABLE blogs DROP COLUMN IF EXISTS deleted_at",
-        )
-        .await?;
-        exec_sql(
-            manager,
-            "ALTER TABLE blog_tags DROP COLUMN IF EXISTS deleted_at",
-        )
-        .await?;
+        // SQLite accepts DROP COLUMN, but not DROP COLUMN IF EXISTS.
+        let drop_deleted_at = match manager.get_database_backend() {
+            DbBackend::Postgres => "DROP COLUMN IF EXISTS deleted_at",
+            _ => "DROP COLUMN deleted_at",
+        };
+        for table in ["blogs", "blog_tags"] {
+            exec_sql(manager, &format!("ALTER TABLE {table} {drop_deleted_at}")).await?;
+        }
 
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        exec_sql(
-            manager,
-            "ALTER TABLE blog_tags ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ",
-        )
-        .await?;
-        exec_sql(
-            manager,
-            "ALTER TABLE blogs ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ",
-        )
-        .await?;
+        let add_deleted_at = match manager.get_database_backend() {
+            DbBackend::Postgres => "ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ",
+            _ => "ADD COLUMN deleted_at timestamp_with_timezone_text",
+        };
+        for table in ["blog_tags", "blogs"] {
+            exec_sql(manager, &format!("ALTER TABLE {table} {add_deleted_at}")).await?;
+        }
         exec_sql(
             manager,
             "CREATE INDEX IF NOT EXISTS idx_blog_tags_deleted_at ON blog_tags (deleted_at)",

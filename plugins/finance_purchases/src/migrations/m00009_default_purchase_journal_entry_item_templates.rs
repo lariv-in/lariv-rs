@@ -11,12 +11,12 @@
 //! accounts stamped on the latest posted purchase. Databases that already
 //! dropped those columns fall back to chart accounts 50101 (Merchandise,
 //! Material, Parts And Supplies) and 20101 (Trade Payables).
-
 use lariv_core::db::migration_sql::{
     self, FK_PURCHASE_PRODUCT_PREFERENCE_JOURNAL_ACCOUNT,
     FK_PURCHASE_PRODUCT_PREFERENCE_JOURNAL_JOURNAL, FK_PURCHASE_SERVICE_PREFERENCE_JOURNAL_ACCOUNT,
-    FK_PURCHASE_SERVICE_PREFERENCE_JOURNAL_JOURNAL,
+    FK_PURCHASE_SERVICE_PREFERENCE_JOURNAL_JOURNAL, exec_sql,
 };
+
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -255,7 +255,7 @@ END $$;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.get_connection().execute_unprepared(UP).await?;
+        exec_sql(manager, UP).await?;
         migration_sql::ensure_schema_foreign_keys(
             manager,
             &[
@@ -270,11 +270,16 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let conn = manager.get_connection();
-        conn.execute_unprepared("DROP TABLE IF EXISTS purchase_product_preference_journal_items")
-            .await?;
-        conn.execute_unprepared("DROP TABLE IF EXISTS purchase_service_preference_journal_items")
-            .await?;
+        exec_sql(
+            manager,
+            "DROP TABLE IF EXISTS purchase_product_preference_journal_items",
+        )
+        .await?;
+        exec_sql(
+            manager,
+            "DROP TABLE IF EXISTS purchase_service_preference_journal_items",
+        )
+        .await?;
         Ok(())
     }
 }

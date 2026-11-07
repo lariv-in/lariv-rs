@@ -1,7 +1,7 @@
 use sea_orm_migration::prelude::*;
 
 use crate::permissions::NodePermissions;
-use lariv_core::db::migration_sql::exec_sql;
+use lariv_core::db::migration_sql::{exec_sql, is_postgres};
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -46,16 +46,19 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_filesystem_preferences_owner_id")
-                    .from(FilesystemPreferences::Table, FilesystemPreferences::OwnerId)
-                    .to(Users::Table, Users::Id)
-                    .on_delete(ForeignKeyAction::SetNull)
-                    .to_owned(),
-            )
-            .await?;
+        // SQLite cannot add a foreign key to an existing table.
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_filesystem_preferences_owner_id")
+                        .from(FilesystemPreferences::Table, FilesystemPreferences::OwnerId)
+                        .to(Users::Table, Users::Id)
+                        .on_delete(ForeignKeyAction::SetNull)
+                        .to_owned(),
+                )
+                .await?;
+        }
         manager
             .create_index(
                 Index::create()
@@ -67,16 +70,18 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_filesystem_preferences_role_id")
-                    .from(FilesystemPreferences::Table, FilesystemPreferences::RoleId)
-                    .to(Roles::Table, Roles::Id)
-                    .on_delete(ForeignKeyAction::SetNull)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_filesystem_preferences_role_id")
+                        .from(FilesystemPreferences::Table, FilesystemPreferences::RoleId)
+                        .to(Roles::Table, Roles::Id)
+                        .on_delete(ForeignKeyAction::SetNull)
+                        .to_owned(),
+                )
+                .await?;
+        }
         manager
             .create_index(
                 Index::create()

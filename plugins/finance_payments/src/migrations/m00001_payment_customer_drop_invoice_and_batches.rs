@@ -1,5 +1,6 @@
 //! Copy each payment's customer from its posted invoice, retarget batch source
 //! documents onto one child payment, then drop batches and the invoice FK.
+use lariv_core::db::migration_sql::exec_sql;
 
 use sea_orm_migration::prelude::*;
 
@@ -9,10 +10,13 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let conn = manager.get_connection();
-        conn.execute_unprepared("ALTER TABLE payments ADD COLUMN IF NOT EXISTS customer_id bigint")
-            .await?;
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
+            "ALTER TABLE payments ADD COLUMN IF NOT EXISTS customer_id bigint",
+        )
+        .await?;
+        exec_sql(
+            manager,
             r#"UPDATE payments AS p
                SET customer_id = i.customer_id
                FROM posted_invoices AS i
@@ -20,32 +24,40 @@ impl MigrationTrait for Migration {
                  AND p.customer_id IS NULL"#,
         )
         .await?;
-        conn.execute_unprepared("ALTER TABLE payments ALTER COLUMN customer_id SET NOT NULL")
-            .await?;
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
+            "ALTER TABLE payments ALTER COLUMN customer_id SET NOT NULL",
+        )
+        .await?;
+        exec_sql(
+            manager,
             "ALTER TABLE payments DROP CONSTRAINT IF EXISTS fk_payments_customer_id",
         )
         .await?;
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
             r#"ALTER TABLE payments
                ADD CONSTRAINT fk_payments_customer_id
                FOREIGN KEY (customer_id) REFERENCES customers(id)
                ON DELETE RESTRICT ON UPDATE CASCADE"#,
         )
         .await?;
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
             "CREATE INDEX IF NOT EXISTS idx_payments_customer_id ON payments (customer_id)",
         )
         .await?;
 
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
             r#"UPDATE source_docs
                SET source_doc_type = 'p_finance_payments.Payment',
                    updated_at = NOW()
                WHERE source_doc_type = 'p_finance_invoices.Payment'"#,
         )
         .await?;
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
             r#"UPDATE source_docs AS sd
                SET source_doc_type = 'p_finance_payments.Payment',
                    source_doc_id = sub.payment_id,
@@ -62,7 +74,8 @@ impl MigrationTrait for Migration {
                  AND sd.source_doc_id = sub.payment_batch_id"#,
         )
         .await?;
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
             r#"UPDATE source_docs
                SET source_doc_type = 'p_finance_payments.Payment',
                    source_doc_id = 0,
@@ -71,25 +84,38 @@ impl MigrationTrait for Migration {
         )
         .await?;
 
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
             "ALTER TABLE payments DROP CONSTRAINT IF EXISTS fk_payments_payment_batch_id",
         )
         .await?;
-        conn.execute_unprepared("DROP INDEX IF EXISTS idx_payments_payment_batch_id")
-            .await?;
-        conn.execute_unprepared("ALTER TABLE payments DROP COLUMN IF EXISTS payment_batch_id")
-            .await?;
-        conn.execute_unprepared("DROP TABLE IF EXISTS payment_batches")
-            .await?;
+        exec_sql(
+            manager,
+            "DROP INDEX IF EXISTS idx_payments_payment_batch_id",
+        )
+        .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE payments DROP COLUMN IF EXISTS payment_batch_id",
+        )
+        .await?;
+        exec_sql(manager, "DROP TABLE IF EXISTS payment_batches").await?;
 
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
             "ALTER TABLE payments DROP CONSTRAINT IF EXISTS fk_payments_posted_invoice_id",
         )
         .await?;
-        conn.execute_unprepared("DROP INDEX IF EXISTS idx_payments_posted_invoice_id")
-            .await?;
-        conn.execute_unprepared("ALTER TABLE payments DROP COLUMN IF EXISTS posted_invoice_id")
-            .await?;
+        exec_sql(
+            manager,
+            "DROP INDEX IF EXISTS idx_payments_posted_invoice_id",
+        )
+        .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE payments DROP COLUMN IF EXISTS posted_invoice_id",
+        )
+        .await?;
         Ok(())
     }
 

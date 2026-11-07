@@ -1,6 +1,6 @@
 //! Party, vehicle, and number columns on stock movements, plus PDF preferences.
+use lariv_core::db::migration_sql::{exec_sql, is_postgres};
 
-use lariv_core::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -66,20 +66,62 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(""),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InventoryStockMovements::Table)
                     .add_column(
                         ColumnDef::new(InventoryStockMovements::BillToIndividual)
                             .boolean()
                             .not_null()
                             .default(false),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InventoryStockMovements::Table)
                     .add_column(
                         ColumnDef::new(InventoryStockMovements::CustomerIndividual).big_integer(),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InventoryStockMovements::Table)
                     .add_column(
                         ColumnDef::new(InventoryStockMovements::CustomerCompany).big_integer(),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InventoryStockMovements::Table)
                     .add_column(ColumnDef::new(InventoryStockMovements::VehicleType).text())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InventoryStockMovements::Table)
                     .add_column(ColumnDef::new(InventoryStockMovements::VehicleNumber).text())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InventoryStockMovements::Table)
                     .add_column(ColumnDef::new(InventoryStockMovements::DriverId).big_integer())
                     .to_owned(),
             )
@@ -91,48 +133,54 @@ impl MigrationTrait for Migration {
         )
         .await?;
 
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_inventory_stock_movements_customer_individual")
-                    .from(
-                        InventoryStockMovements::Table,
-                        InventoryStockMovements::CustomerIndividual,
-                    )
-                    .to(CrmContacts::Table, CrmContacts::Id)
-                    .on_delete(ForeignKeyAction::Restrict)
-                    .on_update(ForeignKeyAction::Cascade)
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_inventory_stock_movements_customer_company")
-                    .from(
-                        InventoryStockMovements::Table,
-                        InventoryStockMovements::CustomerCompany,
-                    )
-                    .to(CrmCompanies::Table, CrmCompanies::Id)
-                    .on_delete(ForeignKeyAction::Restrict)
-                    .on_update(ForeignKeyAction::Cascade)
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_inventory_stock_movements_driver_id")
-                    .from(
-                        InventoryStockMovements::Table,
-                        InventoryStockMovements::DriverId,
-                    )
-                    .to(CrmContacts::Table, CrmContacts::Id)
-                    .on_delete(ForeignKeyAction::Restrict)
-                    .on_update(ForeignKeyAction::Cascade)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_inventory_stock_movements_customer_individual")
+                        .from(
+                            InventoryStockMovements::Table,
+                            InventoryStockMovements::CustomerIndividual,
+                        )
+                        .to(CrmContacts::Table, CrmContacts::Id)
+                        .on_delete(ForeignKeyAction::Restrict)
+                        .on_update(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+        };
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_inventory_stock_movements_customer_company")
+                        .from(
+                            InventoryStockMovements::Table,
+                            InventoryStockMovements::CustomerCompany,
+                        )
+                        .to(CrmCompanies::Table, CrmCompanies::Id)
+                        .on_delete(ForeignKeyAction::Restrict)
+                        .on_update(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+        };
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_inventory_stock_movements_driver_id")
+                        .from(
+                            InventoryStockMovements::Table,
+                            InventoryStockMovements::DriverId,
+                        )
+                        .to(CrmContacts::Table, CrmContacts::Id)
+                        .on_delete(ForeignKeyAction::Restrict)
+                        .on_update(ForeignKeyAction::Cascade)
+                        .to_owned(),
+                )
+                .await?;
+        };
 
         manager
             .create_index(
@@ -237,27 +285,41 @@ impl MigrationTrait for Migration {
             )
             .await?;
         }
+        if is_postgres(manager) {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_inventory_stock_movements_customer_individual")
+                        .table(InventoryStockMovements::Table)
+                        .to_owned(),
+                )
+                .await?;
+        };
+        if is_postgres(manager) {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_inventory_stock_movements_customer_company")
+                        .table(InventoryStockMovements::Table)
+                        .to_owned(),
+                )
+                .await?;
+        };
+        if is_postgres(manager) {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_inventory_stock_movements_driver_id")
+                        .table(InventoryStockMovements::Table)
+                        .to_owned(),
+                )
+                .await?;
+        };
         manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_inventory_stock_movements_customer_individual")
+            .alter_table(
+                Table::alter()
                     .table(InventoryStockMovements::Table)
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_inventory_stock_movements_customer_company")
-                    .table(InventoryStockMovements::Table)
-                    .to_owned(),
-            )
-            .await?;
-        manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_inventory_stock_movements_driver_id")
-                    .table(InventoryStockMovements::Table)
+                    .drop_column(InventoryStockMovements::Number)
                     .to_owned(),
             )
             .await?;
@@ -265,12 +327,46 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(InventoryStockMovements::Table)
-                    .drop_column(InventoryStockMovements::Number)
                     .drop_column(InventoryStockMovements::BillToIndividual)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InventoryStockMovements::Table)
                     .drop_column(InventoryStockMovements::CustomerIndividual)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InventoryStockMovements::Table)
                     .drop_column(InventoryStockMovements::CustomerCompany)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InventoryStockMovements::Table)
                     .drop_column(InventoryStockMovements::VehicleType)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InventoryStockMovements::Table)
                     .drop_column(InventoryStockMovements::VehicleNumber)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InventoryStockMovements::Table)
                     .drop_column(InventoryStockMovements::DriverId)
                     .to_owned(),
             )

@@ -1,3 +1,4 @@
+use lariv_core::db::migration_sql::is_postgres;
 use sea_orm_migration::prelude::extension::postgres::Type;
 use sea_orm_migration::prelude::*;
 
@@ -36,14 +37,24 @@ enum Currencies {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .create_type(
-                Type::create()
-                    .as_enum(JournalType::Enum)
-                    .values([JournalType::Credit, JournalType::Debit])
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .create_type(
+                    Type::create()
+                        .as_enum(JournalType::Enum)
+                        .values([JournalType::Credit, JournalType::Debit])
+                        .to_owned(),
+                )
+                .await?;
+        }
+
+        let mut journal_type = ColumnDef::new(Journals::JournalType);
+        if is_postgres(manager) {
+            journal_type.custom(JournalType::Enum);
+        } else {
+            journal_type.text();
+        }
+        let journal_type = journal_type.not_null().take();
 
         manager
             .create_table(
@@ -72,11 +83,7 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(Journals::JournalType)
-                            .custom(JournalType::Enum)
-                            .not_null(),
-                    )
+                    .col(journal_type)
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk_journals_currency_id")
@@ -116,8 +123,11 @@ impl MigrationTrait for Migration {
         manager
             .drop_table(Table::drop().table(Journals::Table).to_owned())
             .await?;
-        manager
-            .drop_type(Type::drop().name(JournalType::Enum).to_owned())
-            .await
+        if is_postgres(manager) {
+            manager
+                .drop_type(Type::drop().name(JournalType::Enum).to_owned())
+                .await?;
+        }
+        Ok(())
     }
 }

@@ -35,10 +35,18 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(Products::Table)
                     .drop_column(Products::CostOfSalesAccountId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Products::Table)
                     .drop_column(Products::InventoryAccountId)
                     .to_owned(),
             )
-            .await
+            .await?;
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -47,6 +55,13 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(Products::Table)
                     .add_column(ColumnDef::new(Products::InventoryAccountId).big_integer())
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Products::Table)
                     .add_column(ColumnDef::new(Products::CostOfSalesAccountId).big_integer())
                     .to_owned(),
             )

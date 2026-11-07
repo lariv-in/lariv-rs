@@ -6,7 +6,6 @@
 //! plus their taxes. Journal templates are not copied: a sales template debits
 //! receivable and credits revenue, and the purchase seed writes the payable
 //! pair instead.
-
 use lariv_core::db::migration_sql::{
     self, FK_CANCELLED_PURCHASE_GOODS_LINE_PRODUCT, FK_CANCELLED_PURCHASE_SERVICE_LINE_SERVICE,
     FK_DRAFT_PURCHASE_GOODS_LINE_PRODUCT, FK_DRAFT_PURCHASE_SERVICE_LINE_SERVICE,
@@ -14,8 +13,9 @@ use lariv_core::db::migration_sql::{
     FK_PURCHASE_PRODUCT_JOURNAL_ACCOUNT, FK_PURCHASE_PRODUCT_JOURNAL_JOURNAL,
     FK_PURCHASE_PRODUCT_PREFERENCE_TAX, FK_PURCHASE_PRODUCT_TAX, FK_PURCHASE_PRODUCTS_STOCK,
     FK_PURCHASE_SERVICE_JOURNAL_ACCOUNT, FK_PURCHASE_SERVICE_JOURNAL_JOURNAL,
-    FK_PURCHASE_SERVICE_PREFERENCE_TAX, FK_PURCHASE_SERVICE_TAX,
+    FK_PURCHASE_SERVICE_PREFERENCE_TAX, FK_PURCHASE_SERVICE_TAX, exec_sql,
 };
+
 use lariv_core::db::trigram;
 use sea_orm_migration::prelude::*;
 
@@ -393,7 +393,7 @@ DROP TABLE IF EXISTS purchase_services;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let conn = manager.get_connection();
-        conn.execute_unprepared(UP).await?;
+        exec_sql(manager, UP).await?;
         migration_sql::ensure_schema_foreign_keys(
             manager,
             &[
@@ -446,8 +446,7 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let conn = manager.get_connection();
-        conn.execute_unprepared(DOWN).await?;
+        exec_sql(manager, DOWN).await?;
         migration_sql::ensure_schema_foreign_keys(
             manager,
             &[
@@ -460,7 +459,7 @@ impl MigrationTrait for Migration {
             ],
         )
         .await?;
-        conn.execute_unprepared(DOWN_DROP).await?;
+        exec_sql(manager, DOWN_DROP).await?;
         Ok(())
     }
 }

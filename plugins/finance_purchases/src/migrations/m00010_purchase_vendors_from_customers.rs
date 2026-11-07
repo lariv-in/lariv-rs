@@ -4,6 +4,7 @@
 //! Each referenced customer is copied, with the same id, into `purchase_vendors`,
 //! and the purchase column is renamed to `vendor_id`. Installs that already
 //! stored `vendor_id` leave this migration as a no-op.
+use lariv_core::db::migration_sql::exec_sql;
 
 use sea_orm_migration::prelude::*;
 
@@ -116,7 +117,7 @@ END $$;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.get_connection().execute_unprepared(UP).await?;
+        exec_sql(manager, UP).await?;
         Ok(())
     }
 

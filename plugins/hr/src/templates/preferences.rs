@@ -32,7 +32,6 @@ fn schedule_x_data(casual: &str, sick: &str) -> String {
     )
 }
 
-
 fn id_card_format_field(value: &str) -> Markup {
     html! {
         (code_editor_input(CodeEditorInput {

@@ -1,3 +1,4 @@
+use lariv_core::db::migration_sql::{exec_sql, is_postgres};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -46,14 +47,12 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(DraftInvoices::Table)
-                    .drop_column(DraftInvoices::AccountTaxPayableId)
-                    .to_owned(),
-            )
-            .await
+        exec_sql(
+            manager,
+            "ALTER TABLE draft_invoices DROP COLUMN account_tax_payable_id",
+        )
+        .await?;
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -67,32 +66,43 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(0),
                     )
-                    .add_foreign_key(
-                        TableForeignKey::new()
-                            .name("fk_draft_invoices_account_tax_payable_id")
-                            .from_tbl(DraftInvoices::Table)
-                            .from_col(DraftInvoices::AccountTaxPayableId)
-                            .to_tbl(Accounts::Table)
-                            .to_col(Accounts::Id)
-                            .on_update(ForeignKeyAction::Cascade)
-                            .on_delete(ForeignKeyAction::Restrict),
-                    )
                     .to_owned(),
             )
             .await?;
+        if is_postgres(manager) {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(DraftInvoices::Table)
+                        .add_foreign_key(
+                            TableForeignKey::new()
+                                .name("fk_draft_invoices_account_tax_payable_id")
+                                .from_tbl(DraftInvoices::Table)
+                                .from_col(DraftInvoices::AccountTaxPayableId)
+                                .to_tbl(Accounts::Table)
+                                .to_col(Accounts::Id)
+                                .on_update(ForeignKeyAction::Cascade)
+                                .on_delete(ForeignKeyAction::Restrict),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+        };
 
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(DraftInvoices::Table)
-                    .modify_column(
-                        ColumnDef::new(DraftInvoices::AccountTaxPayableId)
-                            .big_integer()
-                            .not_null(),
-                    )
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(DraftInvoices::Table)
+                        .modify_column(
+                            ColumnDef::new(DraftInvoices::AccountTaxPayableId)
+                                .big_integer()
+                                .not_null(),
+                        )
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .drop_index(

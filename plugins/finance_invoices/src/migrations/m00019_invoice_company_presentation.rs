@@ -26,16 +26,37 @@ impl MigrationTrait for Migration {
                             .text()
                             .null(),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InvoicePreferences::Table)
                     .add_column(
                         ColumnDef::new(InvoicePreferences::CompanyPhone)
                             .text()
                             .null(),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InvoicePreferences::Table)
                     .add_column(
                         ColumnDef::new(InvoicePreferences::CompanyGstin)
                             .text()
                             .null(),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InvoicePreferences::Table)
                     .add_column(
                         ColumnDef::new(InvoicePreferences::PlaceOfSupply)
                             .text()
@@ -43,7 +64,8 @@ impl MigrationTrait for Migration {
                     )
                     .to_owned(),
             )
-            .await
+            .await?;
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -52,11 +74,33 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(InvoicePreferences::Table)
                     .drop_column(InvoicePreferences::CompanyAddress)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InvoicePreferences::Table)
                     .drop_column(InvoicePreferences::CompanyPhone)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InvoicePreferences::Table)
                     .drop_column(InvoicePreferences::CompanyGstin)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InvoicePreferences::Table)
                     .drop_column(InvoicePreferences::PlaceOfSupply)
                     .to_owned(),
             )
-            .await
+            .await?;
+        Ok(())
     }
 }

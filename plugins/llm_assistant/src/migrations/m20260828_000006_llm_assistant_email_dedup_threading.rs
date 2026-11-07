@@ -24,23 +24,25 @@ enum LlmAssistantProcessedEmails {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(LlmAssistantSessions::Table)
-                    .add_column(
-                        ColumnDef::new(LlmAssistantSessions::EmailMessageId)
-                            .text()
-                            .null(),
-                    )
-                    .add_column(
-                        ColumnDef::new(LlmAssistantSessions::EmailReferences)
-                            .text()
-                            .null(),
-                    )
-                    .to_owned(),
-            )
-            .await?;
+        for column in [
+            ColumnDef::new(LlmAssistantSessions::EmailMessageId)
+                .text()
+                .null()
+                .take(),
+            ColumnDef::new(LlmAssistantSessions::EmailReferences)
+                .text()
+                .null()
+                .take(),
+        ] {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(LlmAssistantSessions::Table)
+                        .add_column(column)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .create_table(
@@ -99,14 +101,19 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(LlmAssistantSessions::Table)
-                    .drop_column(LlmAssistantSessions::EmailReferences)
-                    .drop_column(LlmAssistantSessions::EmailMessageId)
-                    .to_owned(),
-            )
-            .await
+        for column in [
+            LlmAssistantSessions::EmailReferences,
+            LlmAssistantSessions::EmailMessageId,
+        ] {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(LlmAssistantSessions::Table)
+                        .drop_column(column)
+                        .to_owned(),
+                )
+                .await?;
+        }
+        Ok(())
     }
 }

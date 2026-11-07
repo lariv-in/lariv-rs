@@ -1,9 +1,9 @@
 //! Fold service lines into a single `*_invoice_lines` family.
-
 use lariv_core::db::migration_sql::{
     self, FK_CANCELLED_INVOICE_LINE_PRODUCT, FK_DRAFT_INVOICE_LINE_PRODUCT,
-    FK_POSTED_INVOICE_LINE_PRODUCT,
+    FK_POSTED_INVOICE_LINE_PRODUCT, exec_sql,
 };
+
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -167,7 +167,7 @@ END $$;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.get_connection().execute_unprepared(UP).await?;
+        exec_sql(manager, UP).await?;
         // Drop pre-rename goods constraint names so unified names/actions apply.
         migration_sql::exec_sql(
             manager,

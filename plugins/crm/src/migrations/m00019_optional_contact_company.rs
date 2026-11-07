@@ -4,12 +4,6 @@ use sea_orm_migration::prelude::*;
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-#[derive(DeriveIden)]
-enum CrmContacts {
-    Table,
-    CompanyId,
-}
-
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -34,16 +28,47 @@ impl MigrationTrait for Migration {
                 .await
             }
             sea_orm::DatabaseBackend::Sqlite => {
-                manager
-                    .alter_table(
-                        Table::alter()
-                            .table(CrmContacts::Table)
-                            .modify_column(
-                                ColumnDef::new(CrmContacts::CompanyId).big_integer().null(),
-                            )
-                            .to_owned(),
-                    )
-                    .await
+                // SQLite cannot DROP NOT NULL. Rebuild with a nullable company_id.
+                // `m00012` has already renamed `first_name` to `name` and dropped `last_name`.
+                exec_sql(manager, "PRAGMA foreign_keys = OFF").await?;
+                exec_sql(
+                    manager,
+                    r#"
+CREATE TABLE "crm_contacts__company" (
+    "id" integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "created_at" timestamp_with_timezone_text,
+    "updated_at" timestamp_with_timezone_text,
+    "company_id" integer,
+    "name" text NOT NULL,
+    "email" text,
+    "phone" text,
+    "is_primary" boolean NOT NULL DEFAULT FALSE,
+    FOREIGN KEY ("company_id") REFERENCES "crm_companies" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+)"#,
+                )
+                .await?;
+                exec_sql(
+                    manager,
+                    r#"
+INSERT INTO "crm_contacts__company" (
+    id, created_at, updated_at, company_id, name, email, phone, is_primary
+)
+SELECT id, created_at, updated_at, company_id, name, email, phone, is_primary
+FROM crm_contacts"#,
+                )
+                .await?;
+                exec_sql(manager, r#"DROP TABLE "crm_contacts""#).await?;
+                exec_sql(
+                    manager,
+                    r#"ALTER TABLE "crm_contacts__company" RENAME TO "crm_contacts""#,
+                )
+                .await?;
+                exec_sql(
+                    manager,
+                    "CREATE INDEX IF NOT EXISTS idx_crm_contacts_company_id ON crm_contacts (company_id)",
+                )
+                .await?;
+                exec_sql(manager, "PRAGMA foreign_keys = ON").await
             }
             _ => Ok(()),
         }
@@ -77,20 +102,7 @@ impl MigrationTrait for Migration {
                 )
                 .await
             }
-            sea_orm::DatabaseBackend::Sqlite => {
-                manager
-                    .alter_table(
-                        Table::alter()
-                            .table(CrmContacts::Table)
-                            .modify_column(
-                                ColumnDef::new(CrmContacts::CompanyId)
-                                    .big_integer()
-                                    .not_null(),
-                            )
-                            .to_owned(),
-                    )
-                    .await
-            }
+            sea_orm::DatabaseBackend::Sqlite => Ok(()),
             _ => Ok(()),
         }
     }

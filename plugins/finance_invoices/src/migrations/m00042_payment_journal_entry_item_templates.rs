@@ -9,10 +9,10 @@
 //! `m00041_drop_invoice_gl_preferences` so `account_receivable_id` and
 //! `journal_id` can still be read. When a preference is blank, the latest
 //! posted invoice or payment supplies the same account.
-
 use lariv_core::db::migration_sql::{
-    self, FK_PAYMENT_JOURNAL_ITEM_ACCOUNT, FK_PAYMENT_JOURNAL_ITEM_JOURNAL,
+    self, FK_PAYMENT_JOURNAL_ITEM_ACCOUNT, FK_PAYMENT_JOURNAL_ITEM_JOURNAL, exec_sql,
 };
+
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -176,8 +176,8 @@ END $$;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let conn = manager.get_connection();
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
             r#"CREATE TABLE IF NOT EXISTS payment_journal_entry_item_templates (
                 id bigserial PRIMARY KEY,
                 created_at timestamptz NULL,
@@ -191,15 +191,15 @@ impl MigrationTrait for Migration {
             )"#,
         )
         .await?;
-        conn.execute_unprepared(
+        exec_sql(manager,
             "CREATE INDEX IF NOT EXISTS idx_payment_journal_entry_item_templates_prefs_id ON payment_journal_entry_item_templates (payment_preferences_id)",
         )
         .await?;
-        conn.execute_unprepared(
+        exec_sql(manager,
             "CREATE INDEX IF NOT EXISTS idx_payment_journal_entry_item_templates_journal_id ON payment_journal_entry_item_templates (journal_id)",
         )
         .await?;
-        conn.execute_unprepared(
+        exec_sql(manager,
             "CREATE INDEX IF NOT EXISTS idx_payment_journal_entry_item_templates_account_id ON payment_journal_entry_item_templates (account_id)",
         )
         .await?;
@@ -211,31 +211,41 @@ impl MigrationTrait for Migration {
             ],
         )
         .await?;
-        conn.execute_unprepared(SEED).await?;
-        conn.execute_unprepared(
+        exec_sql(manager, SEED).await?;
+        exec_sql(
+            manager,
             "ALTER TABLE payment_preferences DROP COLUMN IF EXISTS payment_account_id",
         )
         .await?;
-        conn.execute_unprepared("ALTER TABLE payments DROP COLUMN IF EXISTS account_id")
-            .await?;
-        conn.execute_unprepared("ALTER TABLE payment_batches DROP COLUMN IF EXISTS account_id")
-            .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE payments DROP COLUMN IF EXISTS account_id",
+        )
+        .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE payment_batches DROP COLUMN IF EXISTS account_id",
+        )
+        .await?;
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let conn = manager.get_connection();
-        conn.execute_unprepared("DROP TABLE IF EXISTS payment_journal_entry_item_templates")
-            .await?;
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
+            "DROP TABLE IF EXISTS payment_journal_entry_item_templates",
+        )
+        .await?;
+        exec_sql(manager,
             "ALTER TABLE payment_preferences ADD COLUMN IF NOT EXISTS payment_account_id bigint NULL",
         )
         .await?;
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
             "ALTER TABLE payments ADD COLUMN IF NOT EXISTS account_id bigint NOT NULL DEFAULT 0",
         )
         .await?;
-        conn.execute_unprepared(
+        exec_sql(manager,
             "ALTER TABLE payment_batches ADD COLUMN IF NOT EXISTS account_id bigint NOT NULL DEFAULT 0",
         )
         .await?;

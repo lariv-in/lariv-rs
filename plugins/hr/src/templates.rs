@@ -3,61 +3,16 @@ use maud::{Markup, html};
 
 use lariv_core::components::table::table_grid_content;
 use lariv_core::components::{
-    ButtonModalForm,
-    ButtonSubmit,
-    DataTable,
-    DataTableDisplay,
-    DeleteConfirmation,
-    DetailHeader,
-    FieldText,
-    FilterClauseView,
-    FormOpts,
-    LayoutMain,
-    LayoutSidebar,
-    ListFilterBuilder,
-    ObjectList,
-    ShellChrome,
-    ShellScaffold,
-    ShellTopbar,
-    SlotCapability,
-    SlotRegistrar,
-    SwapKey,
-    TableButtonFilter,
-    TableColumnHeader,
-    TableListContent,
-    TableRow,
-    app_layout_pane,
-    button_modal_form,
-    button_modal_route,
-    button_submit,
-    column_sort_url,
-    container_column,
-    data_table,
-    delete_confirmation,
-    detail,
-    detail_header,
-    field_text,
-    filter_error_banner,
-    form,
-    form_hx_get_route,
-    form_hx_post_multipart_url,
-    form_hx_post_selector,
-    form_hx_post_url,
-    form_post_multipart,
-    label,
-    layout_main,
-    layout_sidebar,
-    list_filter_builder,
-    modal,
-    modal_keyed,
-    row_attr_navigate,
-    shell_scaffold,
-    shell_topbar,
-    sort_indicator,
-    table_button_columns,
-    table_button_filter,
-    table_list_content,
-    render_pagination,
+    ButtonModalForm, ButtonSubmit, DataTable, DataTableDisplay, DeleteConfirmation, DetailHeader,
+    FieldText, FilterClauseView, FormOpts, LayoutMain, LayoutSidebar, ListFilterBuilder,
+    ObjectList, ShellChrome, ShellScaffold, ShellTopbar, SlotCapability, SlotRegistrar, SwapKey,
+    TableButtonFilter, TableColumnHeader, TableListContent, TableRow, app_layout_pane,
+    button_modal_form, button_modal_route, button_submit, column_sort_url, container_column,
+    data_table, delete_confirmation, detail, detail_header, field_text, filter_error_banner, form,
+    form_hx_get_route, form_hx_post_multipart_url, form_hx_post_selector, form_hx_post_url,
+    form_post_multipart, label, layout_main, layout_sidebar, list_filter_builder, modal,
+    modal_keyed, render_pagination, row_attr_navigate, shell_scaffold, shell_topbar,
+    sort_indicator, table_button_columns, table_button_filter, table_list_content,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, FormFieldKey, HtmlForm, render_field_specs};
 use lariv_core::http::ProvideRequestCaps;
@@ -238,7 +193,6 @@ pub struct EmployeeFormValues {
     /// The employee user is a superuser, so manager cannot be empty.
     pub manager_required: bool,
 }
-
 
 fn employee_form_inputs(values: &EmployeeFormValues, include_admin_dates: bool) -> Markup {
     let gender = EmployeeForm::gender_choices();
@@ -505,7 +459,6 @@ fn person_form_inputs(name: &str, mobile: &str, email: &str) -> Markup {
             .value(PersonFormField::Email, email),
     )
 }
-
 
 #[derive(Clone, Default)]
 pub struct ApplicantFormValues {

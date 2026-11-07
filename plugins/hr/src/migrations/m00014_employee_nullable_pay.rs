@@ -57,8 +57,29 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(HrEmployees::Table)
                     .drop_column(HrEmployees::WorkStart)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(HrEmployees::Table)
                     .drop_column(HrEmployees::WorkEnd)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(HrEmployees::Table)
                     .drop_column(HrEmployees::BaseSalary)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(HrEmployees::Table)
                     .drop_column(HrEmployees::HourlyWage)
                     .to_owned(),
             )
@@ -76,12 +97,33 @@ async fn add_pay_columns(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
             Table::alter()
                 .table(HrEmployees::Table)
                 .add_column(ColumnDef::new(HrEmployees::WorkStart).time().null())
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .alter_table(
+            Table::alter()
+                .table(HrEmployees::Table)
                 .add_column(ColumnDef::new(HrEmployees::WorkEnd).time().null())
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .alter_table(
+            Table::alter()
+                .table(HrEmployees::Table)
                 .add_column(
                     ColumnDef::new(HrEmployees::BaseSalary)
                         .decimal_len(19, 6)
                         .null(),
                 )
+                .to_owned(),
+        )
+        .await?;
+    manager
+        .alter_table(
+            Table::alter()
+                .table(HrEmployees::Table)
                 .add_column(
                     ColumnDef::new(HrEmployees::HourlyWage)
                         .decimal_len(19, 6)
@@ -89,7 +131,8 @@ async fn add_pay_columns(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
                 )
                 .to_owned(),
         )
-        .await
+        .await?;
+    Ok(())
 }
 
 async fn relax_postgres(manager: &SchemaManager<'_>) -> Result<(), DbErr> {

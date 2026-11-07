@@ -3,40 +3,13 @@ use maud::{Markup, html};
 
 use lariv_core::components::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::components::{
-    ButtonModalForm,
-    Crumb,
-    DataTable,
-    DataTableDisplay,
-    FieldText,
-    FilterClauseView,
-    ListFilterBuilder,
-    ObjectList,
-    ShellChrome,
-    SidebarMenu,
-    SidebarNavLink,
-    SwapKey,
-    TableButtonFilter,
-    TableColumnHeader,
-    TableListContent,
-    TableRow,
-    breadcrumbs,
-    button_modal_form,
-    column_sort_url,
-    data_table,
-    field_text,
-    filter_error_banner,
-    form_hx_get_route,
-    list_filter_builder,
-    row_attr_navigate_route,
-    row_attr_select_multi,
-    sidebar_menu,
-    sidebar_nav_items_pane,
-    sort_indicator,
-    table_button_columns,
-    table_button_filter,
-    table_create_button,
-    table_list_content,
-    render_pagination_push,
+    ButtonModalForm, Crumb, DataTable, DataTableDisplay, FieldText, FilterClauseView,
+    ListFilterBuilder, ObjectList, ShellChrome, SidebarMenu, SidebarNavLink, SwapKey,
+    TableButtonFilter, TableColumnHeader, TableListContent, TableRow, breadcrumbs,
+    button_modal_form, column_sort_url, data_table, field_text, filter_error_banner,
+    form_hx_get_route, list_filter_builder, render_pagination_push, row_attr_navigate_route,
+    row_attr_select_multi, sidebar_menu, sidebar_nav_items_pane, sort_indicator,
+    table_button_columns, table_button_filter, table_create_button, table_list_content,
 };
 use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::RenderTemplate;
@@ -279,7 +252,12 @@ impl BlogListPage {
                 ..Default::default()
             }))
         };
-        let pagination = render_pagination_push(BLOG_TABLE, &self.path_and_query, self.blogs.number, self.blogs.num_pages, true,
+        let pagination = render_pagination_push(
+            BLOG_TABLE,
+            &self.path_and_query,
+            self.blogs.number,
+            self.blogs.num_pages,
+            true,
         );
         data_table_filtered(
             BLOG_TABLE,
@@ -390,7 +368,12 @@ impl TagListPage {
                 "btn-square btn-outline btn-sm",
             ))
         };
-        let pagination = render_pagination_push(TAG_TABLE, &self.path_and_query, self.tags.number, self.tags.num_pages, true,
+        let pagination = render_pagination_push(
+            TAG_TABLE,
+            &self.path_and_query,
+            self.tags.number,
+            self.tags.num_pages,
+            true,
         );
         data_table_filtered(
             TAG_TABLE,
@@ -493,7 +476,12 @@ impl RenderPickerSelect for TagSelectPage {
                 "btn-square btn-outline btn-sm",
             ))
         };
-        let pagination = render_pagination_push(TAG_SELECT_TABLE, &self.path_and_query, self.tags.number, self.tags.num_pages, false,
+        let pagination = render_pagination_push(
+            TAG_SELECT_TABLE,
+            &self.path_and_query,
+            self.tags.number,
+            self.tags.num_pages,
+            false,
         );
         data_table_filtered(
             TAG_SELECT_TABLE,

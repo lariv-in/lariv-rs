@@ -1,3 +1,4 @@
+use lariv_core::db::migration_sql::is_postgres;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -41,30 +42,36 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_llm_assistant_prefs_email_owner_user_id")
-                    .from(
-                        LlmAssistantPreferences::Table,
-                        LlmAssistantPreferences::EmailOwnerUserId,
-                    )
-                    .to(Users::Table, Users::Id)
-                    .on_delete(ForeignKeyAction::SetNull)
-                    .to_owned(),
-            )
-            .await
+        // SQLite cannot add a foreign key to an existing table.
+        if is_postgres(manager) {
+            manager
+                .create_foreign_key(
+                    ForeignKey::create()
+                        .name("fk_llm_assistant_prefs_email_owner_user_id")
+                        .from(
+                            LlmAssistantPreferences::Table,
+                            LlmAssistantPreferences::EmailOwnerUserId,
+                        )
+                        .to(Users::Table, Users::Id)
+                        .on_delete(ForeignKeyAction::SetNull)
+                        .to_owned(),
+                )
+                .await?;
+        }
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_llm_assistant_prefs_email_owner_user_id")
-                    .table(LlmAssistantPreferences::Table)
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_llm_assistant_prefs_email_owner_user_id")
+                        .table(LlmAssistantPreferences::Table)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .alter_table(
@@ -76,6 +83,13 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(""),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(LlmAssistantPreferences::Table)
                     .drop_column(LlmAssistantPreferences::EmailOwnerUserId)
                     .to_owned(),
             )

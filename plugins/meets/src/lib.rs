@@ -1,4 +1,7 @@
 #![feature(impl_trait_in_assoc_type)]
+// `Relay::run` is nested deeply enough that proving `Send` for `tokio::spawn`
+// overflows the default recursion limit (rustc issue #159228).
+#![recursion_limit = "4096"]
 //! MoQ video conferencing (rooms, embedded relay, uncomposited recordings).
 //!
 //! # Configurations

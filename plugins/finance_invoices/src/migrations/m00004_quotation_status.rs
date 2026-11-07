@@ -1,3 +1,4 @@
+use lariv_core::db::migration_sql::is_postgres;
 use sea_orm_migration::prelude::extension::postgres::Type;
 use sea_orm_migration::prelude::*;
 
@@ -25,18 +26,20 @@ enum QuotationStatus {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .create_type(
-                Type::create()
-                    .as_enum(QuotationStatus::Enum)
-                    .values([
-                        QuotationStatus::Draft,
-                        QuotationStatus::Accepted,
-                        QuotationStatus::Cancelled,
-                    ])
-                    .to_owned(),
-            )
-            .await?;
+        if is_postgres(manager) {
+            manager
+                .create_type(
+                    Type::create()
+                        .as_enum(QuotationStatus::Enum)
+                        .values([
+                            QuotationStatus::Draft,
+                            QuotationStatus::Accepted,
+                            QuotationStatus::Cancelled,
+                        ])
+                        .to_owned(),
+                )
+                .await?;
+        };
 
         manager
             .alter_table(
@@ -63,8 +66,11 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        manager
-            .drop_type(Type::drop().name(QuotationStatus::Enum).to_owned())
-            .await
+        if is_postgres(manager) {
+            manager
+                .drop_type(Type::drop().name(QuotationStatus::Enum).to_owned())
+                .await?;
+        }
+        Ok(())
     }
 }

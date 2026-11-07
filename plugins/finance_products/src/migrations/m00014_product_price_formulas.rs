@@ -2,6 +2,7 @@
 //!
 //! Existing amounts are stored as their numeric text. A non-empty `price_formula`
 //! becomes the sales price formula instead of the numeric sales price.
+use lariv_core::db::migration_sql::exec_sql;
 
 use sea_orm_migration::prelude::*;
 
@@ -11,16 +12,15 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let conn = manager.get_connection();
-        conn.execute_unprepared(
+        exec_sql(manager,
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS base_price_formula text NOT NULL DEFAULT ''",
         )
         .await?;
-        conn.execute_unprepared(
+        exec_sql(manager,
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS sales_price_formula text NOT NULL DEFAULT ''",
         )
         .await?;
-        conn.execute_unprepared(
+        exec_sql(manager,
             r#"UPDATE products SET
                 base_price_formula = trim(trailing '.' from trim(trailing '0' from base_cost::text)),
                 sales_price_formula = CASE
@@ -29,30 +29,40 @@ impl MigrationTrait for Migration {
                 END"#,
         )
         .await?;
-        conn.execute_unprepared("ALTER TABLE products DROP COLUMN IF EXISTS base_cost")
-            .await?;
-        conn.execute_unprepared("ALTER TABLE products DROP COLUMN IF EXISTS sales_price")
-            .await?;
-        conn.execute_unprepared("ALTER TABLE products DROP COLUMN IF EXISTS price_formula")
-            .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE products DROP COLUMN IF EXISTS base_cost",
+        )
+        .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE products DROP COLUMN IF EXISTS sales_price",
+        )
+        .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE products DROP COLUMN IF EXISTS price_formula",
+        )
+        .await?;
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let conn = manager.get_connection();
-        conn.execute_unprepared(
+        exec_sql(manager,
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS base_cost numeric(19,6) NOT NULL DEFAULT 0",
         )
         .await?;
-        conn.execute_unprepared(
+        exec_sql(manager,
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS sales_price numeric(19,6) NOT NULL DEFAULT 0",
         )
         .await?;
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS price_formula text NOT NULL DEFAULT ''",
         )
         .await?;
-        conn.execute_unprepared(
+        exec_sql(
+            manager,
             r#"UPDATE products SET
                 base_cost = CASE
                     WHEN btrim(base_price_formula) ~ '^-?[0-9]+(\.[0-9]+)?$'
@@ -70,10 +80,16 @@ impl MigrationTrait for Migration {
                 END"#,
         )
         .await?;
-        conn.execute_unprepared("ALTER TABLE products DROP COLUMN IF EXISTS sales_price_formula")
-            .await?;
-        conn.execute_unprepared("ALTER TABLE products DROP COLUMN IF EXISTS base_price_formula")
-            .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE products DROP COLUMN IF EXISTS sales_price_formula",
+        )
+        .await?;
+        exec_sql(
+            manager,
+            "ALTER TABLE products DROP COLUMN IF EXISTS base_price_formula",
+        )
+        .await?;
         Ok(())
     }
 }

@@ -1,3 +1,4 @@
+use lariv_core::db::migration_sql::is_postgres;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -101,6 +102,30 @@ fn account_id_by_code(code: i32) -> SelectStatement {
         .to_owned()
 }
 
+fn balance_type(postgres: bool) -> SimpleExpr {
+    if postgres {
+        Expr::val("Credit").cast_as(BalanceTypeEnum::Enum).into()
+    } else {
+        Expr::val("Credit").into()
+    }
+}
+
+fn percentage(postgres: bool, pct: &str) -> SimpleExpr {
+    if postgres {
+        Expr::val(pct).cast_as(Alias::new("numeric")).into()
+    } else {
+        Expr::val(pct).into()
+    }
+}
+
+fn tax_kind(postgres: bool) -> SimpleExpr {
+    if postgres {
+        Expr::val("levied").cast_as(TaxKind::Enum).into()
+    } else {
+        Expr::val("levied").into()
+    }
+}
+
 fn subquery_expr(sel: SelectStatement) -> SimpleExpr {
     SimpleExpr::SubQuery(None, Box::new(sel.into_sub_query_statement()))
 }
@@ -109,6 +134,7 @@ fn subquery_expr(sel: SelectStatement) -> SimpleExpr {
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let conn = manager.get_connection();
+        let postgres = is_postgres(manager);
 
         let group_insert = Query::insert()
             .into_table(Accounts::Table)
@@ -127,7 +153,7 @@ impl MigrationTrait for Migration {
                 "India GST output payable".into(),
                 20500.into(),
                 true.into(),
-                Expr::val("Credit").cast_as(BalanceTypeEnum::Enum).into(),
+                balance_type(postgres),
                 subquery_expr(account_id_by_code(20000)).into(),
             ])
             .to_owned();
@@ -151,7 +177,7 @@ impl MigrationTrait for Migration {
                     name.into(),
                     code.into(),
                     false.into(),
-                    Expr::val("Credit").cast_as(BalanceTypeEnum::Enum).into(),
+                    balance_type(postgres),
                     subquery_expr(account_id_by_code(20500)).into(),
                 ])
                 .to_owned();
@@ -172,8 +198,8 @@ impl MigrationTrait for Migration {
                     Expr::current_timestamp().into(),
                     Expr::current_timestamp().into(),
                     name.into(),
-                    Expr::val(pct).cast_as(Alias::new("numeric")).into(),
-                    Expr::val("levied").cast_as(TaxKind::Enum).into(),
+                    percentage(postgres, pct),
+                    tax_kind(postgres),
                 ])
                 .to_owned();
             conn.execute(&insert).await?;

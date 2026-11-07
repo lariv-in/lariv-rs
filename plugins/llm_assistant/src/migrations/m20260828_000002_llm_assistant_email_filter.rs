@@ -13,36 +13,44 @@ enum LlmAssistantPreferences {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(LlmAssistantPreferences::Table)
-                    .add_column(
-                        ColumnDef::new(LlmAssistantPreferences::EmailFilter)
-                            .text()
-                            .not_null()
-                            .default(""),
-                    )
-                    .add_column(
-                        ColumnDef::new(LlmAssistantPreferences::EmailOwnerEmail)
-                            .text()
-                            .not_null()
-                            .default(""),
-                    )
-                    .to_owned(),
-            )
-            .await
+        for column in [
+            ColumnDef::new(LlmAssistantPreferences::EmailFilter)
+                .text()
+                .not_null()
+                .default("")
+                .take(),
+            ColumnDef::new(LlmAssistantPreferences::EmailOwnerEmail)
+                .text()
+                .not_null()
+                .default("")
+                .take(),
+        ] {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(LlmAssistantPreferences::Table)
+                        .add_column(column)
+                        .to_owned(),
+                )
+                .await?;
+        }
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(LlmAssistantPreferences::Table)
-                    .drop_column(LlmAssistantPreferences::EmailOwnerEmail)
-                    .drop_column(LlmAssistantPreferences::EmailFilter)
-                    .to_owned(),
-            )
-            .await
+        for column in [
+            LlmAssistantPreferences::EmailOwnerEmail,
+            LlmAssistantPreferences::EmailFilter,
+        ] {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(LlmAssistantPreferences::Table)
+                        .drop_column(column)
+                        .to_owned(),
+                )
+                .await?;
+        }
+        Ok(())
     }
 }

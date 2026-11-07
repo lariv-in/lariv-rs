@@ -24,6 +24,13 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .null(),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InvoicePreferences::Table)
                     .add_column(
                         ColumnDef::new(InvoicePreferences::InvoiceSignatureVnodeId)
                             .big_integer()
@@ -31,7 +38,8 @@ impl MigrationTrait for Migration {
                     )
                     .to_owned(),
             )
-            .await
+            .await?;
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -40,9 +48,17 @@ impl MigrationTrait for Migration {
                 Table::alter()
                     .table(InvoicePreferences::Table)
                     .drop_column(InvoicePreferences::InvoiceLogoVnodeId)
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(InvoicePreferences::Table)
                     .drop_column(InvoicePreferences::InvoiceSignatureVnodeId)
                     .to_owned(),
             )
-            .await
+            .await?;
+        Ok(())
     }
 }

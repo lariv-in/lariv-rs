@@ -1,4 +1,5 @@
 //! Rewrite purchase line `variable_values` into formula measures.
+use lariv_core::db::migration_sql::exec_sql;
 
 use sea_orm_migration::prelude::*;
 
@@ -12,9 +13,8 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let conn = manager.get_connection();
-        conn.execute_unprepared(ENSURE_FORMULA_MEASURE).await?;
-        conn.execute_unprepared(MIGRATE_PURCHASE_VALUES).await?;
+        exec_sql(manager, ENSURE_FORMULA_MEASURE).await?;
+        exec_sql(manager, MIGRATE_PURCHASE_VALUES).await?;
         Ok(())
     }
 

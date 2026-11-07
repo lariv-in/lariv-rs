@@ -56,12 +56,6 @@ enum CrmLeads {
 }
 
 #[derive(DeriveIden)]
-enum CrmContacts {
-    Table,
-    Id,
-}
-
-#[derive(DeriveIden)]
 enum CrmConvertedLeads {
     Table,
 }
@@ -101,35 +95,14 @@ impl MigrationTrait for Migration {
 
         clear_leads(manager).await?;
 
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(CrmLeads::Table)
-                    .add_column(ColumnDef::new(CrmLeads::ContactId).big_integer())
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(CrmLeads::Table)
-                    .modify_column(ColumnDef::new(CrmLeads::ContactId).big_integer().not_null())
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_foreign_key(
-                ForeignKey::create()
-                    .name("fk_crm_leads_contact_id")
-                    .from(CrmLeads::Table, CrmLeads::ContactId)
-                    .to(CrmContacts::Table, CrmContacts::Id)
-                    .on_delete(ForeignKeyAction::Restrict)
-                    .on_update(ForeignKeyAction::Cascade)
-                    .to_owned(),
-            )
-            .await?;
+        // SQLite cannot ALTER a column to NOT NULL, and cannot add a foreign key
+        // after the table exists. The table was just cleared, so a default satisfies
+        // NOT NULL until a real contact id is written.
+        exec_sql(
+            manager,
+            "ALTER TABLE crm_leads ADD COLUMN contact_id integer NOT NULL DEFAULT 0",
+        )
+        .await?;
 
         for col in [
             CrmLeads::CompanyName,
@@ -153,14 +126,16 @@ impl MigrationTrait for Migration {
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         clear_leads(manager).await?;
 
-        manager
-            .drop_foreign_key(
-                ForeignKey::drop()
-                    .name("fk_crm_leads_contact_id")
-                    .table(CrmLeads::Table)
-                    .to_owned(),
-            )
-            .await?;
+        if manager.get_connection().get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            manager
+                .drop_foreign_key(
+                    ForeignKey::drop()
+                        .name("fk_crm_leads_contact_id")
+                        .table(CrmLeads::Table)
+                        .to_owned(),
+                )
+                .await?;
+        }
 
         manager
             .alter_table(

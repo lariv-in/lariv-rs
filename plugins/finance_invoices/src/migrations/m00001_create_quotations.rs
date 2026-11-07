@@ -1,6 +1,7 @@
 use lariv_core::db::migration_sql::{
     self, FK_QUOTATION_GOODS_LINE_PRODUCT, FK_QUOTATION_GOODS_LINE_TAX,
     FK_QUOTATION_SERVICE_LINE_SERVICE, FK_QUOTATION_SERVICE_LINE_TAX, FK_QUOTATIONS_CUSTOMER,
+    exec_sql,
 };
 use sea_orm_migration::prelude::*;
 
@@ -361,14 +362,13 @@ impl MigrationTrait for Migration {
         )
         .await?;
 
-        manager
-            .get_connection()
-            .execute_unprepared(
-                "INSERT INTO quotation_preferences (id, quotation_number_format) \
+        exec_sql(
+            manager,
+            "INSERT INTO quotation_preferences (id, quotation_number_format) \
                  SELECT 1, 'QT-{{YYYY}}-{{POSTED_SEQ}}' \
                  WHERE NOT EXISTS (SELECT 1 FROM quotation_preferences WHERE id = 1)",
-            )
-            .await?;
+        )
+        .await?;
         Ok(())
     }
 

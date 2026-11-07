@@ -1,3 +1,4 @@
+use lariv_core::db::migration_sql::is_postgres;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -12,14 +13,17 @@ enum Products {
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(Products::Table)
-                    .modify_column(ColumnDef::new(Products::Reference).text().null())
-                    .to_owned(),
-            )
-            .await
+        if is_postgres(manager) {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Products::Table)
+                        .modify_column(ColumnDef::new(Products::Reference).text().null())
+                        .to_owned(),
+                )
+                .await?;
+        }
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
@@ -30,13 +34,16 @@ impl MigrationTrait for Migration {
             .to_owned();
         manager.get_connection().execute(&update).await?;
 
-        manager
-            .alter_table(
-                Table::alter()
-                    .table(Products::Table)
-                    .modify_column(ColumnDef::new(Products::Reference).text().not_null())
-                    .to_owned(),
-            )
-            .await
+        if is_postgres(manager) {
+            manager
+                .alter_table(
+                    Table::alter()
+                        .table(Products::Table)
+                        .modify_column(ColumnDef::new(Products::Reference).text().not_null())
+                        .to_owned(),
+                )
+                .await?;
+        }
+        Ok(())
     }
 }

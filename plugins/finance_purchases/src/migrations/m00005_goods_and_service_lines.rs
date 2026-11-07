@@ -1,12 +1,12 @@
 //! Rename purchase lines to goods lines and add service lines.
-
 use lariv_core::db::migration_sql::{
     self, FK_CANCELLED_PURCHASE_SERVICE_LINE_JOURNAL_ITEM,
     FK_CANCELLED_PURCHASE_SERVICE_LINE_SERVICE, FK_CANCELLED_PURCHASE_SERVICE_LINE_TAX,
     FK_DRAFT_PURCHASE_SERVICE_LINE_SERVICE, FK_DRAFT_PURCHASE_SERVICE_LINE_TAX,
     FK_POSTED_PURCHASE_SERVICE_LINE_JOURNAL_ITEM, FK_POSTED_PURCHASE_SERVICE_LINE_SERVICE,
-    FK_POSTED_PURCHASE_SERVICE_LINE_TAX,
+    FK_POSTED_PURCHASE_SERVICE_LINE_TAX, exec_sql,
 };
+
 use lariv_plugin_finance_products::migrations::product_catalog_cleanup::CLEANUP_PRODUCT_CATALOG;
 use sea_orm_migration::prelude::*;
 
@@ -221,9 +221,8 @@ END $$;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let conn = manager.get_connection();
-        conn.execute_unprepared(UP).await?;
-        conn.execute_unprepared(CLEANUP_PRODUCT_CATALOG).await?;
+        exec_sql(manager, UP).await?;
+        exec_sql(manager, CLEANUP_PRODUCT_CATALOG).await?;
         migration_sql::ensure_schema_foreign_keys(
             manager,
             &[

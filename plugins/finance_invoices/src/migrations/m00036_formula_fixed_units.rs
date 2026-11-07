@@ -1,4 +1,5 @@
 //! Quantity unit `Number` and decimal unit `Seconds` on invoice line measures.
+use lariv_core::db::migration_sql::exec_sql;
 
 use sea_orm_migration::prelude::*;
 
@@ -12,9 +13,8 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        let conn = manager.get_connection();
-        conn.execute_unprepared(REFRESH_FORMULA_FIXED_UNITS).await?;
-        conn.execute_unprepared(REFRESH_INVOICE_VALUE_UNITS).await?;
+        exec_sql(manager, REFRESH_FORMULA_FIXED_UNITS).await?;
+        exec_sql(manager, REFRESH_INVOICE_VALUE_UNITS).await?;
         Ok(())
     }
 

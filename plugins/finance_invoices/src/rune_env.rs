@@ -36,6 +36,26 @@ fn register(rune_env: &mut RuneEnvCapability) {
         "search_invoices(#{ query: string, limit?: int }) -> #{ drafts: [#{ id: int, number: string|null, reference: string|null, customer_id: int, datetime: string }], posted: [#{ id: int, number: string, reference: string|null, customer_id: int, datetime: string }] }",
         |_ctx| NativeBinding::Function(Arc::new(search_invoices)),
     );
+    rune_env.register_contextual(
+        "create_quotation",
+        "create_quotation(#{ customer_id?: int, lines?: [#{ product_id: int, quantity?: number|string, qty_kind?: string, qty_unit?: string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new quotation id. Provide at least one line (lines). Quantity is a measure: qty_kind is its kind (length, weight, quantity, …) and qty_unit is the unit for that kind. The magnitude multiplies the price of one product. Omitted kind is quantity and omitted unit is that kind's default (Number for a count). When the catalog item has variables, pass them; an omitted rate uses the sales formula, and a given rate is the price of one unit. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
+        |_ctx| NativeBinding::Function(Arc::new(create_quotation)),
+    );
+    rune_env.register_contextual(
+        "update_quotation",
+        "update_quotation(#{ id: int, customer_id?: int, lines?: [#{ product_id: int, quantity?: number|string, qty_kind?: string, qty_unit?: string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated quotation id (full replace). Provide at least one line (lines). Quantity is a measure: qty_kind is its kind and qty_unit is the unit for that kind. The magnitude multiplies the price of one product. Omitted kind is quantity. When the catalog item has variables, an omitted rate uses the sales formula, and a given rate is the price of one unit. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
+        |_ctx| NativeBinding::Function(Arc::new(update_quotation)),
+    );
+    rune_env.register_contextual(
+        "search_quotations",
+        "search_quotations(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, number: string|null, reference: string|null, customer_id: int, datetime: string }] }",
+        |_ctx| NativeBinding::Function(Arc::new(search_quotations)),
+    );
+    rune_env.register_contextual(
+        "delete_quotation",
+        "delete_quotation(#{ id: int }) ->  // permanently deletes the quotation",
+        |_ctx| NativeBinding::Function(Arc::new(delete_quotation)),
+    );
 }
 
 #[cfg(feature = "cap-llm")]
@@ -43,7 +63,7 @@ fn create_invoice(
     ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
     args: &[rune::Value],
 ) -> Result<rune::Value, String> {
-    let (input, tz) = parse_create_args(args)?;
+    let (input, tz) = parse_create_args(args, "create_invoice")?;
     let db = ctx.db.clone();
     let draft = lariv_core::rune_env::block_on_async(async move {
         crate::logic::create_draft_invoice(&db, input, &tz).await
@@ -56,7 +76,7 @@ fn update_invoice(
     ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
     args: &[rune::Value],
 ) -> Result<rune::Value, String> {
-    let (draft_id, input, tz) = parse_update_args(args)?;
+    let (draft_id, input, tz) = parse_update_args(args, "update_invoice", "draft invoice")?;
     // Fail before any DB round-trip so empty-line scripts get a clear error
     // (and unit tests don't panic on a disconnected default connection).
     if input.lines.is_empty() {
@@ -67,6 +87,62 @@ fn update_invoice(
         crate::logic::update_draft_invoice(&db, draft_id, input, &tz).await
     })?;
     Ok(rune::Value::from(draft.id))
+}
+
+#[cfg(feature = "cap-llm")]
+fn create_quotation(
+    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    let (input, tz) = parse_create_args(args, "create_quotation")?;
+    let db = ctx.db.clone();
+    let quotation = lariv_core::rune_env::block_on_async(async move {
+        crate::logic::create_quotation_invoice(&db, input, &tz).await
+    })?;
+    Ok(rune::Value::from(quotation.id))
+}
+
+#[cfg(feature = "cap-llm")]
+fn update_quotation(
+    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    let (quotation_id, input, tz) = parse_update_args(args, "update_quotation", "quotation")?;
+    if input.lines.is_empty() {
+        return Err("add at least one line".to_string());
+    }
+    let db = ctx.db.clone();
+    let quotation = lariv_core::rune_env::block_on_async(async move {
+        crate::logic::update_quotation_invoice(&db, quotation_id, input, &tz).await
+    })?;
+    Ok(rune::Value::from(quotation.id))
+}
+
+#[cfg(feature = "cap-llm")]
+fn delete_quotation(
+    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    use serde::Deserialize;
+
+    use lariv_core::rune_env::{block_on_async, rune_to_json};
+
+    #[derive(Debug, Deserialize)]
+    struct DeleteArgs {
+        id: i64,
+    }
+
+    let value = args
+        .first()
+        .ok_or_else(|| "delete_quotation requires an object argument".to_string())?;
+    let parsed: DeleteArgs = serde_json::from_value(rune_to_json(value)?)
+        .map_err(|e| format!("invalid delete_quotation arguments: {e}"))?;
+    if parsed.id <= 0 {
+        return Err("delete_quotation requires a positive quotation id".to_string());
+    }
+    let db = ctx.db.clone();
+    block_on_async(async move { crate::logic::delete_quotation(&db, parsed.id).await })?;
+    Ok(rune::Value::from(()))
 }
 
 #[cfg(feature = "cap-llm")]
@@ -188,6 +264,92 @@ fn search_invoices(
     out.insert(
         "posted".into(),
         rune::to_value(posted).map_err(|e| e.to_string())?,
+    );
+    rune::to_value(out).map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "cap-llm")]
+fn search_quotations(
+    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    use std::collections::HashMap;
+
+    use chrono::{DateTime, Utc};
+    use serde::Deserialize;
+
+    use crate::entities::quotation_invoice::{self, Entity as QuotationInvoiceEntity};
+    use lariv_core::db::trigram;
+    use lariv_core::rune_env::{block_on_async, rune_to_json};
+
+    #[derive(Debug, Deserialize, Default)]
+    struct SearchArgs {
+        #[serde(default)]
+        query: String,
+        #[serde(default)]
+        limit: u64,
+    }
+
+    fn opt_string(value: Option<String>) -> Result<rune::Value, String> {
+        match value {
+            Some(s) => rune::to_value(s).map_err(|e| e.to_string()),
+            None => Ok(rune::Value::from(())),
+        }
+    }
+
+    fn hit(
+        id: i64,
+        number: Option<String>,
+        reference: Option<String>,
+        customer_id: i64,
+        datetime: DateTime<Utc>,
+    ) -> Result<rune::Value, String> {
+        let mut row: HashMap<String, rune::Value> = HashMap::new();
+        row.insert("id".into(), rune::Value::from(id));
+        row.insert("number".into(), opt_string(number)?);
+        row.insert("reference".into(), opt_string(reference)?);
+        row.insert("customer_id".into(), rune::Value::from(customer_id));
+        row.insert(
+            "datetime".into(),
+            rune::to_value(datetime.to_rfc3339()).map_err(|e| e.to_string())?,
+        );
+        rune::to_value(row).map_err(|e| e.to_string())
+    }
+
+    let value = args
+        .first()
+        .ok_or_else(|| "search_quotations requires an object argument".to_string())?;
+    let parsed: SearchArgs = serde_json::from_value(rune_to_json(value)?)
+        .map_err(|e| format!("invalid search_quotations arguments: {e}"))?;
+    let query = parsed.query.trim().to_string();
+    if query.is_empty() {
+        return Err("search_quotations requires query".into());
+    }
+    let limit = trigram::clamp_search_limit(parsed.limit);
+    let db = ctx.db.clone();
+    let rows = block_on_async(async move {
+        trigram::search::<QuotationInvoiceEntity, _>(
+            &db,
+            &[
+                quotation_invoice::Column::Number,
+                quotation_invoice::Column::Reference,
+            ],
+            &query,
+            limit,
+        )
+        .await
+        .map_err(|e| e.to_string())
+    })?;
+
+    let results = rows
+        .into_iter()
+        .map(|q| hit(q.id, q.number, q.reference, q.customer_id, q.datetime))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut out: HashMap<String, rune::Value> = HashMap::new();
+    out.insert(
+        "results".into(),
+        rune::to_value(results).map_err(|e| e.to_string())?,
     );
     rune::to_value(out).map_err(|e| e.to_string())
 }
@@ -363,31 +525,34 @@ mod args {
 
     pub(super) fn parse_create_args(
         args: &[rune::Value],
+        op: &str,
     ) -> Result<(CreateDraftInput, String), String> {
         let value = args
             .first()
-            .ok_or_else(|| "create_invoice requires an object argument".to_string())?;
+            .ok_or_else(|| format!("{op} requires an object argument"))?;
         let parsed: InvoiceFields = serde_json::from_value(
             lariv_core::rune_env::rune_to_json(value)
-                .map_err(|e| format!("invalid create_invoice arguments: {e}"))?,
+                .map_err(|e| format!("invalid {op} arguments: {e}"))?,
         )
-        .map_err(|e| format!("invalid create_invoice arguments: {e}"))?;
+        .map_err(|e| format!("invalid {op} arguments: {e}"))?;
         parse_fields(parsed)
     }
 
     pub(super) fn parse_update_args(
         args: &[rune::Value],
+        op: &str,
+        id_label: &str,
     ) -> Result<(i64, UpdateDraftInput, String), String> {
         let value = args
             .first()
-            .ok_or_else(|| "update_invoice requires an object argument".to_string())?;
+            .ok_or_else(|| format!("{op} requires an object argument"))?;
         let parsed: UpdateInvoiceArgs = serde_json::from_value(
             lariv_core::rune_env::rune_to_json(value)
-                .map_err(|e| format!("invalid update_invoice arguments: {e}"))?,
+                .map_err(|e| format!("invalid {op} arguments: {e}"))?,
         )
-        .map_err(|e| format!("invalid update_invoice arguments: {e}"))?;
+        .map_err(|e| format!("invalid {op} arguments: {e}"))?;
         if parsed.id <= 0 {
-            return Err("update_invoice requires a positive draft invoice id".to_string());
+            return Err(format!("{op} requires a positive {id_label} id"));
         }
         let (create, tz) = parse_fields(parsed.fields)?;
         Ok((
@@ -454,6 +619,22 @@ mod tests {
         assert!(
             names.iter().any(|name| name == "search_invoices"),
             "expected search_invoices in {names:?}"
+        );
+        assert!(
+            names.iter().any(|name| name == "create_quotation"),
+            "expected create_quotation in {names:?}"
+        );
+        assert!(
+            names.iter().any(|name| name == "update_quotation"),
+            "expected update_quotation in {names:?}"
+        );
+        assert!(
+            names.iter().any(|name| name == "search_quotations"),
+            "expected search_quotations in {names:?}"
+        );
+        assert!(
+            names.iter().any(|name| name == "delete_quotation"),
+            "expected delete_quotation in {names:?}"
         );
     }
 
@@ -658,7 +839,8 @@ create_invoice(#{
             ]
         }))
         .expect("json to rune");
-        let (id, input, tz) = parse_update_args(&[value]).expect("parse update args");
+        let (id, input, tz) = parse_update_args(&[value], "update_invoice", "draft invoice")
+            .expect("parse update args");
         assert_eq!(id, 42);
         assert_eq!(input.customer_id, 5);
         assert_eq!(input.number.as_deref(), Some("P26RIN100294"));
@@ -680,9 +862,135 @@ create_invoice(#{
             "lines": [{ "product_id": 9, "quantity": "2" }]
         }))
         .expect("json to rune");
-        let (input, _) = parse_create_args(&[value]).expect("parse create args");
+        let (input, _) = parse_create_args(&[value], "create_invoice").expect("parse create args");
         assert_eq!(input.lines.len(), 1);
         assert_eq!(input.lines[0].product_id, 9);
         assert_eq!(input.lines[0].quantity, "2");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn create_quotation_via_rune_rejects_empty_lines() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run(
+            &cap,
+            &env_ctx,
+            "create_quotation(#{ customer_id: 1, lines: [] })",
+            &[],
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("add at least one line"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn update_quotation_via_rune_rejects_non_positive_id() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run(
+            &cap,
+            &env_ctx,
+            r#"update_quotation(#{ id: 0, customer_id: 1, lines: [#{ product_id: 1, quantity: "1" }] })"#,
+            &[],
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("positive quotation id"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn update_quotation_via_rune_rejects_empty_lines() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run(
+            &cap,
+            &env_ctx,
+            "update_quotation(#{ id: 1, customer_id: 1, lines: [] })",
+            &[],
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("add at least one line"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn search_quotations_rejects_missing_query() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out = rune_engine::compile_and_run(&cap, &env_ctx, "search_quotations(#{})", &[]).await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(error.contains("query"), "unexpected error payload: {out}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn delete_quotation_via_rune_rejects_non_positive_id() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store);
+        let out =
+            rune_engine::compile_and_run(&cap, &env_ctx, "delete_quotation(#{ id: 0 })", &[]).await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("positive quotation id"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[test]
+    fn update_quotation_args_accept_object_fields() {
+        use lariv_core::rune_env::json_to_rune;
+        use serde_json::json;
+
+        let value = json_to_rune(json!({
+            "id": 7,
+            "customer_id": 3,
+            "number": "Q-100",
+            "date": "27/04/2026",
+            "lines": [{ "product_id": 2, "quantity": 4, "rate": 25 }]
+        }))
+        .expect("json to rune");
+        let (id, input, tz) = parse_update_args(&[value], "update_quotation", "quotation")
+            .expect("parse update args");
+        assert_eq!(id, 7);
+        assert_eq!(input.customer_id, 3);
+        assert_eq!(input.number.as_deref(), Some("Q-100"));
+        assert_eq!(input.lines.len(), 1);
+        assert_eq!(input.lines[0].product_id, 2);
+        assert_eq!(input.lines[0].quantity, "4");
+        assert_eq!(input.lines[0].rate.as_deref(), Some("25"));
+        assert_eq!(tz, "UTC");
     }
 }

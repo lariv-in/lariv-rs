@@ -1,42 +1,57 @@
 use lariv_core::db::migration_sql::exec_sql;
+use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-const ADD_ADDRESS_LINE_1: &str =
-    "ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS address_line_1 TEXT";
-const ADD_ADDRESS_LINE_2: &str =
-    "ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS address_line_2 TEXT";
-const ADD_CITY: &str = "ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS city TEXT";
-const ADD_PINCODE: &str = "ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS pincode TEXT";
-const ADD_STATE: &str = "ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS state TEXT";
-const ADD_WEBSITE: &str = "ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS website TEXT";
-
-const DROP_ADDRESS_LINE_1: &str = "ALTER TABLE crm_companies DROP COLUMN IF EXISTS address_line_1";
-const DROP_ADDRESS_LINE_2: &str = "ALTER TABLE crm_companies DROP COLUMN IF EXISTS address_line_2";
-const DROP_CITY: &str = "ALTER TABLE crm_companies DROP COLUMN IF EXISTS city";
-const DROP_PINCODE: &str = "ALTER TABLE crm_companies DROP COLUMN IF EXISTS pincode";
-const DROP_STATE: &str = "ALTER TABLE crm_companies DROP COLUMN IF EXISTS state";
-const DROP_WEBSITE: &str = "ALTER TABLE crm_companies DROP COLUMN IF EXISTS website";
+const COLUMNS: [&str; 6] = [
+    "address_line_1",
+    "address_line_2",
+    "city",
+    "pincode",
+    "state",
+    "website",
+];
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        exec_sql(manager, ADD_ADDRESS_LINE_1).await?;
-        exec_sql(manager, ADD_ADDRESS_LINE_2).await?;
-        exec_sql(manager, ADD_CITY).await?;
-        exec_sql(manager, ADD_PINCODE).await?;
-        exec_sql(manager, ADD_STATE).await?;
-        exec_sql(manager, ADD_WEBSITE).await
+        for column in COLUMNS {
+            let sql = match manager.get_database_backend() {
+                DbBackend::Postgres => {
+                    format!("ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS {column} TEXT")
+                }
+                _ if column_exists(manager, column).await? => continue,
+                _ => format!("ALTER TABLE crm_companies ADD COLUMN {column} TEXT"),
+            };
+            exec_sql(manager, &sql).await?;
+        }
+        Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        exec_sql(manager, DROP_ADDRESS_LINE_1).await?;
-        exec_sql(manager, DROP_ADDRESS_LINE_2).await?;
-        exec_sql(manager, DROP_CITY).await?;
-        exec_sql(manager, DROP_PINCODE).await?;
-        exec_sql(manager, DROP_STATE).await?;
-        exec_sql(manager, DROP_WEBSITE).await
+        for column in COLUMNS {
+            let sql = match manager.get_database_backend() {
+                DbBackend::Postgres => {
+                    format!("ALTER TABLE crm_companies DROP COLUMN IF EXISTS {column}")
+                }
+                _ if !column_exists(manager, column).await? => continue,
+                _ => format!("ALTER TABLE crm_companies DROP COLUMN {column}"),
+            };
+            exec_sql(manager, &sql).await?;
+        }
+        Ok(())
     }
+}
+
+async fn column_exists(manager: &SchemaManager<'_>, column: &str) -> Result<bool, DbErr> {
+    let row = manager
+        .get_connection()
+        .query_one_raw(Statement::from_string(
+            manager.get_database_backend(),
+            format!("SELECT 1 FROM pragma_table_info('crm_companies') WHERE name = '{column}'"),
+        ))
+        .await?;
+    Ok(row.is_some())
 }
