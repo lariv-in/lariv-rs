@@ -117,7 +117,7 @@ pub const RIGHT_SIDEBAR_X_DATA: &str = r#"{
             const deltaX = moveEvent.clientX - startX;
             let newWidth = startWidth - deltaX;
             if (newWidth < 240) newWidth = 240;
-            if (newWidth > 600) newWidth = 600;
+            if (newWidth > 720) newWidth = 720;
             this.rightSidebarWidth = newWidth;
         };
         const onMouseUp = () => {

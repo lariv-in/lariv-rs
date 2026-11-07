@@ -11,10 +11,10 @@ use crate::{
     actions::{load_api_contents, resolve_context_usage, session_transcript_html},
     context_usage::ContextUsageView,
     entities::session::{self, Entity as SessionEntity},
-    handlers::history::load_user_sessions,
+    handlers::history::{HistoryListQuery, load_history_page},
     routes::HistoryListRouteTag,
     state::LlmAssistantState,
-    templates::{chat_shell, history_sidebar_panel_html, sidebar_chat_partial},
+    templates::{HistoryListPage, chat_shell, history_sidebar_panel_html, sidebar_chat_partial},
 };
 use lariv_core::http::Cap;
 use lariv_core::web::Htmx;
@@ -59,20 +59,22 @@ async fn compact_chat_for_session(state: &LlmAssistantState, id: i64, title: &st
     }
 }
 
-/// Most recently listed session, or `0` when the user has no conversations
-/// (draft chat until first message).
-fn resolve_sidebar_session_id(sessions: &[(i64, String)]) -> i64 {
-    sessions.first().map(|(id, _)| *id).unwrap_or(0)
-}
-
 /// Full history sidebar panel (lazy-loaded into right drawer).
 pub async fn history_panel(
     Cap(state): Cap<LlmAssistantState>,
     RequireAuth(ctx): RequireAuth,
 ) -> Response {
-    let sessions = load_user_sessions(&state.db, ctx.user.id, &ctx.role, &ctx.timezone).await;
-
-    let resolved_id = resolve_sidebar_session_id(&sessions);
+    let q = HistoryListQuery::default();
+    let sessions =
+        load_history_page(&state.db, ctx.user.id, ctx.role.as_str(), &q, &ctx.timezone).await;
+    let resolved_id = sessions.items.first().map(|row| row.id).unwrap_or(0);
+    let sessions_table = HistoryListPage {
+        sessions,
+        path_and_query: HistoryListRouteTag.url(),
+        page_size: q.page_size.get(),
+        sort: String::new(),
+    }
+    .render_modal_table();
 
     let (active_name, initial_chat) = if resolved_id != 0 {
         if let Ok(Some(sess)) = SessionEntity::find_by_id(resolved_id).one(&state.db).await {
@@ -93,7 +95,8 @@ pub async fn history_panel(
         (String::new(), draft_compact_chat_with(usage))
     };
 
-    history_sidebar_panel_html(&active_name, resolved_id, initial_chat, &sessions).into_response()
+    history_sidebar_panel_html(&active_name, resolved_id, initial_chat, sessions_table)
+        .into_response()
 }
 
 /// Sidebar chat partial — OOB session name + compact chat shell.
@@ -140,10 +143,10 @@ mod tests {
 
     #[test]
     fn modal_sessions_oob_contains_swap_target() {
-        let html = modal_sessions_oob(&[(1, "#1 · hello".into())]).into_string();
+        let html = modal_sessions_oob(maud::html! { div { "conversations" } }).into_string();
         assert!(html.contains("modal-sessions-list"));
         assert!(html.contains("hx-swap-oob"));
-        assert!(html.contains("sidebar-chat/1/"));
+        assert!(html.contains("conversations"));
     }
 
     #[test]
@@ -156,7 +159,8 @@ mod tests {
 
     #[test]
     fn history_sidebar_keeps_draft_when_none_active() {
-        let html = history_sidebar_panel_html("", 0, draft_compact_chat(), &[]).into_string();
+        let html =
+            history_sidebar_panel_html("", 0, draft_compact_chat(), maud::html! {}).into_string();
         assert!(!html.contains("htmx.ajax('POST', '/llm-assistant/new-session/?sidebar=1'"));
         assert!(html.contains("openDraft()"));
         assert!(html.contains(&ChatSidebarSessionRouteTag::new(0).url()));
@@ -171,13 +175,8 @@ mod tests {
 
     #[test]
     fn history_sidebar_opens_server_session_on_init() {
-        let html = history_sidebar_panel_html(
-            "Recent",
-            42,
-            draft_compact_chat(),
-            &[(42, "#42 · Recent".into())],
-        )
-        .into_string();
+        let html = history_sidebar_panel_html("Recent", 42, draft_compact_chat(), maud::html! {})
+            .into_string();
         assert!(html.contains("this.activeSessionId = 42;"));
     }
 

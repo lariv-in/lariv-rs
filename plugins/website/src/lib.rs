@@ -29,6 +29,11 @@
 //! - Minijinja `title` / `app_manifest_path` / `favicon_path` / `pwa_head()` / `apple_pwa_head()`
 //!   pull the patched document title and PWA `<head>` tags (manifest, favicon, Apple iOS metadata).
 //!
+//! # Assistant
+//!
+//! When the LLM assistant is installed, Rune scripts can create, read, update, and
+//! search website routes. Deleting a route waits for human approval.
+//!
 //! # Routes
 //!
 //! - `/{path...}` — dynamic catch-all (patches home route)
@@ -49,6 +54,8 @@ pub mod entities;
 pub mod forms;
 pub mod grapesjs;
 pub mod handlers;
+#[cfg(feature = "plugin-llm-assistant")]
+pub mod hitl;
 pub mod html_edit;
 pub mod keys;
 pub mod match_route;
@@ -57,6 +64,7 @@ pub mod preferences;
 pub mod publish;
 pub mod render;
 pub mod routes;
+pub mod rune_env;
 pub mod state;
 pub mod template_funcs;
 pub mod templates;
@@ -89,11 +97,32 @@ pub struct WebsiteTag;
 
 define_passthrough_cap!(WebsiteStateCap, WebsiteTag, WebsiteState);
 
+#[cfg(feature = "plugin-llm-assistant")]
+define_plugin_install! {
+    plugin: WebsiteTag;
+    /// Register website deferred hooks (apps, grapesjs, migrations, templates, slots, config, routes, state).
+    steps: [
+        cap_hook(lariv_plugin_llm_assistant::hitl::HitlTag, lariv_plugin_llm_assistant::hitl::HitlCap, hitl::Hook),
+        apps(apps::Hook),
+        rune_env(rune_env::Hook),
+        cap_attach(grapesjs::GrapesJsTag, grapesjs::GrapesJsCap, grapesjs::GrapesJsCap::with_items(grapesjs::GrapesJsCapability::new())),
+        cap_hook(grapesjs::GrapesJsTag, grapesjs::GrapesJsCap, grapesjs::Hook),
+        migrations(migrations::Hook),
+        templates(templates::Hook),
+        slots(templates::SlotsHook),
+        config(WebsiteConfigTag, WebsiteConfig),
+        http(routes::Hook),
+        state(StateHook),
+    ]
+}
+
+#[cfg(not(feature = "plugin-llm-assistant"))]
 define_plugin_install! {
     plugin: WebsiteTag;
     /// Register website deferred hooks (apps, grapesjs, migrations, templates, slots, config, routes, state).
     steps: [
         apps(apps::Hook),
+        rune_env(rune_env::Hook),
         cap_attach(grapesjs::GrapesJsTag, grapesjs::GrapesJsCap, grapesjs::GrapesJsCap::with_items(grapesjs::GrapesJsCapability::new())),
         cap_hook(grapesjs::GrapesJsTag, grapesjs::GrapesJsCap, grapesjs::Hook),
         migrations(migrations::Hook),

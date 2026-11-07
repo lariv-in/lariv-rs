@@ -68,7 +68,7 @@ fn theme_choices(grapes: &GrapesJsCapability) -> Vec<(String, String)> {
         .collect()
 }
 
-async fn sync_refs(
+pub(crate) async fn sync_refs(
     db: &sea_orm::DatabaseConnection,
     route_id: i64,
     ref_ids: &[i64],

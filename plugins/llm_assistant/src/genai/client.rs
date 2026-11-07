@@ -509,8 +509,9 @@ impl GenaiClient {
 
     /// One-shot JSON generation with a response schema (`responseMimeType: application/json`).
     ///
-    /// Disables Gemini 2.5 thinking (`thinkingBudget: 0`) so short token budgets are not
-    /// consumed by reasoning, and sends the schema as `responseJsonSchema` (JSON Schema).
+    /// Sends the schema as `responseJsonSchema` (JSON Schema). Thinking is turned off
+    /// only when the model supports it, using that model's control (`thinkingBudget`
+    /// or `thinkingLevel`).
     pub async fn generate_json(
         &self,
         system_prompt: &str,
@@ -545,6 +546,7 @@ impl GenaiClient {
             },
             &[],
         );
+        let body = self.finish_request_body(body).await;
 
         let resp = self.http.post(&url).json(&body).send().await?;
         let status = resp.status();
@@ -619,6 +621,7 @@ impl GenaiClient {
             self.model, self.api_key
         );
         let body = Self::request_body(contents, system_instruction, max_output_tokens, tool_decls);
+        let body = self.finish_request_body(body).await;
 
         let resp = self.http.post(&url).json(&body).send().await?;
         let status = resp.status();
@@ -683,12 +686,14 @@ impl GenaiClient {
             "{GEMINI_BASE}/models/{}:streamGenerateContent?alt=sse&key={}",
             self.model, self.api_key
         );
-        let body = Self::request_body(
-            contents,
-            Some(Content::text(Role::User, ASSISTANT_SYSTEM_PROMPT)),
-            max_output_tokens,
-            tool_decls,
-        );
+        let body = self
+            .finish_request_body(Self::request_body(
+                contents,
+                Some(Content::text(Role::User, ASSISTANT_SYSTEM_PROMPT)),
+                max_output_tokens,
+                tool_decls,
+            ))
+            .await;
 
         let mut last_err = None;
         for attempt in 0..STREAM_MAX_ATTEMPTS {
@@ -757,8 +762,38 @@ impl GenaiClient {
 
     /// `models/{id}` `inputTokenLimit` for the configured chat model.
     pub async fn model_input_token_limit(&self) -> Result<u32, GenaiError> {
+        let features = self.model_features().await?;
+        if features.input_token_limit > 0 {
+            Ok(features.input_token_limit as u32)
+        } else {
+            Err(GenaiError::Json("model inputTokenLimit missing".into()))
+        }
+    }
+
+    /// Drop or rewrite `thinkingConfig` using `models.get` `thinking`, then the model id.
+    async fn finish_request_body(
+        &self,
+        mut body: GenerateContentRequest,
+    ) -> GenerateContentRequest {
+        let Some(config) = body.generation_config.take() else {
+            return body;
+        };
+        let features = if config.thinking_config.is_some() {
+            self.model_features().await.ok()
+        } else {
+            None
+        };
+        body.generation_config = Some(apply_model_features(&self.model, features.as_ref(), config));
+        body
+    }
+
+    async fn model_features(&self) -> Result<ModelFeatures, GenaiError> {
         if self.api_key.trim().is_empty() {
             return Err(GenaiError::MissingApiKey);
+        }
+        let key = model_cache_key(&self.model);
+        if let Some(hit) = cached_model_features(&key) {
+            return Ok(hit);
         }
         let url = format!("{GEMINI_BASE}/models/{}?key={}", self.model, self.api_key);
         let resp = self.http.get(&url).send().await?;
@@ -772,11 +807,12 @@ impl GenaiClient {
         }
         let parsed: ModelResource =
             serde_json::from_str(&text).map_err(|e| GenaiError::Json(e.to_string()))?;
-        if parsed.input_token_limit > 0 {
-            Ok(parsed.input_token_limit as u32)
-        } else {
-            Err(GenaiError::Json("model inputTokenLimit missing".into()))
-        }
+        let features = ModelFeatures {
+            input_token_limit: parsed.input_token_limit,
+            thinking: parsed.thinking,
+        };
+        store_model_features(key, features.clone());
+        Ok(features)
     }
 
     async fn stream_once<F>(
@@ -969,6 +1005,110 @@ struct ModelResource {
     name: String,
     #[serde(default)]
     input_token_limit: i32,
+    /// Official `Model.thinking`: whether this model accepts `thinkingConfig`.
+    #[serde(default)]
+    thinking: Option<bool>,
+}
+
+#[derive(Debug, Clone)]
+struct ModelFeatures {
+    input_token_limit: i32,
+    thinking: Option<bool>,
+}
+
+fn model_feature_cache()
+-> &'static std::sync::Mutex<std::collections::HashMap<String, ModelFeatures>> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, ModelFeatures>>,
+    > = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+fn model_cache_key(model: &str) -> String {
+    let trimmed = model.trim();
+    let id = trimmed.strip_prefix("models/").unwrap_or(trimmed);
+    id.to_ascii_lowercase()
+}
+
+fn cached_model_features(key: &str) -> Option<ModelFeatures> {
+    model_feature_cache()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner())
+        .get(key)
+        .cloned()
+}
+
+fn store_model_features(key: String, features: ModelFeatures) {
+    model_feature_cache()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner())
+        .insert(key, features);
+}
+
+/// Keep `thinkingConfig` only when the model supports thinking, and use the control that model accepts.
+fn apply_model_features(
+    model: &str,
+    features: Option<&ModelFeatures>,
+    mut config: GenerationConfig,
+) -> GenerationConfig {
+    let Some(requested) = config.thinking_config.take() else {
+        return config;
+    };
+    if !supports_thinking(model, features) {
+        return config;
+    }
+    config.thinking_config = Some(thinking_config_for_model(model, &requested));
+    config
+}
+
+fn supports_thinking(model: &str, features: Option<&ModelFeatures>) -> bool {
+    match features.and_then(|features| features.thinking) {
+        Some(thinking) => thinking,
+        None => model_id_supports_thinking(model),
+    }
+}
+
+/// Used when `models.get` omits `thinking` or the lookup fails.
+fn model_id_supports_thinking(model: &str) -> bool {
+    let id = model_cache_key(model);
+    if id.starts_with("gemma-4") {
+        return true;
+    }
+    if id.starts_with("gemma") {
+        return false;
+    }
+    id.starts_with("gemini-2.5") || id.starts_with("gemini-3") || id.contains("thinking")
+}
+
+/// Gemini 3 and Gemma 4 reject `thinkingBudget`. Gemini 2.5 rejects `thinkingLevel`.
+fn thinking_config_for_model(model: &str, requested: &ThinkingConfig) -> ThinkingConfig {
+    let id = model_cache_key(model);
+    let wants_off = requested.thinking_budget == Some(0)
+        || requested
+            .thinking_level
+            .as_deref()
+            .is_some_and(|level| level.eq_ignore_ascii_case("minimal"));
+    if id.starts_with("gemma") || id.starts_with("gemini-3") {
+        if wants_off {
+            ThinkingConfig::minimal()
+        } else if requested.thinking_level.is_some() {
+            ThinkingConfig {
+                thinking_budget: None,
+                include_thoughts: None,
+                thinking_level: requested.thinking_level.clone(),
+            }
+        } else {
+            ThinkingConfig::minimal()
+        }
+    } else if wants_off {
+        ThinkingConfig::disabled()
+    } else {
+        ThinkingConfig {
+            thinking_budget: requested.thinking_budget,
+            include_thoughts: requested.include_thoughts,
+            thinking_level: None,
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -1154,6 +1294,61 @@ mod tests {
     }
 
     #[test]
+    fn gemma_without_thinking_drops_thinking_config() {
+        let features = ModelFeatures {
+            input_token_limit: 8192,
+            thinking: Some(false),
+        };
+        let config =
+            apply_model_features("gemma-3-27b-it", Some(&features), json_generation_config());
+        assert!(config.thinking_config.is_none());
+    }
+
+    #[test]
+    fn omitted_thinking_flag_uses_model_id() {
+        let features = ModelFeatures {
+            input_token_limit: 8192,
+            thinking: None,
+        };
+        let gemma =
+            apply_model_features("gemma-2-9b-it", Some(&features), json_generation_config());
+        assert!(gemma.thinking_config.is_none());
+        let flash = apply_model_features(
+            "gemini-2.5-flash",
+            Some(&features),
+            json_generation_config(),
+        );
+        let thinking = flash.thinking_config.expect("gemini 2.5 thinking");
+        assert_eq!(thinking.thinking_budget, Some(0));
+        assert!(thinking.thinking_level.is_none());
+    }
+
+    #[test]
+    fn gemma_4_thinking_uses_level_not_budget() {
+        let features = ModelFeatures {
+            input_token_limit: 8192,
+            thinking: Some(true),
+        };
+        let config = apply_model_features(
+            "gemma-4-26b-a4b-it",
+            Some(&features),
+            json_generation_config(),
+        );
+        let thinking = config.thinking_config.expect("gemma 4 thinking");
+        assert_eq!(thinking.thinking_level.as_deref(), Some("minimal"));
+        assert!(thinking.thinking_budget.is_none());
+    }
+
+    #[test]
+    fn model_resource_reads_thinking_flag() {
+        let parsed: ModelResource = serde_json::from_str(
+            r#"{"name":"models/gemma-3-27b-it","inputTokenLimit":8192,"thinking":false}"#,
+        )
+        .expect("model");
+        assert_eq!(parsed.thinking, Some(false));
+    }
+
+    #[test]
     fn model_resource_reads_input_token_limit() {
         let parsed: ModelResource = serde_json::from_str(
             r#"{"name":"models/gemini-2.5-flash","inputTokenLimit":1048576,"outputTokenLimit":65536}"#,
@@ -1166,6 +1361,17 @@ mod tests {
     fn count_tokens_response_reads_total() {
         let parsed: CountTokensResponse = serde_json::from_str(r#"{"totalTokens":2048}"#).unwrap();
         assert_eq!(parsed.total_tokens, 2048);
+    }
+
+    fn json_generation_config() -> GenerationConfig {
+        GenerationConfig {
+            temperature: Some(0.2),
+            max_output_tokens: Some(1024),
+            response_mime_type: Some("application/json".into()),
+            response_schema: None,
+            response_json_schema: Some(serde_json::json!({"type": "object"})),
+            thinking_config: Some(ThinkingConfig::disabled()),
+        }
     }
 }
 

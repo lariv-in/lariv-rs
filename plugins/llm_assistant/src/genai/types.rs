@@ -367,7 +367,8 @@ pub struct GenerationConfig {
     pub thinking_config: Option<ThinkingConfig>,
 }
 
-/// Gemini 2.5 `thinkingConfig` (Flash supports disabling via `thinking_budget: 0`).
+/// Thinking controls. Gemini 2.5 uses [`Self::thinking_budget`]; Gemini 3 and Gemma 4
+/// use [`Self::thinking_level`]. Omit the struct entirely when the model does not support thinking.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThinkingConfig {
@@ -375,14 +376,27 @@ pub struct ThinkingConfig {
     pub thinking_budget: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub include_thoughts: Option<bool>,
+    /// `"minimal"`, `"low"`, `"medium"`, or `"high"`. Gemma 4 and Gemini 3 only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_level: Option<String>,
 }
 
 impl ThinkingConfig {
-    /// Disable thinking (Gemini 2.5 Flash). Keeps output tokens for the answer.
+    /// Disable thinking with `thinkingBudget: 0` (Gemini 2.5 Flash).
     pub fn disabled() -> Self {
         Self {
             thinking_budget: Some(0),
             include_thoughts: Some(false),
+            thinking_level: None,
+        }
+    }
+
+    /// Disable thinking with `thinkingLevel: "minimal"` (Gemma 4, Gemini 3).
+    pub fn minimal() -> Self {
+        Self {
+            thinking_budget: None,
+            include_thoughts: None,
+            thinking_level: Some("minimal".into()),
         }
     }
 }
@@ -465,12 +479,21 @@ mod tests {
             })),
             thinking_config: Some(ThinkingConfig::disabled()),
         };
-        let v = serde_json::to_value(&cfg).unwrap();
+        let v = serde_json::to_value(&cfg).expect("generation config");
         assert_eq!(v["responseMimeType"], "application/json");
         assert!(v.get("responseSchema").is_none());
         assert!(v.get("responseJsonSchema").is_some());
         assert_eq!(v["thinkingConfig"]["thinkingBudget"], 0);
         assert_eq!(v["thinkingConfig"]["includeThoughts"], false);
+        assert!(v["thinkingConfig"].get("thinkingLevel").is_none());
+    }
+
+    #[test]
+    fn thinking_level_minimal_omits_budget() {
+        let v = serde_json::to_value(ThinkingConfig::minimal()).expect("thinking config");
+        assert_eq!(v["thinkingLevel"], "minimal");
+        assert!(v.get("thinkingBudget").is_none());
+        assert!(v.get("includeThoughts").is_none());
     }
 
     #[test]

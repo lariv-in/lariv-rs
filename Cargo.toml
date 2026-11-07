@@ -137,7 +137,7 @@ full = [
     "plugin-finance-accounts",
     "plugin-finance-customers",
 ]
-cap-llm = ["lariv-core/cap-llm", "lariv-plugin-llm-assistant?/cap-llm", "lariv-plugin-documents?/cap-llm", "lariv-plugin-forms?/cap-llm", "lariv-plugin-finance-taxes?/cap-llm", "lariv-plugin-finance-products?/cap-llm", "lariv-plugin-finance-invoices?/cap-llm", "lariv-plugin-finance-purchases?/cap-llm"]
+cap-llm = ["lariv-core/cap-llm", "lariv-plugin-llm-assistant?/cap-llm", "lariv-plugin-documents?/cap-llm", "lariv-plugin-forms?/cap-llm", "lariv-plugin-finance-taxes?/cap-llm", "lariv-plugin-finance-products?/cap-llm", "lariv-plugin-finance-invoices?/cap-llm", "lariv-plugin-finance-purchases?/cap-llm", "lariv-plugin-website?/cap-llm"]
 typst = ["lariv-core/typst"]
 plugin-users = ["lariv-core/plugin-users", "dep:lariv-plugin-users"]
 plugin-dashboard = ["plugin-users", "dep:lariv-plugin-dashboard"]
@@ -145,7 +145,7 @@ plugin-blog = ["plugin-users", "dep:lariv-plugin-blog"]
 plugin-forms = ["plugin-users", "plugin-filesystem", "dep:lariv-plugin-forms"]
 plugin-filesystem = ["plugin-users", "typst", "dep:lariv-plugin-filesystem"]
 plugin-website = ["plugin-filesystem", "plugin-users", "dep:lariv-plugin-website"]
-plugin-llm-assistant = ["plugin-users", "plugin-filesystem", "cap-llm", "typst", "cap-llm", "dep:lariv-plugin-llm-assistant", "lariv-plugin-finance-invoices?/plugin-llm-assistant", "lariv-plugin-finance-purchases?/plugin-llm-assistant", "lariv-plugin-finance-products?/plugin-llm-assistant", "lariv-plugin-documents?/plugin-llm-assistant"]
+plugin-llm-assistant = ["plugin-users", "plugin-filesystem", "cap-llm", "typst", "cap-llm", "dep:lariv-plugin-llm-assistant", "lariv-plugin-finance-invoices?/plugin-llm-assistant", "lariv-plugin-finance-purchases?/plugin-llm-assistant", "lariv-plugin-finance-products?/plugin-llm-assistant", "lariv-plugin-documents?/plugin-llm-assistant", "lariv-plugin-website?/plugin-llm-assistant"]
 plugin-otp = ["plugin-users", "dep:lariv-plugin-otp"]
 plugin-pwa = ["dep:lariv-plugin-pwa"]
 plugin-export = ["plugin-users", "dep:lariv-plugin-export", "lariv-plugin-import?/plugin-export"]

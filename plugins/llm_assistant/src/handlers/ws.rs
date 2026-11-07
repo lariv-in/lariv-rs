@@ -24,7 +24,7 @@ use crate::{
     context_usage::ContextUsageView,
     entities::session::{self, Entity as SessionEntity},
     genai::{Content, Part, Role},
-    handlers::history::{load_user_sessions, session_display_title},
+    handlers::history::{HistoryListQuery, load_history_page, session_display_title},
     live_turn,
     state::LlmAssistantState,
     templates::modal_sessions_oob,
@@ -437,14 +437,23 @@ async fn forward_events(
                                         title.as_deref().unwrap_or(""),
                                     );
                                     html.push_str(&session_name_oob(&name));
-                                    let sessions = load_user_sessions(
+                                    let q = HistoryListQuery::default();
+                                    let sessions = load_history_page(
                                         &ctx.state.db,
                                         ctx.user_id,
                                         ctx.role,
+                                        &q,
                                         ctx.timezone,
                                     )
                                     .await;
-                                    html.push_str(&modal_sessions_oob(&sessions).into_string());
+                                    let table = crate::templates::HistoryListPage {
+                                        sessions,
+                                        path_and_query: crate::routes::HistoryListRouteTag.url(),
+                                        page_size: q.page_size.get(),
+                                        sort: String::new(),
+                                    }
+                                    .render_modal_table();
+                                    html.push_str(&modal_sessions_oob(table).into_string());
                                 }
                                 html
                             }

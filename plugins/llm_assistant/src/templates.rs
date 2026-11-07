@@ -5,20 +5,20 @@ use maud::{Markup, PreEscaped, html};
 
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
-    APP_LAYOUT, ButtonModal, ButtonModalForm, ButtonSubmit, Crumb, DataTable, DataTableDisplay,
-    DeleteConfirmation, DetailHeader, FieldDuration, FieldManyToMany, FieldMarkdown, FieldText,
-    FilterClauseView, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar, ListFilterBuilder,
-    MAIN_CONTENT, ManyToManyItem, ObjectList, RenderSlot, RightSidebarSlotTag, ShellChrome,
-    ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability, SlotCtx, SlotOf,
-    SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader, TableListContent, TableRow,
-    breadcrumbs, button_modal, button_modal_form, button_post_route, button_submit,
-    column_sort_url, container_column, container_row, data_table, data_table_list, detail,
-    detail_header, field_duration, field_many_to_many, field_markdown, field_text,
+    APP_LAYOUT, ButtonClear, ButtonModal, ButtonModalForm, ButtonSubmit, Crumb, DataTable,
+    DataTableDisplay, DeleteConfirmation, DetailHeader, FieldDuration, FieldManyToMany,
+    FieldMarkdown, FieldText, FilterClauseView, FormOpts, HtmlAttrs, LayoutMain, LayoutSidebar,
+    ListFilterBuilder, MAIN_CONTENT, ManyToManyItem, ObjectList, RenderSlot, RightSidebarSlotTag,
+    ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem, SidebarNavLink, SlotCapability,
+    SlotCtx, SlotOf, SlotRegistrar, SwapKey, TableButtonFilter, TableColumnHeader,
+    TableListContent, TableRow, breadcrumbs, button_clear, button_modal, button_modal_form,
+    button_post_route, button_submit, column_sort_url, container_column, container_row, data_table,
+    detail, detail_header, field_duration, field_many_to_many, field_markdown, field_text,
     filter_error_banner, form, form_hx_get_route, form_hx_post_selector, form_hx_post_url, icon,
-    label, layout_main, layout_sidebar, list_filter_builder, modal, modal_keyed,
-    page_size_only_filter_form, render_pagination_push, row_attr_navigate_route, shell_scaffold,
-    sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
-    table_button_columns, table_button_filter, table_list_content,
+    label, layout_main, layout_sidebar, list_filter_builder, list_filter_common_inputs, modal,
+    modal_keyed, render_pagination_push, row_attr_navigate_route, shell_scaffold, sidebar_menu,
+    sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_columns,
+    table_button_filter, table_list_content,
 };
 use lariv_core::html_form::{CSRF_FIELD, CsrfToken, FormCtx, HtmlForm, csrf_hidden_field};
 use lariv_core::http::{ProvideRequestCaps, RouteQueryBuilder};
@@ -32,8 +32,8 @@ use super::forms::{
 };
 use super::keys::{
     CRON_JOB_CREATE_MODAL, CRON_JOB_DELETE_MODAL, CRON_JOB_EDIT_MODAL, CRON_JOBS_TABLE,
-    HISTORY_TABLE, SKILL_CREATE_MODAL, SKILL_DELETE_MODAL, SKILL_EDIT_MODAL, SKILL_IMPORT_MODAL,
-    SKILLS_TABLE,
+    HISTORY_MODAL_TABLE, HISTORY_TABLE, SKILL_CREATE_MODAL, SKILL_DELETE_MODAL, SKILL_EDIT_MODAL,
+    SKILL_IMPORT_MODAL, SKILLS_TABLE,
 };
 use super::preferences::mail_encryption_choices;
 use super::routes::{
@@ -491,10 +491,6 @@ const ASSISTANT_CHAT_SCRIPT: &str = r##"
     var form = event.target.form;
     if (form) form.requestSubmit();
   });
-  function llmAssistantScrollToBottom() {
-    var transcript = document.getElementById("llm_assistant_transcript");
-    if (transcript) transcript.scrollTop = transcript.scrollHeight;
-  }
   function llmAssistantSyncSessionOpened() {
     var sidEl = document.getElementById("llm_assistant_session_id");
     if (!sidEl) return;
@@ -513,7 +509,6 @@ const ASSISTANT_CHAT_SCRIPT: &str = r##"
   }
   document.body.addEventListener("htmx:after:ws:message", function() {
     llmAssistantApplyWorkingClose();
-    llmAssistantScrollToBottom();
     llmAssistantSyncSessionOpened();
   });
 })();
@@ -885,7 +880,9 @@ impl RenderTemplate for LlmAssistantPreferencesPage {
 #[derive(Clone)]
 pub struct HistoryRow {
     pub id: i64,
-    pub label: String,
+    pub title: String,
+    pub updated_at: String,
+    pub is_subagent: bool,
 }
 
 #[derive(Generic)]
@@ -893,47 +890,143 @@ pub struct HistoryListPage {
     pub sessions: ObjectList<HistoryRow>,
     pub path_and_query: String,
     pub page_size: u32,
+    pub sort: String,
 }
 
 impl HistoryListPage {
     pub fn render_table(&self) -> Markup {
-        let headers = [TableColumnHeader {
-            key: "Chat",
-            label: "Chat",
-            sort_url: None,
-            push_url: true,
-        }];
+        self.render_table_with(HISTORY_TABLE, true)
+    }
+
+    /// Same columns as [`Self::render_table`], without changing the address bar.
+    pub fn render_modal_table(&self) -> Markup {
+        self.render_table_with(HISTORY_MODAL_TABLE, false)
+    }
+
+    fn render_table_with(&self, key: SwapKey, push_url: bool) -> Markup {
+        let title_sort = column_sort_url(&self.path_and_query, "Title", &self.sort);
+        let updated_sort = column_sort_url(&self.path_and_query, "UpdatedAt", &self.sort);
+        let id_sort = column_sort_url(&self.path_and_query, "Id", &self.sort);
+        let title_label = format!("Title{}", sort_indicator(&self.sort, "Title"));
+        let updated_label = format!("Updated{}", sort_indicator(&self.sort, "UpdatedAt"));
+        let id_label = format!("Id{}", sort_indicator(&self.sort, "Id"));
+        let headers = [
+            TableColumnHeader {
+                key: "Kind",
+                label: "Kind",
+                sort_url: None,
+                push_url,
+            },
+            TableColumnHeader {
+                key: "Title",
+                label: &title_label,
+                sort_url: Some(&title_sort),
+                push_url,
+            },
+            TableColumnHeader {
+                key: "UpdatedAt",
+                label: &updated_label,
+                sort_url: Some(&updated_sort),
+                push_url,
+            },
+            TableColumnHeader {
+                key: "Id",
+                label: &id_label,
+                sort_url: Some(&id_sort),
+                push_url,
+            },
+        ];
         let rows: Vec<TableRow> = self
             .sessions
             .items
             .iter()
-            .map(|s| TableRow {
-                attrs: row_attr_open_sidebar_session(s.id),
-                cells: vec![field_text(FieldText {
-                    value: &s.label,
-                    classes: "",
-                })],
-                key: String::new(),
-                children: Vec::new(),
+            .map(|s| {
+                let id = s.id.to_string();
+                let kind = if s.is_subagent {
+                    html! { span class="badge badge-outline badge-sm" { "Subagent" } }
+                } else {
+                    field_text(FieldText {
+                        value: "Chat",
+                        classes: "",
+                    })
+                };
+                TableRow {
+                    attrs: row_attr_open_sidebar_session(s.id),
+                    cells: vec![
+                        kind,
+                        field_text(FieldText {
+                            value: &s.title,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &s.updated_at,
+                            classes: "",
+                        }),
+                        field_text(FieldText {
+                            value: &id,
+                            classes: "",
+                        }),
+                    ],
+                    key: String::new(),
+                    children: Vec::new(),
+                }
             })
             .collect();
         let actions = html! {
             (table_button_filter(TableButtonFilter {
-                panel: page_size_only_filter_form::<HistoryListRouteTag>(
-                    self.page_size,
-                ),
+                panel: history_page_size_filter(self.page_size, &self.sort, push_url),
                 ..Default::default()
             }))
         };
         let pagination = render_pagination_push(
-            HISTORY_TABLE,
+            key,
             &self.path_and_query,
             self.sessions.number,
             self.sessions.num_pages,
-            true,
+            push_url,
         );
-        data_table_list(HISTORY_TABLE, "", actions, &headers, &rows, pagination)
+        data_table_filtered(
+            key,
+            "",
+            actions,
+            &headers,
+            &rows,
+            pagination,
+            &self.path_and_query,
+            &[],
+        )
     }
+}
+
+fn history_page_size_filter(page_size: u32, sort: &str, push_url: bool) -> Markup {
+    let mut attrs = form_hx_get_route(HistoryListRouteTag);
+    if !push_url {
+        attrs = attrs.set("hx-push-url", "false");
+    }
+    form(
+        &CsrfToken::current(),
+        FormOpts {
+            attrs,
+            inputs: html! {
+                (list_filter_common_inputs(page_size))
+                input type="hidden" name="sort" value=(sort);
+            },
+            actions: container_row(
+                "flex gap-2",
+                html! {
+                    (button_submit(ButtonSubmit {
+                        label: "Apply Filters",
+                        ..Default::default()
+                    }))
+                    (button_clear(ButtonClear {
+                        label: "Clear",
+                        ..Default::default()
+                    }))
+                },
+            ),
+            ..Default::default()
+        },
+    )
 }
 
 impl lariv_core::template::RenderAppPane for HistoryListPage {
@@ -1854,30 +1947,10 @@ fn row_attr_open_sidebar_session(session_id: i64) -> HtmlAttrs {
         .set("onclick", click)
 }
 
-pub fn session_list_items(sessions: &[(i64, String)]) -> Markup {
-    if sessions.is_empty() {
-        return html! {
-            div class="p-4 text-sm opacity-60 text-center" { "No conversations yet." }
-        };
-    }
+pub fn modal_sessions_oob(table: Markup) -> Markup {
     html! {
-        @for (id, label) in sessions {
-            (PreEscaped(format!(
-                r##"<button type="button" class="btn btn-ghost btn-sm justify-start w-full text-left truncate" hx-get="{url}" hx-target="#sidebar-chat-container" hx-swap="innerHTML" hx-push-url="false" @click="showModal = false">{label}</button>"##,
-                url = ChatSidebarSessionRouteTag::new(*id).url(),
-                label = label
-                    .replace('&', "&amp;")
-                    .replace('<', "&lt;")
-                    .replace('>', "&gt;"),
-            )))
-        }
-    }
-}
-
-pub fn modal_sessions_oob(sessions: &[(i64, String)]) -> Markup {
-    html! {
-        div id="modal-sessions-list" hx-swap-oob="true" class="max-h-60 overflow-y-auto flex flex-col bg-base-200 rounded border border-base-300" {
-            (session_list_items(sessions))
+        div id="modal-sessions-list" hx-swap-oob="true" class="max-h-[70vh] overflow-auto" {
+            (table)
         }
     }
 }
@@ -1886,12 +1959,12 @@ pub fn history_sidebar_panel_html(
     active_session_name: &str,
     open_session_id: i64,
     initial_chat: Markup,
-    sessions: &[(i64, String)],
+    sessions_table: Markup,
 ) -> Markup {
     let sidebar_chat_prefix = sidebar_session_js_prefix();
     let draft_sidebar_url = ChatSidebarSessionRouteTag::new(0).url();
     let x_data = format!(
-        r#"{{showModal: false, activeSessionId: $persist(0).as('llm-assistant-sidebar-active-session-id'), loadSession(id) {{ this.activeSessionId = id; const targetEl = document.getElementById('sidebar-chat-container'); if (targetEl) {{ htmx.ajax('GET', '{sidebar_chat_prefix}' + id + '/', {{target: targetEl, swap: 'innerHTML', source: this.$el}}); }} }}, init() {{ const pending = window.__llmAssistantPendingSessionId; if (pending) {{ window.__llmAssistantPendingSessionId = null; this.loadSession(pending); return; }} this.activeSessionId = {open_session_id}; }}, openDraft() {{ this.activeSessionId = 0; this.showModal = false; const targetEl = document.getElementById('sidebar-chat-container'); if (targetEl) {{ htmx.ajax('GET', '{draft_sidebar_url}', {{target: targetEl, swap: 'innerHTML', source: targetEl}}); }} }} }}"#,
+        r#"{{showModal: false, activeSessionId: $persist(0).as('llm-assistant-sidebar-active-session-id'), loadSession(id) {{ this.activeSessionId = id; this.showModal = false; const targetEl = document.getElementById('sidebar-chat-container'); if (targetEl) {{ htmx.ajax('GET', '{sidebar_chat_prefix}' + id + '/', {{target: targetEl, swap: 'innerHTML', source: this.$el}}); }} }}, init() {{ const pending = window.__llmAssistantPendingSessionId; if (pending) {{ window.__llmAssistantPendingSessionId = null; this.loadSession(pending); return; }} this.activeSessionId = {open_session_id}; }}, openDraft() {{ this.activeSessionId = 0; this.showModal = false; const targetEl = document.getElementById('sidebar-chat-container'); if (targetEl) {{ htmx.ajax('GET', '{draft_sidebar_url}', {{target: targetEl, swap: 'innerHTML', source: targetEl}}); }} }} }}"#,
         open_session_id = open_session_id,
         sidebar_chat_prefix = sidebar_chat_prefix,
         draft_sidebar_url = draft_sidebar_url,
@@ -1925,15 +1998,15 @@ pub fn history_sidebar_panel_html(
                 r##"<dialog x-show="showModal" :class="showModal ? 'modal modal-open' : 'modal'">"##,
             ))
             {
-                div class="modal-box bg-base-100 max-w-lg border border-base-300 p-6 relative" {
+                div class="modal-box bg-base-100 max-w-4xl w-[min(56rem,calc(100vw-2rem))] border border-base-300 p-6 relative" {
                     (PreEscaped(
                         r##"<button type="button" class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3" @click="showModal = false">"##,
                     ))
                     (icon("x-mark", ""))
                     (PreEscaped("</button>"))
                     h3 class="text-lg font-bold mb-4" { "Conversations" }
-                    div id="modal-sessions-list" class="max-h-60 overflow-y-auto flex flex-col bg-base-200 rounded border border-base-300" {
-                        (session_list_items(sessions))
+                    div id="modal-sessions-list" class="max-h-[70vh] overflow-auto" {
+                        (sessions_table)
                     }
                 }
                 form method="dialog" class="modal-backdrop" {

@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::{
     entities::session::{self, Entity as SessionEntity},
-    keys::HISTORY_TABLE,
+    keys::{HISTORY_MODAL_TABLE, HISTORY_TABLE},
     state::LlmAssistantState,
     templates::{HistoryListPage, HistoryRow},
 };
@@ -20,6 +20,8 @@ use lariv_plugin_users::middleware::RequireAuth;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct HistoryListQuery {
+    #[serde(default)]
+    pub sort: Option<String>,
     #[serde(default)]
     pub page: QueryPage,
     #[serde(default)]
@@ -86,57 +88,42 @@ pub async fn maybe_set_session_title_from_prompt(
     Ok(Some(title))
 }
 
-pub fn session_label(id: i64, title: &str, updated_at: &str) -> String {
+/// Title cell for the history table.
+pub fn session_list_title(title: &str) -> String {
     let title = title.trim();
-    let title = if title.is_empty() {
-        "(untitled)"
+    if title.is_empty() {
+        "(untitled)".to_string()
     } else {
-        title
-    };
-    if updated_at.is_empty() {
-        format!("#{id} · {title}")
-    } else {
-        format!("#{id} · {title} · {updated_at}")
+        title.to_string()
     }
 }
 
-/// All sessions for the user, newest first (sidebar modal).
-pub async fn load_user_sessions(
-    db: &sea_orm::DatabaseConnection,
-    user_id: i64,
-    role: &str,
-    tz: &str,
-) -> Vec<(i64, String)> {
-    let mut query = SessionEntity::find().filter(session::Column::IsSubagent.eq(false));
-    if !lariv_plugin_users::roles::Superuser::matches(role) {
-        query = query.filter(session::Column::UserId.eq(user_id));
-    }
-    let models = query
-        .order_by_desc(session::Column::Id)
-        .all(db)
-        .await
-        .unwrap_or_default();
-    models
-        .into_iter()
-        .map(|s| {
-            let updated = format_updated_at(s.updated_at, tz);
-            (s.id, session_label(s.id, &s.title, &updated))
-        })
-        .collect()
-}
-
-async fn load_history_page(
+pub async fn load_history_page(
     db: &sea_orm::DatabaseConnection,
     user_id: i64,
     role: &str,
     q: &HistoryListQuery,
     tz: &str,
 ) -> ObjectList<HistoryRow> {
-    let mut query = SessionEntity::find().filter(session::Column::IsSubagent.eq(false));
+    let mut query = SessionEntity::find();
     if !lariv_plugin_users::roles::Superuser::matches(role) {
         query = query.filter(session::Column::UserId.eq(user_id));
     }
-    let query = query.order_by_desc(session::Column::Id);
+    let sort = q.sort.as_deref().unwrap_or("").trim();
+    let query = match sort {
+        s if s.eq_ignore_ascii_case("Title DESC") => query.order_by_desc(session::Column::Title),
+        s if s.eq_ignore_ascii_case("Title ASC") || s.eq_ignore_ascii_case("Title") => {
+            query.order_by_asc(session::Column::Title)
+        }
+        s if s.eq_ignore_ascii_case("UpdatedAt DESC") => {
+            query.order_by_desc(session::Column::UpdatedAt)
+        }
+        s if s.eq_ignore_ascii_case("UpdatedAt ASC") || s.eq_ignore_ascii_case("UpdatedAt") => {
+            query.order_by_asc(session::Column::UpdatedAt)
+        }
+        s if s.eq_ignore_ascii_case("Id ASC") => query.order_by_asc(session::Column::Id),
+        _ => query.order_by_desc(session::Column::Id),
+    };
     let page = q.page.get();
     let paginator = query.paginate(db, q.page_size.get() as u64);
     let total = paginator.num_items().await.unwrap_or(0);
@@ -150,7 +137,9 @@ async fn load_history_page(
             let updated = format_updated_at(s.updated_at, tz);
             HistoryRow {
                 id: s.id,
-                label: session_label(s.id, &s.title, &updated),
+                title: session_list_title(&s.title),
+                updated_at: updated,
+                is_subagent: s.is_subagent,
             }
         })
         .collect();
@@ -172,7 +161,11 @@ pub async fn list(
         sessions,
         path_and_query: path_and_query(&uri),
         page_size: q.page_size.get(),
+        sort: q.sort.clone().unwrap_or_default(),
     };
+    if htmx.targets(HISTORY_MODAL_TABLE) {
+        return page.render_modal_table();
+    }
     if htmx.targets(HISTORY_TABLE) {
         return page.render_table();
     }
@@ -187,7 +180,7 @@ pub async fn list(
 
 #[cfg(test)]
 mod tests {
-    use super::{session_display_title, title_from_first_prompt};
+    use super::{session_display_title, session_list_title, title_from_first_prompt};
 
     #[test]
     fn title_from_prompt_collapses_whitespace() {
@@ -205,6 +198,12 @@ mod tests {
     #[test]
     fn title_from_prompt_empty() {
         assert!(title_from_first_prompt("   ").is_empty());
+    }
+
+    #[test]
+    fn list_title_uses_untitled_when_empty() {
+        assert_eq!(session_list_title("  Hello  "), "Hello");
+        assert_eq!(session_list_title("   "), "(untitled)");
     }
 
     #[test]
