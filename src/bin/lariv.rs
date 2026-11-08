@@ -7,11 +7,13 @@ use lariv_rs::plugins::crm;
 use lariv_rs::plugins::customer;
 use lariv_rs::plugins::dashboard;
 use lariv_rs::plugins::filesystem;
+use lariv_rs::plugins::filesystem_sync_git;
 use lariv_rs::plugins::finance_accounts;
 use lariv_rs::plugins::finance_customers;
 use lariv_rs::plugins::forms;
 use lariv_rs::plugins::inventory;
 use lariv_rs::plugins::llm_assistant;
+use lariv_rs::plugins::mdbook;
 use lariv_rs::plugins::meets;
 use lariv_rs::plugins::otp;
 use lariv_rs::plugins::pwa;
@@ -36,6 +38,7 @@ async fn main() -> anyhow::Result<()> {
     let app = otp::install(app);
     let app = blog::install(app);
     let app = filesystem::install(app);
+    let app = filesystem_sync_git::install(app);
     let app = forms::install(app);
     let app = meets::install(app);
     let app = llm_assistant::install(app);
@@ -49,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
     let app = dashboard::install(app);
     // After dashboard so website can own `/` (CMS home) over the auth redirect.
     let app = website::install(app);
+    let app = mdbook::install(app);
 
     let app = app.load_config("config.toml").await?;
     let app = app.mount();

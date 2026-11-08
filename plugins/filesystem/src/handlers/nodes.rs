@@ -72,6 +72,7 @@ pub(crate) fn vnode_detail_page(
         updated_at: format_updated_at(data.node.updated_at, tz),
         text_content,
         save_error,
+        header_extra: String::new(),
     }
 }
 

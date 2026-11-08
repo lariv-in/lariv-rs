@@ -31,6 +31,13 @@ const TEMPLATE_EXTS: &[&str] = &[
     ".html", ".tmpl", ".htm", ".js", ".css", ".txt", ".md", ".json", ".yaml", ".yml",
 ];
 
+/// Route theme that streams the page vnode unchanged.
+///
+/// Minijinja is skipped and the response content type comes from the filename.
+/// The mdBook plugin sets this on every published file so chapter HTML, CSS,
+/// and JavaScript keep the bytes mdBook wrote.
+pub const RAW_FILE_THEME: &str = "raw";
+
 fn is_template_ext(name: &str) -> bool {
     let ext = Path::new(name)
         .extension()
@@ -68,6 +75,10 @@ pub async fn render_db_route(
     };
     if page.is_directory {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
+    }
+
+    if route.theme == RAW_FILE_THEME {
+        return stream_file(store, &page, range_header).await;
     }
 
     let vnode_path = node::get_path(db, &page).await;

@@ -96,6 +96,8 @@ const-oid = { version = "0.9.6", features = ["db"] }
 spki = { version = "0.7.3", features = ["alloc"] }
 google-cloud-kms-v1 = { version = "1.15.0" }
 google-cloud-auth = { version = "1.17.0" }
+gix = { version = "0.90.0", features = ["blocking-http-transport-reqwest-rust-tls"] }
+mdbook-driver = { version = "0.5.4", features = ["search"] }
 
 [package]
 name = "lariv-rs"
@@ -117,6 +119,7 @@ full = [
     "plugin-blog",
     "plugin-forms",
     "plugin-filesystem",
+    "plugin-filesystem-sync-git",
     "plugin-website",
     "plugin-llm-assistant",
     "plugin-otp",
@@ -131,6 +134,7 @@ full = [
     "plugin-hr-leaves",
     "plugin-hr-overtime",
     "plugin-meets",
+    "plugin-mdbook",
     "plugin-inventory",
     "plugin-todo",
     "plugin-customer",
@@ -144,6 +148,7 @@ plugin-dashboard = ["plugin-users", "dep:lariv-plugin-dashboard"]
 plugin-blog = ["plugin-users", "dep:lariv-plugin-blog"]
 plugin-forms = ["plugin-users", "plugin-filesystem", "dep:lariv-plugin-forms"]
 plugin-filesystem = ["plugin-users", "typst", "dep:lariv-plugin-filesystem"]
+plugin-filesystem-sync-git = ["plugin-filesystem", "dep:lariv-plugin-filesystem-sync-git"]
 plugin-website = ["plugin-filesystem", "plugin-users", "dep:lariv-plugin-website"]
 plugin-llm-assistant = ["plugin-users", "plugin-filesystem", "cap-llm", "typst", "cap-llm", "dep:lariv-plugin-llm-assistant", "lariv-plugin-finance-invoices?/plugin-llm-assistant", "lariv-plugin-finance-purchases?/plugin-llm-assistant", "lariv-plugin-finance-products?/plugin-llm-assistant", "lariv-plugin-documents?/plugin-llm-assistant", "lariv-plugin-website?/plugin-llm-assistant"]
 plugin-otp = ["plugin-users", "dep:lariv-plugin-otp"]
@@ -159,6 +164,7 @@ plugin-hr-attendance = ["plugin-hr", "dep:lariv-plugin-hr-attendance"]
 plugin-hr-leaves = ["plugin-hr", "plugin-hr-attendance", "plugin-hr-holidays", "dep:lariv-plugin-hr-leaves"]
 plugin-hr-overtime = ["plugin-hr", "dep:lariv-plugin-hr-overtime"]
 plugin-meets = ["plugin-users", "plugin-filesystem", "dep:lariv-plugin-meets"]
+plugin-mdbook = ["plugin-filesystem", "plugin-website", "dep:lariv-plugin-mdbook"]
 finance-common = ["dep:lariv-plugin-finance-common"]
 plugin-finance-accounts = ["plugin-users", "finance-common", "dep:lariv-plugin-finance-accounts"]
 plugin-finance-customers = ["plugin-finance-accounts", "plugin-customer", "dep:lariv-plugin-finance-customers"]
@@ -199,6 +205,7 @@ lariv-plugin-dashboard = { path = "plugins/dashboard", optional = true }
 lariv-plugin-documents = { path = "plugins/documents", optional = true }
 lariv-plugin-export = { path = "plugins/export", optional = true }
 lariv-plugin-filesystem = { path = "plugins/filesystem", optional = true }
+lariv-plugin-filesystem-sync-git = { path = "plugins/filesystem_sync_git", optional = true }
 lariv-plugin-finance-accounts = { path = "plugins/finance_accounts", optional = true }
 lariv-plugin-finance-common = { path = "plugins/finance_common", optional = true }
 lariv-plugin-finance-creditnotes = { path = "plugins/finance_creditnotes", optional = true }
@@ -220,6 +227,7 @@ lariv-plugin-import = { path = "plugins/import", optional = true }
 lariv-plugin-inventory = { path = "plugins/inventory", optional = true }
 lariv-plugin-llm-assistant = { path = "plugins/llm_assistant", optional = true }
 lariv-plugin-meets = { path = "plugins/meets", optional = true }
+lariv-plugin-mdbook = { path = "plugins/mdbook", optional = true }
 lariv-plugin-otp = { path = "plugins/otp", optional = true }
 lariv-plugin-pwa = { path = "plugins/pwa", optional = true }
 lariv-plugin-signing = { path = "plugins/signing", optional = true }

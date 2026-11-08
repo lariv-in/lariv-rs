@@ -30,6 +30,8 @@ pub struct VNodeDetailPage {
     pub updated_at: String,
     pub text_content: Option<String>,
     pub save_error: String,
+    /// Markup from [`crate::detail_actions`] contributors, already rendered.
+    pub header_extra: String,
 }
 
 impl VNodeDetailPage {
@@ -63,6 +65,9 @@ impl VNodeDetailPage {
                 (lariv_core::components::button_download_route(VNodeDownloadRouteTag::new(self.id),
                     "Download", "",
                 ))
+            }
+            @if !self.header_extra.is_empty() {
+                (maud::PreEscaped(self.header_extra.as_str()))
             }
         };
         detail(html! {

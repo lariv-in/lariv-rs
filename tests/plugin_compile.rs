@@ -11,8 +11,8 @@ use std::path::PathBuf;
 
 use lariv_rs::app::App;
 use lariv_rs::plugins::{
-    blog, contacts, crm, customer, dashboard, filesystem, finance_accounts, finance_customers,
-    forms, import, inventory, llm_assistant, meets, otp, pwa, signup, users, website,
+    blog, contacts, crm, customer, dashboard, filesystem, filesystem_sync_git, finance_accounts, finance_customers,
+    forms, import, inventory, llm_assistant, mdbook, meets, otp, pwa, signup, users, website,
 };
 
 const MINIMAL_DB_TOML: &str = r#"database_url = "sqlite::memory:""#;
@@ -102,6 +102,26 @@ async fn filesystem_plugin_mounts() {
     let _mounted = mount_with_db!(app);
 }
 
+#[tokio::test]
+async fn filesystem_sync_git_plugin_mounts() {
+    let app = App::new_web_app();
+    let app = users::install(app);
+    let app = filesystem::install(app);
+    let app = filesystem_sync_git::install(app);
+    let _mounted = mount_with_db!(app);
+}
+
+/// mdBook publishes into filesystem vnodes and website routes, so both install first.
+#[tokio::test]
+async fn mdbook_plugin_mounts() {
+    let app = App::new_web_app();
+    let app = users::install(app);
+    let app = filesystem::install(app);
+    let app = website::install(app);
+    let app = mdbook::install(app);
+    let _mounted = mount_with_db!(app);
+}
+
 /// Website state attaches a filestore and requires `[filesystem]` in the config HList.
 #[tokio::test]
 async fn website_plugin_mounts() {
@@ -163,9 +183,11 @@ fn all_plugins_mounts() {
                 let app = otp::install(app);
                 let app = blog::install(app);
                 let app = filesystem::install(app);
+                let app = filesystem_sync_git::install(app);
                 let app = forms::install(app);
                 let app = meets::install(app);
                 let app = website::install(app);
+                let app = mdbook::install(app);
                 let app = llm_assistant::install(app);
                 let app = import::install(app);
                 let app = pwa::install(app);

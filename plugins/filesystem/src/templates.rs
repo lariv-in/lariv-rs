@@ -178,7 +178,7 @@ pub(crate) fn can_change_permissions() -> bool {
 }
 
 /// Main sidebar: browsing the filesystem root.
-pub(crate) fn main_menu(current_path: &str) -> Markup {
+pub fn main_menu(current_path: &str) -> Markup {
     let list_url = VNodeListRouteTag.url();
     let permissions_url = FilesystemRootPermissionsGetRouteTag.url();
     let create_url = VNodeCreateGetRouteTag.url();
@@ -204,6 +204,7 @@ pub(crate) fn main_menu(current_path: &str) -> Markup {
         title: "Filesystem",
         children: html! {
             (sidebar_nav_items_pane(&nav, current_path))
+            (crate::sidebar_items::root_items(current_path))
             (sidebar_menu_modal_form_item(SidebarMenuModalForm {
                 label: "Create Item",
                 href: &create_url,
@@ -227,8 +228,8 @@ pub(crate) fn main_menu(current_path: &str) -> Markup {
 }
 
 /// Sidebar for a specific node. `active` selects
-/// which entry (if any) is highlighted (`"detail"`, `"move"`, `"browse"`).
-pub(crate) fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) -> Markup {
+/// which entry (if any) is highlighted (`"detail"`, `"move"`, `"browse"`, `"git-sync"`).
+pub fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) -> Markup {
     let menu_title = format!("Item: {name}");
     let detail_url = VNodeDetailRouteTag::new(id).url();
     let move_url = VNodeMoveGetRouteTag::new(id).url();
@@ -261,6 +262,7 @@ pub(crate) fn vnode_menu(id: i64, name: &str, is_directory: bool, active: &str) 
                 }))
             }
             @if is_directory {
+                (crate::sidebar_items::directory_items(id, active))
                 (sidebar_menu_item_pane(SidebarMenuItem {
                     title: "Browse Contents",
                     url: &browse_url,
@@ -666,6 +668,7 @@ mod vnode_form_page_tests {
             updated_at: "2026-01-01".into(),
             text_content: None,
             save_error: String::new(),
+            header_extra: String::new(),
         };
         let html = page.render_main().into_markup().into_string();
         assert!(html.contains(r#"class="breadcrumbs"#), "detail: {html}");
@@ -712,6 +715,7 @@ mod vnode_form_page_tests {
             updated_at: "2026-01-01".into(),
             text_content: text_content.map(str::to_string),
             save_error: String::new(),
+            header_extra: String::new(),
         }
     }
 

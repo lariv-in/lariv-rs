@@ -28,6 +28,7 @@
 pub mod apps;
 pub mod config;
 pub mod create_modals;
+pub mod detail_actions;
 pub mod entities;
 pub mod filestore;
 pub mod forms;
@@ -39,6 +40,7 @@ pub mod node;
 pub mod permissions;
 pub mod preferences;
 pub mod routes;
+pub mod sidebar_items;
 pub mod state;
 pub mod storage;
 pub mod templates;
@@ -80,6 +82,7 @@ define_plugin_install! {
         slots(templates::SlotsHook),
         config(FilesystemConfigTag, FilesystemConfig),
         cap_hook(lariv_plugin_users::role_authorization::RoleAuthorizationTag, lariv_plugin_users::role_authorization::RoleAuthorizationCap, routes::RoleHook),
+        cap_attach(detail_actions::VNodeDetailActionsTag, detail_actions::VNodeDetailActionsCap, detail_actions::VNodeDetailActionsCap::<frunk::HNil>::new()),
         http(routes::Hook),
         state(StateHook),
     ]

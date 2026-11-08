@@ -37,6 +37,9 @@
 //! # Routes
 //!
 //! - `/{path...}` — dynamic catch-all (patches home route)
+//! - Routes whose theme is [`render::RAW_FILE_THEME`] (`raw`) stream the page file
+//!   with its filename content type and skip minijinja. The mdBook plugin publishes
+//!   built HTML, CSS, and JavaScript this way.
 //! - `/website/`, `/website/create/`, `/website/{id}/`, edit/delete
 //! - `/website/preferences/` — Custom theme CSS/JS files
 //! - `/website/{id}/builder/`, `/website/{id}/builder/project/`, `/website/{id}/builder/theme/`

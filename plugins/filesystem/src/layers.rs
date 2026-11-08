@@ -222,6 +222,7 @@ where
             updated_at: d.updated_at.clone(),
             text_content: d.text_content.clone(),
             save_error: String::new(),
+            header_extra: String::new(),
         }
     }
 }

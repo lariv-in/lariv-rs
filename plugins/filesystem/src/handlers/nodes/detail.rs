@@ -4,8 +4,8 @@ use axum::{
 };
 
 use crate::{
-    forms::VNodeContentForm, node, permissions::AccessActor, routes::VNodeListRouteTag,
-    state::FilesystemState,
+    detail_actions::VNodeDetailActionRegistry, forms::VNodeContentForm, node,
+    permissions::AccessActor, routes::VNodeListRouteTag, state::FilesystemState,
 };
 use lariv_core::components::SharedChromeFolder;
 use lariv_core::html_form::HtmlFormBody;
@@ -17,6 +17,7 @@ use super::{require_view, slot_ctx, vnode_detail_page};
 
 pub async fn detail(
     Cap(state): Cap<FilesystemState>,
+    Cap(actions): Cap<VNodeDetailActionRegistry>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(auth): RequireAuth,
     htmx: Htmx,
@@ -38,13 +39,21 @@ pub async fn detail(
         data.text_content.clone(),
         String::new(),
     );
+    let actor = AccessActor::from_auth(&auth);
     if data.node.is_directory {
-        let actor = AccessActor::from_auth(&auth);
         detail.items_display = node::count_visible_children(&state.db, data.node.id, &actor)
             .await
             .unwrap_or(0)
             .to_string();
     }
+    let can_write = data.node.is_directory
+        && node::authorize_create_in(&state.db, Some(&data.node), &actor)
+            .await
+            .is_ok();
+    detail.header_extra = actions
+        .render(&state.db, &data.node, can_write)
+        .await
+        .into_string();
     html_built_page_or_app_layout(&detail, &htmx, &chrome, &slot_ctx(&auth)).into_response()
 }
 

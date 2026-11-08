@@ -42,6 +42,8 @@ pub mod plugins {
     pub use lariv_plugin_export as export;
     #[cfg(feature = "plugin-filesystem")]
     pub use lariv_plugin_filesystem as filesystem;
+    #[cfg(feature = "plugin-filesystem-sync-git")]
+    pub use lariv_plugin_filesystem_sync_git as filesystem_sync_git;
     #[cfg(feature = "plugin-finance-accounts")]
     pub use lariv_plugin_finance_accounts as finance_accounts;
     #[cfg(feature = "finance-common")]
@@ -82,6 +84,8 @@ pub mod plugins {
     pub use lariv_plugin_inventory as inventory;
     #[cfg(feature = "plugin-llm-assistant")]
     pub use lariv_plugin_llm_assistant as llm_assistant;
+    #[cfg(feature = "plugin-mdbook")]
+    pub use lariv_plugin_mdbook as mdbook;
     #[cfg(feature = "plugin-meets")]
     pub use lariv_plugin_meets as meets;
     #[cfg(feature = "plugin-otp")]
