@@ -365,8 +365,18 @@ fn adapt_sqlite_statement(statement: &str) -> Option<String> {
     let verb = upper.split_whitespace().next().unwrap_or("");
     if !matches!(
         verb,
-        "ALTER" | "UPDATE" | "INSERT" | "DELETE" | "DROP" | "CREATE" | "PRAGMA" | "WITH"
-            | "REPLACE" | "REINDEX" | "ANALYZE" | "VACUUM"
+        "ALTER"
+            | "UPDATE"
+            | "INSERT"
+            | "DELETE"
+            | "DROP"
+            | "CREATE"
+            | "PRAGMA"
+            | "WITH"
+            | "REPLACE"
+            | "REINDEX"
+            | "ANALYZE"
+            | "VACUUM"
     ) {
         // Leftover plpgsql (`extras jsonb`, assignments) is not SQL.
         return None;
@@ -502,9 +512,7 @@ fn take_table_name(sql: &str) -> (&str, &str) {
             return (&sql[..name_end], &sql[name_end..]);
         }
     }
-    let end = sql
-        .find(|ch: char| ch.is_whitespace())
-        .unwrap_or(sql.len());
+    let end = sql.find(|ch: char| ch.is_whitespace()).unwrap_or(sql.len());
     (&sql[..end], &sql[end..])
 }
 
@@ -1658,14 +1666,17 @@ END $$;
             ),
             vec![
                 "DROP TABLE IF EXISTS quotation_invoices".to_string(),
-                "CREATE TABLE quotation_invoices AS SELECT * FROM draft_invoices WHERE 0".to_string(),
+                "CREATE TABLE quotation_invoices AS SELECT * FROM draft_invoices WHERE 0"
+                    .to_string(),
             ]
         );
         assert!(sqlite_statements("CREATE SEQUENCE quotation_invoices_id_seq").is_empty());
-        assert!(sqlite_statements(
-            "ALTER SEQUENCE quotation_invoices_id_seq OWNED BY quotation_invoices.id"
-        )
-        .is_empty());
+        assert!(
+            sqlite_statements(
+                "ALTER SEQUENCE quotation_invoices_id_seq OWNED BY quotation_invoices.id"
+            )
+            .is_empty()
+        );
     }
 
     #[test]

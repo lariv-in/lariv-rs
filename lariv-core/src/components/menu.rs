@@ -226,8 +226,8 @@ fn path_matches_prefix(path: &str, prefix: &str) -> bool {
 fn consider_prefix<'a>(
     path: &str,
     prefix: &str,
-    key: &'a str,
-    best: &mut Option<(usize, &'a str)>,
+    key: Option<&'a str>,
+    best: &mut Option<(usize, Option<&'a str>)>,
 ) {
     if path_matches_prefix(path, prefix) {
         let len = normalize_nav_path(prefix).len();
@@ -239,23 +239,47 @@ fn consider_prefix<'a>(
 
 /// Longest matching prefix wins; returns the active nav key.
 pub fn active_nav_key<'a>(links: &[SidebarNavLink<'a>], current_path: &str) -> Option<&'a str> {
+    active_nav_key_with_competitors(links, &[], current_path)
+}
+
+/// Longest matching prefix wins.
+///
+/// `competitors` are prefixes owned by links rendered elsewhere. A longer
+/// competitor match leaves no key active in `links`.
+pub fn active_nav_key_with_competitors<'a>(
+    links: &[SidebarNavLink<'a>],
+    competitors: &[&str],
+    current_path: &str,
+) -> Option<&'a str> {
     let path = normalize_nav_path(current_path);
-    let mut best: Option<(usize, &'a str)> = None;
+    let mut best: Option<(usize, Option<&'a str>)> = None;
     for link in links {
         if link.match_prefixes.is_empty() {
-            consider_prefix(&path, link.url, link.key, &mut best);
+            consider_prefix(&path, link.url, Some(link.key), &mut best);
         } else {
             for prefix in link.match_prefixes {
-                consider_prefix(&path, prefix, link.key, &mut best);
+                consider_prefix(&path, prefix, Some(link.key), &mut best);
             }
         }
     }
-    best.map(|(_, key)| key)
+    for prefix in competitors {
+        consider_prefix(&path, prefix, None, &mut best);
+    }
+    best.and_then(|(_, key)| key)
 }
 
 /// Pane-swapping menu items with `menu-active` derived from `current_path`.
 pub fn sidebar_nav_items_pane(links: &[SidebarNavLink<'_>], current_path: &str) -> Markup {
-    let active = active_nav_key(links, current_path);
+    sidebar_nav_items_pane_with_competitors(links, &[], current_path)
+}
+
+/// [`sidebar_nav_items_pane`] where `competitors` can take the active state.
+pub fn sidebar_nav_items_pane_with_competitors(
+    links: &[SidebarNavLink<'_>],
+    competitors: &[&str],
+    current_path: &str,
+) -> Markup {
+    let active = active_nav_key_with_competitors(links, competitors, current_path);
     let mut items = Markup::default();
     for link in links {
         let is_active = active == Some(link.key);
@@ -341,6 +365,35 @@ mod tests {
         let users_anchor_end = html.find(">All Users</a>").expect("users link");
         let users_open = html[..users_anchor_end].rfind("<a ").expect("users <a");
         assert!(!html[users_open..users_anchor_end].contains("menu-active"));
+    }
+
+    #[test]
+    fn competitor_prefix_clears_shorter_nav_link() {
+        let links = [SidebarNavLink {
+            key: "list",
+            title: "All Files",
+            url: "/dashboard/filesystem/",
+            icon_name: None,
+            match_prefixes: &[],
+        }];
+        let git_sync = "/dashboard/filesystem/git-sync/";
+        assert_eq!(
+            active_nav_key_with_competitors(&links, &[git_sync], git_sync),
+            None
+        );
+        assert_eq!(
+            active_nav_key_with_competitors(&links, &[git_sync], "/dashboard/filesystem/"),
+            Some("list")
+        );
+        assert_eq!(
+            active_nav_key_with_competitors(&links, &[git_sync], "/dashboard/filesystem/?page=2"),
+            Some("list")
+        );
+        let html =
+            sidebar_nav_items_pane_with_competitors(&links, &[git_sync], git_sync).into_string();
+        let anchor_end = html.find(">All Files</a>").expect("all files link");
+        let anchor_open = html[..anchor_end].rfind("<a ").expect("all files <a");
+        assert!(!html[anchor_open..anchor_end].contains("menu-active"));
     }
 
     #[test]

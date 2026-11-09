@@ -7,7 +7,7 @@ use lariv_core::components::{
     Crumb, LayoutMain, LayoutSidebar, ShellChrome, ShellScaffold, SidebarMenu, SidebarMenuItem,
     SidebarMenuModalForm, SidebarNavLink, SlotCapability, SlotRegistrar, breadcrumbs, layout_main,
     layout_sidebar, shell_scaffold, sidebar_menu, sidebar_menu_item_pane,
-    sidebar_menu_modal_form_item, sidebar_nav_items_pane,
+    sidebar_menu_modal_form_item, sidebar_nav_items_pane_with_competitors,
 };
 use lariv_core::http::ProvideRequestCaps;
 use lariv_core::template::{TemplateCapability, TemplateOf, TemplateRegistrar};
@@ -200,10 +200,12 @@ pub fn main_menu(current_path: &str) -> Markup {
             match_prefixes: &[],
         });
     }
+    let addon_urls = crate::sidebar_items::root_urls();
+    let addon_refs: Vec<&str> = addon_urls.iter().map(String::as_str).collect();
     sidebar_menu(SidebarMenu {
         title: "Filesystem",
         children: html! {
-            (sidebar_nav_items_pane(&nav, current_path))
+            (sidebar_nav_items_pane_with_competitors(&nav, &addon_refs, current_path))
             (crate::sidebar_items::root_items(current_path))
             (sidebar_menu_modal_form_item(SidebarMenuModalForm {
                 label: "Create Item",

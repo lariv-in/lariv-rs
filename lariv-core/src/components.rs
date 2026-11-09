@@ -174,6 +174,7 @@ pub use menu::{
     normalize_nav_path, sidebar_menu, sidebar_menu_item, sidebar_menu_item_pane,
     sidebar_menu_modal_form_item, sidebar_menu_modal_form_route, sidebar_menu_modal_form_urls,
     sidebar_menu_post_confirm_route, sidebar_nav_items_pane,
+    sidebar_nav_items_pane_with_competitors,
 };
 pub use modal::{Modal, modal, modal_keyed, modal_keyed_undimmed};
 pub use nav_origin::{dashboard_app_href, with_nav_origin};

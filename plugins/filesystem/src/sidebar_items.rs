@@ -11,6 +11,11 @@ use maud::{Markup, html};
 pub trait FilesystemSidebarItem: Send + Sync {
     fn root_item(&self, current_path: &str) -> Markup;
     fn directory_item(&self, directory_id: i64, active: &str) -> Markup;
+    /// Path this root entry owns. A longer match beats built-in filesystem links
+    /// such as "All Files", which would otherwise stay active on child paths.
+    fn root_url(&self) -> Option<String> {
+        None
+    }
 }
 
 type SidebarItem = std::sync::Arc<dyn FilesystemSidebarItem>;
@@ -34,6 +39,15 @@ pub fn register(key: &'static str, item: std::sync::Arc<dyn FilesystemSidebarIte
         return;
     }
     items.push((key, item));
+}
+
+/// URLs registered root entries own, used so they win active-state over shorter links.
+pub fn root_urls() -> Vec<String> {
+    let items = lock();
+    items
+        .iter()
+        .filter_map(|(_, item)| item.root_url())
+        .collect()
 }
 
 pub fn root_items(current_path: &str) -> Markup {

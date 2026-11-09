@@ -3,7 +3,7 @@ use maud::{Markup, html};
 
 use lariv_core::components::{
     ButtonModalForm, Crumb, DetailHeader, FieldText, ShellChrome, breadcrumbs, button_modal_form,
-    container_column, detail, detail_header, field_text, label,
+    button_modal_route, container_column, detail, detail_header, field_text, label,
 };
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_plugin_filesystem::routes::{VNodeDetailRouteTag, VNodeListRouteTag};
@@ -11,8 +11,8 @@ use lariv_plugin_filesystem::templates::vnode_menu;
 
 use crate::keys::{GIT_SYNC_CREATE_MODAL, GIT_SYNC_EDIT_MODAL};
 use crate::routes::{
-    GitSyncCreateForGetRouteTag, GitSyncCreatePostRouteTag, GitSyncEditGetRouteTag,
-    GitSyncEditPostRouteTag,
+    GitSyncConfirmGetRouteTag, GitSyncCreateForGetRouteTag, GitSyncCreatePostRouteTag,
+    GitSyncEditGetRouteTag, GitSyncEditPostRouteTag, GitSyncRunGetRouteTag,
 };
 
 use super::{app_scaffold, scaffold_main, scaffold_pane};
@@ -66,6 +66,16 @@ impl GitSyncDetailPage {
                     title: &self.directory,
                     actions: html! {
                         @if self.configured {
+                            (button_modal_route(
+                                GitSyncRunGetRouteTag::new(self.id),
+                                "Git Sync",
+                                "btn-outline",
+                            ))
+                            (button_modal_route(
+                                GitSyncConfirmGetRouteTag::new(self.id),
+                                "Force Sync",
+                                "btn-outline",
+                            ))
                             (button_modal_form(ButtonModalForm {
                                 name: "p_filesystem_sync_git.GitSyncForm",
                                 href: &edit_get,
