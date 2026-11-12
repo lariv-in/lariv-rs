@@ -38,7 +38,7 @@ pub async fn err_if_lead_sealed<C: ConnectionTrait>(db: &C, lead_id: i64) -> Res
 }
 
 pub struct LeadInput {
-    pub contact_id: i64,
+    pub customer_id: i64,
     pub source: Option<LeadSource>,
     pub notes: Option<String>,
     pub assigned_to_id: Option<i64>,
@@ -50,15 +50,15 @@ pub async fn create_lead<C: ConnectionTrait>(
     db: &C,
     input: LeadInput,
 ) -> Result<lead::Model, String> {
-    if input.contact_id <= 0 {
-        return Err("contact is required".to_string());
+    if input.customer_id <= 0 {
+        return Err("customer is required".to_string());
     }
     let now = Utc::now();
     let model = lead::ActiveModel {
         id: Default::default(),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        contact_id: Set(input.contact_id),
+        customer_id: Set(input.customer_id),
         source: Set(input.source),
         notes: Set(input.notes),
         assigned_to_id: Set(input.assigned_to_id),
@@ -75,8 +75,8 @@ pub async fn update_lead<C: ConnectionTrait>(
     lead_id: i64,
     input: LeadInput,
 ) -> Result<lead::Model, String> {
-    if input.contact_id <= 0 {
-        return Err("contact is required".to_string());
+    if input.customer_id <= 0 {
+        return Err("customer is required".to_string());
     }
     let existing = LeadEntity::find_by_id(lead_id)
         .one(db)
@@ -86,7 +86,7 @@ pub async fn update_lead<C: ConnectionTrait>(
     let now = Utc::now();
     let mut am: lead::ActiveModel = existing.into();
     am.updated_at = Set(Some(now));
-    am.contact_id = Set(input.contact_id);
+    am.customer_id = Set(input.customer_id);
     am.source = Set(input.source);
     am.notes = Set(input.notes);
     am.assigned_to_id = Set(input.assigned_to_id);
@@ -94,6 +94,18 @@ pub async fn update_lead<C: ConnectionTrait>(
     let saved = am.update(db).await.map_err(|e| e.to_string())?;
     sync_lead_tags(db, saved.id, &input.tag_ids).await?;
     Ok(saved)
+}
+
+pub async fn tag_ids_for_lead<C: ConnectionTrait>(
+    db: &C,
+    lead_id: i64,
+) -> Result<Vec<i64>, String> {
+    let rows = lead_tag_link::Entity::find()
+        .filter(lead_tag_link::Column::LeadId.eq(lead_id))
+        .all(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(|row| row.lead_tag_id).collect())
 }
 
 pub async fn delete_lead<C: ConnectionTrait>(db: &C, lead_id: i64) -> Result<(), String> {

@@ -70,6 +70,7 @@ pub mod skill_hints;
 pub mod skill_zip;
 pub mod state;
 pub mod subagents;
+mod table;
 pub mod templates;
 pub mod tools;
 pub mod vnode_text;

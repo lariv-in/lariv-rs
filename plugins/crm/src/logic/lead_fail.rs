@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseConnection,
+    EntityTrait, PaginatorTrait, QueryFilter,
 };
 
 use crate::entities::{
@@ -33,6 +33,9 @@ pub async fn fail_lead(
         return Err("lead is already failed".to_string());
     }
 
+    if lead.customer_id <= 0 {
+        return Err("customer is required to fail a lead".to_string());
+    }
     let _was_converted = clear_converted_for_lead(db, lead.id).await?;
 
     let now = Utc::now();
@@ -42,6 +45,7 @@ pub async fn fail_lead(
         lead_id: Set(lead.id),
         failed_at: Set(now),
         reason: Set(reason.filter(|s| !s.trim().is_empty())),
+        customer_id: Set(lead.customer_id),
     }
     .insert(db)
     .await
@@ -91,6 +95,108 @@ pub async fn reactivate_lead(
     append_lead_timeline(db, failed.lead_id, "Lead reactivated").await?;
 
     Ok(failed.lead_id)
+}
+
+/// Mark a lead failed without the HTTP role scope. Accepts an active or converted lead.
+pub async fn fail_lead_unscoped<C: ConnectionTrait>(
+    db: &C,
+    lead_id: i64,
+    reason: Option<String>,
+) -> Result<i64, String> {
+    let lead = crate::entities::lead::Entity::find_by_id(lead_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "lead not found".to_string())?;
+    let already_failed = FailedLeadEntity::find()
+        .filter(failed_lead::Column::LeadId.eq(lead.id))
+        .count(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    if already_failed > 0 {
+        return Err("lead is already failed".to_string());
+    }
+    if lead.customer_id <= 0 {
+        return Err("customer is required to fail a lead".to_string());
+    }
+    let _was_converted = clear_converted_unscoped(db, lead.id).await?;
+    let now = Utc::now();
+    let row = failed_lead::ActiveModel {
+        id: Default::default(),
+        created_at: Set(Some(now)),
+        lead_id: Set(lead.id),
+        failed_at: Set(now),
+        reason: Set(reason.filter(|s| !s.trim().is_empty())),
+        customer_id: Set(lead.customer_id),
+    }
+    .insert(db)
+    .await
+    .map_err(|e| e.to_string())?;
+    let content = match row
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(reason) => format!("Lead marked failed: {reason}"),
+        None => "Lead marked failed".to_string(),
+    };
+    append_lead_timeline(db, lead.id, content).await?;
+    Ok(row.id)
+}
+
+/// Make a failed or converted lead active again. `lead_id` is the lead row.
+pub async fn make_lead_active<C: ConnectionTrait>(db: &C, lead_id: i64) -> Result<(), String> {
+    let lead = crate::entities::lead::Entity::find_by_id(lead_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "lead not found".to_string())?;
+    if let Some(failed) = FailedLeadEntity::find()
+        .filter(failed_lead::Column::LeadId.eq(lead.id))
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        let converted = ConvertedLeadEntity::find()
+            .filter(crate::entities::converted_lead::Column::LeadId.eq(lead.id))
+            .count(db)
+            .await
+            .map_err(|e| e.to_string())?;
+        if converted > 0 {
+            return Err("lead is converted and cannot be reactivated".to_string());
+        }
+        FailedLeadEntity::delete_by_id(failed.id)
+            .exec(db)
+            .await
+            .map_err(|e| e.to_string())?;
+        append_lead_timeline(db, lead.id, "Lead reactivated").await?;
+        return Ok(());
+    }
+    if clear_converted_unscoped(db, lead.id).await? {
+        append_lead_timeline(db, lead.id, "Lead made active again").await?;
+        return Ok(());
+    }
+    Err("lead is already active".to_string())
+}
+
+async fn clear_converted_unscoped<C: ConnectionTrait>(
+    db: &C,
+    lead_id: i64,
+) -> Result<bool, String> {
+    let Some(converted) = ConvertedLeadEntity::find()
+        .filter(crate::entities::converted_lead::Column::LeadId.eq(lead_id))
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(false);
+    };
+    ConvertedLeadEntity::delete_by_id(converted.id)
+        .exec(db)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(true)
 }
 
 pub async fn update_failed_reason(

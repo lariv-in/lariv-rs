@@ -38,8 +38,6 @@ pub mod plugins {
     pub use lariv_plugin_dashboard as dashboard;
     #[cfg(feature = "plugin-documents")]
     pub use lariv_plugin_documents as documents;
-    #[cfg(feature = "plugin-export")]
-    pub use lariv_plugin_export as export;
     #[cfg(feature = "plugin-filesystem")]
     pub use lariv_plugin_filesystem as filesystem;
     #[cfg(feature = "plugin-filesystem-sync-git")]
@@ -78,8 +76,8 @@ pub mod plugins {
     pub use lariv_plugin_hr_leaves as hr_leaves;
     #[cfg(feature = "plugin-hr-overtime")]
     pub use lariv_plugin_hr_overtime as hr_overtime;
-    #[cfg(feature = "plugin-import")]
-    pub use lariv_plugin_import as import;
+    #[cfg(feature = "plugin-import-export")]
+    pub use lariv_plugin_import_export as import_export;
     #[cfg(feature = "plugin-inventory")]
     pub use lariv_plugin_inventory as inventory;
     #[cfg(feature = "plugin-llm-assistant")]

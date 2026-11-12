@@ -7,20 +7,20 @@ use lariv_plugin_users::routes::UsersSelectRouteTag;
 use lariv_plugin_contacts::routes::{CompanyFkSelectRouteTag, ContactFkSelectRouteTag};
 
 use super::lead_source::LeadSource;
-use super::routes::LeadTagSelectRouteTag;
+use super::routes::{CustomerFkSelectRouteTag, LeadTagSelectRouteTag};
 
 #[html_form]
 pub struct LeadForm {
     #[form(
-        label = "Contact",
+        label = "Customer",
         required,
         widget = ForeignKey,
-        route = ContactFkSelectRouteTag,
-        swap_key = "crm-lead-contact",
-        display = "contact",
-        placeholder = "Select contact…"
+        route = CustomerFkSelectRouteTag,
+        swap_key = "crm-lead-customer",
+        display = "customer",
+        placeholder = "Select customer…"
     )]
-    pub contact_id: i64,
+    pub customer_id: i64,
 
     #[form(label = "Source", widget = Select)]
     pub source: String,

@@ -3,10 +3,9 @@ use axum::{
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
-use chrono::Utc;
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::sea_query::Condition;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, PaginatorTrait, QueryFilter};
+use sea_orm::{EntityTrait, PaginatorTrait, QueryFilter};
 
 use lariv_core::components::picker::respond_picker_select;
 use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx};
@@ -28,6 +27,7 @@ use crate::{
         COMPANY_CREATE_MODAL, COMPANY_DELETE_MODAL, COMPANY_EDIT_MODAL, COMPANY_SELECT_MODAL,
         COMPANY_SELECT_TABLE, COMPANY_TABLE,
     },
+    logic::{self, CompanyWrite},
     routes::{CompanyDefaultRouteTag, CompanyDetailRouteTag},
     scope::{apply_company_sort, find_company_scoped},
     state::ContactsState,
@@ -166,6 +166,23 @@ pub async fn detail(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
+fn company_write(form: &CompanyForm) -> CompanyWrite {
+    CompanyWrite {
+        name: form.name.clone(),
+        address_line_1: opt_string(form.address_line_1.clone()),
+        address_line_2: opt_string(form.address_line_2.clone()),
+        city: opt_string(form.city.clone()),
+        pincode: opt_string(form.pincode.clone()),
+        state: opt_string(form.state.clone()),
+        website: opt_string(form.website.clone()),
+        gstin: opt_string(form.gstin.clone()),
+        cin: opt_string(form.cin.clone()),
+        pan: opt_string(form.pan.clone()),
+        phone: opt_string(form.phone.clone()),
+        email: opt_string(form.email.clone()),
+    }
+}
+
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
@@ -200,25 +217,7 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<CompanyForm>,
 ) -> Response {
-    let now = Utc::now();
-    let model = company::ActiveModel {
-        id: Default::default(),
-        created_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        name: Set(form.name.clone()),
-        address_line_1: Set(opt_string(form.address_line_1.clone())),
-        address_line_2: Set(opt_string(form.address_line_2.clone())),
-        city: Set(opt_string(form.city.clone())),
-        pincode: Set(opt_string(form.pincode.clone())),
-        state: Set(opt_string(form.state.clone())),
-        website: Set(opt_string(form.website.clone())),
-        gstin: Set(opt_string(form.gstin.clone())),
-        cin: Set(opt_string(form.cin.clone())),
-        pan: Set(opt_string(form.pan.clone())),
-        phone: Set(opt_string(form.phone.clone())),
-        email: Set(opt_string(form.email.clone())),
-    };
-    match model.insert(&state.db).await {
+    match logic::create_company(&state.db, company_write(&form)).await {
         Ok(saved) => respond_create_modal_done_fk(
             &htmx,
             COMPANY_CREATE_MODAL,
@@ -291,25 +290,10 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<CompanyForm>,
 ) -> Response {
-    let Some(existing) = find_company_scoped(&state.db, id).await else {
+    if find_company_scoped(&state.db, id).await.is_none() {
         return Redirect::to(&companies_list_url()).into_response();
-    };
-    let now = Utc::now();
-    let mut am: company::ActiveModel = existing.into();
-    am.updated_at = Set(Some(now));
-    am.name = Set(form.name.clone());
-    am.address_line_1 = Set(opt_string(form.address_line_1.clone()));
-    am.address_line_2 = Set(opt_string(form.address_line_2.clone()));
-    am.city = Set(opt_string(form.city.clone()));
-    am.pincode = Set(opt_string(form.pincode.clone()));
-    am.state = Set(opt_string(form.state.clone()));
-    am.website = Set(opt_string(form.website.clone()));
-    am.gstin = Set(opt_string(form.gstin.clone()));
-    am.cin = Set(opt_string(form.cin.clone()));
-    am.pan = Set(opt_string(form.pan.clone()));
-    am.phone = Set(opt_string(form.phone.clone()));
-    am.email = Set(opt_string(form.email.clone()));
-    match am.update(&state.db).await {
+    }
+    match logic::update_company(&state.db, id, company_write(&form)).await {
         Ok(_) => respond_edit_modal_done(
             &htmx,
             COMPANY_EDIT_MODAL,

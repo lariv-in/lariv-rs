@@ -10,11 +10,15 @@
 pub mod create_modals;
 pub mod entities;
 pub mod forms;
+pub mod gst_state;
 pub mod handlers;
+#[cfg(feature = "plugin-llm-assistant")]
+pub mod hitl;
 pub mod keys;
 pub mod logic;
 pub mod migrations;
 pub mod routes;
+pub mod rune_env;
 pub mod state;
 pub mod templates;
 
@@ -35,11 +39,27 @@ pub struct CustomerTag;
 
 lariv_core::define_passthrough_cap!(CustomerStateCap, CustomerTag, CustomerState);
 
+#[cfg(feature = "plugin-llm-assistant")]
+lariv_core::define_plugin_install! {
+    plugin: CustomerTag;
+    steps: [
+        cap_hook(lariv_plugin_llm_assistant::hitl::HitlTag, lariv_plugin_llm_assistant::hitl::HitlCap, hitl::Hook),
+        migrations(migrations::Hook),
+        templates(templates::Hook),
+        rune_env(rune_env::Hook),
+        cap_hook(lariv_plugin_users::role_authorization::RoleAuthorizationTag, lariv_plugin_users::role_authorization::RoleAuthorizationCap, routes::RoleHook),
+        http(routes::Hook),
+        state(StateHook),
+    ]
+}
+
+#[cfg(not(feature = "plugin-llm-assistant"))]
 lariv_core::define_plugin_install! {
     plugin: CustomerTag;
     steps: [
         migrations(migrations::Hook),
         templates(templates::Hook),
+        rune_env(rune_env::Hook),
         cap_hook(lariv_plugin_users::role_authorization::RoleAuthorizationTag, lariv_plugin_users::role_authorization::RoleAuthorizationCap, routes::RoleHook),
         http(routes::Hook),
         state(StateHook),

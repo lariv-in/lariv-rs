@@ -24,6 +24,8 @@ mod m00019_optional_contact_company;
 mod m00020_drop_tasks;
 mod m00021_company_tax_identity;
 mod m00022_create_customers;
+mod m00023_lead_customer_fk;
+mod m00024_converted_failed_customer_fk;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -54,6 +56,8 @@ impl MigratorTrait for Migrator {
             Box::new(m00020_drop_tasks::Migration),
             Box::new(m00021_company_tax_identity::Migration),
             Box::new(m00022_create_customers::Migration),
+            Box::new(m00023_lead_customer_fk::Migration),
+            Box::new(m00024_converted_failed_customer_fk::Migration),
         ]
     }
 }

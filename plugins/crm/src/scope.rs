@@ -1,15 +1,17 @@
 use lariv_core::components::{sort_desc, sort_key};
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, JoinType, QueryFilter, QueryOrder,
-    QuerySelect, RelationTrait, Select,
-    sea_query::{Expr, ExprTrait, Query as SeaQuery, SelectStatement},
+    ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait, JoinType,
+    QueryFilter, QueryOrder, QuerySelect, RelationTrait, Select,
+    sea_query::{Expr, ExprTrait, Order, Query as SeaQuery, SelectStatement},
 };
 
 use lariv_plugin_contacts::entities::{
     company::{self, Entity as CompanyEntity},
     contact::{self, Entity as ContactEntity},
 };
+use lariv_plugin_contacts::routes::{CompanyDetailRouteTag, ContactDetailRouteTag};
+use lariv_plugin_customer::entities::customer::{self, Entity as CustomerEntity};
 
 use super::entities::{
     converted_lead::{self, Entity as ConvertedLeadEntity},
@@ -145,20 +147,30 @@ fn lead_ids_with_tags_subquery(tag_ids: &[i64]) -> SelectStatement {
 pub fn join_active_lead_relations(
     mut query: Select<LeadEntity>,
     sort: Option<&str>,
-    needs_contact: bool,
+    needs_party: bool,
 ) -> Select<LeadEntity> {
     let key = sort_key(sort.unwrap_or(""));
-    let need_contact = needs_contact
+    let need_party = needs_party
         || key.eq_ignore_ascii_case("Name")
         || key.eq_ignore_ascii_case("Email")
         || key.eq_ignore_ascii_case("Company");
-    if need_contact {
-        query = query.join(JoinType::LeftJoin, lead::Relation::Contact.def());
-    }
-    if key.eq_ignore_ascii_case("Company") {
-        query = query.join(JoinType::LeftJoin, contact::Relation::Company.def());
+    if need_party {
+        query = join_lead_customer(query);
     }
     query
+}
+
+fn join_customer_party<E: EntityTrait>(
+    mut query: Select<E>,
+    customer_rel: sea_orm::entity::RelationDef,
+) -> Select<E> {
+    query = query.join(JoinType::LeftJoin, customer_rel);
+    query = query.join(JoinType::LeftJoin, customer::Relation::Individual.def());
+    query.join(JoinType::LeftJoin, customer::Relation::Company.def())
+}
+
+fn join_lead_customer<E: EntityTrait>(query: Select<E>) -> Select<E> {
+    join_customer_party(query, lead::Relation::Customer.def())
 }
 
 pub fn join_converted_lead_relations(
@@ -167,11 +179,12 @@ pub fn join_converted_lead_relations(
     needs_contact: bool,
 ) -> Select<ConvertedLeadEntity> {
     let key = sort_key(sort.unwrap_or(""));
-    if needs_contact || key.eq_ignore_ascii_case("Name") || key.eq_ignore_ascii_case("Email") {
-        query = query.join(JoinType::LeftJoin, converted_lead::Relation::Contact.def());
-    }
-    if key.eq_ignore_ascii_case("Company") {
-        query = query.join(JoinType::LeftJoin, converted_lead::Relation::Company.def());
+    let need_party = needs_contact
+        || key.eq_ignore_ascii_case("Name")
+        || key.eq_ignore_ascii_case("Email")
+        || key.eq_ignore_ascii_case("Company");
+    if need_party {
+        query = join_customer_party(query, converted_lead::Relation::Customer.def());
     }
     if key.eq_ignore_ascii_case("Source") {
         query = query.join(JoinType::LeftJoin, converted_lead::Relation::Lead.def());
@@ -185,23 +198,15 @@ pub fn join_failed_lead_relations(
     needs_contact: bool,
 ) -> Select<FailedLeadEntity> {
     let key = sort_key(sort.unwrap_or(""));
-    let need_lead = needs_contact
-        || key.eq_ignore_ascii_case("Name")
-        || key.eq_ignore_ascii_case("Email")
-        || key.eq_ignore_ascii_case("Company")
-        || key.eq_ignore_ascii_case("Source");
-    let need_contact = needs_contact
+    let need_party = needs_contact
         || key.eq_ignore_ascii_case("Name")
         || key.eq_ignore_ascii_case("Email")
         || key.eq_ignore_ascii_case("Company");
-    if need_lead {
+    if need_party {
+        query = join_customer_party(query, failed_lead::Relation::Customer.def());
+    }
+    if key.eq_ignore_ascii_case("Source") {
         query = query.join(JoinType::LeftJoin, failed_lead::Relation::Lead.def());
-    }
-    if need_contact {
-        query = query.join(JoinType::LeftJoin, lead::Relation::Contact.def());
-    }
-    if key.eq_ignore_ascii_case("Company") {
-        query = query.join(JoinType::LeftJoin, contact::Relation::Company.def());
     }
     query
 }
@@ -210,13 +215,7 @@ pub fn apply_lead_sort(query: Select<LeadEntity>, sort: Option<&str>) -> Select<
     let sort = sort.unwrap_or("").trim();
     let desc = sort_desc(sort);
     match sort_key(sort) {
-        s if s.eq_ignore_ascii_case("Name") => {
-            if desc {
-                query.order_by_desc(contact::Column::Name)
-            } else {
-                query.order_by_asc(contact::Column::Name)
-            }
-        }
+        s if s.eq_ignore_ascii_case("Name") => query.order_by(party_name_expr(), sort_order(desc)),
         s if s.eq_ignore_ascii_case("Company") => {
             if desc {
                 query.order_by_desc(company::Column::Name)
@@ -250,13 +249,7 @@ pub fn apply_converted_lead_sort(
     let key = sort_key(sort);
     let desc = sort_desc(sort);
     match key {
-        s if s.eq_ignore_ascii_case("Name") => {
-            if desc {
-                query.order_by_desc(contact::Column::Name)
-            } else {
-                query.order_by_asc(contact::Column::Name)
-            }
-        }
+        s if s.eq_ignore_ascii_case("Name") => query.order_by(party_name_expr(), sort_order(desc)),
         s if s.eq_ignore_ascii_case("Company") => {
             if desc {
                 query.order_by_desc(company::Column::Name)
@@ -290,13 +283,7 @@ pub fn apply_failed_lead_sort(
     let key = sort_key(sort);
     let desc = sort_desc(sort);
     match key {
-        s if s.eq_ignore_ascii_case("Name") => {
-            if desc {
-                query.order_by_desc(contact::Column::Name)
-            } else {
-                query.order_by_asc(contact::Column::Name)
-            }
-        }
+        s if s.eq_ignore_ascii_case("Name") => query.order_by(party_name_expr(), sort_order(desc)),
         s if s.eq_ignore_ascii_case("Company") => {
             if desc {
                 query.order_by_desc(company::Column::Name)
@@ -324,49 +311,128 @@ pub fn apply_failed_lead_sort(
 
 pub use lariv_plugin_contacts::scope::company_display_label;
 
-/// Resolved contact/company fields for lead list and detail views.
+/// Resolved customer party for lead list and detail views.
 #[derive(Clone, Debug, Default)]
-pub struct LeadContactView {
+pub struct LeadPartyView {
     pub display_name: String,
     pub company: String,
     pub email: String,
     pub contact_id: i64,
     pub company_id: i64,
+    pub customer_id: i64,
+    pub href: String,
 }
 
-pub async fn lead_contact_view(db: &DatabaseConnection, contact_id: i64) -> LeadContactView {
-    if contact_id <= 0 {
-        return LeadContactView::default();
+pub async fn lead_party_view<C: ConnectionTrait>(db: &C, customer_id: i64) -> LeadPartyView {
+    if customer_id <= 0 {
+        return LeadPartyView::default();
     }
-    let Some(contact) = lariv_core::web::opt_or_log(
-        ContactEntity::find_by_id(contact_id).one(db).await,
+    let Some(customer) = lariv_core::web::opt_or_log(
+        CustomerEntity::find_by_id(customer_id).one(db).await,
         "find by id",
     ) else {
-        return LeadContactView {
-            display_name: format!("Contact #{contact_id}"),
-            contact_id,
+        return LeadPartyView {
+            display_name: format!("Customer #{customer_id}"),
+            customer_id,
             ..Default::default()
         };
     };
-    let company = match contact.company_id {
-        Some(id) => {
-            lariv_core::web::opt_or_log(CompanyEntity::find_by_id(id).one(db).await, "find by id")
-                .map(|c| c.name)
-                .unwrap_or_default()
+    if customer.is_individual {
+        let Some(contact_id) = customer.individual_id.filter(|id| *id > 0) else {
+            return LeadPartyView {
+                display_name: format!("Customer #{customer_id}"),
+                customer_id,
+                ..Default::default()
+            };
+        };
+        let Some(contact) = lariv_core::web::opt_or_log(
+            ContactEntity::find_by_id(contact_id).one(db).await,
+            "find by id",
+        ) else {
+            return LeadPartyView {
+                display_name: format!("Customer #{customer_id}"),
+                customer_id,
+                contact_id,
+                href: ContactDetailRouteTag::new(contact_id).url(),
+                ..Default::default()
+            };
+        };
+        let (company, company_id) = match contact.company_id {
+            Some(id) => (
+                lariv_core::web::opt_or_log(
+                    CompanyEntity::find_by_id(id).one(db).await,
+                    "find by id",
+                )
+                .map(|row| row.name)
+                .unwrap_or_default(),
+                id,
+            ),
+            None => (String::new(), 0),
+        };
+        LeadPartyView {
+            display_name: contact.display_name(),
+            company,
+            email: contact.email.unwrap_or_default(),
+            contact_id: contact.id,
+            company_id,
+            customer_id,
+            href: ContactDetailRouteTag::new(contact.id).url(),
         }
-        None => String::new(),
-    };
-    LeadContactView {
-        display_name: contact.display_name(),
-        company,
-        email: contact.email.unwrap_or_default(),
-        contact_id: contact.id,
-        company_id: contact.company_id.unwrap_or(0),
+    } else {
+        let Some(company_id) = customer.company_id.filter(|id| *id > 0) else {
+            return LeadPartyView {
+                display_name: format!("Customer #{customer_id}"),
+                customer_id,
+                ..Default::default()
+            };
+        };
+        let Some(company) = lariv_core::web::opt_or_log(
+            CompanyEntity::find_by_id(company_id).one(db).await,
+            "find by id",
+        ) else {
+            return LeadPartyView {
+                display_name: format!("Customer #{customer_id}"),
+                customer_id,
+                company_id,
+                href: CompanyDetailRouteTag::new(company_id).url(),
+                ..Default::default()
+            };
+        };
+        let contact = lariv_core::web::opt_or_log(
+            ContactEntity::find()
+                .filter(contact::Column::CompanyId.eq(company.id))
+                .filter(contact::Column::IsPrimary.eq(true))
+                .one(db)
+                .await,
+            "find primary contact",
+        );
+        LeadPartyView {
+            display_name: company.name.clone(),
+            email: company.email.clone().unwrap_or_default(),
+            company: company.name,
+            contact_id: contact.map(|row| row.id).unwrap_or(0),
+            company_id: company.id,
+            customer_id,
+            href: CompanyDetailRouteTag::new(company.id).url(),
+        }
     }
 }
 
+fn party_name_expr() -> Expr {
+    Expr::case(
+        Expr::col((CustomerEntity, customer::Column::IsIndividual)).eq(true),
+        Expr::col((ContactEntity, contact::Column::Name)),
+    )
+    .finally(Expr::col((CompanyEntity, company::Column::Name)))
+    .into()
+}
+
+fn sort_order(desc: bool) -> Order {
+    if desc { Order::Desc } else { Order::Asc }
+}
+
 pub async fn lead_display_name(db: &DatabaseConnection, lead: &lead::Model) -> String {
-    let view = lead_contact_view(db, lead.contact_id).await;
+    let view = lead_party_view(db, lead.customer_id).await;
     if view.display_name.is_empty() {
         format!("Lead #{}", lead.id)
     } else {

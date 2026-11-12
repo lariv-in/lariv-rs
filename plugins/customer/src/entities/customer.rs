@@ -14,6 +14,8 @@ pub struct Model {
     pub is_individual: bool,
     pub company_id: Option<i64>,
     pub individual_id: Option<i64>,
+    /// GST state code from the place-of-supply list, such as `27`.
+    pub state: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

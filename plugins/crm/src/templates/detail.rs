@@ -9,7 +9,7 @@ use lariv_core::components::{
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 
-use lariv_plugin_contacts::routes::{CompanyDetailRouteTag, ContactDetailRouteTag};
+use lariv_plugin_contacts::routes::CompanyDetailRouteTag;
 
 use crate::crumbs::{
     converted_lead_crumbs, failed_lead_crumbs, lead_crumbs, lead_tag_crumbs, lead_update_crumbs,
@@ -49,6 +49,7 @@ pub struct LeadDetailPage {
     pub display_name: String,
     pub contact_id: i64,
     pub contact_display: String,
+    pub customer_href: String,
     pub company_id: i64,
     pub company: String,
     pub email: String,
@@ -104,9 +105,13 @@ impl LeadDetailPage {
                         title: &self.display_name,
                         actions,
                     }))
-                    (label("Contact", html! {
-                        a class="link" href=(ContactDetailRouteTag::new(self.contact_id).url()) {
-                            (self.contact_display)
+                    (label("Customer", html! {
+                        @if self.customer_href.is_empty() {
+                            (field_text(FieldText { value: &self.contact_display, classes: "" }))
+                        } @else {
+                            a class="link" href=(self.customer_href) {
+                                (self.contact_display)
+                            }
                         }
                     }))
                     (label("Company", html! {
@@ -167,6 +172,7 @@ pub struct LeadConvertDetailPage {
     pub contact_id: i64,
     pub company: String,
     pub contact_display: String,
+    pub customer_href: String,
     pub email: String,
     pub source: String,
     pub notes: String,
@@ -217,14 +223,22 @@ impl LeadConvertDetailPage {
                         actions,
                     }))
                     (label("Converted at", field_text(FieldText { value: &self.converted_at, classes: "" })))
-                    (label("Contact", html! {
-                        a class="link" href=(ContactDetailRouteTag::new(self.contact_id).url()) {
-                            (self.contact_display)
+                    (label("Customer", html! {
+                        @if self.customer_href.is_empty() {
+                            (field_text(FieldText { value: &self.contact_display, classes: "" }))
+                        } @else {
+                            a class="link" href=(self.customer_href) {
+                                (self.contact_display)
+                            }
                         }
                     }))
                     (label("Company", html! {
-                        a class="link" href=(CompanyDetailRouteTag::new(self.company_id).url()) {
-                            (self.company)
+                        @if self.company_id > 0 {
+                            a class="link" href=(CompanyDetailRouteTag::new(self.company_id).url()) {
+                                (self.company)
+                            }
+                        } @else {
+                            (field_text(FieldText { value: &self.company, classes: "" }))
                         }
                     }))
                     (label("Email", field_text(FieldText { value: &self.email, classes: "" })))
@@ -279,6 +293,7 @@ pub struct LeadFailDetailPage {
     pub reason: String,
     pub contact_id: i64,
     pub contact_display: String,
+    pub customer_href: String,
     pub company_id: i64,
     pub company: String,
     pub email: String,
@@ -323,13 +338,13 @@ impl LeadFailDetailPage {
                     }))
                     (label("Failed at", field_text(FieldText { value: &self.failed_at, classes: "" })))
                     (label("Reason", field_text(FieldText { value: &self.reason, classes: "" })))
-                    (label("Contact", html! {
-                        @if self.contact_id > 0 {
-                            a class="link" href=(ContactDetailRouteTag::new(self.contact_id).url()) {
+                    (label("Customer", html! {
+                        @if self.customer_href.is_empty() {
+                            (field_text(FieldText { value: &self.contact_display, classes: "" }))
+                        } @else {
+                            a class="link" href=(self.customer_href) {
                                 (self.contact_display)
                             }
-                        } @else {
-                            (field_text(FieldText { value: &self.contact_display, classes: "" }))
                         }
                     }))
                     (label("Company", html! {

@@ -11,6 +11,7 @@ pub struct Model {
     pub lead_id: i64,
     pub failed_at: DateTime<Utc>,
     pub reason: Option<String>,
+    pub customer_id: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -21,11 +22,23 @@ pub enum Relation {
         to = "super::lead::Column::Id"
     )]
     Lead,
+    #[sea_orm(
+        belongs_to = "lariv_plugin_customer::entities::customer::Entity",
+        from = "Column::CustomerId",
+        to = "lariv_plugin_customer::entities::customer::Column::Id"
+    )]
+    Customer,
 }
 
 impl Related<super::lead::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Lead.def()
+    }
+}
+
+impl Related<lariv_plugin_customer::entities::customer::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Customer.def()
     }
 }
 

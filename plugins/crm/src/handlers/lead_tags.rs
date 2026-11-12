@@ -3,13 +3,9 @@ use axum::{
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
-use chrono::Utc;
 use lariv_plugin_users::role_authorization::scope_allowed;
 use rand::seq::IndexedRandom;
-use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder,
-};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use lariv_core::components::picker::respond_picker_select;
 use lariv_core::components::{
@@ -68,13 +64,7 @@ pub fn random_tag_color() -> String {
 }
 
 fn normalize_tag_color(raw: &str) -> String {
-    let s = raw.trim();
-    let hex = s.strip_prefix('#').unwrap_or(s);
-    if hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit()) {
-        format!("#{}", hex.to_ascii_lowercase())
-    } else {
-        random_tag_color()
-    }
+    crate::logic::lead_tag::parsed_tag_color(raw).unwrap_or_else(random_tag_color)
 }
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -312,28 +302,8 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<LeadTagForm>,
 ) -> Response {
-    let name = form.name.trim().to_string();
-    if name.is_empty() {
-        let page = LeadTagCreateModalPage {
-            form_name: q.form_name(),
-            refresh_table: q.refresh_table(),
-            target_input: q.target_input(),
-            name: form.name,
-            color: normalize_tag_color(&form.color),
-            error: "name is required".to_string(),
-        };
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-            .into_response();
-    }
-    let now = Utc::now();
-    let model = lead_tag::ActiveModel {
-        id: Default::default(),
-        created_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        name: Set(name),
-        color: Set(normalize_tag_color(&form.color)),
-    };
-    match model.insert(&state.db).await {
+    let color = normalize_tag_color(&form.color);
+    match crate::logic::lead_tag::create_lead_tag(&state.db, &form.name, &color).await {
         Ok(saved) => respond_create_modal_done_fk_extra(
             &htmx,
             LEAD_TAG_CREATE_MODAL,
@@ -456,27 +426,11 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<LeadTagForm>,
 ) -> Response {
-    let Some(existing) = find_lead_tag_scoped(&state.db, id).await else {
+    if find_lead_tag_scoped(&state.db, id).await.is_none() {
         return Redirect::to(&tags_list_url()).into_response();
-    };
-    let name = form.name.trim().to_string();
-    if name.is_empty() {
-        let page = LeadTagEditModalPage {
-            id,
-            form_name: q.form_name(),
-            name: form.name,
-            color: normalize_tag_color(&form.color),
-            error: "name is required".to_string(),
-        };
-        return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-            .into_response();
     }
-    let now = Utc::now();
-    let mut am: lead_tag::ActiveModel = existing.into();
-    am.updated_at = Set(Some(now));
-    am.name = Set(name);
-    am.color = Set(normalize_tag_color(&form.color));
-    match am.update(&state.db).await {
+    let color = normalize_tag_color(&form.color);
+    match crate::logic::lead_tag::update_lead_tag(&state.db, id, &form.name, &color).await {
         Ok(_) => respond_edit_modal_done(
             &htmx,
             LEAD_TAG_EDIT_MODAL,

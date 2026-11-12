@@ -15,6 +15,7 @@ use lariv_core::template::RenderAppPane;
 use lariv_core::web::{Htmx, QueryPage, QueryPageSize, html_built_page_with_slots};
 use lariv_plugin_contacts::entities::contact;
 use lariv_plugin_contacts::routes::CompanyFkSelectRouteTag;
+use lariv_plugin_customer::entities::customer;
 use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
@@ -33,7 +34,7 @@ use crate::{
         any_lead_tag_condition, apply_converted_lead_sort, apply_failed_lead_sort, apply_lead_sort,
         apply_lead_tag_id_filter, company_display_label, join_active_lead_relations,
         join_converted_lead_relations, join_failed_lead_relations, lead_active_condition,
-        lead_contact_view,
+        lead_party_view,
     },
     state::CrmState,
     templates::{LeadHubPage, LeadRow},
@@ -86,12 +87,14 @@ where
                 if id <= 0 {
                     return Err(format!("invalid id: {raw}"));
                 }
-                Ok(Condition::all().add(contact::Column::CompanyId.eq(id)))
+                Ok(Condition::any()
+                    .add(customer::Column::CompanyId.eq(id))
+                    .add(contact::Column::CompanyId.eq(id)))
             },
         ),
         custom(
-            "contact",
-            "Contact",
+            "customer",
+            "Customer",
             FilterWidget::Text,
             Vec::new(),
             false,
@@ -100,11 +103,17 @@ where
                 if needle.is_empty() {
                     return Ok(Condition::all());
                 }
-                Ok(text_match_condition(
-                    backend,
-                    &[contact::Column::Name, contact::Column::Email],
-                    needle,
-                ))
+                Ok(Condition::any()
+                    .add(text_match_condition(
+                        backend,
+                        &[contact::Column::Name, contact::Column::Email],
+                        needle,
+                    ))
+                    .add(text_match_condition(
+                        backend,
+                        &[lariv_plugin_contacts::entities::company::Column::Name],
+                        needle,
+                    )))
             },
         ),
         many_to_many(
@@ -123,7 +132,7 @@ where
 fn needs_contact_join(clauses: &[FilterClause]) -> bool {
     clauses
         .iter()
-        .any(|clause| clause.field == "company_id" || clause.field == "contact")
+        .any(|clause| clause.field == "company_id" || clause.field == "customer")
 }
 
 async fn fill_lead_filter_views(db: &sea_orm::DatabaseConnection, rows: &mut [FilterClauseView]) {
@@ -172,7 +181,7 @@ pub(crate) async fn query_active_leads(
         .unwrap_or_default();
     let mut rows = Vec::with_capacity(models.len());
     for l in models {
-        let view = lead_contact_view(db, l.contact_id).await;
+        let view = lead_party_view(db, l.customer_id).await;
         rows.push(LeadRow {
             id: l.id,
             name: if view.display_name.is_empty() {
@@ -216,27 +225,17 @@ pub(crate) async fn query_converted_leads(
             LeadEntity::find_by_id(c.lead_id).one(db).await,
             "find by id",
         );
-        let (name, company, email, source) = match lead {
-            Some(l) => {
-                let view = lead_contact_view(db, l.contact_id).await;
-                (
-                    if view.display_name.is_empty() {
-                        format!("Lead #{}", l.id)
-                    } else {
-                        view.display_name
-                    },
-                    view.company,
-                    view.email,
-                    source_label(l.source),
-                )
-            }
-            None => (
-                format!("Lead #{}", c.lead_id),
-                String::new(),
-                String::new(),
-                String::new(),
-            ),
-        };
+        let view = lead_party_view(db, c.customer_id).await;
+        let (name, company, email, source) = (
+            if view.display_name.is_empty() {
+                format!("Lead #{}", c.lead_id)
+            } else {
+                view.display_name
+            },
+            view.company,
+            view.email,
+            lead.map(|l| source_label(l.source)).unwrap_or_default(),
+        );
         rows.push(LeadRow {
             id: c.id,
             name,
@@ -276,27 +275,17 @@ pub(crate) async fn query_failed_leads(
             LeadEntity::find_by_id(f.lead_id).one(db).await,
             "find by id",
         );
-        let (name, company, email, source) = match lead {
-            Some(l) => {
-                let view = lead_contact_view(db, l.contact_id).await;
-                (
-                    if view.display_name.is_empty() {
-                        format!("Lead #{}", l.id)
-                    } else {
-                        view.display_name
-                    },
-                    view.company,
-                    view.email,
-                    source_label(l.source),
-                )
-            }
-            None => (
-                format!("Lead #{}", f.lead_id),
-                String::new(),
-                String::new(),
-                String::new(),
-            ),
-        };
+        let view = lead_party_view(db, f.customer_id).await;
+        let (name, company, email, source) = (
+            if view.display_name.is_empty() {
+                format!("Lead #{}", f.lead_id)
+            } else {
+                view.display_name
+            },
+            view.company,
+            view.email,
+            lead.map(|l| source_label(l.source)).unwrap_or_default(),
+        );
         rows.push(LeadRow {
             id: f.id,
             name,

@@ -20,6 +20,7 @@ use lariv_core::template::{RenderTemplate, TemplateCapability, TemplateOf, Templ
 use lariv_core::web::modal_create_post_url;
 
 use super::forms::{CustomerForm, CustomerFormField};
+use super::gst_state::GST_STATE_CHOICES;
 use super::keys::{CUSTOMER_CREATE_MODAL, CUSTOMER_TABLE};
 use super::routes::CustomerCreatePostRouteTag;
 
@@ -202,6 +203,7 @@ pub struct CustomerCreateModalPage {
     pub company_display: String,
     pub individual_id: i64,
     pub individual_display: String,
+    pub state: String,
     pub error: String,
 }
 
@@ -237,7 +239,9 @@ impl RenderTemplate for CustomerCreateModalPage {
                                 CustomerFormField::IndividualId,
                                 self.individual_id.to_string(),
                             )
-                            .display(CustomerFormField::IndividualId, &self.individual_display),
+                            .display(CustomerFormField::IndividualId, &self.individual_display)
+                            .value(CustomerFormField::State, self.state.as_str())
+                            .choices(CustomerFormField::State, GST_STATE_CHOICES),
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Create customer", ..Default::default() }))

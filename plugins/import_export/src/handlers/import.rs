@@ -7,7 +7,7 @@ use axum::{
 use maud::Markup;
 
 use crate::forms::ImportForm;
-use crate::state::ImportState;
+use crate::state::ImportExportState;
 use crate::templates::ImportPage;
 use crate::upsert;
 use crate::xlsx;
@@ -56,7 +56,7 @@ pub async fn page(
 /// HTTP handler: `import_post`.
 pub async fn import_post(
     Cap(export): Cap<ExportCapability>,
-    Cap(state): Cap<ImportState>,
+    Cap(state): Cap<ImportExportState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,

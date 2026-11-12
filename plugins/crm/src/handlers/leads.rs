@@ -72,7 +72,7 @@ pub(crate) fn parse_order_expected_date(
 pub(crate) fn lead_input_from_form(form: &LeadForm) -> Result<LeadInput, String> {
     let order_expected_date = parse_order_expected_date(&form.order_expected_date)?;
     Ok(LeadInput {
-        contact_id: form.contact_id,
+        customer_id: form.customer_id,
         source: parse_lead_source(&form.source),
         notes: opt_string(form.notes.clone()),
         assigned_to_id: (form.assigned_to_id > 0).then_some(form.assigned_to_id),
@@ -98,8 +98,8 @@ pub(crate) async fn lead_tag_chips(
 
 pub(crate) fn lead_create_modal_page(
     q: &ModalNameQuery,
-    contact_id: i64,
-    contact_display: String,
+    customer_id: i64,
+    customer_display: String,
     source: String,
     notes: String,
     tags: Vec<ManyToManyItem>,
@@ -111,8 +111,8 @@ pub(crate) fn lead_create_modal_page(
     LeadCreateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
-        contact_id,
-        contact_display,
+        customer_id,
+        customer_display,
         source,
         notes,
         tags,

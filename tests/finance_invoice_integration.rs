@@ -375,7 +375,7 @@ async fn create_draft_invoice_via_rune_env() {
         session_id: None,
     };
     let source = r#"
-        create_invoice(#{
+        create_draft_invoice(#{
             number: number,
             customer_id: customer_id,
             datetime: "2025-06-01",
@@ -401,7 +401,7 @@ async fn create_draft_invoice_via_rune_env() {
     .await;
     assert!(
         out.get("error").is_none(),
-        "rune create_invoice failed: {out}"
+        "rune create_draft_invoice failed: {out}"
     );
 
     let draft = DraftInvoiceEntity::find()

@@ -29,9 +29,7 @@ impl MigrationTrait for Migration {
             .await?;
             exec_sql(
                 manager,
-                &format!(
-                    "ALTER TABLE {table} ADD COLUMN qty_unit text NOT NULL DEFAULT 'Number'"
-                ),
+                &format!("ALTER TABLE {table} ADD COLUMN qty_unit text NOT NULL DEFAULT 'Number'"),
             )
             .await?;
         }
@@ -40,8 +38,16 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         for table in LINE_TABLES {
-            exec_sql(manager, &format!("ALTER TABLE {table} DROP COLUMN qty_kind")).await?;
-            exec_sql(manager, &format!("ALTER TABLE {table} DROP COLUMN qty_unit")).await?;
+            exec_sql(
+                manager,
+                &format!("ALTER TABLE {table} DROP COLUMN qty_kind"),
+            )
+            .await?;
+            exec_sql(
+                manager,
+                &format!("ALTER TABLE {table} DROP COLUMN qty_unit"),
+            )
+            .await?;
         }
         Ok(())
     }

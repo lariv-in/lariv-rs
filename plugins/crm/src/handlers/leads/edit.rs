@@ -8,7 +8,8 @@ use lariv_core::http::Cap;
 use lariv_core::web::{
     Htmx, html_built_page_with_slots, respond_create_modal_done, respond_edit_modal_done,
 };
-use lariv_plugin_contacts::scope::{contact_display_label, find_contact_scoped};
+use lariv_plugin_customer::entities::customer::Entity as CustomerEntity;
+use lariv_plugin_customer::logic::display_name;
 use lariv_plugin_users::lookup::user_display_label;
 use lariv_plugin_users::middleware::RequireAuth;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
@@ -59,8 +60,8 @@ pub async fn edit_get(
     let page = LeadEditModalPage {
         id: lead.id,
         form_name: q.form_name(),
-        contact_id: lead.contact_id,
-        contact_display: contact_display_label(&state.db, lead.contact_id).await,
+        customer_id: lead.customer_id,
+        customer_display: display_name(&state.db, lead.customer_id).await,
         source: source_value(lead.source),
         notes: lead.notes.unwrap_or_default(),
         tags: load_tag_items_for_lead(&state.db, lead.id).await,
@@ -97,8 +98,8 @@ async fn lead_edit_modal_error(
     let page = LeadEditModalPage {
         id,
         form_name: q.form_name(),
-        contact_id: form.lead.contact_id,
-        contact_display: contact_display_label(db, form.lead.contact_id).await,
+        customer_id: form.lead.customer_id,
+        customer_display: display_name(db, form.lead.customer_id).await,
         source: form.lead.source.clone(),
         notes: form.lead.notes.clone(),
         tags: tag_items_from_ids(db, &form.lead.tags).await,
@@ -124,10 +125,14 @@ pub async fn edit_post(
     if find_lead_scoped(&state.db, id).await.is_none() {
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     }
-    if form.lead.contact_id <= 0
-        || find_contact_scoped(&state.db, form.lead.contact_id)
-            .await
-            .is_none()
+    if form.lead.customer_id <= 0
+        || lariv_core::web::opt_or_log(
+            CustomerEntity::find_by_id(form.lead.customer_id)
+                .one(&state.db)
+                .await,
+            "find by id",
+        )
+        .is_none()
     {
         return lead_edit_modal_error(
             &state.db,
@@ -136,7 +141,7 @@ pub async fn edit_post(
             id,
             &q,
             &form,
-            "contact is required",
+            "customer is required",
         )
         .await;
     }

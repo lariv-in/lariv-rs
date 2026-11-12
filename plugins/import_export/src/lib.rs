@@ -1,16 +1,19 @@
-//! XLSX data import for Lariv.
+//! XLSX import and export for Lariv.
 //!
-//! Reads workbooks produced by the export plugin and upserts registered catalog
-//! tables by primary key, preserving IDs and FK order.
+//! Export downloads catalog tables as a workbook. Import reads that workbook
+//! and upserts the same tables by primary key, preserving IDs and FK order.
 //!
 //! # Templates
 //!
 //! - [`templates::ImportPage`] — upload form and import result.
+//! - [`templates::ExportPage`] — table selector and download.
 //!
 //! # Routes
 //!
-//! - `/import` — GET upload screen ([`handlers::page`]).
-//! - `/import` — POST multipart workbook ([`handlers::import_post`]).
+//! - `/import` — GET upload screen ([`handlers::import::page`]).
+//! - `/import` — POST multipart workbook ([`handlers::import::import_post`]).
+//! - `/export` — table selection screen ([`handlers::export::page`]).
+//! - `/export/download` — POST download of selected models ([`handlers::export::download`]).
 //!
 //! Uploads share [`lariv_core::http::REQUEST_BODY_LIMIT_BYTES`] (50 MiB). Without that
 //! layer, Axum's 2 MiB multipart default truncates the body mid-parse.
@@ -36,15 +39,19 @@ use lariv_core::traits::{
     get::GetByCapTag,
 };
 
-use state::ImportState;
+use state::ImportExportState;
 
-/// Plugin identity tag for import routes/templates/state.
-pub struct ImportPluginTag;
+/// Plugin identity tag for import/export routes, templates, and state.
+pub struct ImportExportPluginTag;
 
-define_passthrough_cap!(ImportStateCap, ImportPluginTag, ImportState);
+define_passthrough_cap!(
+    ImportExportStateCap,
+    ImportExportPluginTag,
+    ImportExportState
+);
 
 define_plugin_install! {
-    plugin: ImportPluginTag;
+    plugin: ImportExportPluginTag;
     steps: [
         apps(apps::Hook),
         templates(templates::Hook),
@@ -55,19 +62,19 @@ define_plugin_install! {
     ]
 }
 
-/// Attaches [`ImportState`] (DB connection) at app mount.
+/// Attaches [`ImportExportState`] (DB connection) at app mount.
 #[derive(Clone, Copy, Default)]
 pub struct StateHook;
 
 impl<L, DbIdx, TagProof> AttachState<L, (DbIdx, TagProof)> for StateHook
 where
     L: GetByCapTag<DbTag, DbIdx, Value = DbCap>,
-    L: HList + CapTagAbsent<ImportPluginTag, TagProof>,
+    L: HList + CapTagAbsent<ImportExportPluginTag, TagProof>,
 {
-    type Output = HCons<ImportStateCap, L>;
+    type Output = HCons<ImportExportStateCap, L>;
 
     fn attach_state(app: App<L>) -> App<Self::Output> {
         let conn = app.get_capability::<DbTag, DbIdx>().items.conn.clone();
-        app.add_capability(CapStore::with_items(ImportState::new(conn)))
+        app.add_capability(CapStore::with_items(ImportExportState::new(conn)))
     }
 }

@@ -19,7 +19,7 @@ use lariv_plugin_contacts::entities::{
 use lariv_plugin_users::middleware::RequireAuth;
 use sea_orm::EntityTrait;
 
-use lariv_plugin_customer::logic::{self as customer, display_name};
+use lariv_plugin_customer::logic::{self as customer, CustomerStateUpdate, display_name};
 
 use crate::customer_ui::{CustomerCreateModalPage, CustomerRow, CustomerSelectPage};
 use crate::forms::CustomerForm;
@@ -112,7 +112,14 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<CustomerForm>,
 ) -> Response {
-    match customer::create_for_party(&state.db, form.company_id, form.individual_id).await {
+    match customer::create_for_party(
+        &state.db,
+        form.company_id,
+        form.individual_id,
+        CustomerStateUpdate::Keep,
+    )
+    .await
+    {
         Ok(id) => {
             let name = display_name(&state.db, id).await;
             respond_create_modal_done_fk(

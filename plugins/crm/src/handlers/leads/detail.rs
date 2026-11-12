@@ -5,7 +5,6 @@ use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::datetime::format_optional_date;
 use lariv_core::http::Cap;
 use lariv_core::web::{Htmx, html_built_page_or_app_layout};
-use lariv_plugin_contacts::scope::contact_display_label;
 use lariv_plugin_users::lookup::user_display_label;
 use lariv_plugin_users::middleware::RequireAuth;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
@@ -19,8 +18,8 @@ use crate::{
     keys::LEAD_UPDATES,
     routes::{ConvertedLeadDetailRouteTag, FailedLeadDetailRouteTag, LeadDefaultRouteTag},
     scope::{
-        company_display_label, find_active_lead, find_converted_lead_scoped,
-        find_failed_lead_scoped, find_lead_scoped, lead_contact_view,
+        find_active_lead, find_converted_lead_scoped, find_failed_lead_scoped, find_lead_scoped,
+        lead_party_view,
     },
     state::CrmState,
     templates::{LeadConvertDetailPage, LeadDetailPage, LeadFailDetailPage},
@@ -59,16 +58,17 @@ pub async fn detail(
         }
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     }
-    let view = lead_contact_view(&state.db, lead.contact_id).await;
+    let view = lead_party_view(&state.db, lead.customer_id).await;
     let page = LeadDetailPage {
         id: lead.id,
         display_name: if view.display_name.is_empty() {
             format!("Lead #{}", lead.id)
         } else {
-            view.display_name
+            view.display_name.clone()
         },
         contact_id: view.contact_id,
-        contact_display: contact_display_label(&state.db, view.contact_id).await,
+        contact_display: view.display_name.clone(),
+        customer_href: view.href.clone(),
         company_id: view.company_id,
         company: view.company,
         email: view.email,
@@ -96,10 +96,7 @@ pub async fn converted_detail(
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     };
     let lead = find_lead_scoped(&state.db, converted.lead_id).await;
-    let view = match &lead {
-        Some(l) => lead_contact_view(&state.db, l.contact_id).await,
-        None => Default::default(),
-    };
+    let view = lead_party_view(&state.db, converted.customer_id).await;
     let display_name = if view.display_name.is_empty() {
         format!("Lead #{}", converted.lead_id)
     } else {
@@ -113,10 +110,11 @@ pub async fn converted_detail(
             .converted_at
             .format("%d/%m/%Y %H:%M UTC")
             .to_string(),
-        company_id: converted.company_id,
-        contact_id: converted.contact_id,
-        company: company_display_label(&state.db, converted.company_id).await,
-        contact_display: contact_display_label(&state.db, converted.contact_id).await,
+        company_id: view.company_id,
+        contact_id: view.contact_id,
+        company: view.company.clone(),
+        contact_display: view.display_name.clone(),
+        customer_href: view.href.clone(),
         email: view.email,
         source: lead
             .as_ref()
@@ -154,10 +152,7 @@ pub async fn failed_detail(
         return Redirect::to(&LeadDefaultRouteTag.url()).into_response();
     };
     let lead = find_lead_scoped(&state.db, failed.lead_id).await;
-    let view = match &lead {
-        Some(l) => lead_contact_view(&state.db, l.contact_id).await,
-        None => Default::default(),
-    };
+    let view = lead_party_view(&state.db, failed.customer_id).await;
     let display_name = if view.display_name.is_empty() {
         format!("Lead #{}", failed.lead_id)
     } else {
@@ -170,7 +165,8 @@ pub async fn failed_detail(
         failed_at: failed.failed_at.format("%d/%m/%Y %H:%M UTC").to_string(),
         reason: failed.reason.unwrap_or_default(),
         contact_id: view.contact_id,
-        contact_display: contact_display_label(&state.db, view.contact_id).await,
+        contact_display: view.display_name.clone(),
+        customer_href: view.href.clone(),
         company_id: view.company_id,
         company: view.company,
         email: view.email,

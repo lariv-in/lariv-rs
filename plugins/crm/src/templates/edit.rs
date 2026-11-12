@@ -31,8 +31,8 @@ use super::create::lead_form_inputs;
 pub struct LeadEditModalPage {
     pub id: i64,
     pub form_name: String,
-    pub contact_id: i64,
-    pub contact_display: String,
+    pub customer_id: i64,
+    pub customer_display: String,
     pub source: String,
     pub notes: String,
     pub tags: Vec<ManyToManyItem>,
@@ -48,8 +48,8 @@ impl RenderTemplate for LeadEditModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let delete_url = LeadDeleteGetRouteTag::new(self.id).url();
         let mut inputs = lead_form_inputs(
-            self.contact_id,
-            &self.contact_display,
+            self.customer_id,
+            &self.customer_display,
             &self.source,
             &self.notes,
             &self.tags,
@@ -113,7 +113,7 @@ impl RenderTemplate for ConvertLeadModalPage {
             html! {
                 h3 class="font-bold text-lg mb-4" { "Convert lead" }
                 p class="mb-4 text-sm opacity-80" {
-                    "Convert this lead using its existing company and contact."
+                    "Convert this lead using its customer."
                 }
                 (form(&CsrfToken::current(), FormOpts {
                     attrs: form_hx_post_url(LEAD_CONVERT_MODAL, &modal_create_post_url(

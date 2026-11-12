@@ -90,7 +90,7 @@
 //! | LLM assistant | [`plugins::llm_assistant`] | Gemini chat, skills, WebSocket |
 //! | OTP recovery | [`plugins::otp`] | SMS/email one-time password recovery |
 //! | PWA | [`plugins::pwa`] | Manifest, service worker, offline page |
-//! | Export | [`plugins::export`] | XLSX data export UI |
+//! | Import / Export | [`plugins::import_export`] | XLSX import and export UI |
 //! | Signup | [`plugins::signup`] | Public self-service signup |
 //!
 //! Proc macros expand to `::lariv_core::…` paths; this crate aliases itself so those paths resolve in-tree.

@@ -1,4 +1,4 @@
-//! Parse export-plugin XLSX workbooks into catalog-aligned sheets.
+//! Parse export workbooks into catalog-aligned sheets.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::io::Cursor;
@@ -205,7 +205,6 @@ mod tests {
         assert!(err.contains("empty"), "{err}");
     }
 
-    #[cfg(feature = "plugin-export")]
     #[test]
     fn parse_workbook_skips_unknown_sheets() {
         use rust_xlsxwriter::Workbook;

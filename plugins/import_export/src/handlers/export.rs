@@ -8,7 +8,7 @@ use chrono::Utc;
 use serde::Deserialize;
 
 use crate::routes::ExportPageRouteTag;
-use crate::state::ExportState;
+use crate::state::ImportExportState;
 use crate::templates::ExportPage;
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::export::ExportCapability;
@@ -17,7 +17,7 @@ use lariv_core::http::Cap;
 use lariv_core::web::{Htmx, html_built_page_or_app_layout};
 use lariv_plugin_users::middleware::RequireAuth;
 
-use super::xlsx;
+use crate::xlsx;
 
 #[derive(Debug, Deserialize)]
 pub struct ExportDownloadForm {
@@ -63,7 +63,7 @@ pub async fn download_get(RequireAuth(_ctx): RequireAuth) -> axum::response::Red
 /// HTTP handler: `download`.
 pub async fn download(
     Cap(export): Cap<ExportCapability>,
-    Cap(state): Cap<ExportState>,
+    Cap(state): Cap<ImportExportState>,
     RequireAuth(_ctx): RequireAuth,
     HtmlFormBody(form): HtmlFormBody<ExportDownloadForm>,
 ) -> Response {

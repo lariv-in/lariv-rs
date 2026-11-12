@@ -40,8 +40,8 @@ pub const CUSTOMER_CREATE: CreateModal<CustomerCreateGetRouteTag, CustomerCreate
     };
 
 pub(crate) fn lead_form_inputs(
-    contact_id: i64,
-    contact_display: &str,
+    customer_id: i64,
+    customer_display: &str,
     source: &str,
     notes: &str,
     tags: &[ManyToManyItem],
@@ -49,12 +49,12 @@ pub(crate) fn lead_form_inputs(
     assigned_to_display: &str,
     order_expected_date: &str,
 ) -> Markup {
-    let contact_id_s = fk_value(contact_id);
+    let customer_id_s = fk_value(customer_id);
     let assigned_to_id_s = fk_value(assigned_to_id);
     LeadForm::render_inputs(
         &FormCtx::form::<LeadForm>(CsrfToken::current())
-            .value(LeadFormField::ContactId, contact_id_s.as_str())
-            .display(LeadFormField::ContactId, contact_display)
+            .value(LeadFormField::CustomerId, customer_id_s.as_str())
+            .display(LeadFormField::CustomerId, customer_display)
             .value(LeadFormField::Source, source)
             .value(LeadFormField::Notes, notes)
             .m2m(LeadFormField::Tags, tags)
@@ -69,8 +69,8 @@ pub(crate) fn lead_form_inputs(
 pub struct LeadCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
-    pub contact_id: i64,
-    pub contact_display: String,
+    pub customer_id: i64,
+    pub customer_display: String,
     pub source: String,
     pub notes: String,
     pub tags: Vec<ManyToManyItem>,
@@ -95,8 +95,8 @@ impl RenderTemplate for LeadCreateModalPage {
                     )),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                     inputs: lead_form_inputs(
-                        self.contact_id,
-                        &self.contact_display,
+                        self.customer_id,
+                        &self.customer_display,
                         &self.source,
                         &self.notes,
                         &self.tags,

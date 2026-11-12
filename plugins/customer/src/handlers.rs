@@ -9,8 +9,9 @@ use lariv_plugin_users::middleware::RequireAuth;
 use sea_orm::EntityTrait;
 
 use crate::forms::CustomerForm;
+use crate::gst_state;
 use crate::keys::CUSTOMER_CREATE_MODAL;
-use crate::logic;
+use crate::logic::{self, CustomerStateUpdate};
 use crate::state::CustomerState;
 use crate::templates::CustomerCreateModalPage;
 use lariv_core::components::{SharedChromeFolder, SlotCtx};
@@ -35,6 +36,7 @@ pub async fn create_get(
         company_display: String::new(),
         individual_id: 0,
         individual_display: String::new(),
+        state: String::new(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -48,28 +50,46 @@ pub async fn create_post(
     Query(q): Query<ModalFormQuery>,
     HtmlFormBody(form): HtmlFormBody<CustomerForm>,
 ) -> Response {
-    match logic::create_for_party(&state.db, form.company_id, form.individual_id).await {
+    let parsed_state = match gst_state::parse_state(&form.state) {
+        Ok(value) => CustomerStateUpdate::Set(value),
+        Err(error) => {
+            return customer_create_error(&state.db, &chrome, &ctx, &q, &form, error).await;
+        }
+    };
+    match logic::create_for_party(&state.db, form.company_id, form.individual_id, parsed_state)
+        .await
+    {
         Ok(_id) => respond_create_modal_done(
             &htmx,
             CUSTOMER_CREATE_MODAL,
             &q.refresh_table(),
             CUSTOMERS_LIST_PATH,
         ),
-        Err(error) => {
-            let (company_display, individual_display) =
-                party_displays(&state.db, form.company_id, form.individual_id).await;
-            let page = CustomerCreateModalPage {
-                form_name: q.form_name(),
-                refresh_table: q.refresh_table(),
-                company_id: form.company_id,
-                company_display,
-                individual_id: form.individual_id,
-                individual_display,
-                error,
-            };
-            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
-        }
+        Err(error) => customer_create_error(&state.db, &chrome, &ctx, &q, &form, error).await,
     }
+}
+
+async fn customer_create_error(
+    db: &sea_orm::DatabaseConnection,
+    chrome: &SharedChromeFolder,
+    ctx: &lariv_plugin_users::state::AuthContext,
+    q: &ModalFormQuery,
+    form: &CustomerForm,
+    error: String,
+) -> Response {
+    let (company_display, individual_display) =
+        party_displays(db, form.company_id, form.individual_id).await;
+    let page = CustomerCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
+        company_id: form.company_id,
+        company_display,
+        individual_id: form.individual_id,
+        individual_display,
+        state: form.state.clone(),
+        error,
+    };
+    html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx)).into_response()
 }
 
 async fn party_displays(

@@ -12,7 +12,7 @@ use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::state::InvoicesState;
 
-/// HTTP handler: download every invoice type as one workbook.
+/// HTTP handler: download the posted-invoice GST workbook.
 pub async fn download(Cap(state): Cap<InvoicesState>, RequireAuth(_ctx): RequireAuth) -> Response {
     let bytes = match crate::xlsx::build_invoice_workbook(&state.db).await {
         Ok(bytes) => bytes,

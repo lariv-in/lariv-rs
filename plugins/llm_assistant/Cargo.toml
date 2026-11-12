@@ -21,6 +21,7 @@ async-imap = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }
 base64 = { workspace = true }
+calamine = { workspace = true, features = ["chrono"] }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
 compress-tools = { workspace = true }
@@ -34,6 +35,7 @@ libc = { workspace = true }
 mailparse = { workspace = true }
 maud = { workspace = true }
 mime_guess = { workspace = true }
+polars = { version = "0.55", features = ["avro", "decompress", "dtype-full", "ipc", "ipc_streaming", "json", "lazy", "parquet", "sql", "strings"] }
 reqwest = { workspace = true }
 rune = { workspace = true }
 rustls = { workspace = true }
@@ -52,6 +54,9 @@ tracing = { workspace = true }
 typst = { workspace = true }
 uuid = { workspace = true }
 zip = { workspace = true }
+
+[dev-dependencies]
+rust_xlsxwriter = { workspace = true }
 
 [lints]
 workspace = true

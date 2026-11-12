@@ -94,11 +94,21 @@ pub async fn require_existing<C: ConnectionTrait>(db: &C, customer_id: i64) -> R
     }
 }
 
+/// How a write treats `customers.state`.
+#[derive(Debug, Clone)]
+pub enum CustomerStateUpdate {
+    /// Leave a stored state as it is. A new row stays blank.
+    Keep,
+    /// Store this code, or clear it when `None`.
+    Set(Option<String>),
+}
+
 /// Exactly one of `company_id` and `individual_id` is positive.
 pub async fn create_for_party<C: ConnectionTrait>(
     db: &C,
     company_id: i64,
     individual_id: i64,
+    state: CustomerStateUpdate,
 ) -> Result<i64, String> {
     let company = company_id > 0;
     let individual = individual_id > 0;
@@ -106,9 +116,9 @@ pub async fn create_for_party<C: ConnectionTrait>(
         return Err("select a company or a contact".to_string());
     }
     if individual {
-        find_or_insert(db, true, None, Some(individual_id)).await
+        find_or_insert(db, true, None, Some(individual_id), state).await
     } else {
-        find_or_insert(db, false, Some(company_id), None).await
+        find_or_insert(db, false, Some(company_id), None, state).await
     }
 }
 
@@ -248,15 +258,22 @@ async fn find_or_insert<C: ConnectionTrait>(
     is_individual: bool,
     company_id: Option<i64>,
     individual_id: Option<i64>,
+    state: CustomerStateUpdate,
 ) -> Result<i64, String> {
     if let Some(existing) = find_customer(db, is_individual, company_id, individual_id).await? {
+        apply_state(db, existing, state).await?;
         return Ok(existing);
     }
     let now = chrono::Utc::now();
+    let state_value = match &state {
+        CustomerStateUpdate::Set(value) => value.clone(),
+        CustomerStateUpdate::Keep => None,
+    };
     let inserted = customer::ActiveModel {
         is_individual: sea_orm::ActiveValue::Set(is_individual),
         company_id: sea_orm::ActiveValue::Set(company_id),
         individual_id: sea_orm::ActiveValue::Set(individual_id),
+        state: sea_orm::ActiveValue::Set(state_value),
         created_at: sea_orm::ActiveValue::Set(Some(now)),
         updated_at: sea_orm::ActiveValue::Set(Some(now)),
         ..Default::default()
@@ -265,10 +282,147 @@ async fn find_or_insert<C: ConnectionTrait>(
     .await;
     match inserted {
         Ok(row) => Ok(row.id),
-        Err(err) => find_customer(db, is_individual, company_id, individual_id)
-            .await?
-            .ok_or_else(|| err.to_string()),
+        Err(err) => match find_customer(db, is_individual, company_id, individual_id).await? {
+            Some(id) => {
+                apply_state(db, id, state).await?;
+                Ok(id)
+            }
+            None => Err(err.to_string()),
+        },
     }
+}
+
+async fn apply_state<C: ConnectionTrait>(
+    db: &C,
+    customer_id: i64,
+    state: CustomerStateUpdate,
+) -> Result<(), String> {
+    let CustomerStateUpdate::Set(value) = state else {
+        return Ok(());
+    };
+    let existing = CustomerEntity::find_by_id(customer_id)
+        .one(db)
+        .await
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "customer not found".to_string())?;
+    let now = chrono::Utc::now();
+    let mut am: customer::ActiveModel = existing.into();
+    am.state = sea_orm::ActiveValue::Set(value);
+    am.updated_at = sea_orm::ActiveValue::Set(Some(now));
+    am.update(db).await.map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+/// Point an existing customer at exactly one company or contact.
+pub async fn update_for_party<C: ConnectionTrait>(
+    db: &C,
+    customer_id: i64,
+    company_id: i64,
+    individual_id: i64,
+    state: CustomerStateUpdate,
+) -> Result<i64, String> {
+    if customer_id <= 0 {
+        return Err("customer not found".to_string());
+    }
+    let company = company_id > 0;
+    let individual = individual_id > 0;
+    if company == individual {
+        return Err("select a company or a contact".to_string());
+    }
+    let existing = CustomerEntity::find_by_id(customer_id)
+        .one(db)
+        .await
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "customer not found".to_string())?;
+    if individual {
+        let found = ContactEntity::find_by_id(individual_id)
+            .one(db)
+            .await
+            .map_err(|err| err.to_string())?;
+        if found.is_none() {
+            return Err("contact not found".to_string());
+        }
+    } else {
+        let found = CompanyEntity::find_by_id(company_id)
+            .one(db)
+            .await
+            .map_err(|err| err.to_string())?;
+        if found.is_none() {
+            return Err("company not found".to_string());
+        }
+    }
+    let (is_individual, company_set, individual_set) = if individual {
+        (true, None, Some(individual_id))
+    } else {
+        (false, Some(company_id), None)
+    };
+    if let Some(other) = find_customer(db, is_individual, company_set, individual_set).await?
+        && other != customer_id
+    {
+        return Err("customer already exists for that party".to_string());
+    }
+    let now = chrono::Utc::now();
+    let mut am: customer::ActiveModel = existing.into();
+    am.is_individual = sea_orm::ActiveValue::Set(is_individual);
+    am.company_id = sea_orm::ActiveValue::Set(company_set);
+    am.individual_id = sea_orm::ActiveValue::Set(individual_set);
+    if let CustomerStateUpdate::Set(value) = state {
+        am.state = sea_orm::ActiveValue::Set(value);
+    }
+    am.updated_at = sea_orm::ActiveValue::Set(Some(now));
+    am.update(db).await.map_err(|err| err.to_string())?;
+    Ok(customer_id)
+}
+
+pub async fn delete_customer<C: ConnectionTrait>(db: &C, customer_id: i64) -> Result<(), String> {
+    if customer_id <= 0 {
+        return Err("delete_customer requires a positive customer id".to_string());
+    }
+    let found = CustomerEntity::find_by_id(customer_id)
+        .one(db)
+        .await
+        .map_err(|err| err.to_string())?;
+    if found.is_none() {
+        return Err(format!("customer {customer_id} not found"));
+    }
+    CustomerEntity::delete_by_id(customer_id)
+        .exec(db)
+        .await
+        .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+/// Customer row plus its party display name.
+pub struct CustomerRecord {
+    pub id: i64,
+    pub name: String,
+    pub is_individual: bool,
+    pub company_id: Option<i64>,
+    pub individual_id: Option<i64>,
+    pub state: Option<String>,
+}
+
+pub async fn load_customer(
+    db: &DatabaseConnection,
+    customer_id: i64,
+) -> Result<CustomerRecord, String> {
+    if customer_id <= 0 {
+        return Err("get_customer requires a positive customer id".to_string());
+    }
+    let row = CustomerEntity::find_by_id(customer_id)
+        .one(db)
+        .await
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| format!("customer {customer_id} not found"))?;
+    let name = party_name(db, &row).await;
+    Ok(CustomerRecord {
+        id: row.id,
+        name,
+        is_individual: row.is_individual,
+        company_id: row.company_id,
+        individual_id: row.individual_id,
+        state: row.state,
+    })
 }
 
 async fn find_customer<C: ConnectionTrait>(

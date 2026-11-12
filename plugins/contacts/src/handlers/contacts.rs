@@ -3,12 +3,9 @@ use axum::{
     http::Uri,
     response::{IntoResponse, Redirect, Response},
 };
-use chrono::Utc;
 use lariv_plugin_users::role_authorization::scope_allowed;
 use sea_orm::sea_query::Condition;
-use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
-};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
 
 use lariv_core::components::picker::respond_picker_select;
 use lariv_core::components::{FilterClauseView, ObjectList, SharedChromeFolder, SlotCtx};
@@ -36,6 +33,7 @@ use crate::{
         CONTACT_CREATE_MODAL, CONTACT_DELETE_MODAL, CONTACT_EDIT_MODAL, CONTACT_SELECT_MODAL,
         CONTACT_SELECT_TABLE, CONTACT_TABLE,
     },
+    logic::{self, ContactWrite},
     routes::{CompanyFkSelectRouteTag, ContactDefaultRouteTag, ContactDetailRouteTag},
     scope::{apply_contact_sort, company_display_label, find_company_scoped, find_contact_scoped},
     state::ContactsState,
@@ -65,6 +63,16 @@ pub struct ContactSelectQuery {
 
 fn checkbox_on(raw: &str) -> bool {
     raw == "on" || raw == "true" || raw == "1"
+}
+
+fn contact_write(form: &ContactForm, company_id: Option<i64>) -> ContactWrite {
+    ContactWrite {
+        company_id,
+        name: form.name.clone(),
+        email: opt_string(form.email.clone()),
+        phone: opt_string(form.phone.clone()),
+        is_primary: checkbox_on(&form.is_primary),
+    }
 }
 
 fn contact_fields() -> Vec<FilterField> {
@@ -306,18 +314,7 @@ pub async fn create_post(
                 .into_response();
         }
     };
-    let now = Utc::now();
-    let model = contact::ActiveModel {
-        id: Default::default(),
-        created_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        company_id: Set(resolved),
-        name: Set(form.name.clone()),
-        email: Set(opt_string(form.email.clone())),
-        phone: Set(opt_string(form.phone.clone())),
-        is_primary: Set(checkbox_on(&form.is_primary)),
-    };
-    match model.insert(&state.db).await {
+    match logic::create_contact(&state.db, contact_write(&form, resolved)).await {
         Ok(saved) => {
             let display = saved.display_name();
             let company_id = saved.company_id.unwrap_or(0);
@@ -416,9 +413,9 @@ pub async fn edit_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<ContactForm>,
 ) -> Response {
-    let Some(existing) = find_contact_scoped(&state.db, id).await else {
+    if find_contact_scoped(&state.db, id).await.is_none() {
         return Redirect::to(&contacts_list_url()).into_response();
-    };
+    }
     let company_id = form.company_id;
     let resolved = match resolve_optional_company(&state.db, &ctx, company_id).await {
         Ok(id) => id,
@@ -426,15 +423,7 @@ pub async fn edit_post(
             return contact_edit_modal_error(&state.db, &chrome, &ctx, id, &q, &form, &error).await;
         }
     };
-    let now = Utc::now();
-    let mut am: contact::ActiveModel = existing.into();
-    am.updated_at = Set(Some(now));
-    am.company_id = Set(resolved);
-    am.name = Set(form.name.clone());
-    am.email = Set(opt_string(form.email.clone()));
-    am.phone = Set(opt_string(form.phone.clone()));
-    am.is_primary = Set(checkbox_on(&form.is_primary));
-    match am.update(&state.db).await {
+    match logic::update_contact(&state.db, id, contact_write(&form, resolved)).await {
         Ok(_) => respond_edit_modal_done(
             &htmx,
             CONTACT_EDIT_MODAL,

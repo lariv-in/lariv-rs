@@ -58,6 +58,21 @@ fn register(rune_env: &mut RuneEnvCapability) {
         "stat_file(#{ path: string } | #{ id: int }) -> #{ id: int, name: string, path: string, is_directory: bool, size: int, content_type: string }  // VNode metadata without reading file bytes",
         |_ctx| NativeBinding::Function(Arc::new(stat_file)),
     );
+    rune_env.register_contextual(
+        "read_table",
+        "read_table(#{ path: string } | #{ id: int }, format?: string, sheet?: string|int, n_rows?: int, columns?: [string], separator?: string, has_header?: bool, skip_rows?: int, try_parse_dates?: bool) -> #{ format: string, sheet: string|null, columns: [#{ name: string, dtype: string }], height: int, width: int, truncated: bool, rows: [#{ ... }] }  // read a tabular VNode with Polars (csv, tsv, json, ndjson, parquet, ipc, ipc_stream, avro) or calamine (xls, xlsx, xlsm, xlsb, xla, xlam, ods). Format is inferred from the file name unless format is set. Spreadsheets use the first sheet unless sheet is a name or a 0-based index. n_rows defaults to 500 and cannot exceed 10000",
+        |_ctx| NativeBinding::Function(Arc::new(read_table)),
+    );
+    rune_env.register_contextual(
+        "query_table",
+        "query_table(#{ path: string } | #{ id: int }, sql: string, format?: string, sheet?: string|int, n_rows?: int, columns?: [string], separator?: string, has_header?: bool, skip_rows?: int, try_parse_dates?: bool) -> #{ format: string, sheet: string|null, columns: [#{ name: string, dtype: string }], height: int, width: int, truncated: bool, rows: [#{ ... }] }  // read a tabular VNode, then run one Polars SQL statement. The table name is data (SELECT * FROM data). Reads the whole file; n_rows limits only the result (default 500, max 10000)",
+        |_ctx| NativeBinding::Function(Arc::new(query_table)),
+    );
+    rune_env.register_contextual(
+        "list_sheets",
+        "list_sheets(#{ path: string } | #{ id: int }, format?: string) -> #{ format: string, sheets: [string] }  // sheet names of a spreadsheet VNode (xls, xlsx, xlsm, xlsb, xla, xlam, ods), read with calamine",
+        |_ctx| NativeBinding::Function(Arc::new(list_sheets)),
+    );
 }
 
 fn move_vnode(
@@ -624,6 +639,90 @@ fn list_chat_attachments(
     json_to_rune(out)
 }
 
+fn read_table(
+    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    use lariv_core::rune_env::json_to_rune;
+
+    let (name, bytes, request) = load_table_source(
+        ctx,
+        args,
+        "read_table",
+        false,
+        crate::table::FileCheck::Table,
+    )?;
+    json_to_rune(crate::table::read_table_bytes(&name, &bytes, &request)?)
+}
+
+fn query_table(
+    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    use lariv_core::rune_env::json_to_rune;
+
+    let (name, bytes, request) = load_table_source(
+        ctx,
+        args,
+        "query_table",
+        true,
+        crate::table::FileCheck::Table,
+    )?;
+    json_to_rune(crate::table::query_table_bytes(&name, &bytes, &request)?)
+}
+
+fn list_sheets(
+    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    use lariv_core::rune_env::json_to_rune;
+
+    let (name, bytes, request) = load_table_source(
+        ctx,
+        args,
+        "list_sheets",
+        false,
+        crate::table::FileCheck::Sheets,
+    )?;
+    json_to_rune(crate::table::list_sheets_bytes(&name, &bytes, &request)?)
+}
+
+fn load_table_source(
+    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+    fn_name: &str,
+    sql_required: bool,
+    check: crate::table::FileCheck,
+) -> Result<(String, Vec<u8>, crate::table::TableRequest), String> {
+    use lariv_core::rune_env::{block_on_async, rune_to_json};
+    use lariv_plugin_filesystem::zip::read_file_bytes;
+
+    let value = args
+        .first()
+        .ok_or_else(|| format!("{fn_name} requires an object argument"))?;
+    let parsed = rune_to_json(value)?;
+    let vnode_ref = parse_vnode_ref(&parsed, fn_name)?;
+    let request = crate::table::TableRequest::parse(&parsed, fn_name, sql_required)?;
+    if let VNodeRef::Path(ref path) = vnode_ref {
+        let name = path
+            .rsplit(['/', '\\'])
+            .find(|part| !part.is_empty())
+            .unwrap_or(path.as_str());
+        request.check(name, check)?;
+    }
+    let db = ctx.db.clone();
+    let store = ctx.store.filestore_arc();
+    let loaded = block_on_async(async move {
+        let vnode = resolve_file_vnode(&db, vnode_ref).await?;
+        let name = vnode.name.clone();
+        let bytes = read_file_bytes(store.as_ref(), &vnode)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok::<_, String>((name, bytes))
+    })?;
+    Ok((loaded.0, loaded.1, request))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -663,6 +762,9 @@ mod tests {
             "unarchive_single",
             "list_archive_files",
             "stat_file",
+            "read_table",
+            "query_table",
+            "list_sheets",
         ] {
             assert!(
                 names.iter().any(|name| name == expected),
@@ -877,6 +979,66 @@ mod tests {
             .unwrap_or_default();
         assert!(
             error.contains("path or id is required"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn read_table_rejects_missing_path_or_id() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store, None);
+        let out = rune_engine::compile_and_run(&cap, &env_ctx, "read_table(#{})", &[]).await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("path or id is required"),
+            "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn query_table_rejects_missing_sql() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store, None);
+        let out = rune_engine::compile_and_run(
+            &cap,
+            &env_ctx,
+            r#"query_table(#{ path: "/data.csv" })"#,
+            &[],
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(error.contains("sql"), "unexpected error payload: {out}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn read_table_rejects_unknown_extension() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store, None);
+        let out = rune_engine::compile_and_run(
+            &cap,
+            &env_ctx,
+            r#"read_table(#{ path: "/notes.bin" })"#,
+            &[],
+        )
+        .await;
+        let error = out
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            error.contains("cannot infer"),
             "unexpected error payload: {out}"
         );
     }

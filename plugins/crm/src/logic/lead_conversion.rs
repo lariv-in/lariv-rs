@@ -9,15 +9,11 @@ use crate::entities::{
 use crate::logic::lead::err_if_lead_sealed;
 use crate::logic::lead_timeline::append_lead_timeline;
 use crate::scope::{find_active_lead, find_converted_lead_scoped, lead_active_condition};
-use lariv_plugin_contacts::entities::{
-    company::Entity as CompanyEntity, contact::Entity as ContactEntity,
-};
 use lariv_plugin_users::state::AuthContext;
 
 pub struct ConvertLeadResult {
     pub converted_id: i64,
-    pub company_id: i64,
-    pub contact_id: i64,
+    pub customer_id: i64,
 }
 
 pub async fn convert_lead(
@@ -29,21 +25,29 @@ pub async fn convert_lead(
         .await
         .ok_or_else(|| "lead not found or not active".to_string())?;
     err_if_lead_sealed(db, lead_id).await?;
+    write_conversion(db, &lead).await
+}
 
-    let contact_row = ContactEntity::find_by_id(lead.contact_id)
+pub async fn convert_active_lead<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    lead_id: i64,
+) -> Result<ConvertLeadResult, String> {
+    let lead = LeadEntity::find_by_id(lead_id)
+        .filter(lead_active_condition())
         .one(db)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "contact not found".to_string())?;
+        .ok_or_else(|| "lead not found or not active".to_string())?;
+    write_conversion(db, &lead).await
+}
 
-    let company_id = contact_row
-        .company_id
-        .ok_or_else(|| "company is required to convert a lead".to_string())?;
-    let company_row = CompanyEntity::find_by_id(company_id)
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "company not found".to_string())?;
+async fn write_conversion<C: sea_orm::ConnectionTrait>(
+    db: &C,
+    lead: &crate::entities::lead::Model,
+) -> Result<ConvertLeadResult, String> {
+    if lead.customer_id <= 0 {
+        return Err("customer is required to convert a lead".to_string());
+    }
 
     let now = Utc::now();
     let converted = converted_lead::ActiveModel {
@@ -51,8 +55,7 @@ pub async fn convert_lead(
         created_at: Set(Some(now)),
         lead_id: Set(lead.id),
         converted_at: Set(now),
-        company_id: Set(company_row.id),
-        contact_id: Set(contact_row.id),
+        customer_id: Set(lead.customer_id),
     }
     .insert(db)
     .await
@@ -62,8 +65,7 @@ pub async fn convert_lead(
 
     Ok(ConvertLeadResult {
         converted_id: converted.id,
-        company_id: company_row.id,
-        contact_id: contact_row.id,
+        customer_id: lead.customer_id,
     })
 }
 

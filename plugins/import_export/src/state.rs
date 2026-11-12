@@ -1,12 +1,12 @@
-//! Shared Axum state for import routes (DB connection).
+//! Shared Axum state for import and export routes (DB connection).
 use sea_orm::DatabaseConnection;
 
 #[derive(Clone)]
-pub struct ImportState {
+pub struct ImportExportState {
     pub db: DatabaseConnection,
 }
 
-impl ImportState {
+impl ImportExportState {
     pub fn new(db: DatabaseConnection) -> Self {
         Self { db }
     }

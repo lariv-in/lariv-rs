@@ -5,9 +5,11 @@ use lariv_core::components::{SharedChromeFolder, SlotCtx};
 use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::web::{Htmx, html_built_page_with_slots, respond_create_modal_done};
-use lariv_plugin_contacts::scope::{contact_display_label, find_contact_scoped};
+use lariv_plugin_customer::entities::customer::Entity as CustomerEntity;
+use lariv_plugin_customer::logic::display_name;
 use lariv_plugin_users::lookup::user_display_label;
 use lariv_plugin_users::middleware::RequireAuth;
+use sea_orm::EntityTrait;
 
 use crate::{
     forms::LeadForm,
@@ -19,6 +21,11 @@ use crate::{
 };
 
 use super::{lead_create_modal_page, lead_input_from_form};
+
+async fn customer_exists(db: &sea_orm::DatabaseConnection, id: i64) -> bool {
+    lariv_core::web::opt_or_log(CustomerEntity::find_by_id(id).one(db).await, "find by id")
+        .is_some()
+}
 
 pub async fn create_get(
     Cap(chrome): Cap<SharedChromeFolder>,
@@ -48,22 +55,18 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<LeadForm>,
 ) -> Response {
-    if form.contact_id <= 0
-        || find_contact_scoped(&state.db, form.contact_id)
-            .await
-            .is_none()
-    {
+    if form.customer_id <= 0 || !customer_exists(&state.db, form.customer_id).await {
         let page = lead_create_modal_page(
             &q,
-            form.contact_id,
-            contact_display_label(&state.db, form.contact_id).await,
+            form.customer_id,
+            display_name(&state.db, form.customer_id).await,
             form.source,
             form.notes,
             tag_items_from_ids(&state.db, &form.tags).await,
             form.assigned_to_id,
             user_display_label(&state.db, form.assigned_to_id).await,
             form.order_expected_date,
-            "contact is required".to_string(),
+            "customer is required".to_string(),
         );
         return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
             .into_response();
@@ -73,8 +76,8 @@ pub async fn create_post(
         Err(e) => {
             let page = lead_create_modal_page(
                 &q,
-                form.contact_id,
-                contact_display_label(&state.db, form.contact_id).await,
+                form.customer_id,
+                display_name(&state.db, form.customer_id).await,
                 form.source,
                 form.notes,
                 tag_items_from_ids(&state.db, &form.tags).await,
@@ -97,8 +100,8 @@ pub async fn create_post(
         Err(e) => {
             let page = lead_create_modal_page(
                 &q,
-                form.contact_id,
-                contact_display_label(&state.db, form.contact_id).await,
+                form.customer_id,
+                display_name(&state.db, form.customer_id).await,
                 form.source,
                 form.notes,
                 tag_items_from_ids(&state.db, &form.tags).await,
