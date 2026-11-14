@@ -2,6 +2,7 @@ use sea_orm_migration::prelude::*;
 
 mod m00001_gst_tax_components;
 mod m00002_invoice_gst_details;
+mod m00003_drop_invoice_gst_details;
 
 use super::FinanceGstExportTag;
 
@@ -14,6 +15,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m00001_gst_tax_components::Migration),
             Box::new(m00002_invoice_gst_details::Migration),
+            Box::new(m00003_drop_invoice_gst_details::Migration),
         ]
     }
 }

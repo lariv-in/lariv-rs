@@ -1,13 +1,11 @@
-//! GST component preferences and GSTR-1 JSON download.
+//! GST component preferences and posted-invoice Excel download.
 
 pub mod apps;
 pub mod details;
 pub mod export_action;
 pub mod forms;
-pub mod gstr1;
 pub mod handlers;
 pub mod invoice_addon;
-pub mod invoice_fields;
 pub mod invoice_script;
 pub mod migrations;
 pub mod routes;

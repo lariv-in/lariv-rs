@@ -1,4 +1,4 @@
-//! Invoice form, detail, and line-supply behavior for GST filing.
+//! Invoice line-supply behavior for GST filing.
 
 use async_trait::async_trait;
 use lariv_core::html_form::UrlencodedFields;
@@ -11,10 +11,8 @@ use lariv_plugin_finance_invoices::draft_form_addon::DraftInvoiceFormAddon;
 use lariv_plugin_finance_invoices::line_editor_addon::InvoiceLineEditorAddon;
 
 use crate::details::{
-    GstFormValues, GstTable, copy_gst, copy_line_supply, gst_from_form, line_table, load_gst,
-    name_is_gst_component, supply_for_line,
+    GstTable, copy_line_supply, line_table, name_is_gst_component, supply_for_line,
 };
-use crate::invoice_fields;
 
 pub fn register() {
     lariv_plugin_finance_invoices::draft_form_addon::register_draft_invoice_form_addon(
@@ -35,26 +33,15 @@ impl DraftInvoiceFormAddon for GstInvoiceAddon {
 
     async fn render_inputs(
         &self,
-        db: &DatabaseConnection,
-        draft_id: Option<i64>,
-        posted: Option<&UrlencodedFields>,
-    ) -> Markup {
-        render_for(db, GstTable::Draft, draft_id, posted, false).await
-    }
-
-    async fn render_bulk_inputs(
-        &self,
         _db: &DatabaseConnection,
-        posted: Option<&UrlencodedFields>,
+        _draft_id: Option<i64>,
+        _posted: Option<&UrlencodedFields>,
     ) -> Markup {
-        let values = posted
-            .map(values_from_fields)
-            .unwrap_or_else(GstFormValues::blank_bulk);
-        invoice_fields::render(&values, true)
+        Markup::default()
     }
 
-    async fn render_detail(&self, db: &DatabaseConnection, draft_id: i64) -> Markup {
-        detail_for(db, GstTable::Draft, draft_id).await
+    async fn render_detail(&self, _db: &DatabaseConnection, _draft_id: i64) -> Markup {
+        Markup::default()
     }
 
     async fn save(
@@ -63,7 +50,6 @@ impl DraftInvoiceFormAddon for GstInvoiceAddon {
         draft_id: i64,
         fields: &UrlencodedFields,
     ) -> Result<(), String> {
-        save_header(db, GstTable::Draft, draft_id, fields).await?;
         sync_line_supply(
             db,
             "draft_invoice_lines",
@@ -75,7 +61,7 @@ impl DraftInvoiceFormAddon for GstInvoiceAddon {
     }
 
     fn bulk_has_values(&self, fields: &UrlencodedFields) -> bool {
-        values_from_fields(fields).any_filled() || line_json_has_supply(fields)
+        line_json_has_supply(fields)
     }
 
     async fn on_posted(
@@ -103,37 +89,12 @@ impl DraftInvoiceFormAddon for GstInvoiceAddon {
         .await
     }
 
-    async fn render_quotation_inputs(
-        &self,
-        db: &DatabaseConnection,
-        quotation_id: Option<i64>,
-        posted: Option<&UrlencodedFields>,
-    ) -> Markup {
-        render_for(db, GstTable::Quotation, quotation_id, posted, false).await
-    }
-
-    async fn render_quotation_bulk_inputs(
-        &self,
-        _db: &DatabaseConnection,
-        posted: Option<&UrlencodedFields>,
-    ) -> Markup {
-        let values = posted
-            .map(values_from_fields)
-            .unwrap_or_else(GstFormValues::blank_bulk);
-        invoice_fields::render(&values, true)
-    }
-
-    async fn render_quotation_detail(&self, db: &DatabaseConnection, quotation_id: i64) -> Markup {
-        detail_for(db, GstTable::Quotation, quotation_id).await
-    }
-
     async fn save_quotation(
         &self,
         db: &DatabaseConnection,
         quotation_id: i64,
         fields: &UrlencodedFields,
     ) -> Result<(), String> {
-        save_header(db, GstTable::Quotation, quotation_id, fields).await?;
         sync_line_supply(
             db,
             "quotation_invoice_lines",
@@ -142,14 +103,6 @@ impl DraftInvoiceFormAddon for GstInvoiceAddon {
             fields,
         )
         .await
-    }
-
-    async fn render_posted_detail(&self, db: &DatabaseConnection, posted_id: i64) -> Markup {
-        detail_for(db, GstTable::Posted, posted_id).await
-    }
-
-    async fn render_cancelled_detail(&self, db: &DatabaseConnection, cancelled_id: i64) -> Markup {
-        detail_for(db, GstTable::Cancelled, cancelled_id).await
     }
 
     async fn on_cancelled(
@@ -267,68 +220,6 @@ impl InvoiceLineEditorAddon for GstInvoiceAddon {
     }
 }
 
-impl GstInvoiceAddon {
-    // Methods for the line editor live on the trait. Alpine needs `lineHasGstTax`.
-}
-
-async fn render_for(
-    db: &DatabaseConnection,
-    table: GstTable,
-    id: Option<i64>,
-    posted: Option<&UrlencodedFields>,
-    bulk: bool,
-) -> Markup {
-    let values = if let Some(posted) = posted {
-        values_from_fields(posted)
-    } else if let Some(id) = id {
-        load_gst(db, table, id)
-            .await
-            .map(|details| GstFormValues::from_details(&details))
-            .unwrap_or_else(|_| GstFormValues::blank())
-    } else {
-        GstFormValues::blank()
-    };
-    invoice_fields::render(&values, bulk)
-}
-
-async fn detail_for(db: &DatabaseConnection, table: GstTable, id: i64) -> Markup {
-    let summary = load_gst(db, table, id)
-        .await
-        .map(|details| details.summary())
-        .unwrap_or_default();
-    invoice_fields::detail(&summary)
-}
-
-async fn save_header<C: ConnectionTrait>(
-    db: &C,
-    table: GstTable,
-    id: i64,
-    fields: &UrlencodedFields,
-) -> Result<(), String> {
-    let details = gst_from_form(&values_from_fields(fields))?;
-    crate::details::upsert_gst(db, table, id, &details).await
-}
-
-fn values_from_fields(fields: &UrlencodedFields) -> GstFormValues {
-    GstFormValues {
-        gst_section: field(fields, "gst_section"),
-        gst_inv_typ: field(fields, "gst_inv_typ"),
-        reverse_charge: field(fields, "gst_reverse_charge"),
-        etin: field(fields, "gst_etin"),
-        supplier_gstin: field(fields, "gst_supplier_gstin"),
-        exp_typ: field(fields, "gst_exp_typ"),
-        shipping_bill_number: field(fields, "gst_shipping_bill_number"),
-        shipping_bill_date: field(fields, "gst_shipping_bill_date"),
-        port_code: field(fields, "gst_port_code"),
-        amendment_of_number: field(fields, "gst_amendment_of_number"),
-        amendment_of_date: field(fields, "gst_amendment_of_date"),
-    }
-}
-
-fn field(fields: &UrlencodedFields, name: &str) -> String {
-    fields.get_first(name).unwrap_or("").to_string()
-}
-
 fn line_json_has_supply(fields: &UrlencodedFields) -> bool {
     fields
         .get_first("invoice_lines_json")
@@ -429,26 +320,7 @@ async fn copy_pair<C: ConnectionTrait>(
     to: GstTable,
     to_id: i64,
 ) -> Result<(), String> {
-    copy_gst(db, from, from_id, to, to_id).await?;
     let (from_lines, from_col) = line_table(from);
     let (to_lines, to_col) = line_table(to);
     copy_line_supply(db, from_lines, from_col, from_id, to_lines, to_col, to_id).await
-}
-
-impl GstFormValues {
-    fn blank_bulk() -> Self {
-        Self {
-            gst_section: String::new(),
-            gst_inv_typ: String::new(),
-            reverse_charge: String::new(),
-            etin: String::new(),
-            supplier_gstin: String::new(),
-            exp_typ: String::new(),
-            shipping_bill_number: String::new(),
-            shipping_bill_date: String::new(),
-            port_code: String::new(),
-            amendment_of_number: String::new(),
-            amendment_of_date: String::new(),
-        }
-    }
 }

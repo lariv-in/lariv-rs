@@ -1,18 +1,15 @@
-//! GST fields on the invoice script API.
+//! GST supply on invoice script lines.
 
 use async_trait::async_trait;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use lariv_core::rune_env::{RuneEnvCapability, RuneEnvRegistrar};
 use lariv_plugin_finance_invoices::script_addon::{
     InvoiceScriptAddon, InvoiceScriptRecord, register_invoice_script_addon,
 };
 
-use crate::details::{
-    GstFormValues, GstTable, gst_from_form, load_gst, name_is_gst_component, supply_for_line,
-    upsert_gst,
-};
+use crate::details::{GstTable, name_is_gst_component, supply_for_line};
 
 pub fn register() {
     register_invoice_script_addon(&GstInvoiceScript);
@@ -37,7 +34,7 @@ impl InvoiceScriptAddon for GstInvoiceScript {
     }
 
     fn doc_suffix(&self) -> &'static str {
-        " GST return fields: gst_section, gst_inv_typ, reverse_charge, etin, supplier_gstin, exp_typ, shipping_bill_number, shipping_bill_date, port_code, amendment_of_number, amendment_of_date. Each line may set gst_supply (taxable, nil, exempt, nongst)."
+        " Each line may set gst_supply (taxable, nil, exempt, nongst)."
     }
 
     async fn after_write(
@@ -50,69 +47,10 @@ impl InvoiceScriptAddon for GstInvoiceScript {
         let Some(table) = gst_table(record) else {
             return Ok(());
         };
-        let Some(obj) = args.as_object() else {
+        let Some(lines) = args.get("lines").and_then(Value::as_array) else {
             return Ok(());
         };
-        let values = GstFormValues {
-            gst_section: json_string(obj.get("gst_section")),
-            gst_inv_typ: json_string(obj.get("gst_inv_typ")),
-            reverse_charge: match obj.get("reverse_charge") {
-                Some(Value::Bool(true)) => "true".to_string(),
-                Some(Value::String(value)) => value.clone(),
-                _ => String::new(),
-            },
-            etin: json_string(obj.get("etin")),
-            supplier_gstin: json_string(obj.get("supplier_gstin")),
-            exp_typ: json_string(obj.get("exp_typ")),
-            shipping_bill_number: json_string(obj.get("shipping_bill_number")),
-            shipping_bill_date: json_string(obj.get("shipping_bill_date")),
-            port_code: json_string(obj.get("port_code")),
-            amendment_of_number: json_string(obj.get("amendment_of_number")),
-            amendment_of_date: json_string(obj.get("amendment_of_date")),
-        };
-        let details = gst_from_form(&values)?;
-        upsert_gst(db, table, id, &details).await?;
-        if let Some(lines) = obj.get("lines").and_then(Value::as_array) {
-            sync_line_supply(db, table, id, lines).await?;
-        }
-        Ok(())
-    }
-
-    async fn enrich(
-        &self,
-        db: &DatabaseConnection,
-        record: InvoiceScriptRecord,
-        id: i64,
-    ) -> Result<Vec<(String, Value)>, String> {
-        let Some(table) = gst_table(record) else {
-            return Ok(Vec::new());
-        };
-        let details = load_gst(db, table, id).await?;
-        Ok(vec![
-            ("gst_section".into(), json!(details.gst_section)),
-            ("gst_inv_typ".into(), json!(details.gst_inv_typ)),
-            ("reverse_charge".into(), json!(details.reverse_charge)),
-            ("etin".into(), json_opt(details.etin)),
-            ("supplier_gstin".into(), json_opt(details.supplier_gstin)),
-            ("exp_typ".into(), json_opt(details.exp_typ)),
-            (
-                "shipping_bill_number".into(),
-                json_opt(details.shipping_bill_number),
-            ),
-            (
-                "shipping_bill_date".into(),
-                json_opt(details.shipping_bill_date.map(|date| date.to_string())),
-            ),
-            ("port_code".into(), json_opt(details.port_code)),
-            (
-                "amendment_of_number".into(),
-                json_opt(details.amendment_of_number),
-            ),
-            (
-                "amendment_of_date".into(),
-                json_opt(details.amendment_of_date.map(|date| date.to_string())),
-            ),
-        ])
+        sync_line_supply(db, table, id, lines).await
     }
 }
 
@@ -123,18 +61,6 @@ fn gst_table(record: InvoiceScriptRecord) -> Option<GstTable> {
         InvoiceScriptRecord::Posted => Some(GstTable::Posted),
         InvoiceScriptRecord::Cancelled => Some(GstTable::Cancelled),
     }
-}
-
-fn json_string(value: Option<&Value>) -> String {
-    match value {
-        Some(Value::String(text)) => text.clone(),
-        Some(Value::Number(number)) => number.to_string(),
-        _ => String::new(),
-    }
-}
-
-fn json_opt(value: Option<String>) -> Value {
-    value.map_or(Value::Null, Value::String)
 }
 
 async fn sync_line_supply(
