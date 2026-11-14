@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! Interactive LLM chat assistant powered by Gemini.
 //!
 //! Supports chat history, custom tool calling (web search, webpage fetch, URL file download, Typst PDF, Rune execution),
@@ -75,6 +74,7 @@ pub mod templates;
 pub mod tools;
 pub mod vnode_text;
 pub mod ws;
+mod xlsx;
 
 use std::sync::Arc;
 

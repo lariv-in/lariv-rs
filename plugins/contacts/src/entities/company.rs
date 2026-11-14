@@ -40,12 +40,16 @@ impl ActiveModelBehavior for ActiveModel {}
 impl Model {
     /// Address lines joined with Typst line breaks for invoice PDF templates.
     pub fn formatted_address_for_typst(&self) -> Option<String> {
+        let state_label = self
+            .state
+            .as_deref()
+            .map(|state| crate::gst_state::state_with_code(state, ""));
         let parts: Vec<&str> = [
             self.address_line_1.as_deref(),
             self.address_line_2.as_deref(),
             self.city.as_deref(),
             self.pincode.as_deref(),
-            self.state.as_deref(),
+            state_label.as_deref(),
         ]
         .into_iter()
         .flatten()

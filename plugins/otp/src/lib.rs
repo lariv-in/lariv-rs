@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! One-time password (OTP) delivery and verification.
 //!
 //! Integrates SMS (MSG91) and SMTP email to send six-digit OTP codes for

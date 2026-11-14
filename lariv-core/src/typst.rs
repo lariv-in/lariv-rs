@@ -1,6 +1,7 @@
 //! Compile Typst markup to PDF via the [`typst`](https://docs.rs/typst/latest/typst/) library.
 
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use typst::diag::FileResult;
 use typst::foundations::{Bytes, Datetime, Duration};
@@ -11,6 +12,31 @@ use typst_kit::datetime::Time;
 use typst_kit::files::{FileLoader, FileStore, FsRoot};
 use typst_kit::fonts::FontStore;
 use typst_syntax::{FileId, RootedPath, VirtualPath, VirtualRoot};
+
+/// Standard library and fonts, assigned once per process.
+///
+/// Scanning system fonts and building the Typst library is the expensive part
+/// of a compile. Project files and the clock stay on [`CompileWorld`]: each PDF
+/// has its own work directory, and a shared file cache would serve the first
+/// document's `main.typ` to the next one.
+static TYPST_WORLD: LazyLock<TypstWorld> = LazyLock::new(TypstWorld::new);
+
+struct TypstWorld {
+    library: LazyHash<Library>,
+    fonts: FontStore,
+}
+
+impl TypstWorld {
+    fn new() -> Self {
+        let mut fonts = FontStore::new();
+        fonts.extend(typst_kit::fonts::embedded());
+        fonts.extend(typst_kit::fonts::system());
+        Self {
+            library: LazyHash::new(Library::default()),
+            fonts,
+        }
+    }
+}
 
 const MAIN_FILE: &str = "main.typ";
 
@@ -62,8 +88,6 @@ fn typst_compile_in_blocking(work_dir: &Path, source: &str) -> Result<Vec<u8>, S
 }
 
 struct CompileWorld {
-    library: LazyHash<Library>,
-    fonts: FontStore,
     files: FileStore<ProjectFiles>,
     now: Time,
 }
@@ -85,13 +109,7 @@ impl CompileWorld {
             .map_err(|e| format!("virtualize typst main path: {e}"))?;
         let main = RootedPath::new(VirtualRoot::Project, vpath).intern();
 
-        let mut fonts = FontStore::new();
-        fonts.extend(typst_kit::fonts::embedded());
-        fonts.extend(typst_kit::fonts::system());
-
         Ok(Self {
-            library: LazyHash::new(Library::default()),
-            fonts,
             files: FileStore::new(ProjectFiles {
                 main,
                 project: FsRoot::new(root),
@@ -119,11 +137,11 @@ impl FileLoader for ProjectFiles {
 
 impl World for CompileWorld {
     fn library(&self) -> &LazyHash<Library> {
-        &self.library
+        &TYPST_WORLD.library
     }
 
     fn book(&self) -> &LazyHash<typst::text::FontBook> {
-        self.fonts.book()
+        TYPST_WORLD.fonts.book()
     }
 
     fn main(&self) -> FileId {
@@ -139,7 +157,7 @@ impl World for CompileWorld {
     }
 
     fn font(&self, index: usize) -> Option<Font> {
-        self.fonts.font(index)
+        TYPST_WORLD.fonts.font(index)
     }
 
     fn today(&self, offset: Option<Duration>) -> Option<Datetime> {

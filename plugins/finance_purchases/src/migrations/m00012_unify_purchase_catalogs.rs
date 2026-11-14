@@ -3,11 +3,12 @@
 //! Sales and purchase catalogs stay as distinct product rows (one journal template
 //! each). When a purchase catalog id already exists on `products`, insert a new
 //! product and remap purchase document lines to it.
-use lariv_core::db::migration_sql::{
-    self, FK_CANCELLED_PURCHASE_GOODS_LINE_PRODUCT, FK_CANCELLED_PURCHASE_SERVICE_LINE_SERVICE,
+use crate::foreign_keys::{
+    FK_CANCELLED_PURCHASE_GOODS_LINE_PRODUCT, FK_CANCELLED_PURCHASE_SERVICE_LINE_SERVICE,
     FK_DRAFT_PURCHASE_GOODS_LINE_PRODUCT, FK_DRAFT_PURCHASE_SERVICE_LINE_SERVICE,
-    FK_POSTED_PURCHASE_GOODS_LINE_PRODUCT, FK_POSTED_PURCHASE_SERVICE_LINE_SERVICE, exec_sql,
+    FK_POSTED_PURCHASE_GOODS_LINE_PRODUCT, FK_POSTED_PURCHASE_SERVICE_LINE_SERVICE,
 };
+use lariv_core::db::migration_sql::{self, exec_sql};
 
 use sea_orm_migration::prelude::*;
 

@@ -1,8 +1,8 @@
-use lariv_core::db::migration_sql::{
-    self, FK_QUOTATION_GOODS_LINE_PRODUCT, FK_QUOTATION_GOODS_LINE_TAX,
+use crate::foreign_keys::{
+    FK_QUOTATION_GOODS_LINE_PRODUCT, FK_QUOTATION_GOODS_LINE_TAX,
     FK_QUOTATION_SERVICE_LINE_SERVICE, FK_QUOTATION_SERVICE_LINE_TAX, FK_QUOTATIONS_CUSTOMER,
-    exec_sql,
 };
+use lariv_core::db::migration_sql::{self, exec_sql};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]

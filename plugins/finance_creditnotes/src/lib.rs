@@ -1,9 +1,10 @@
-#![feature(impl_trait_in_assoc_type)]
 //! Finance credit notes plugin.
 
+pub mod accounting_preferences_patch;
 pub mod accounting_sidebar;
 pub mod apps;
 pub mod entities;
+pub mod forms;
 pub mod handlers;
 pub mod keys;
 pub mod logic;

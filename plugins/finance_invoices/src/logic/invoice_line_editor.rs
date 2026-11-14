@@ -231,13 +231,16 @@ pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> St
         return default_lines_json();
     }
 
-    let mut rows = Vec::with_capacity(lines.len());
+    let mut values = Vec::with_capacity(lines.len());
     for ln in lines {
+        let line_id = ln.id;
         let has_formula = pricing::has_variable_pricing(&ln.variable_types);
         let variable_rows =
             variable_rows_for_line(&ln.variable_types, has_formula, &ln.variable_values);
-        let tax_ids = load_draft_line_tax_ids(db, ln.id).await.unwrap_or_default();
-        rows.push(DraftLineFormRow {
+        let tax_ids = load_draft_line_tax_ids(db, line_id)
+            .await
+            .unwrap_or_default();
+        let row = DraftLineFormRow {
             product_id: ln.product_id,
             quantity: decimal::decimal_display(ln.quantity),
             qty_kind: ln.qty_kind,
@@ -245,16 +248,32 @@ pub async fn draft_lines_form_json(db: &DatabaseConnection, draft_id: i64) -> St
             rate: decimal::decimal_display(ln.rate),
             product_label: ln.product_name.clone(),
             product_name: ln.product_name,
-            fk_slot: format!("InvoiceLineProduct_{draft_id}_{}", ln.id),
+            fk_slot: format!("InvoiceLineProduct_{draft_id}_{line_id}"),
             tax_ids,
             has_formula,
             variable_rows,
             pre_tax: decimal::decimal_display(ln.pre_tax_amount),
             remarks: ln.remarks.unwrap_or_default(),
-        });
+        };
+        values.push(form_row_with_addons(db, "draft_invoice_lines", line_id, &row).await);
     }
 
-    serde_json::to_string(&rows).unwrap_or_else(|_| default_lines_json())
+    serde_json::to_string(&values).unwrap_or_else(|_| default_lines_json())
+}
+
+async fn form_row_with_addons(
+    db: &DatabaseConnection,
+    table: &str,
+    line_id: i64,
+    row: &DraftLineFormRow,
+) -> serde_json::Value {
+    let mut value = serde_json::to_value(row).unwrap_or_else(|_| serde_json::json!({}));
+    if let Some(obj) = value.as_object_mut() {
+        for (key, field) in crate::line_editor_addon::line_editor_fields(db, table, line_id).await {
+            obj.insert(key, serde_json::Value::String(field));
+        }
+    }
+    value
 }
 
 #[derive(Clone, Debug)]
@@ -533,15 +552,16 @@ pub async fn quotation_lines_form_json(db: &DatabaseConnection, quotation_id: i6
     if lines.is_empty() {
         return default_lines_json();
     }
-    let mut rows = Vec::with_capacity(lines.len());
+    let mut values = Vec::with_capacity(lines.len());
     for ln in lines {
+        let line_id = ln.id;
         let has_formula = pricing::has_variable_pricing(&ln.variable_types);
         let variable_rows =
             variable_rows_for_line(&ln.variable_types, has_formula, &ln.variable_values);
-        let tax_ids = load_quotation_line_tax_ids(db, ln.id)
+        let tax_ids = load_quotation_line_tax_ids(db, line_id)
             .await
             .unwrap_or_default();
-        rows.push(DraftLineFormRow {
+        let row = DraftLineFormRow {
             product_id: ln.product_id,
             quantity: decimal::decimal_display(ln.quantity),
             qty_kind: ln.qty_kind,
@@ -549,15 +569,16 @@ pub async fn quotation_lines_form_json(db: &DatabaseConnection, quotation_id: i6
             rate: decimal::decimal_display(ln.rate),
             product_label: ln.product_name.clone(),
             product_name: ln.product_name,
-            fk_slot: format!("InvoiceLineProduct_{quotation_id}_{}", ln.id),
+            fk_slot: format!("InvoiceLineProduct_{quotation_id}_{line_id}"),
             tax_ids,
             has_formula,
             variable_rows,
             pre_tax: decimal::decimal_display(ln.pre_tax_amount),
             remarks: ln.remarks.unwrap_or_default(),
-        });
+        };
+        values.push(form_row_with_addons(db, "quotation_invoice_lines", line_id, &row).await);
     }
-    serde_json::to_string(&rows).unwrap_or_else(|_| default_lines_json())
+    serde_json::to_string(&values).unwrap_or_else(|_| default_lines_json())
 }
 
 pub async fn quotation_invoice_line_display_rows(

@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! Finance payments plugin.
 
 pub mod accounting_preferences_patch;

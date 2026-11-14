@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! Survey-style forms with JSON question definitions and responses.
 //!
 //! Admin CRUD at `/forms`; responses are managed on each form's detail page.

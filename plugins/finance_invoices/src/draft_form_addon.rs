@@ -73,6 +73,97 @@ pub trait DraftInvoiceFormAddon: Send + Sync {
     ) -> Result<(), String> {
         Ok(())
     }
+
+    /// Bulk-edit inputs. Default reuses the create form.
+    async fn render_bulk_inputs(
+        &self,
+        db: &DatabaseConnection,
+        posted: Option<&UrlencodedFields>,
+    ) -> Markup {
+        self.render_inputs(db, None, posted).await
+    }
+
+    async fn render_quotation_inputs(
+        &self,
+        _db: &DatabaseConnection,
+        _quotation_id: Option<i64>,
+        _posted: Option<&UrlencodedFields>,
+    ) -> Markup {
+        Markup::default()
+    }
+
+    async fn render_quotation_bulk_inputs(
+        &self,
+        db: &DatabaseConnection,
+        posted: Option<&UrlencodedFields>,
+    ) -> Markup {
+        self.render_quotation_inputs(db, None, posted).await
+    }
+
+    async fn render_quotation_detail(
+        &self,
+        _db: &DatabaseConnection,
+        _quotation_id: i64,
+    ) -> Markup {
+        Markup::default()
+    }
+
+    async fn save_quotation(
+        &self,
+        _db: &DatabaseConnection,
+        _quotation_id: i64,
+        _fields: &UrlencodedFields,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn render_posted_detail(&self, _db: &DatabaseConnection, _posted_id: i64) -> Markup {
+        Markup::default()
+    }
+
+    async fn render_cancelled_detail(
+        &self,
+        _db: &DatabaseConnection,
+        _cancelled_id: i64,
+    ) -> Markup {
+        Markup::default()
+    }
+
+    async fn on_cancelled(
+        &self,
+        _db: &DatabaseTransaction,
+        _posted_id: i64,
+        _cancelled_id: i64,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn on_quotation_from_posted(
+        &self,
+        _db: &DatabaseTransaction,
+        _posted_id: i64,
+        _quotation_id: i64,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn on_quotation_from_cancelled(
+        &self,
+        _db: &DatabaseTransaction,
+        _cancelled_id: i64,
+        _quotation_id: i64,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+
+    async fn on_draft_from_quotation(
+        &self,
+        _db: &DatabaseTransaction,
+        _quotation_id: i64,
+        _draft_id: i64,
+    ) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 /// Register a draft-invoice form addon (idempotent by [`DraftInvoiceFormAddon::id`]).
@@ -146,6 +237,169 @@ pub async fn save_draft_invoice_form_extras_bulk(
 /// True when any registered addon has bulk values to apply.
 pub fn addons_bulk_has_values(fields: &UrlencodedFields) -> bool {
     addons().iter().any(|addon| addon.bulk_has_values(fields))
+}
+
+pub async fn render_draft_invoice_bulk_extras(
+    db: &DatabaseConnection,
+    posted: Option<&UrlencodedFields>,
+) -> String {
+    let mut out = String::new();
+    for addon in addons() {
+        out.push_str(&addon.render_bulk_inputs(db, posted).await.into_string());
+    }
+    out
+}
+
+pub async fn render_quotation_form_extras(
+    db: &DatabaseConnection,
+    quotation_id: Option<i64>,
+    posted: Option<&UrlencodedFields>,
+) -> String {
+    let mut out = String::new();
+    for addon in addons() {
+        out.push_str(
+            &addon
+                .render_quotation_inputs(db, quotation_id, posted)
+                .await
+                .into_string(),
+        );
+    }
+    out
+}
+
+pub async fn render_quotation_bulk_extras(
+    db: &DatabaseConnection,
+    posted: Option<&UrlencodedFields>,
+) -> String {
+    let mut out = String::new();
+    for addon in addons() {
+        out.push_str(
+            &addon
+                .render_quotation_bulk_inputs(db, posted)
+                .await
+                .into_string(),
+        );
+    }
+    out
+}
+
+pub async fn render_quotation_detail_extras(db: &DatabaseConnection, quotation_id: i64) -> String {
+    let mut out = String::new();
+    for addon in addons() {
+        out.push_str(
+            &addon
+                .render_quotation_detail(db, quotation_id)
+                .await
+                .into_string(),
+        );
+    }
+    out
+}
+
+pub async fn save_quotation_form_extras(
+    db: &DatabaseConnection,
+    quotation_id: i64,
+    fields: &UrlencodedFields,
+) -> Result<(), String> {
+    for addon in addons() {
+        addon.save_quotation(db, quotation_id, fields).await?;
+    }
+    Ok(())
+}
+
+pub async fn save_quotation_form_extras_bulk(
+    db: &DatabaseConnection,
+    quotation_id: i64,
+    fields: &UrlencodedFields,
+) -> Result<(), String> {
+    for addon in addons() {
+        if addon.bulk_has_values(fields) {
+            addon.save_quotation(db, quotation_id, fields).await?;
+        }
+    }
+    Ok(())
+}
+
+pub async fn render_posted_invoice_detail_extras(
+    db: &DatabaseConnection,
+    posted_id: i64,
+) -> String {
+    let mut out = String::new();
+    for addon in addons() {
+        out.push_str(
+            &addon
+                .render_posted_detail(db, posted_id)
+                .await
+                .into_string(),
+        );
+    }
+    out
+}
+
+pub async fn render_cancelled_invoice_detail_extras(
+    db: &DatabaseConnection,
+    cancelled_id: i64,
+) -> String {
+    let mut out = String::new();
+    for addon in addons() {
+        out.push_str(
+            &addon
+                .render_cancelled_detail(db, cancelled_id)
+                .await
+                .into_string(),
+        );
+    }
+    out
+}
+
+pub async fn run_invoice_on_cancelled(
+    db: &DatabaseTransaction,
+    posted_id: i64,
+    cancelled_id: i64,
+) -> Result<(), String> {
+    for addon in addons() {
+        addon.on_cancelled(db, posted_id, cancelled_id).await?;
+    }
+    Ok(())
+}
+
+pub async fn run_invoice_on_quotation_from_posted(
+    db: &DatabaseTransaction,
+    posted_id: i64,
+    quotation_id: i64,
+) -> Result<(), String> {
+    for addon in addons() {
+        addon
+            .on_quotation_from_posted(db, posted_id, quotation_id)
+            .await?;
+    }
+    Ok(())
+}
+
+pub async fn run_invoice_on_quotation_from_cancelled(
+    db: &DatabaseTransaction,
+    cancelled_id: i64,
+    quotation_id: i64,
+) -> Result<(), String> {
+    for addon in addons() {
+        addon
+            .on_quotation_from_cancelled(db, cancelled_id, quotation_id)
+            .await?;
+    }
+    Ok(())
+}
+
+pub async fn run_invoice_on_draft_from_quotation(
+    db: &DatabaseTransaction,
+    quotation_id: i64,
+    draft_id: i64,
+) -> Result<(), String> {
+    for addon in addons() {
+        addon
+            .on_draft_from_quotation(db, quotation_id, draft_id)
+            .await?;
+    }
+    Ok(())
 }
 
 /// Run [`DraftInvoiceFormAddon::on_posted`] for every registered addon.

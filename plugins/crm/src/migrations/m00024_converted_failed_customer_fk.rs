@@ -1,14 +1,29 @@
-//! Point converted and failed leads at `customers`.
+//! Point converted and failed leads at the party table.
 //!
 //! A customer is one party, a company or an individual. Converted rows drop
-//! the paired company and contact columns and keep that customer.
+//! the paired company and contact columns and keep that customer. Fresh
+//! installs still have the address-shaped `customers` table, so the foreign
+//! key targets `crm_customers` until finance renames it.
 
 use lariv_core::db::migration_sql::exec_sql;
 use sea_orm_migration::prelude::*;
 
 const UP_POSTGRES: &str = r#"
 DO $$
+DECLARE
+    party text;
 BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'customers' AND column_name = 'is_individual'
+    ) THEN
+        party := 'customers';
+    ELSIF to_regclass('public.crm_customers') IS NOT NULL THEN
+        party := 'crm_customers';
+    ELSE
+        party := NULL;
+    END IF;
+
     IF to_regclass('public.crm_converted_leads') IS NOT NULL
        AND NOT EXISTS (
             SELECT 1 FROM information_schema.columns
@@ -38,10 +53,15 @@ BEGIN
         DELETE FROM crm_converted_leads WHERE customer_id IS NULL;
 
         ALTER TABLE crm_converted_leads ALTER COLUMN customer_id SET NOT NULL;
-        ALTER TABLE crm_converted_leads
-            ADD CONSTRAINT fk_crm_converted_leads_customer_id
-            FOREIGN KEY (customer_id) REFERENCES customers(id)
-            ON DELETE RESTRICT ON UPDATE CASCADE;
+        IF party IS NOT NULL THEN
+            EXECUTE format(
+                'ALTER TABLE crm_converted_leads
+                    ADD CONSTRAINT fk_crm_converted_leads_customer_id
+                    FOREIGN KEY (customer_id) REFERENCES %I (id)
+                    ON DELETE RESTRICT ON UPDATE CASCADE',
+                party
+            );
+        END IF;
         CREATE INDEX IF NOT EXISTS idx_crm_converted_leads_customer_id
             ON crm_converted_leads (customer_id);
 
@@ -80,10 +100,15 @@ BEGIN
         DELETE FROM crm_failed_leads WHERE customer_id IS NULL;
 
         ALTER TABLE crm_failed_leads ALTER COLUMN customer_id SET NOT NULL;
-        ALTER TABLE crm_failed_leads
-            ADD CONSTRAINT fk_crm_failed_leads_customer_id
-            FOREIGN KEY (customer_id) REFERENCES customers(id)
-            ON DELETE RESTRICT ON UPDATE CASCADE;
+        IF party IS NOT NULL THEN
+            EXECUTE format(
+                'ALTER TABLE crm_failed_leads
+                    ADD CONSTRAINT fk_crm_failed_leads_customer_id
+                    FOREIGN KEY (customer_id) REFERENCES %I (id)
+                    ON DELETE RESTRICT ON UPDATE CASCADE',
+                party
+            );
+        END IF;
         CREATE INDEX IF NOT EXISTS idx_crm_failed_leads_customer_id
             ON crm_failed_leads (customer_id);
     END IF;

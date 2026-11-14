@@ -147,6 +147,8 @@ pub async fn detail(
         journal_entry_id: p.journal_entry_id,
         can_edit,
         can_pay,
+        extra_detail: crate::draft_form_addon::render_posted_invoice_detail_extras(&state.db, p.id)
+            .await,
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }

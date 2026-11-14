@@ -9,10 +9,11 @@
 //!
 //! Formulas are stored plainly: numeric constants are wrapped in `decimal(...)`
 //! when a formula is evaluated, so a credit line is just `-unit_rate`.
-use lariv_core::db::migration_sql::{
-    self, FK_PRODUCT_PREFERENCE_JOURNAL_ACCOUNT, FK_PRODUCT_PREFERENCE_JOURNAL_JOURNAL,
-    FK_PRODUCT_PREFERENCES_COST_ACCOUNT, FK_PRODUCT_PREFERENCES_INVENTORY_ACCOUNT, exec_sql,
+use crate::foreign_keys::{
+    FK_PRODUCT_PREFERENCE_JOURNAL_ACCOUNT, FK_PRODUCT_PREFERENCE_JOURNAL_JOURNAL,
+    FK_PRODUCT_PREFERENCES_COST_ACCOUNT, FK_PRODUCT_PREFERENCES_INVENTORY_ACCOUNT,
 };
+use lariv_core::db::migration_sql::{self, exec_sql};
 
 use sea_orm_migration::prelude::*;
 

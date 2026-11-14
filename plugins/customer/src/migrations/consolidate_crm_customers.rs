@@ -5,6 +5,10 @@ use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use sea_orm_migration::prelude::*;
 
 /// Safe to run when already consolidated (no-op if `crm_customers` is gone).
+///
+/// The index statements assume `customers` is already the party table. A fresh
+/// install still has the address-shaped `customers` here, so those run only
+/// when `is_individual` exists.
 pub const UP: &[&str] = &[
     r#"DO $fix$
 DECLARE
@@ -115,8 +119,14 @@ $fix$"#,
 
 pub async fn apply(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
     if manager.get_database_backend() != DbBackend::Sqlite {
-        for sql in UP {
-            exec_sql(manager, sql).await?;
+        let Some((consolidate, indexes)) = UP.split_first() else {
+            return Ok(());
+        };
+        exec_sql(manager, consolidate).await?;
+        if column_exists(manager, "customers", "is_individual").await? {
+            for sql in indexes {
+                exec_sql(manager, sql).await?;
+            }
         }
         return Ok(());
     }
@@ -204,11 +214,15 @@ async fn column_exists(
     table: &str,
     column: &str,
 ) -> Result<bool, DbErr> {
-    row_exists(
-        manager,
-        &format!("SELECT 1 FROM pragma_table_info('{table}') WHERE name = '{column}'"),
-    )
-    .await
+    let sql = if manager.get_database_backend() == DbBackend::Sqlite {
+        format!("SELECT 1 FROM pragma_table_info('{table}') WHERE name = '{column}'")
+    } else {
+        format!(
+            "SELECT 1 FROM information_schema.columns \
+             WHERE table_schema = 'public' AND table_name = '{table}' AND column_name = '{column}'"
+        )
+    };
+    row_exists(manager, &sql).await
 }
 
 async fn has_row(manager: &SchemaManager<'_>, table: &str) -> Result<bool, DbErr> {

@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! Tasks plugin — statuses, assigned work, and activity logs.
 //!
 //! CRUD for tasks at `/tasks/…` and statuses at `/tasks/statuses/…`.

@@ -1,7 +1,8 @@
 //! Per-product journal entry templates.
-use lariv_core::db::migration_sql::{
-    self, FK_PRODUCT_JOURNAL_ENTRY_TEMPLATES_JOURNAL, FK_PRODUCT_JOURNAL_ITEM_ACCOUNT, exec_sql,
+use crate::foreign_keys::{
+    FK_PRODUCT_JOURNAL_ENTRY_TEMPLATES_JOURNAL, FK_PRODUCT_JOURNAL_ITEM_ACCOUNT,
 };
+use lariv_core::db::migration_sql::{self, exec_sql};
 
 use sea_orm_migration::prelude::*;
 

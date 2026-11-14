@@ -15,24 +15,23 @@
 //! Tax preferences keep the shared levied pair (receivable, then the invoice
 //! tax-payable account) so a new tax opens with that default. Once the lines
 //! are copied, `taxes.account_id` is retired.
-use lariv_core::db::migration_sql::{
-    self, FK_TAX_PREFERENCE_JOURNAL_ACCOUNT, FK_TAX_PREFERENCE_JOURNAL_JOURNAL, FK_TAXES_ACCOUNT,
-    exec_sql,
+use crate::foreign_keys::{
+    FK_TAX_PREFERENCE_JOURNAL_ACCOUNT, FK_TAX_PREFERENCE_JOURNAL_JOURNAL, FK_TAXES_ACCOUNT,
 };
+use lariv_core::db::migration_sql::{self, exec_sql};
 
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-const UP: &str = r#"
-CREATE TABLE IF NOT EXISTS tax_preferences (
+const UP: &[&str] = &[
+    r#"CREATE TABLE IF NOT EXISTS tax_preferences (
     id bigserial PRIMARY KEY,
     created_at timestamptz NULL,
     updated_at timestamptz NULL
-);
-
-CREATE TABLE IF NOT EXISTS tax_preference_journal_items (
+)"#,
+    r#"CREATE TABLE IF NOT EXISTS tax_preference_journal_items (
     id bigserial PRIMARY KEY,
     created_at timestamptz NULL,
     updated_at timestamptz NULL,
@@ -41,15 +40,14 @@ CREATE TABLE IF NOT EXISTS tax_preference_journal_items (
     journal_id bigint NOT NULL,
     account_id bigint NOT NULL,
     formula text NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_tax_preference_journal_items_prefs_id
-    ON tax_preference_journal_items (tax_preferences_id);
-CREATE INDEX IF NOT EXISTS idx_tax_preference_journal_items_journal_id
-    ON tax_preference_journal_items (journal_id);
-CREATE INDEX IF NOT EXISTS idx_tax_preference_journal_items_account_id
-    ON tax_preference_journal_items (account_id);
-
-DO $$
+)"#,
+    "CREATE INDEX IF NOT EXISTS idx_tax_preference_journal_items_prefs_id
+    ON tax_preference_journal_items (tax_preferences_id)",
+    "CREATE INDEX IF NOT EXISTS idx_tax_preference_journal_items_journal_id
+    ON tax_preference_journal_items (journal_id)",
+    "CREATE INDEX IF NOT EXISTS idx_tax_preference_journal_items_account_id
+    ON tax_preference_journal_items (account_id)",
+    r#"DO $$
 DECLARE
     v_journal_id bigint;
     v_receivable_id bigint;
@@ -200,29 +198,25 @@ BEGIN
                 (NOW(), NOW(), 1, v_journal_id, v_tax_payable_id, '-base * percentage / 100');
         END IF;
     END IF;
-END $$;
+END $$"#,
+    "ALTER TABLE taxes DROP COLUMN IF EXISTS account_id",
+];
 
-ALTER TABLE taxes DROP COLUMN IF EXISTS account_id;
-"#;
-
-const DOWN: &str = r#"
-DROP TABLE IF EXISTS tax_preference_journal_items;
-DROP TABLE IF EXISTS tax_preferences;
-
-ALTER TABLE taxes
-    ADD COLUMN IF NOT EXISTS account_id bigint NULL;
-
-ALTER TABLE taxes
-    DROP CONSTRAINT IF EXISTS fk_taxes_account_id,
-    DROP CONSTRAINT IF EXISTS taxes_account_id_fkey;
-
-CREATE INDEX IF NOT EXISTS idx_taxes_account_id ON taxes (account_id);
-"#;
+const DOWN: &[&str] = &[
+    "DROP TABLE IF EXISTS tax_preference_journal_items",
+    "DROP TABLE IF EXISTS tax_preferences",
+    "ALTER TABLE taxes ADD COLUMN IF NOT EXISTS account_id bigint NULL",
+    "ALTER TABLE taxes DROP CONSTRAINT IF EXISTS fk_taxes_account_id",
+    "ALTER TABLE taxes DROP CONSTRAINT IF EXISTS taxes_account_id_fkey",
+    "CREATE INDEX IF NOT EXISTS idx_taxes_account_id ON taxes (account_id)",
+];
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        exec_sql(manager, UP).await?;
+        for sql in UP {
+            exec_sql(manager, sql).await?;
+        }
         migration_sql::ensure_schema_foreign_keys(
             manager,
             &[
@@ -235,7 +229,9 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        exec_sql(manager, DOWN).await?;
+        for sql in DOWN {
+            exec_sql(manager, sql).await?;
+        }
         migration_sql::ensure_schema_foreign_keys(manager, &[FK_TAXES_ACCOUNT]).await?;
         Ok(())
     }

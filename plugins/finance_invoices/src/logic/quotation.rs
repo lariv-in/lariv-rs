@@ -617,6 +617,8 @@ pub async fn quotation_to_draft(
             .await
             .map_err(|e| e.to_string())?;
     }
+    crate::draft_form_addon::run_invoice_on_draft_from_quotation(&txn, quotation_id, draft.id)
+        .await?;
     txn.commit().await.map_err(|e| e.to_string())?;
     Ok(draft)
 }

@@ -142,6 +142,8 @@ impl MigrationTrait for Migration {
                     has_services boolean;
                     has_reference boolean;
                     has_base boolean;
+                    has_sac boolean;
+                    has_hsn boolean;
                     catalog text;
                     id_col text;
                     ref_expr text;
@@ -150,7 +152,7 @@ impl MigrationTrait for Migration {
                 BEGIN
                     has_services := to_regclass('public.services') IS NOT NULL;
                     catalog := CASE WHEN has_services THEN 'services' ELSE 'products' END;
-                    id_col := CASE WHEN has_services THEN 'id' ELSE 'id' END;
+                    id_col := 'id';
 
                     SELECT EXISTS (
                         SELECT 1
@@ -166,15 +168,31 @@ impl MigrationTrait for Migration {
                           AND table_name = catalog
                           AND column_name = 'base_price_formula'
                     ) INTO has_base;
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = catalog
+                          AND column_name = 'sac_code'
+                    ) INTO has_sac;
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = catalog
+                          AND column_name = 'hsn_code'
+                    ) INTO has_hsn;
 
                     ref_expr := CASE WHEN has_reference THEN 's.reference' ELSE 'NULL' END;
                     base_expr := CASE
                         WHEN has_base THEN 's.base_price_formula'
                         ELSE '''0'''
                     END;
+                    -- Finance folds a service SAC into products.hsn_code before invoices migrate.
                     sac_expr := CASE
-                        WHEN has_services THEN 's.sac_code'
-                        ELSE 's.sac_code'
+                        WHEN has_sac THEN 's.sac_code'
+                        WHEN has_hsn THEN 's.hsn_code'
+                        ELSE 'NULL'
                     END;
 
                     EXECUTE format(

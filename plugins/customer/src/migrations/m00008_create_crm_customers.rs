@@ -3,8 +3,12 @@
 //! Creates `crm_customers`; `m00009` renames it to `customers` when the legacy
 //! address-shaped `customers` table is no longer in the way. CRM historically
 //! created the same table; `CREATE IF NOT EXISTS` keeps both safe.
+//!
+//! This plugin migrates before CRM on fresh installs, so the company and
+//! contact foreign keys are attached only once those tables exist.
 
-use lariv_core::db::migration_sql::exec_sql;
+use crate::foreign_keys::{FK_CRM_CUSTOMERS_COMPANY, FK_CRM_CUSTOMERS_INDIVIDUAL};
+use lariv_core::db::migration_sql::{self, exec_sql};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -18,12 +22,6 @@ const UP: &[&str] = &[
         is_individual boolean NOT NULL,
         company_id bigint,
         individual_id bigint,
-        CONSTRAINT fk_crm_customers_company_id
-            FOREIGN KEY (company_id) REFERENCES crm_companies(id)
-            ON DELETE RESTRICT ON UPDATE CASCADE,
-        CONSTRAINT fk_crm_customers_individual_id
-            FOREIGN KEY (individual_id) REFERENCES crm_contacts(id)
-            ON DELETE RESTRICT ON UPDATE CASCADE,
         CONSTRAINT ck_crm_customers_party CHECK (
             (is_individual AND individual_id IS NOT NULL AND company_id IS NULL)
             OR (NOT is_individual AND company_id IS NOT NULL AND individual_id IS NULL)
@@ -43,6 +41,11 @@ impl MigrationTrait for Migration {
         for sql in UP {
             exec_sql(manager, sql).await?;
         }
+        migration_sql::ensure_schema_foreign_keys(
+            manager,
+            &[FK_CRM_CUSTOMERS_COMPANY, FK_CRM_CUSTOMERS_INDIVIDUAL],
+        )
+        .await?;
         Ok(())
     }
 

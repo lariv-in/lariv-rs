@@ -1,8 +1,13 @@
 //! Historical: create `crm_customers` (later renamed to `customers` by the
 //! customer/finance migrators). Ownership of the live schema/entity is in
 //! `lariv-plugin-customer`; both creates use `CREATE IF NOT EXISTS`.
+//!
+//! When the customer plugin already created the table, this still attaches the
+//! company and contact foreign keys now that `crm_companies` and `crm_contacts`
+//! exist.
 
-use lariv_core::db::migration_sql::exec_sql;
+use lariv_core::db::migration_sql::{self, exec_sql};
+use lariv_plugin_customer::foreign_keys::{FK_CRM_CUSTOMERS_COMPANY, FK_CRM_CUSTOMERS_INDIVIDUAL};
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -41,6 +46,11 @@ impl MigrationTrait for Migration {
         for sql in UP {
             exec_sql(manager, sql).await?;
         }
+        migration_sql::ensure_schema_foreign_keys(
+            manager,
+            &[FK_CRM_CUSTOMERS_COMPANY, FK_CRM_CUSTOMERS_INDIVIDUAL],
+        )
+        .await?;
         Ok(())
     }
 

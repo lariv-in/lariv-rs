@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! Finance invoices plugin.
 
 pub mod accounting_preferences_patch;
@@ -9,6 +8,7 @@ pub mod create_modals;
 pub mod customer_journal;
 pub mod draft_form_addon;
 pub mod entities;
+pub mod foreign_keys;
 pub mod forms;
 pub mod handlers;
 #[cfg(feature = "plugin-llm-assistant")]
@@ -22,6 +22,7 @@ pub mod invoice_pdf_addon;
 pub mod invoice_pdf_assets;
 pub mod invoice_pdf_template;
 pub mod keys;
+pub mod line_editor_addon;
 pub mod logic;
 pub mod migrations;
 pub mod payment_term_kind;
@@ -29,10 +30,10 @@ pub mod preferences_hints;
 pub mod routes;
 pub mod rune_env;
 pub mod scope;
+pub mod script_addon;
 pub mod source_docs;
 pub mod state;
 pub mod templates;
-pub mod xlsx;
 
 pub use hub_table_addon::{
     InvoiceHubTableAddon, InvoiceHubTableCap, InvoiceHubTableRegistrar, InvoiceHubTableRegistry,

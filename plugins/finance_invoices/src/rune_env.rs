@@ -13,11 +13,39 @@ pub struct Hook;
 
 impl RuneEnvRegistrar for Hook {
     fn register_rune_env(self, rune_env: &mut RuneEnvCapability) {
-        #[cfg(feature = "cap-llm")]
-        register(rune_env);
-        #[cfg(not(feature = "cap-llm"))]
-        let _ = rune_env;
+        mount(rune_env);
     }
+}
+
+/// Register invoice script bindings. Later plugins call this again so their doc suffix is included.
+pub fn mount(rune_env: &mut RuneEnvCapability) {
+    #[cfg(feature = "cap-llm")]
+    register(rune_env);
+    #[cfg(not(feature = "cap-llm"))]
+    let _ = rune_env;
+}
+
+#[cfg(feature = "cap-llm")]
+fn documented(base: &str) -> String {
+    format!("{base}{}", crate::script_addon::doc_suffix())
+}
+
+#[cfg(feature = "cap-llm")]
+fn script_args(args: &[rune::Value]) -> serde_json::Value {
+    args.first()
+        .and_then(|value| lariv_core::rune_env::rune_to_json(value).ok())
+        .unwrap_or(serde_json::Value::Null)
+}
+
+#[cfg(feature = "cap-llm")]
+fn attach_script_fields(
+    mut mapped: std::collections::HashMap<String, rune::Value>,
+    extras: Vec<(String, serde_json::Value)>,
+) -> Result<rune::Value, String> {
+    for (key, value) in extras {
+        mapped.insert(key, lariv_core::rune_env::json_to_rune(value)?);
+    }
+    rune::to_value(mapped).map_err(|e| e.to_string())
 }
 
 #[cfg(feature = "cap-llm")]
@@ -28,22 +56,27 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "create_draft_invoice",
-        "create_draft_invoice(#{ customer_id?: int, lines?: [#{ product_id: int, quantity?: number|string, qty_kind?: string, qty_unit?: string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new draft invoice id. Provide at least one line (lines). Quantity is a measure: qty_kind is its kind (length, weight, quantity, …) and qty_unit is the unit for that kind. The magnitude multiplies the price of one product. Omitted kind is quantity and omitted unit is that kind's default (Number for a count). When the catalog item has variables, pass them; an omitted rate uses the sales formula, and a given rate is the price of one unit. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
+        documented("create_draft_invoice(#{ customer_id?: int, lines?: [#{ product_id: int, quantity?: number|string, qty_kind?: string, qty_unit?: string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new draft invoice id. Provide at least one line (lines). Quantity is a measure: qty_kind is its kind (length, weight, quantity, …) and qty_unit is the unit for that kind. The magnitude multiplies the price of one product. Omitted kind is quantity and omitted unit is that kind's default (Number for a count). When the catalog item has variables, pass them; an omitted rate uses the sales formula, and a given rate is the price of one unit. Omitted quantity is 1. Omitted line remarks are filled from the product remarks."),
         |_ctx| NativeBinding::Function(Arc::new(create_draft_invoice)),
     );
     rune_env.register_contextual(
         "update_draft_invoice",
-        "update_draft_invoice(#{ id: int, customer_id?: int, lines?: [#{ product_id: int, quantity?: number|string, qty_kind?: string, qty_unit?: string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated draft invoice id (full replace; invoice must be in draft state). Provide at least one line (lines). Quantity is a measure: qty_kind is its kind and qty_unit is the unit for that kind. The magnitude multiplies the price of one product. Omitted kind is quantity. When the catalog item has variables, an omitted rate uses the sales formula, and a given rate is the price of one unit. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
+        documented("update_draft_invoice(#{ id: int, customer_id?: int, lines?: [#{ product_id: int, quantity?: number|string, qty_kind?: string, qty_unit?: string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated draft invoice id (full replace; invoice must be in draft state). Provide at least one line (lines). Quantity is a measure: qty_kind is its kind and qty_unit is the unit for that kind. The magnitude multiplies the price of one product. Omitted kind is quantity. When the catalog item has variables, an omitted rate uses the sales formula, and a given rate is the price of one unit. Omitted quantity is 1. Omitted line remarks are filled from the product remarks."),
         |_ctx| NativeBinding::Function(Arc::new(update_draft_invoice)),
     );
     rune_env.register_contextual(
         "get_draft_invoice",
-        "get_draft_invoice(#{ id: int }) -> #{ id: int, number: string|null, reference: string|null, customer_id: int, datetime: string, delivery_date: string|null, remarks: string|null, eway_bill_number: string|null, payment_reference: string|null, bank_account: string|null }",
+        documented(concat!(
+            "get_draft_invoice(#{ id: int }) -> #{ id: int, number: string|null, reference: string|null, customer_id: int, datetime: string, delivery_date: string|null, remarks: string|null, eway_bill_number: string|null, payment_reference: string|null, bank_account: string|null, pre_tax_amount: string, tax_levied: string, total_amount: string, ",
+            "lines: [#{ id: int, product_id: int, product_name: string, quantity: string, qty_kind: string, qty_unit: string, rate: string, variables: object, tax_ids: [int], remarks: string|null, pre_tax_amount: string, tax_levied: string, total_amount: string }], ",
+            "header_tax_ids: [int], ",
+            "payment_term_lines: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", due_date: string|null, due_duration: string|null, amount_kind: \"absolute\"|\"relative\", amount: string|null, amount_percentage: string|null }] }",
+        )),
         |_ctx| NativeBinding::Function(Arc::new(get_draft_invoice)),
     );
     rune_env.register_contextual(
         "search_draft_invoices",
-        "search_draft_invoices(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, number: string|null, reference: string|null, customer_id: int, datetime: string, delivery_date: string|null, remarks: string|null, eway_bill_number: string|null, payment_reference: string|null, bank_account: string|null }] }",
+        "search_draft_invoices(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, number: string|null, reference: string|null, customer_id: int, datetime: string, delivery_date: string|null, remarks: string|null, eway_bill_number: string|null, payment_reference: string|null, bank_account: string|null, pre_tax_amount: string, tax_levied: string, total_amount: string }] }  // pre_tax_amount is the untaxed subtotal. tax_levied excludes withholding. total_amount is the amount due.",
         |_ctx| NativeBinding::Function(Arc::new(search_draft_invoices)),
     );
     rune_env.register_contextual(
@@ -58,12 +91,17 @@ fn register(rune_env: &mut RuneEnvCapability) {
     );
     rune_env.register_contextual(
         "get_posted_invoice",
-        "get_posted_invoice(#{ id: int }) -> #{ id: int, number: string, reference: string|null, customer_id: int, datetime: string, delivery_date: string|null, remarks: string|null, eway_bill_number: string|null, payment_reference: string|null, bank_account: string|null, posted_at: string|null, settlement: \"open\"|\"partial\"|\"paid\" }  // cancelled invoices are not returned",
+        documented(concat!(
+            "get_posted_invoice(#{ id: int }) -> #{ id: int, number: string, reference: string|null, customer_id: int, datetime: string, delivery_date: string|null, remarks: string|null, eway_bill_number: string|null, payment_reference: string|null, bank_account: string|null, posted_at: string|null, settlement: \"open\"|\"partial\"|\"paid\", pre_tax_amount: string, tax_levied: string, total_amount: string, ",
+            "lines: [#{ id: int, product_id: int|null, product_name: string, quantity: string, qty_kind: string, qty_unit: string, rate: string, variables: object, tax_ids: [int], remarks: string|null, pre_tax_amount: string, tax_levied: string, total_amount: string }], ",
+            "header_tax_ids: [int], ",
+            "payment_term_lines: [#{ due_date: string, amount: string }] }  // cancelled invoices are not returned. product_id is null after the product is deleted. payment_term_lines are the resolved due dates and amounts.",
+        )),
         |_ctx| NativeBinding::Function(Arc::new(get_posted_invoice)),
     );
     rune_env.register_contextual(
         "search_posted_invoices",
-        "search_posted_invoices(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, number: string, reference: string|null, customer_id: int, datetime: string, delivery_date: string|null, remarks: string|null, eway_bill_number: string|null, payment_reference: string|null, bank_account: string|null, posted_at: string|null, settlement: \"open\"|\"partial\"|\"paid\" }] }  // excludes cancelled invoices. settlement is open, partial, or paid.",
+        "search_posted_invoices(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, number: string, reference: string|null, customer_id: int, datetime: string, delivery_date: string|null, remarks: string|null, eway_bill_number: string|null, payment_reference: string|null, bank_account: string|null, posted_at: string|null, settlement: \"open\"|\"partial\"|\"paid\", pre_tax_amount: string, tax_levied: string, total_amount: string }] }  // excludes cancelled invoices. settlement is open, partial, or paid. pre_tax_amount is the untaxed subtotal. tax_levied excludes withholding. total_amount is the amount due.",
         |_ctx| NativeBinding::Function(Arc::new(search_posted_invoices)),
     );
     rune_env.register_contextual(
@@ -73,12 +111,17 @@ fn register(rune_env: &mut RuneEnvCapability) {
     );
     rune_env.register_contextual(
         "get_cancelled_invoice",
-        "get_cancelled_invoice(#{ id: int }) -> #{ id: int, posted_invoice_id: int, number: string, reference: string|null, customer_id: int, datetime: string, delivery_date: string|null, remarks: string|null, eway_bill_number: string|null, payment_reference: string|null, bank_account: string|null, posted_at: string|null, cancelled_at: string|null }",
+        documented(concat!(
+            "get_cancelled_invoice(#{ id: int }) -> #{ id: int, posted_invoice_id: int, number: string, reference: string|null, customer_id: int, datetime: string, delivery_date: string|null, remarks: string|null, eway_bill_number: string|null, payment_reference: string|null, bank_account: string|null, posted_at: string|null, cancelled_at: string|null, pre_tax_amount: string, tax_levied: string, total_amount: string, ",
+            "lines: [#{ id: int, product_id: int|null, product_name: string, quantity: string, qty_kind: string, qty_unit: string, rate: string, variables: object, tax_ids: [int], remarks: string|null, pre_tax_amount: string, tax_levied: string, total_amount: string }], ",
+            "header_tax_ids: [int], ",
+            "payment_term_lines: [#{ due_date: string, amount: string }] }",
+        )),
         |_ctx| NativeBinding::Function(Arc::new(get_cancelled_invoice)),
     );
     rune_env.register_contextual(
         "search_cancelled_invoices",
-        "search_cancelled_invoices(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, posted_invoice_id: int, number: string, reference: string|null, customer_id: int, datetime: string, delivery_date: string|null, remarks: string|null, eway_bill_number: string|null, payment_reference: string|null, bank_account: string|null, posted_at: string|null, cancelled_at: string|null }] }",
+        "search_cancelled_invoices(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, posted_invoice_id: int, number: string, reference: string|null, customer_id: int, datetime: string, delivery_date: string|null, remarks: string|null, eway_bill_number: string|null, payment_reference: string|null, bank_account: string|null, posted_at: string|null, cancelled_at: string|null, pre_tax_amount: string, tax_levied: string, total_amount: string }] }",
         |_ctx| NativeBinding::Function(Arc::new(search_cancelled_invoices)),
     );
     rune_env.register_contextual(
@@ -98,22 +141,27 @@ fn register(rune_env: &mut RuneEnvCapability) {
     );
     rune_env.register_contextual(
         "create_quotation",
-        "create_quotation(#{ customer_id?: int, lines?: [#{ product_id: int, quantity?: number|string, qty_kind?: string, qty_unit?: string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new quotation id. Provide at least one line (lines). Quantity is a measure: qty_kind is its kind (length, weight, quantity, …) and qty_unit is the unit for that kind. The magnitude multiplies the price of one product. Omitted kind is quantity and omitted unit is that kind's default (Number for a count). When the catalog item has variables, pass them; an omitted rate uses the sales formula, and a given rate is the price of one unit. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
+        documented("create_quotation(#{ customer_id?: int, lines?: [#{ product_id: int, quantity?: number|string, qty_kind?: string, qty_unit?: string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // new quotation id. Provide at least one line (lines). Quantity is a measure: qty_kind is its kind (length, weight, quantity, …) and qty_unit is the unit for that kind. The magnitude multiplies the price of one product. Omitted kind is quantity and omitted unit is that kind's default (Number for a count). When the catalog item has variables, pass them; an omitted rate uses the sales formula, and a given rate is the price of one unit. Omitted quantity is 1. Omitted line remarks are filled from the product remarks."),
         |_ctx| NativeBinding::Function(Arc::new(create_quotation)),
     );
     rune_env.register_contextual(
         "update_quotation",
-        "update_quotation(#{ id: int, customer_id?: int, lines?: [#{ product_id: int, quantity?: number|string, qty_kind?: string, qty_unit?: string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated quotation id (full replace). Provide at least one line (lines). Quantity is a measure: qty_kind is its kind and qty_unit is the unit for that kind. The magnitude multiplies the price of one product. Omitted kind is quantity. When the catalog item has variables, an omitted rate uses the sales formula, and a given rate is the price of one unit. Omitted quantity is 1. Omitted line remarks are filled from the product remarks.",
+        documented("update_quotation(#{ id: int, customer_id?: int, lines?: [#{ product_id: int, quantity?: number|string, qty_kind?: string, qty_unit?: string, rate?: number|string, variables?: object, tax_ids?: [int], remarks?: string }], number?: string, reference?: string, eway_bill_number?: string, payment_reference?: string, bank_account?: string, remarks?: string, datetime?: string, date?: string, delivery_date?: string, timezone?: string, payment_term_lines?: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", amount_kind: \"absolute\"|\"relative\", due_date?: string, due_duration?: string, amount?: number|string, amount_percentage?: number|string }], header_tax_ids?: [int] }) -> int  // updated quotation id (full replace). Provide at least one line (lines). Quantity is a measure: qty_kind is its kind and qty_unit is the unit for that kind. The magnitude multiplies the price of one product. Omitted kind is quantity. When the catalog item has variables, an omitted rate uses the sales formula, and a given rate is the price of one unit. Omitted quantity is 1. Omitted line remarks are filled from the product remarks."),
         |_ctx| NativeBinding::Function(Arc::new(update_quotation)),
     );
     rune_env.register_contextual(
         "get_quotation",
-        "get_quotation(#{ id: int }) -> #{ id: int, number: string|null, reference: string|null, customer_id: int, datetime: string, delivery_date: string|null, remarks: string|null, eway_bill_number: string|null, payment_reference: string|null, bank_account: string|null }",
+        documented(concat!(
+            "get_quotation(#{ id: int }) -> #{ id: int, number: string|null, reference: string|null, customer_id: int, datetime: string, delivery_date: string|null, remarks: string|null, eway_bill_number: string|null, payment_reference: string|null, bank_account: string|null, pre_tax_amount: string, tax_levied: string, total_amount: string, ",
+            "lines: [#{ id: int, product_id: int, product_name: string, quantity: string, qty_kind: string, qty_unit: string, rate: string, variables: object, tax_ids: [int], remarks: string|null, pre_tax_amount: string, tax_levied: string, total_amount: string }], ",
+            "header_tax_ids: [int], ",
+            "payment_term_lines: [#{ date_kind: \"absolute\"|\"relative\"|\"relative_delivery\", due_date: string|null, due_duration: string|null, amount_kind: \"absolute\"|\"relative\", amount: string|null, amount_percentage: string|null }] }",
+        )),
         |_ctx| NativeBinding::Function(Arc::new(get_quotation)),
     );
     rune_env.register_contextual(
         "search_quotations",
-        "search_quotations(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, number: string|null, reference: string|null, customer_id: int, datetime: string, delivery_date: string|null, remarks: string|null, eway_bill_number: string|null, payment_reference: string|null, bank_account: string|null }] }",
+        "search_quotations(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, number: string|null, reference: string|null, customer_id: int, datetime: string, delivery_date: string|null, remarks: string|null, eway_bill_number: string|null, payment_reference: string|null, bank_account: string|null, pre_tax_amount: string, tax_levied: string, total_amount: string }] }",
         |_ctx| NativeBinding::Function(Arc::new(search_quotations)),
     );
     rune_env.register_contextual(
@@ -128,13 +176,22 @@ fn create_draft_invoice(
     ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
     args: &[rune::Value],
 ) -> Result<rune::Value, String> {
+    let raw = script_args(args);
     let (input, tz) = parse_create_args(args, "create_draft_invoice")?;
     if input.customer_id <= 0 {
         return Err("select a customer".to_string());
     }
     let db = ctx.db.clone();
     let draft = lariv_core::rune_env::block_on_async(async move {
-        crate::logic::create_draft_invoice(&db, input, &tz).await
+        let draft = crate::logic::create_draft_invoice(&db, input, &tz).await?;
+        crate::script_addon::after_invoice_script_write(
+            &db,
+            crate::script_addon::InvoiceScriptRecord::Draft,
+            draft.id,
+            &raw,
+        )
+        .await?;
+        Ok::<_, String>(draft)
     })?;
     Ok(rune::Value::from(draft.id))
 }
@@ -144,6 +201,7 @@ fn update_draft_invoice(
     ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
     args: &[rune::Value],
 ) -> Result<rune::Value, String> {
+    let raw = script_args(args);
     let (draft_id, input, tz) = parse_update_args(args, "update_draft_invoice", "draft invoice")?;
     // Fail before any DB round-trip so empty-line scripts get a clear error
     // (and unit tests don't panic on a disconnected default connection).
@@ -155,7 +213,15 @@ fn update_draft_invoice(
     }
     let db = ctx.db.clone();
     let draft = lariv_core::rune_env::block_on_async(async move {
-        crate::logic::update_draft_invoice(&db, draft_id, input, &tz).await
+        let draft = crate::logic::update_draft_invoice(&db, draft_id, input, &tz).await?;
+        crate::script_addon::after_invoice_script_write(
+            &db,
+            crate::script_addon::InvoiceScriptRecord::Draft,
+            draft.id,
+            &raw,
+        )
+        .await?;
+        Ok::<_, String>(draft)
     })?;
     Ok(rune::Value::from(draft.id))
 }
@@ -165,13 +231,22 @@ fn create_quotation(
     ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
     args: &[rune::Value],
 ) -> Result<rune::Value, String> {
+    let raw = script_args(args);
     let (input, tz) = parse_create_args(args, "create_quotation")?;
     if input.customer_id <= 0 {
         return Err("select a customer".to_string());
     }
     let db = ctx.db.clone();
     let quotation = lariv_core::rune_env::block_on_async(async move {
-        crate::logic::create_quotation_invoice(&db, input, &tz).await
+        let quotation = crate::logic::create_quotation_invoice(&db, input, &tz).await?;
+        crate::script_addon::after_invoice_script_write(
+            &db,
+            crate::script_addon::InvoiceScriptRecord::Quotation,
+            quotation.id,
+            &raw,
+        )
+        .await?;
+        Ok::<_, String>(quotation)
     })?;
     Ok(rune::Value::from(quotation.id))
 }
@@ -181,6 +256,7 @@ fn update_quotation(
     ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
     args: &[rune::Value],
 ) -> Result<rune::Value, String> {
+    let raw = script_args(args);
     let (quotation_id, input, tz) = parse_update_args(args, "update_quotation", "quotation")?;
     if input.lines.is_empty() {
         return Err("add at least one line".to_string());
@@ -190,7 +266,16 @@ fn update_quotation(
     }
     let db = ctx.db.clone();
     let quotation = lariv_core::rune_env::block_on_async(async move {
-        crate::logic::update_quotation_invoice(&db, quotation_id, input, &tz).await
+        let quotation =
+            crate::logic::update_quotation_invoice(&db, quotation_id, input, &tz).await?;
+        crate::script_addon::after_invoice_script_write(
+            &db,
+            crate::script_addon::InvoiceScriptRecord::Quotation,
+            quotation.id,
+            &raw,
+        )
+        .await?;
+        Ok::<_, String>(quotation)
     })?;
     Ok(rune::Value::from(quotation.id))
 }
@@ -227,12 +312,16 @@ mod rows {
     use std::collections::HashMap;
 
     use chrono::{DateTime, NaiveDate, Utc};
-    use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+    use rust_decimal::Decimal;
+    use sea_orm::{
+        ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait,
+        QueryFilter, QueryOrder, Statement,
+    };
     use serde::Deserialize;
 
     use crate::entities::{
-        cancelled_invoice, draft_invoice, paid_invoice, partially_paid_invoice, posted_invoice,
-        quotation_invoice,
+        cancelled_invoice, draft_invoice, draft_invoice_line, paid_invoice, partially_paid_invoice,
+        posted_invoice, posted_invoice_line, quotation_invoice, quotation_invoice_line,
     };
     use lariv_core::rune_env::rune_to_json;
 
@@ -353,12 +442,10 @@ mod rows {
         Ok(row)
     }
 
-    fn header_value(header: Header) -> Result<rune::Value, String> {
-        rune::to_value(header_map(header)?).map_err(|e| e.to_string())
-    }
-
-    pub(super) fn draft_value(row: &draft_invoice::Model) -> Result<rune::Value, String> {
-        header_value(Header {
+    pub(super) fn draft_map(
+        row: &draft_invoice::Model,
+    ) -> Result<HashMap<String, rune::Value>, String> {
+        header_map(Header {
             id: row.id,
             number: row.number.clone(),
             reference: row.reference.clone(),
@@ -372,8 +459,68 @@ mod rows {
         })
     }
 
-    pub(super) fn quotation_value(row: &quotation_invoice::Model) -> Result<rune::Value, String> {
-        header_value(Header {
+    pub(super) struct InvoiceAmounts {
+        pub pre_tax_amount: String,
+        pub tax_levied: String,
+        pub total_amount: String,
+    }
+
+    pub(super) fn invoice_amounts(metrics: &crate::logic::InvoiceListMetrics) -> InvoiceAmounts {
+        InvoiceAmounts {
+            pre_tax_amount: money(metrics.untaxed),
+            tax_levied: money(metrics.tax_levied),
+            total_amount: money(metrics.total),
+        }
+    }
+
+    pub(super) fn insert_amounts(
+        mapped: &mut HashMap<String, rune::Value>,
+        amounts: &InvoiceAmounts,
+    ) -> Result<(), String> {
+        mapped.insert(
+            "pre_tax_amount".into(),
+            text_value(&amounts.pre_tax_amount)?,
+        );
+        mapped.insert("tax_levied".into(), text_value(&amounts.tax_levied)?);
+        mapped.insert("total_amount".into(), text_value(&amounts.total_amount)?);
+        Ok(())
+    }
+
+    pub(super) async fn draft_amounts(db: &DatabaseConnection, id: i64) -> InvoiceAmounts {
+        invoice_amounts(&crate::logic::draft_invoice_list_metrics(db, id, "UTC").await)
+    }
+
+    pub(super) async fn quotation_amounts(db: &DatabaseConnection, id: i64) -> InvoiceAmounts {
+        invoice_amounts(&crate::logic::quotation_invoice_list_metrics(db, id, "UTC").await)
+    }
+
+    pub(super) async fn posted_amounts(db: &DatabaseConnection, id: i64) -> InvoiceAmounts {
+        invoice_amounts(&crate::logic::posted_invoice_list_metrics(db, id).await)
+    }
+
+    pub(super) async fn cancelled_amounts(db: &DatabaseConnection, id: i64) -> InvoiceAmounts {
+        invoice_amounts(&crate::logic::cancelled_invoice_list_metrics(db, id).await)
+    }
+
+    fn value_with_amounts(
+        mut mapped: HashMap<String, rune::Value>,
+        amounts: &InvoiceAmounts,
+    ) -> Result<rune::Value, String> {
+        insert_amounts(&mut mapped, amounts)?;
+        rune::to_value(mapped).map_err(|e| e.to_string())
+    }
+
+    pub(super) fn draft_value(
+        row: &draft_invoice::Model,
+        amounts: &InvoiceAmounts,
+    ) -> Result<rune::Value, String> {
+        value_with_amounts(draft_map(row)?, amounts)
+    }
+
+    pub(super) fn quotation_map(
+        row: &quotation_invoice::Model,
+    ) -> Result<HashMap<String, rune::Value>, String> {
+        header_map(Header {
             id: row.id,
             number: row.number.clone(),
             reference: row.reference.clone(),
@@ -387,10 +534,17 @@ mod rows {
         })
     }
 
-    pub(super) fn posted_value(
+    pub(super) fn quotation_value(
+        row: &quotation_invoice::Model,
+        amounts: &InvoiceAmounts,
+    ) -> Result<rune::Value, String> {
+        value_with_amounts(quotation_map(row)?, amounts)
+    }
+
+    pub(super) fn posted_map(
         row: &posted_invoice::Model,
         settlement: &str,
-    ) -> Result<rune::Value, String> {
+    ) -> Result<HashMap<String, rune::Value>, String> {
         let mut mapped = header_map(Header {
             id: row.id,
             number: Some(row.number.clone()),
@@ -408,10 +562,20 @@ mod rows {
             "settlement".into(),
             rune::to_value(settlement).map_err(|e| e.to_string())?,
         );
-        rune::to_value(mapped).map_err(|e| e.to_string())
+        Ok(mapped)
     }
 
-    pub(super) fn cancelled_value(row: &cancelled_invoice::Model) -> Result<rune::Value, String> {
+    pub(super) fn posted_value(
+        row: &posted_invoice::Model,
+        settlement: &str,
+        amounts: &InvoiceAmounts,
+    ) -> Result<rune::Value, String> {
+        value_with_amounts(posted_map(row, settlement)?, amounts)
+    }
+
+    pub(super) fn cancelled_map(
+        row: &cancelled_invoice::Model,
+    ) -> Result<HashMap<String, rune::Value>, String> {
         let mut mapped = header_map(Header {
             id: row.id,
             number: Some(row.number.clone()),
@@ -430,7 +594,14 @@ mod rows {
         );
         mapped.insert("posted_at".into(), opt_datetime(row.posted_at)?);
         mapped.insert("cancelled_at".into(), opt_datetime(row.cancelled_at)?);
-        rune::to_value(mapped).map_err(|e| e.to_string())
+        Ok(mapped)
+    }
+
+    pub(super) fn cancelled_value(
+        row: &cancelled_invoice::Model,
+        amounts: &InvoiceAmounts,
+    ) -> Result<rune::Value, String> {
+        value_with_amounts(cancelled_map(row)?, amounts)
     }
 
     pub(super) struct PaymentHit {
@@ -550,6 +721,675 @@ mod rows {
             _ => Utc::now(),
         }
     }
+
+    struct ScriptLine {
+        id: i64,
+        product_id: Option<i64>,
+        product_name: String,
+        quantity: String,
+        qty_kind: String,
+        qty_unit: String,
+        rate: String,
+        variables: serde_json::Value,
+        tax_ids: Vec<i64>,
+        remarks: Option<String>,
+        pre_tax: Decimal,
+        pre_tax_amount: String,
+        tax_levied: String,
+        total_amount: String,
+        extras: Vec<(String, String)>,
+    }
+
+    struct LineParts {
+        id: i64,
+        product_id: Option<i64>,
+        product_name: String,
+        quantity: Decimal,
+        qty_kind: String,
+        qty_unit: String,
+        rate: Decimal,
+        variable_values: String,
+        remarks: Option<String>,
+        pre_tax_amount: Decimal,
+    }
+
+    impl LineParts {
+        fn into_script(self) -> ScriptLine {
+            ScriptLine {
+                id: self.id,
+                product_id: self.product_id,
+                product_name: self.product_name,
+                quantity: money(self.quantity),
+                qty_kind: self.qty_kind,
+                qty_unit: self.qty_unit,
+                rate: money(self.rate),
+                variables: variables_json(&self.variable_values),
+                tax_ids: Vec::new(),
+                remarks: self.remarks,
+                pre_tax: self.pre_tax_amount,
+                pre_tax_amount: money(self.pre_tax_amount),
+                tax_levied: money(Decimal::ZERO),
+                total_amount: money(self.pre_tax_amount),
+                extras: Vec::new(),
+            }
+        }
+    }
+
+    enum TermLine {
+        Editable {
+            date_kind: &'static str,
+            due_date: Option<String>,
+            due_duration: Option<String>,
+            amount_kind: &'static str,
+            amount: Option<String>,
+            amount_percentage: Option<String>,
+        },
+        Resolved {
+            due_date: String,
+            amount: String,
+        },
+    }
+
+    pub(super) struct Related {
+        lines: Vec<ScriptLine>,
+        header_tax_ids: Vec<i64>,
+        terms: Vec<TermLine>,
+    }
+
+    fn money(amount: Decimal) -> String {
+        lariv_formula::decimal::normalize(amount).to_string()
+    }
+
+    fn variables_json(raw: &str) -> serde_json::Value {
+        match serde_json::from_str::<serde_json::Value>(raw) {
+            Ok(value) if value.is_object() => value,
+            _ => serde_json::json!({}),
+        }
+    }
+
+    fn opt_id(id: Option<i64>) -> rune::Value {
+        match id {
+            Some(id) => rune::Value::from(id),
+            None => rune::Value::from(()),
+        }
+    }
+
+    fn text_value(value: &str) -> Result<rune::Value, String> {
+        rune::to_value(value).map_err(|e| e.to_string())
+    }
+
+    fn line_value(line: &ScriptLine) -> Result<rune::Value, String> {
+        let mut row = HashMap::new();
+        row.insert("id".into(), rune::Value::from(line.id));
+        row.insert("product_id".into(), opt_id(line.product_id));
+        row.insert("product_name".into(), text_value(&line.product_name)?);
+        row.insert("quantity".into(), text_value(&line.quantity)?);
+        row.insert("qty_kind".into(), text_value(&line.qty_kind)?);
+        row.insert("qty_unit".into(), text_value(&line.qty_unit)?);
+        row.insert("rate".into(), text_value(&line.rate)?);
+        row.insert(
+            "variables".into(),
+            lariv_core::rune_env::json_to_rune(line.variables.clone())?,
+        );
+        row.insert(
+            "tax_ids".into(),
+            rune::to_value(line.tax_ids.clone()).map_err(|e| e.to_string())?,
+        );
+        row.insert("remarks".into(), opt_string(line.remarks.clone())?);
+        row.insert("pre_tax_amount".into(), text_value(&line.pre_tax_amount)?);
+        row.insert("tax_levied".into(), text_value(&line.tax_levied)?);
+        row.insert("total_amount".into(), text_value(&line.total_amount)?);
+        for (key, value) in &line.extras {
+            row.insert(key.clone(), text_value(value)?);
+        }
+        rune::to_value(row).map_err(|e| e.to_string())
+    }
+
+    fn term_value(line: &TermLine) -> Result<rune::Value, String> {
+        let mut row: HashMap<String, rune::Value> = HashMap::new();
+        match line {
+            TermLine::Editable {
+                date_kind,
+                due_date,
+                due_duration,
+                amount_kind,
+                amount,
+                amount_percentage,
+            } => {
+                row.insert("date_kind".into(), text_value(date_kind)?);
+                row.insert("due_date".into(), opt_string(due_date.clone())?);
+                row.insert("due_duration".into(), opt_string(due_duration.clone())?);
+                row.insert("amount_kind".into(), text_value(amount_kind)?);
+                row.insert("amount".into(), opt_string(amount.clone())?);
+                row.insert(
+                    "amount_percentage".into(),
+                    opt_string(amount_percentage.clone())?,
+                );
+            }
+            TermLine::Resolved { due_date, amount } => {
+                row.insert("due_date".into(), text_value(due_date)?);
+                row.insert("amount".into(), text_value(amount)?);
+            }
+        }
+        rune::to_value(row).map_err(|e| e.to_string())
+    }
+
+    pub(super) fn insert_related(
+        mapped: &mut HashMap<String, rune::Value>,
+        related: Related,
+    ) -> Result<(), String> {
+        let lines = related
+            .lines
+            .iter()
+            .map(line_value)
+            .collect::<Result<Vec<_>, _>>()?;
+        let terms = related
+            .terms
+            .iter()
+            .map(term_value)
+            .collect::<Result<Vec<_>, _>>()?;
+        mapped.insert(
+            "lines".into(),
+            rune::to_value(lines).map_err(|e| e.to_string())?,
+        );
+        mapped.insert(
+            "header_tax_ids".into(),
+            rune::to_value(related.header_tax_ids).map_err(|e| e.to_string())?,
+        );
+        mapped.insert(
+            "payment_term_lines".into(),
+            rune::to_value(terms).map_err(|e| e.to_string())?,
+        );
+        Ok(())
+    }
+
+    async fn taxes_by_line(
+        db: &DatabaseConnection,
+        table: &str,
+        line_column: &str,
+        line_ids: &[i64],
+    ) -> Result<HashMap<i64, Vec<i64>>, String> {
+        let mut out: HashMap<i64, Vec<i64>> = HashMap::new();
+        if line_ids.is_empty() {
+            return Ok(out);
+        }
+        let list = line_ids
+            .iter()
+            .map(i64::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let rows = db
+            .query_all_raw(Statement::from_string(
+                DatabaseBackend::Postgres,
+                format!(
+                    "SELECT {line_column} AS line_id, tax_id FROM {table} WHERE {line_column} IN ({list}) ORDER BY tax_id"
+                ),
+            ))
+            .await
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let line_id = row
+                .try_get::<i64>("", "line_id")
+                .map_err(|e| e.to_string())?;
+            let tax_id = row
+                .try_get::<i64>("", "tax_id")
+                .map_err(|e| e.to_string())?;
+            out.entry(line_id).or_default().push(tax_id);
+        }
+        Ok(out)
+    }
+
+    async fn finish_lines(
+        db: &DatabaseConnection,
+        table: &str,
+        tax_table: &str,
+        tax_column: &str,
+        mut lines: Vec<ScriptLine>,
+    ) -> Result<Vec<ScriptLine>, String> {
+        let ids: Vec<i64> = lines.iter().map(|line| line.id).collect();
+        let taxes = taxes_by_line(db, tax_table, tax_column, &ids).await?;
+        for line in &mut lines {
+            if let Some(tax_ids) = taxes.get(&line.id) {
+                line.tax_ids.clone_from(tax_ids);
+            }
+            let tax_rows = lariv_plugin_finance_taxes::scope::load_taxes_by_ids(db, &line.tax_ids)
+                .await
+                .map_err(|e| e.to_string())?;
+            let (_, levied, _, net) =
+                crate::logic::tax_calculations::invoice_line_amounts(line.pre_tax, &tax_rows);
+            line.tax_levied = money(levied);
+            line.total_amount = money(net);
+            line.extras = crate::line_editor_addon::line_editor_fields(db, table, line.id).await;
+        }
+        Ok(lines)
+    }
+
+    fn editable_term(
+        date_kind: crate::PaymentTermDateKind,
+        due_date: Option<NaiveDate>,
+        due_duration: Option<i64>,
+        amount_kind: crate::PaymentTermAmountKind,
+        amount: Option<Decimal>,
+        amount_percentage: Option<Decimal>,
+    ) -> TermLine {
+        TermLine::Editable {
+            date_kind: date_kind.as_str(),
+            due_date: due_date.map(|date| date.to_string()),
+            due_duration: due_duration.map(lariv_core::duration::format_duration),
+            amount_kind: amount_kind.as_str(),
+            amount: amount.map(money),
+            amount_percentage: amount_percentage.map(money),
+        }
+    }
+
+    pub(super) async fn load_draft_related(
+        db: &DatabaseConnection,
+        id: i64,
+    ) -> Result<Related, String> {
+        let rows = draft_invoice_line::Entity::find()
+            .filter(draft_invoice_line::Column::DraftInvoiceId.eq(id))
+            .order_by_asc(draft_invoice_line::Column::Id)
+            .all(db)
+            .await
+            .map_err(|e| e.to_string())?;
+        let lines = rows
+            .into_iter()
+            .map(|line| {
+                LineParts {
+                    id: line.id,
+                    product_id: Some(line.product_id),
+                    product_name: line.product_name,
+                    quantity: line.quantity,
+                    qty_kind: line.qty_kind,
+                    qty_unit: line.qty_unit,
+                    rate: line.rate,
+                    variable_values: line.variable_values,
+                    remarks: line.remarks,
+                    pre_tax_amount: line.pre_tax_amount,
+                }
+                .into_script()
+            })
+            .collect();
+        let lines = finish_lines(
+            db,
+            "draft_invoice_lines",
+            "draft_invoice_line_taxes",
+            "draft_invoice_line_id",
+            lines,
+        )
+        .await?;
+        let header_tax_ids = crate::logic::tax_assoc::load_draft_invoice_tax_ids(db, id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let terms = crate::logic::draft_payment_term::load_draft_payment_term_lines(db, id)
+            .await?
+            .into_iter()
+            .map(|line| {
+                editable_term(
+                    line.date_kind,
+                    line.due_date,
+                    line.due_duration,
+                    line.amount_kind,
+                    line.amount,
+                    line.amount_percentage,
+                )
+            })
+            .collect();
+        Ok(Related {
+            lines,
+            header_tax_ids,
+            terms,
+        })
+    }
+
+    pub(super) async fn load_quotation_related(
+        db: &DatabaseConnection,
+        id: i64,
+    ) -> Result<Related, String> {
+        let rows = quotation_invoice_line::Entity::find()
+            .filter(quotation_invoice_line::Column::QuotationInvoiceId.eq(id))
+            .order_by_asc(quotation_invoice_line::Column::Id)
+            .all(db)
+            .await
+            .map_err(|e| e.to_string())?;
+        let lines = rows
+            .into_iter()
+            .map(|line| {
+                LineParts {
+                    id: line.id,
+                    product_id: Some(line.product_id),
+                    product_name: line.product_name,
+                    quantity: line.quantity,
+                    qty_kind: line.qty_kind,
+                    qty_unit: line.qty_unit,
+                    rate: line.rate,
+                    variable_values: line.variable_values,
+                    remarks: line.remarks,
+                    pre_tax_amount: line.pre_tax_amount,
+                }
+                .into_script()
+            })
+            .collect();
+        let lines = finish_lines(
+            db,
+            "quotation_invoice_lines",
+            "quotation_invoice_line_taxes",
+            "quotation_invoice_line_id",
+            lines,
+        )
+        .await?;
+        let header_tax_ids = crate::logic::tax_assoc::load_quotation_invoice_tax_ids(db, id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let terms = crate::logic::quotation::load_quotation_payment_term_lines(db, id)
+            .await?
+            .into_iter()
+            .map(|line| {
+                editable_term(
+                    line.date_kind,
+                    line.due_date,
+                    line.due_duration,
+                    line.amount_kind,
+                    line.amount,
+                    line.amount_percentage,
+                )
+            })
+            .collect();
+        Ok(Related {
+            lines,
+            header_tax_ids,
+            terms,
+        })
+    }
+
+    fn resolved_terms(
+        lines: Vec<crate::entities::posted_payment_term_line::Model>,
+    ) -> Vec<TermLine> {
+        lines
+            .into_iter()
+            .map(|line| TermLine::Resolved {
+                due_date: line.due_date.to_string(),
+                amount: money(line.amount),
+            })
+            .collect()
+    }
+
+    pub(super) async fn load_posted_related(
+        db: &DatabaseConnection,
+        id: i64,
+    ) -> Result<Related, String> {
+        let rows = posted_invoice_line::Entity::find()
+            .filter(posted_invoice_line::Column::PostedInvoiceId.eq(id))
+            .order_by_asc(posted_invoice_line::Column::Id)
+            .all(db)
+            .await
+            .map_err(|e| e.to_string())?;
+        let lines = rows
+            .into_iter()
+            .map(|line| {
+                LineParts {
+                    id: line.id,
+                    product_id: line.product_id,
+                    product_name: line.product_name,
+                    quantity: line.quantity,
+                    qty_kind: line.qty_kind,
+                    qty_unit: line.qty_unit,
+                    rate: line.rate,
+                    variable_values: line.variable_values,
+                    remarks: line.remarks,
+                    pre_tax_amount: line.pre_tax_amount,
+                }
+                .into_script()
+            })
+            .collect();
+        let lines = finish_lines(
+            db,
+            "posted_invoice_lines",
+            "posted_invoice_line_taxes",
+            "posted_invoice_line_id",
+            lines,
+        )
+        .await?;
+        let header_tax_ids = crate::logic::tax_assoc::load_posted_invoice_tax_ids(db, id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let terms =
+            match crate::logic::draft_payment_term::load_posted_payment_term_for_posted(db, id)
+                .await?
+            {
+                Some((_, lines)) => resolved_terms(lines),
+                None => Vec::new(),
+            };
+        Ok(Related {
+            lines,
+            header_tax_ids,
+            terms,
+        })
+    }
+
+    pub(super) async fn load_cancelled_related(
+        db: &DatabaseConnection,
+        id: i64,
+    ) -> Result<Related, String> {
+        let rows = db
+            .query_all_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT id, product_id, product_name, rate, quantity, qty_kind, qty_unit, \
+                 variable_values, pre_tax_amount, remarks \
+                 FROM cancelled_invoice_lines \
+                 WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
+                [id.into()],
+            ))
+            .await
+            .map_err(|e| e.to_string())?;
+        let mut lines = Vec::new();
+        for row in rows {
+            lines.push(
+                LineParts {
+                    id: row.try_get("", "id").map_err(|e| e.to_string())?,
+                    product_id: row.try_get("", "product_id").map_err(|e| e.to_string())?,
+                    product_name: row.try_get("", "product_name").map_err(|e| e.to_string())?,
+                    quantity: row.try_get("", "quantity").map_err(|e| e.to_string())?,
+                    qty_kind: row.try_get("", "qty_kind").map_err(|e| e.to_string())?,
+                    qty_unit: row.try_get("", "qty_unit").map_err(|e| e.to_string())?,
+                    rate: row.try_get("", "rate").map_err(|e| e.to_string())?,
+                    variable_values: row
+                        .try_get("", "variable_values")
+                        .map_err(|e| e.to_string())?,
+                    remarks: row.try_get("", "remarks").map_err(|e| e.to_string())?,
+                    pre_tax_amount: row
+                        .try_get("", "pre_tax_amount")
+                        .map_err(|e| e.to_string())?,
+                }
+                .into_script(),
+            );
+        }
+        let lines = finish_lines(
+            db,
+            "cancelled_invoice_lines",
+            "cancelled_invoice_line_taxes",
+            "cancelled_invoice_line_id",
+            lines,
+        )
+        .await?;
+        let header_tax_ids = crate::logic::tax_assoc::load_cancelled_invoice_tax_ids(db, id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let terms =
+            match crate::logic::draft_payment_term::load_posted_payment_term_for_cancelled(db, id)
+                .await?
+            {
+                Some((_, lines)) => resolved_terms(lines),
+                None => Vec::new(),
+            };
+        Ok(Related {
+            lines,
+            header_tax_ids,
+            terms,
+        })
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{Related, ScriptLine, TermLine, insert_related, invoice_amounts, line_value};
+
+        fn field<'a>(
+            json: &'a serde_json::Value,
+            key: &str,
+        ) -> Result<&'a serde_json::Value, String> {
+            json.get(key).ok_or_else(|| format!("missing {key}"))
+        }
+
+        #[test]
+        fn line_value_keeps_taxes_variables_and_addon_fields() {
+            let line = ScriptLine {
+                id: 3,
+                product_id: None,
+                product_name: "Bolt".into(),
+                quantity: "2".into(),
+                qty_kind: "quantity".into(),
+                qty_unit: "Number".into(),
+                rate: "15".into(),
+                variables: serde_json::json!({"width": "2"}),
+                tax_ids: vec![4, 5],
+                remarks: None,
+                pre_tax: rust_decimal::Decimal::ZERO,
+                pre_tax_amount: "30".into(),
+                tax_levied: "5".into(),
+                total_amount: "35".into(),
+                extras: vec![("gst_supply".into(), "exempt".into())],
+            };
+            let value = line_value(&line).expect("line value");
+            let json = lariv_core::rune_env::rune_to_json(&value).expect("json");
+            assert_eq!(field(&json, "id").expect("id"), &serde_json::json!(3));
+            assert_eq!(
+                field(&json, "product_id").expect("product"),
+                &serde_json::Value::Null
+            );
+            assert_eq!(
+                field(&json, "product_name").expect("name"),
+                &serde_json::json!("Bolt")
+            );
+            assert_eq!(
+                field(&json, "quantity").expect("qty"),
+                &serde_json::json!("2")
+            );
+            assert_eq!(
+                field(&json, "tax_ids").expect("taxes"),
+                &serde_json::json!([4, 5])
+            );
+            assert_eq!(
+                field(&json, "variables").expect("variables").get("width"),
+                Some(&serde_json::json!("2"))
+            );
+            assert_eq!(
+                field(&json, "remarks").expect("remarks"),
+                &serde_json::Value::Null
+            );
+            assert_eq!(
+                field(&json, "pre_tax_amount").expect("pre tax"),
+                &serde_json::json!("30")
+            );
+            assert_eq!(
+                field(&json, "tax_levied").expect("levied"),
+                &serde_json::json!("5")
+            );
+            assert_eq!(
+                field(&json, "total_amount").expect("total"),
+                &serde_json::json!("35")
+            );
+            assert_eq!(
+                field(&json, "gst_supply").expect("gst"),
+                &serde_json::json!("exempt")
+            );
+        }
+
+        #[test]
+        fn invoice_amounts_report_pre_tax_levied_and_total() {
+            let amounts = invoice_amounts(&crate::logic::InvoiceListMetrics {
+                untaxed: rust_decimal::Decimal::from(100),
+                tax_levied: rust_decimal::Decimal::from(18),
+                total: rust_decimal::Decimal::from(118),
+                ..Default::default()
+            });
+            assert_eq!(amounts.pre_tax_amount, "100");
+            assert_eq!(amounts.tax_levied, "18");
+            assert_eq!(amounts.total_amount, "118");
+        }
+
+        #[test]
+        fn insert_related_adds_lines_taxes_and_payment_terms() {
+            let mut mapped = std::collections::HashMap::new();
+            insert_related(
+                &mut mapped,
+                Related {
+                    lines: vec![ScriptLine {
+                        id: 1,
+                        product_id: Some(9),
+                        product_name: "Widget".into(),
+                        quantity: "1".into(),
+                        qty_kind: "quantity".into(),
+                        qty_unit: "Number".into(),
+                        rate: "10".into(),
+                        variables: serde_json::json!({}),
+                        tax_ids: vec![2],
+                        remarks: Some("note".into()),
+                        pre_tax: rust_decimal::Decimal::ZERO,
+                        pre_tax_amount: "10".into(),
+                        tax_levied: "0".into(),
+                        total_amount: "10".into(),
+                        extras: Vec::new(),
+                    }],
+                    header_tax_ids: vec![8],
+                    terms: vec![TermLine::Editable {
+                        date_kind: "relative",
+                        due_date: None,
+                        due_duration: Some("15 days".into()),
+                        amount_kind: "relative",
+                        amount: None,
+                        amount_percentage: Some("100".into()),
+                    }],
+                },
+            )
+            .expect("insert related");
+            let value = rune::to_value(mapped).expect("rune map");
+            let json = lariv_core::rune_env::rune_to_json(&value).expect("json");
+            let lines = field(&json, "lines").expect("lines");
+            let first = lines
+                .as_array()
+                .and_then(|rows| rows.first())
+                .expect("first line");
+            assert_eq!(
+                field(first, "product_id").expect("product"),
+                &serde_json::json!(9)
+            );
+            assert_eq!(
+                field(first, "tax_ids").expect("line taxes"),
+                &serde_json::json!([2])
+            );
+            assert_eq!(
+                field(&json, "header_tax_ids").expect("header"),
+                &serde_json::json!([8])
+            );
+            let terms = field(&json, "payment_term_lines").expect("terms");
+            let term = terms
+                .as_array()
+                .and_then(|rows| rows.first())
+                .expect("first term");
+            assert_eq!(
+                field(term, "date_kind").expect("kind"),
+                &serde_json::json!("relative")
+            );
+            assert_eq!(
+                field(term, "due_duration").expect("duration"),
+                &serde_json::json!("15 days")
+            );
+            assert_eq!(
+                field(term, "amount").expect("amount"),
+                &serde_json::Value::Null
+            );
+        }
+    }
 }
 
 #[cfg(feature = "cap-llm")]
@@ -559,11 +1399,27 @@ fn get_draft_invoice(
 ) -> Result<rune::Value, String> {
     let id = rows::parse_id(args, "get_draft_invoice", "draft invoice")?;
     let db = ctx.db.clone();
-    let row = lariv_core::rune_env::block_on_async(async move {
-        rows::find_one::<crate::entities::draft_invoice::Entity>(&db, id, "draft invoice not found")
-            .await
+    let (row, related, amounts, extras) = lariv_core::rune_env::block_on_async(async move {
+        let row = rows::find_one::<crate::entities::draft_invoice::Entity>(
+            &db,
+            id,
+            "draft invoice not found",
+        )
+        .await?;
+        let related = rows::load_draft_related(&db, row.id).await?;
+        let amounts = rows::draft_amounts(&db, row.id).await;
+        let extras = crate::script_addon::enrich_invoice_script(
+            &db,
+            crate::script_addon::InvoiceScriptRecord::Draft,
+            row.id,
+        )
+        .await?;
+        Ok::<_, String>((row, related, amounts, extras))
     })?;
-    rows::draft_value(&row)
+    let mut mapped = rows::draft_map(&row)?;
+    rows::insert_amounts(&mut mapped, &amounts)?;
+    rows::insert_related(&mut mapped, related)?;
+    attach_script_fields(mapped, extras)
 }
 
 #[cfg(feature = "cap-llm")]
@@ -576,7 +1432,7 @@ fn search_draft_invoices(
     let (query, limit) = rows::parse_search(args, "search_draft_invoices")?;
     let db = ctx.db.clone();
     let found = lariv_core::rune_env::block_on_async(async move {
-        lariv_core::db::trigram::search::<DraftInvoiceEntity, _>(
+        let matches = lariv_core::db::trigram::search::<DraftInvoiceEntity, _>(
             &db,
             &[
                 draft_invoice::Column::Number,
@@ -586,11 +1442,18 @@ fn search_draft_invoices(
             limit,
         )
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+        let mut amounts = Vec::with_capacity(matches.len());
+        for row in &matches {
+            amounts.push(rows::draft_amounts(&db, row.id).await);
+        }
+        Ok::<_, String>((matches, amounts))
     })?;
     let results = found
+        .0
         .iter()
-        .map(rows::draft_value)
+        .zip(&found.1)
+        .map(|(row, amounts)| rows::draft_value(row, amounts))
         .collect::<Result<Vec<_>, _>>()?;
     rows::results(results)
 }
@@ -648,18 +1511,30 @@ fn get_posted_invoice(
 
     let id = rows::parse_id(args, "get_posted_invoice", "posted invoice")?;
     let db = ctx.db.clone();
-    let row = lariv_core::rune_env::block_on_async(async move {
-        let row = PostedInvoiceEntity::find_by_id(id)
-            .filter(sql_posted_not_cancelled())
-            .one(&db)
-            .await
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| "posted invoice not found".to_string())?;
-        let labels = rows::posted_settlements(&db, &[row.id]).await?;
-        let settlement = labels.get(&row.id).copied().unwrap_or("open");
-        Ok::<_, String>((row, settlement))
-    })?;
-    rows::posted_value(&row.0, row.1)
+    let (row, settlement, related, amounts, extras) =
+        lariv_core::rune_env::block_on_async(async move {
+            let row = PostedInvoiceEntity::find_by_id(id)
+                .filter(sql_posted_not_cancelled())
+                .one(&db)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| "posted invoice not found".to_string())?;
+            let labels = rows::posted_settlements(&db, &[row.id]).await?;
+            let settlement = labels.get(&row.id).copied().unwrap_or("open");
+            let related = rows::load_posted_related(&db, row.id).await?;
+            let amounts = rows::posted_amounts(&db, row.id).await;
+            let extras = crate::script_addon::enrich_invoice_script(
+                &db,
+                crate::script_addon::InvoiceScriptRecord::Posted,
+                row.id,
+            )
+            .await?;
+            Ok::<_, String>((row, settlement, related, amounts, extras))
+        })?;
+    let mut mapped = rows::posted_map(&row, settlement)?;
+    rows::insert_amounts(&mut mapped, &amounts)?;
+    rows::insert_related(&mut mapped, related)?;
+    attach_script_fields(mapped, extras)
 }
 
 #[cfg(feature = "cap-llm")]
@@ -690,14 +1565,19 @@ fn search_posted_invoices(
         .map_err(|e| e.to_string())?;
         let ids: Vec<i64> = rows.iter().map(|row| row.id).collect();
         let labels = rows::posted_settlements(&db, &ids).await?;
-        Ok::<_, String>((rows, labels))
+        let mut amounts = Vec::with_capacity(rows.len());
+        for row in &rows {
+            amounts.push(rows::posted_amounts(&db, row.id).await);
+        }
+        Ok::<_, String>((rows, labels, amounts))
     })?;
     let results = found
         .0
         .iter()
-        .map(|row| {
+        .zip(&found.2)
+        .map(|(row, amounts)| {
             let settlement = found.1.get(&row.id).copied().unwrap_or("open");
-            rows::posted_value(row, settlement)
+            rows::posted_value(row, settlement, amounts)
         })
         .collect::<Result<Vec<_>, _>>()?;
     rows::results(results)
@@ -750,15 +1630,27 @@ fn get_cancelled_invoice(
 ) -> Result<rune::Value, String> {
     let id = rows::parse_id(args, "get_cancelled_invoice", "cancelled invoice")?;
     let db = ctx.db.clone();
-    let row = lariv_core::rune_env::block_on_async(async move {
-        rows::find_one::<crate::entities::cancelled_invoice::Entity>(
+    let (row, related, amounts, extras) = lariv_core::rune_env::block_on_async(async move {
+        let row = rows::find_one::<crate::entities::cancelled_invoice::Entity>(
             &db,
             id,
             "cancelled invoice not found",
         )
-        .await
+        .await?;
+        let related = rows::load_cancelled_related(&db, row.id).await?;
+        let amounts = rows::cancelled_amounts(&db, row.id).await;
+        let extras = crate::script_addon::enrich_invoice_script(
+            &db,
+            crate::script_addon::InvoiceScriptRecord::Cancelled,
+            row.id,
+        )
+        .await?;
+        Ok::<_, String>((row, related, amounts, extras))
     })?;
-    rows::cancelled_value(&row)
+    let mut mapped = rows::cancelled_map(&row)?;
+    rows::insert_amounts(&mut mapped, &amounts)?;
+    rows::insert_related(&mut mapped, related)?;
+    attach_script_fields(mapped, extras)
 }
 
 #[cfg(feature = "cap-llm")]
@@ -771,7 +1663,7 @@ fn search_cancelled_invoices(
     let (query, limit) = rows::parse_search(args, "search_cancelled_invoices")?;
     let db = ctx.db.clone();
     let found = lariv_core::rune_env::block_on_async(async move {
-        lariv_core::db::trigram::search::<CancelledInvoiceEntity, _>(
+        let matches = lariv_core::db::trigram::search::<CancelledInvoiceEntity, _>(
             &db,
             &[
                 cancelled_invoice::Column::Number,
@@ -781,11 +1673,18 @@ fn search_cancelled_invoices(
             limit,
         )
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+        let mut amounts = Vec::with_capacity(matches.len());
+        for row in &matches {
+            amounts.push(rows::cancelled_amounts(&db, row.id).await);
+        }
+        Ok::<_, String>((matches, amounts))
     })?;
     let results = found
+        .0
         .iter()
-        .map(rows::cancelled_value)
+        .zip(&found.1)
+        .map(|(row, amounts)| rows::cancelled_value(row, amounts))
         .collect::<Result<Vec<_>, _>>()?;
     rows::results(results)
 }
@@ -956,11 +1855,27 @@ fn get_quotation(
 ) -> Result<rune::Value, String> {
     let id = rows::parse_id(args, "get_quotation", "quotation")?;
     let db = ctx.db.clone();
-    let row = lariv_core::rune_env::block_on_async(async move {
-        rows::find_one::<crate::entities::quotation_invoice::Entity>(&db, id, "quotation not found")
-            .await
+    let (row, related, amounts, extras) = lariv_core::rune_env::block_on_async(async move {
+        let row = rows::find_one::<crate::entities::quotation_invoice::Entity>(
+            &db,
+            id,
+            "quotation not found",
+        )
+        .await?;
+        let related = rows::load_quotation_related(&db, row.id).await?;
+        let amounts = rows::quotation_amounts(&db, row.id).await;
+        let extras = crate::script_addon::enrich_invoice_script(
+            &db,
+            crate::script_addon::InvoiceScriptRecord::Quotation,
+            row.id,
+        )
+        .await?;
+        Ok::<_, String>((row, related, amounts, extras))
     })?;
-    rows::quotation_value(&row)
+    let mut mapped = rows::quotation_map(&row)?;
+    rows::insert_amounts(&mut mapped, &amounts)?;
+    rows::insert_related(&mut mapped, related)?;
+    attach_script_fields(mapped, extras)
 }
 
 #[cfg(feature = "cap-llm")]
@@ -973,7 +1888,7 @@ fn search_quotations(
     let (query, limit) = rows::parse_search(args, "search_quotations")?;
     let db = ctx.db.clone();
     let found = lariv_core::rune_env::block_on_async(async move {
-        lariv_core::db::trigram::search::<QuotationInvoiceEntity, _>(
+        let matches = lariv_core::db::trigram::search::<QuotationInvoiceEntity, _>(
             &db,
             &[
                 quotation_invoice::Column::Number,
@@ -983,11 +1898,18 @@ fn search_quotations(
             limit,
         )
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+        let mut amounts = Vec::with_capacity(matches.len());
+        for row in &matches {
+            amounts.push(rows::quotation_amounts(&db, row.id).await);
+        }
+        Ok::<_, String>((matches, amounts))
     })?;
     let results = found
+        .0
         .iter()
-        .map(rows::quotation_value)
+        .zip(&found.1)
+        .map(|(row, amounts)| rows::quotation_value(row, amounts))
         .collect::<Result<Vec<_>, _>>()?;
     rows::results(results)
 }
@@ -1193,24 +2115,7 @@ mod args {
             return Err(format!("{op} requires a positive {id_label} id"));
         }
         let (create, tz) = parse_fields(parsed.fields)?;
-        Ok((
-            parsed.id,
-            UpdateDraftInput {
-                number: create.number,
-                reference: create.reference,
-                eway_bill_number: create.eway_bill_number,
-                payment_reference: create.payment_reference,
-                bank_account: create.bank_account,
-                remarks: create.remarks,
-                datetime: create.datetime,
-                delivery_date: create.delivery_date,
-                customer_id: create.customer_id,
-                payment_term_lines: create.payment_term_lines,
-                header_tax_ids: create.header_tax_ids,
-                lines: create.lines,
-            },
-            tz,
-        ))
+        Ok((parsed.id, create.into_update(), tz))
     }
 }
 

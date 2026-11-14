@@ -1,8 +1,9 @@
 //! Fold service lines into a single `*_invoice_lines` family.
-use lariv_core::db::migration_sql::{
-    self, FK_CANCELLED_INVOICE_LINE_PRODUCT, FK_DRAFT_INVOICE_LINE_PRODUCT,
-    FK_POSTED_INVOICE_LINE_PRODUCT, exec_sql,
+use crate::foreign_keys::{
+    FK_CANCELLED_INVOICE_LINE_PRODUCT, FK_DRAFT_INVOICE_LINE_PRODUCT,
+    FK_POSTED_INVOICE_LINE_PRODUCT,
 };
+use lariv_core::db::migration_sql::{self, exec_sql};
 
 use sea_orm_migration::prelude::*;
 

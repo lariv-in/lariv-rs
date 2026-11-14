@@ -1,8 +1,9 @@
 //! Fold purchase service lines into a single `*_purchase_lines` family.
-use lariv_core::db::migration_sql::{
-    self, FK_CANCELLED_PURCHASE_LINE_PRODUCT, FK_DRAFT_PURCHASE_LINE_PRODUCT,
-    FK_POSTED_PURCHASE_LINE_PRODUCT, exec_sql,
+use crate::foreign_keys::{
+    FK_CANCELLED_PURCHASE_LINE_PRODUCT, FK_DRAFT_PURCHASE_LINE_PRODUCT,
+    FK_POSTED_PURCHASE_LINE_PRODUCT,
 };
+use lariv_core::db::migration_sql::{self, exec_sql};
 
 use sea_orm_migration::prelude::*;
 

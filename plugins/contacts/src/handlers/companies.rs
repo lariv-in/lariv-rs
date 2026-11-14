@@ -155,7 +155,7 @@ pub async fn detail(
         address_line_2: company.address_line_2.unwrap_or_default(),
         city: company.city.unwrap_or_default(),
         pincode: company.pincode.unwrap_or_default(),
-        state: company.state.unwrap_or_default(),
+        state: crate::gst_state::dropdown_value(&company.state.unwrap_or_default()),
         website: company.website.unwrap_or_default(),
         gstin: company.gstin.unwrap_or_default(),
         cin: company.cin.unwrap_or_default(),
@@ -166,21 +166,21 @@ pub async fn detail(
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
-fn company_write(form: &CompanyForm) -> CompanyWrite {
-    CompanyWrite {
+fn company_write(form: &CompanyForm) -> Result<CompanyWrite, String> {
+    Ok(CompanyWrite {
         name: form.name.clone(),
         address_line_1: opt_string(form.address_line_1.clone()),
         address_line_2: opt_string(form.address_line_2.clone()),
         city: opt_string(form.city.clone()),
         pincode: opt_string(form.pincode.clone()),
-        state: opt_string(form.state.clone()),
+        state: crate::gst_state::parse_state(&form.state)?,
         website: opt_string(form.website.clone()),
         gstin: opt_string(form.gstin.clone()),
         cin: opt_string(form.cin.clone()),
         pan: opt_string(form.pan.clone()),
         phone: opt_string(form.phone.clone()),
         email: opt_string(form.email.clone()),
-    }
+    })
 }
 
 pub async fn create_get(
@@ -217,7 +217,11 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<CompanyForm>,
 ) -> Response {
-    match logic::create_company(&state.db, company_write(&form)).await {
+    let outcome = match company_write(&form) {
+        Ok(company) => logic::create_company(&state.db, company).await,
+        Err(error) => Err(error),
+    };
+    match outcome {
         Ok(saved) => respond_create_modal_done_fk(
             &htmx,
             COMPANY_CREATE_MODAL,
@@ -269,7 +273,7 @@ pub async fn edit_get(
         address_line_2: company.address_line_2.unwrap_or_default(),
         city: company.city.unwrap_or_default(),
         pincode: company.pincode.unwrap_or_default(),
-        state: company.state.unwrap_or_default(),
+        state: crate::gst_state::dropdown_value(&company.state.unwrap_or_default()),
         website: company.website.unwrap_or_default(),
         gstin: company.gstin.unwrap_or_default(),
         cin: company.cin.unwrap_or_default(),
@@ -293,7 +297,11 @@ pub async fn edit_post(
     if find_company_scoped(&state.db, id).await.is_none() {
         return Redirect::to(&companies_list_url()).into_response();
     }
-    match logic::update_company(&state.db, id, company_write(&form)).await {
+    let outcome = match company_write(&form) {
+        Ok(company) => logic::update_company(&state.db, id, company).await,
+        Err(error) => Err(error),
+    };
+    match outcome {
         Ok(_) => respond_edit_modal_done(
             &htmx,
             COMPANY_EDIT_MODAL,

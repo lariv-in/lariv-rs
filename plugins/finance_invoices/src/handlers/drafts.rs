@@ -32,9 +32,9 @@ use lariv_plugin_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 
 use crate::{
     draft_form_addon::{
-        DraftInvoiceBulkEditFormPost, DraftInvoiceFormPost, render_draft_invoice_detail_extras,
-        render_draft_invoice_form_extras, save_draft_invoice_form_extras,
-        save_draft_invoice_form_extras_bulk,
+        DraftInvoiceBulkEditFormPost, DraftInvoiceFormPost, render_draft_invoice_bulk_extras,
+        render_draft_invoice_detail_extras, render_draft_invoice_form_extras,
+        save_draft_invoice_form_extras, save_draft_invoice_form_extras_bulk,
     },
     entities::draft_invoice::{self, Entity as DraftInvoiceEntity},
     forms::{DraftInvoiceBulkEditForm, DraftInvoiceForm},
@@ -54,12 +54,12 @@ use crate::{
     },
     logic::tax_assoc::load_draft_invoice_tax_ids,
     logic::{
-        CreateDraftInput, PatchDraftInput, UpdateDraftInput, create_draft_invoice,
-        default_payment_term_lines_json, delete_draft, draft_invoice_list_metrics,
-        format_delivery_date, format_invoice_date, load_invoice_date_formats,
-        load_invoice_preferences, optional_display, optional_trimmed_text, parse_delivery_date,
-        parse_invoice_datetime, parse_lines_json, parse_payment_term_lines_json,
-        patch_draft_invoice, payment_term_lines_form_json, update_draft_invoice,
+        CreateDraftInput, PatchDraftInput, create_draft_invoice, default_payment_term_lines_json,
+        delete_draft, draft_invoice_list_metrics, format_delivery_date, format_invoice_date,
+        load_invoice_date_formats, load_invoice_preferences, optional_display,
+        optional_trimmed_text, parse_delivery_date, parse_invoice_datetime, parse_lines_json,
+        parse_payment_term_lines_json, patch_draft_invoice, payment_term_lines_form_json,
+        update_draft_invoice,
     },
     routes::{
         DraftInvoiceBulkPostRouteTag, DraftInvoiceDetailRouteTag, DraftInvoicePostRouteTag,
@@ -393,6 +393,7 @@ async fn draft_bulk_edit_modal_page(
     posted: Option<&UrlencodedFields>,
 ) -> DraftInvoiceBulkEditModalPage {
     let ctx_data = load_draft_form_context(db, form.customer_id, &form.taxes, None, posted).await;
+    let extra_inputs = render_draft_invoice_bulk_extras(db, posted).await;
     DraftInvoiceBulkEditModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -402,7 +403,7 @@ async fn draft_bulk_edit_modal_page(
         customer_display: ctx_data.customer_display,
         tax_items: ctx_data.tax_items,
         invoice_lines_preview: ctx_data.invoice_lines_preview,
-        extra_inputs: ctx_data.extra_inputs,
+        extra_inputs,
         error,
         can_submit,
     }
@@ -596,20 +597,7 @@ pub async fn edit_post(
     }
     match form_to_input(&form, &ctx.timezone) {
         Ok(input) => {
-            let update = UpdateDraftInput {
-                number: input.number,
-                reference: input.reference,
-                eway_bill_number: input.eway_bill_number,
-                payment_reference: input.payment_reference,
-                bank_account: input.bank_account,
-                remarks: input.remarks,
-                datetime: input.datetime,
-                delivery_date: input.delivery_date,
-                customer_id: input.customer_id,
-                payment_term_lines: input.payment_term_lines,
-                header_tax_ids: input.header_tax_ids,
-                lines: input.lines,
-            };
+            let update = input.into_update();
             match update_draft_invoice(&state.db, id, update, &ctx.timezone).await {
                 Ok(_) => {
                     if let Err(e) = save_draft_invoice_form_extras(&state.db, id, &fields).await {

@@ -1,5 +1,6 @@
 //! Remap quotation service lines onto unified service products.
-use lariv_core::db::migration_sql::{FK_QUOTATION_SERVICE_LINE_SERVICE, exec_sql};
+use crate::foreign_keys::FK_QUOTATION_SERVICE_LINE_SERVICE;
+use lariv_core::db::migration_sql::exec_sql;
 
 use lariv_plugin_finance_products::migrations::PRODUCT_SERVICE_ID_MAP;
 use sea_orm_migration::prelude::*;
@@ -13,10 +14,15 @@ impl MigrationTrait for Migration {
         exec_sql(
             manager,
             &format!(
-                r#"UPDATE quotation_service_lines AS line
-               SET service_id = map.product_id
-               FROM {PRODUCT_SERVICE_ID_MAP} AS map
-               WHERE line.service_id = map.service_id"#
+                r#"DO $$
+                BEGIN
+                    IF to_regclass('public.{PRODUCT_SERVICE_ID_MAP}') IS NOT NULL THEN
+                        UPDATE quotation_service_lines AS line
+                           SET service_id = map.product_id
+                          FROM {PRODUCT_SERVICE_ID_MAP} AS map
+                         WHERE line.service_id = map.service_id;
+                    END IF;
+                END $$;"#
             ),
         )
         .await?;

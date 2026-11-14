@@ -1,7 +1,7 @@
 //! Cancelled invoice detail page.
 
 use frunk::Generic;
-use maud::{Markup, html};
+use maud::{Markup, PreEscaped, html};
 
 use lariv_core::components::{
     DetailHeader, FieldText, FieldTextarea, ShellChrome, button_modal_route, container_column,
@@ -48,6 +48,7 @@ pub struct CancelledInvoiceDetailPage {
     pub credit_note_label: String,
     pub credit_note_href: Option<String>,
     pub can_edit: bool,
+    pub extra_detail: String,
 }
 
 impl CancelledInvoiceDetailPage {
@@ -79,6 +80,7 @@ impl CancelledInvoiceDetailPage {
                     (label("Customer", customer_link(self.bill_to_individual, self.customer_id, &self.customer_name)))
                     (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
+                    (PreEscaped(&self.extra_detail))
                     (label("Posted invoice", cancelled_detail_link(&self.posted_invoice_href, &self.posted_invoice_label)))
                     (label("Credit note", cancelled_detail_link(&self.credit_note_href, &self.credit_note_label)))
                     h3 class="font-semibold mt-4" { "Lines" }

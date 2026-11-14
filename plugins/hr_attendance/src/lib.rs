@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! HR attendance addon — punch in/out and attendance records patched onto the HR hub sidebar.
 
 pub mod apps;

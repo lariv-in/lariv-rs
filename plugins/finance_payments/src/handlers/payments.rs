@@ -245,6 +245,10 @@ pub async fn create_get(
         datetime: ctx.datetime_local_input(Utc::now()).into_string(),
         taxes: vec![],
         journal_lines: String::new(),
+        is_gst_advance: "false".to_string(),
+        gst_pos: String::new(),
+        gst_taxes: vec![],
+        adjustments: String::new(),
         csrf: CsrfToken::current(),
     };
     let page = PaymentCreateModalPage {
@@ -253,6 +257,7 @@ pub async fn create_get(
         form,
         customer_display,
         tax_items: Vec::new(),
+        gst_tax_items: Vec::new(),
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -265,6 +270,7 @@ async fn create_modal(
     error: String,
 ) -> PaymentCreateModalPage {
     let customer_display = customer_label(db, form.customer_id).await;
+    let gst_tax_items = tax_items(db, &form.gst_taxes).await;
     let tax_items = tax_items(db, &form.taxes).await;
     PaymentCreateModalPage {
         form_name: q.modal.form_name(),
@@ -272,8 +278,35 @@ async fn create_modal(
         form,
         customer_display,
         tax_items,
+        gst_tax_items,
         error,
     }
+}
+
+fn parse_adjustments(raw: &str) -> Result<Vec<(chrono::NaiveDate, rust_decimal::Decimal)>, String> {
+    let mut rows = Vec::new();
+    for line in raw.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let mut parts = line.split_whitespace();
+        let date = parts
+            .next()
+            .ok_or_else(|| format!("adjustment line {line} needs a date and an amount"))?;
+        let amount = parts
+            .next()
+            .ok_or_else(|| format!("adjustment line {line} needs an amount"))?;
+        if parts.next().is_some() {
+            return Err(format!("adjustment line {line} has extra text"));
+        }
+        let date = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
+            .map_err(|_| format!("adjustment date {date} must be YYYY-MM-DD"))?;
+        let amount = lariv_formula::decimal::parse_decimal(amount)
+            .ok_or_else(|| format!("invalid adjustment amount {amount}"))?;
+        rows.push((date, amount));
+    }
+    Ok(rows)
 }
 
 pub async fn create_post(
@@ -313,6 +346,24 @@ pub async fn create_post(
         journal_lines: Some(submitted.lines),
         withholding_base: None,
         number: Some(form.number.clone()),
+        is_gst_advance: form.is_gst_advance.trim() == "true",
+        gst_pos: {
+            let pos = form.gst_pos.trim();
+            if pos.is_empty() {
+                None
+            } else {
+                Some(pos.to_string())
+            }
+        },
+        gst_tax_ids: form.gst_taxes.clone(),
+        adjustments: match parse_adjustments(&form.adjustments) {
+            Ok(rows) => rows,
+            Err(error) => {
+                let page = create_modal(&state.db, &q, form, error).await;
+                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    .into_response();
+            }
+        },
     };
     match create_payment(&state.db, input).await {
         Ok(payment) => respond_create_modal_done(

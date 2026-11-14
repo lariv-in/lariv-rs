@@ -33,6 +33,10 @@ pub struct CreatePaymentInput {
     pub withholding_base: Option<Decimal>,
     /// Trimmed payment number. Blank or `None` assigns one from Payment number format.
     pub number: Option<String>,
+    pub is_gst_advance: bool,
+    pub gst_pos: Option<String>,
+    pub gst_tax_ids: Vec<i64>,
+    pub adjustments: Vec<(chrono::NaiveDate, Decimal)>,
 }
 
 pub fn parse_payment_amount(s: &str) -> Result<Decimal, String> {
@@ -160,6 +164,10 @@ pub struct NewPayment {
     pub lines: Vec<JournalLineSpec>,
     pub withholding_tax_ids: Vec<i64>,
     pub number: Option<String>,
+    pub is_gst_advance: bool,
+    pub gst_pos: Option<String>,
+    pub gst_tax_ids: Vec<i64>,
+    pub adjustments: Vec<(chrono::NaiveDate, Decimal)>,
 }
 
 pub async fn prepare_payment(
@@ -213,6 +221,10 @@ pub async fn prepare_payment(
         lines,
         withholding_tax_ids: input.withholding_tax_ids,
         number: input.number,
+        is_gst_advance: input.is_gst_advance,
+        gst_pos: input.gst_pos,
+        gst_tax_ids: input.gst_tax_ids,
+        adjustments: input.adjustments,
     })
 }
 
@@ -239,6 +251,8 @@ pub async fn insert_payment<C: ConnectionTrait>(
         datetime: Set(new.datetime),
         number: Set(number.clone()),
         journal_entry_id: Set(je_id),
+        is_gst_advance: Set(new.is_gst_advance),
+        gst_pos: Set(new.gst_pos.clone()),
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()
@@ -257,6 +271,12 @@ pub async fn insert_payment<C: ConnectionTrait>(
         .await
         .map_err(|e| e.to_string())?;
     set_payment_taxes(db, pay.id, &new.withholding_tax_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+    crate::logic::tax_assoc::set_payment_gst_taxes(db, pay.id, &new.gst_tax_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+    crate::logic::tax_assoc::replace_advance_adjustments(db, pay.id, &new.adjustments)
         .await
         .map_err(|e| e.to_string())?;
     Ok(pay)

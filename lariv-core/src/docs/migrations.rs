@@ -65,6 +65,12 @@
 //!
 //! Add `migrations(migrations::Hook)` to [`define_plugin_install!`](crate::plugin_install::define_plugin_install).
 //!
+//! A foreign key that points at another plugin's table is declared in the owning plugin
+//! and passed as `foreign_keys:` on `define_register_migrations!`. The migration is free
+//! to attach it immediately; if the referenced table does not exist yet, the constraint
+//! is skipped. After every installed plugin has migrated, the mounted app retries the
+//! keys those plugins registered.
+//!
 //! # Running migrations
 //!
 //! Lariv merges all plugin migrators into one composite migrator. Apply pending migrations:

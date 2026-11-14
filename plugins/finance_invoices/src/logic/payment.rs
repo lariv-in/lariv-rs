@@ -321,6 +321,10 @@ pub async fn pay_posted_invoice(
             journal_lines: Some(lines),
             withholding_base: Some(withholding_base),
             number: input.number,
+            is_gst_advance: false,
+            gst_pos: None,
+            gst_tax_ids: Vec::new(),
+            adjustments: Vec::new(),
         },
     )
     .await?;

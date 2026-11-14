@@ -666,6 +666,7 @@ pub async fn posted_new_cancelled(
             .await
             .map_err(|e| e.to_string())?;
     }
+    crate::draft_form_addon::run_invoice_on_cancelled(&txn, posted.id, cancelled.id).await?;
     txn.commit().await.map_err(|e| e.to_string())?;
     Ok(cancelled)
 }
@@ -753,6 +754,8 @@ pub async fn posted_new_draft(
             .await
             .map_err(|e| e.to_string())?;
     }
+    crate::draft_form_addon::run_invoice_on_quotation_from_posted(&txn, posted_id, quotation.id)
+        .await?;
 
     txn.commit().await.map_err(|e| e.to_string())?;
     Ok(quotation)
@@ -836,6 +839,12 @@ pub async fn cancelled_new_draft(
             .await
             .map_err(|e| e.to_string())?;
     }
+    crate::draft_form_addon::run_invoice_on_quotation_from_cancelled(
+        &txn,
+        cancelled_id,
+        quotation.id,
+    )
+    .await?;
 
     txn.commit().await.map_err(|e| e.to_string())?;
     Ok(quotation)

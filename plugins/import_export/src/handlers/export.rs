@@ -7,6 +7,7 @@ use axum::{
 use chrono::Utc;
 use serde::Deserialize;
 
+use crate::export_actions::ExportPageActionRegistry;
 use crate::routes::ExportPageRouteTag;
 use crate::state::ImportExportState;
 use crate::templates::ExportPage;
@@ -32,6 +33,7 @@ pub struct ExportDownloadForm {
 /// HTTP handler: `page`.
 pub async fn page(
     Cap(export): Cap<ExportCapability>,
+    Cap(actions): Cap<ExportPageActionRegistry>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -51,6 +53,7 @@ pub async fn page(
         tables,
         deps_json,
         model_count: catalog.entries.len() as i64,
+        extra_actions_html: actions.render().await.into_string(),
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }

@@ -108,6 +108,7 @@ async fn query_rows(
         .into_iter()
         .map(|c| CreditNoteRow {
             id: c.id,
+            credit_note_number: c.credit_note_number,
             datetime: auth.format_datetime_seconds(c.datetime).into_string(),
             reason: c.reason.unwrap_or_default(),
             original_entry_label: entry_labels
@@ -167,6 +168,12 @@ pub async fn detail(
     };
     let page = CreditNoteDetailPage {
         id: c.id,
+        credit_note_number: c.credit_note_number.clone(),
+        original_note_number: c.original_note_number.unwrap_or_else(|| "—".to_string()),
+        original_note_date: c
+            .original_note_date
+            .map(|date| date.format("%d/%m/%Y").to_string())
+            .unwrap_or_else(|| "—".to_string()),
         datetime: ctx.format_datetime_seconds(c.datetime).into_string(),
         reason: c.reason.unwrap_or_default(),
         journal_entry_id: c.journal_entry_id,

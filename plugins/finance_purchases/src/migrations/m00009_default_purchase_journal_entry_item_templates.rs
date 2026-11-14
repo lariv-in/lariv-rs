@@ -11,11 +11,11 @@
 //! accounts stamped on the latest posted purchase. Databases that already
 //! dropped those columns fall back to chart accounts 50101 (Merchandise,
 //! Material, Parts And Supplies) and 20101 (Trade Payables).
-use lariv_core::db::migration_sql::{
-    self, FK_PURCHASE_PRODUCT_PREFERENCE_JOURNAL_ACCOUNT,
-    FK_PURCHASE_PRODUCT_PREFERENCE_JOURNAL_JOURNAL, FK_PURCHASE_SERVICE_PREFERENCE_JOURNAL_ACCOUNT,
-    FK_PURCHASE_SERVICE_PREFERENCE_JOURNAL_JOURNAL, exec_sql,
+use crate::foreign_keys::{
+    FK_PURCHASE_PRODUCT_PREFERENCE_JOURNAL_ACCOUNT, FK_PURCHASE_PRODUCT_PREFERENCE_JOURNAL_JOURNAL,
+    FK_PURCHASE_SERVICE_PREFERENCE_JOURNAL_ACCOUNT, FK_PURCHASE_SERVICE_PREFERENCE_JOURNAL_JOURNAL,
 };
+use lariv_core::db::migration_sql::{self, exec_sql};
 
 use sea_orm_migration::prelude::*;
 

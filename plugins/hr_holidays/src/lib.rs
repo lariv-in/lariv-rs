@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! HR holidays addon — holiday calendar patched onto the HR hub sidebar.
 
 pub mod apps;

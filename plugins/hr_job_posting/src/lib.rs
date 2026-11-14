@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! HR job posting addon — applicants, job forms, and public apply.
 
 pub mod apps;

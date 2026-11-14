@@ -9,7 +9,7 @@ use sea_orm::{EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 
 use lariv_core::components::picker::respond_picker_select;
 use lariv_core::components::{ManyToManyItem, ObjectList, SharedChromeFolder, SlotCtx};
-use lariv_core::html_form::CsrfToken;
+use lariv_core::html_form::{CsrfToken, UrlencodedFields};
 use lariv_core::http::Cap;
 use lariv_core::list_filters::apply_filters;
 use lariv_core::web::{
@@ -20,7 +20,11 @@ use lariv_plugin_finance_taxes::scope::{load_taxes_by_ids, tax_label};
 use lariv_plugin_users::middleware::RequireAuth;
 
 use crate::{
-    draft_form_addon::{DraftInvoiceBulkEditFormPost, DraftInvoiceFormPost},
+    draft_form_addon::{
+        DraftInvoiceBulkEditFormPost, DraftInvoiceFormPost, addons_bulk_has_values,
+        render_quotation_bulk_extras, render_quotation_detail_extras, render_quotation_form_extras,
+        save_quotation_form_extras, save_quotation_form_extras_bulk,
+    },
     entities::quotation_invoice::{self, Entity as QuotationInvoiceEntity},
     forms::DraftInvoiceForm,
     hub_filter::{HubFilterKind, hub_filter_fields, invoice_picker_clauses},
@@ -44,8 +48,8 @@ use crate::{
     },
     logic::tax_assoc::load_quotation_invoice_tax_ids,
     logic::{
-        UpdateDraftInput, default_payment_term_lines_json, format_delivery_date,
-        format_invoice_date, load_invoice_date_formats, load_invoice_preferences, optional_display,
+        default_payment_term_lines_json, format_delivery_date, format_invoice_date,
+        load_invoice_date_formats, load_invoice_preferences, optional_display,
     },
     routes::{
         DraftInvoiceDetailRouteTag, QuotationInvoiceBulkCreateDraftRouteTag,
@@ -151,6 +155,7 @@ async fn create_page(
     q: &ModalNameQuery,
     form: DraftInvoiceForm,
     error: String,
+    posted: Option<&UrlencodedFields>,
 ) -> QuotationInvoiceCreateModalPage {
     let ctx = form_context(db, form.customer_id, &form.taxes).await;
     QuotationInvoiceCreateModalPage {
@@ -160,7 +165,7 @@ async fn create_page(
         customer_display: ctx.customer_display,
         tax_items: ctx.tax_items,
         invoice_lines_preview: ctx.invoice_lines_preview,
-        extra_inputs: String::new(),
+        extra_inputs: render_quotation_form_extras(db, None, posted).await,
         error,
     }
 }
@@ -171,6 +176,7 @@ async fn edit_page(
     form_name: String,
     form: DraftInvoiceForm,
     error: String,
+    posted: Option<&UrlencodedFields>,
 ) -> QuotationInvoiceEditModalPage {
     let ctx = form_context(db, form.customer_id, &form.taxes).await;
     QuotationInvoiceEditModalPage {
@@ -181,7 +187,7 @@ async fn edit_page(
         customer_display: ctx.customer_display,
         tax_items: ctx.tax_items,
         invoice_lines_preview: ctx.invoice_lines_preview,
-        extra_inputs: String::new(),
+        extra_inputs: render_quotation_form_extras(db, Some(id), posted).await,
     }
 }
 
@@ -218,6 +224,7 @@ pub async fn create_get(
             csrf: CsrfToken::current(),
         },
         String::new(),
+        None,
     )
     .await;
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
@@ -229,24 +236,31 @@ pub async fn create_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    DraftInvoiceFormPost { form, fields: _ }: DraftInvoiceFormPost,
+    DraftInvoiceFormPost { form, fields }: DraftInvoiceFormPost,
 ) -> Response {
     match form_to_input(&form, &ctx.timezone) {
         Ok(input) => match create_quotation_invoice(&state.db, input, &ctx.timezone).await {
-            Ok(row) => respond_create_modal_done(
-                &htmx,
-                QUOTATION_INVOICE_CREATE_MODAL,
-                &q.refresh_table(),
-                &QuotationInvoiceDetailRouteTag::new(row.id).url(),
-            ),
+            Ok(row) => {
+                if let Err(e) = save_quotation_form_extras(&state.db, row.id, &fields).await {
+                    let page = create_page(&state.db, &q, form, e, Some(&fields)).await;
+                    return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                        .into_response();
+                }
+                respond_create_modal_done(
+                    &htmx,
+                    QUOTATION_INVOICE_CREATE_MODAL,
+                    &q.refresh_table(),
+                    &QuotationInvoiceDetailRouteTag::new(row.id).url(),
+                )
+            }
             Err(e) => {
-                let page = create_page(&state.db, &q, form, e).await;
+                let page = create_page(&state.db, &q, form, e, Some(&fields)).await;
                 html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                     .into_response()
             }
         },
         Err(e) => {
-            let page = create_page(&state.db, &q, form, e).await;
+            let page = create_page(&state.db, &q, form, e, Some(&fields)).await;
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
@@ -293,7 +307,7 @@ pub async fn detail(
         payment_term_rows: quotation_payment_term_display_rows(&state.db, row.id, &dates.date)
             .await,
         tax_labels,
-        extra_detail: String::new(),
+        extra_detail: render_quotation_detail_extras(&state.db, row.id).await,
         line_rows: quotation_invoice_line_display_rows(&state.db, row.id).await,
         can_edit: can_edit(),
         error: query.error.filter(|e| !e.is_empty()),
@@ -329,7 +343,7 @@ pub async fn edit_get(
         invoice_lines_json: quotation_lines_form_json(&state.db, row.id).await,
         csrf: CsrfToken::current(),
     };
-    let page = edit_page(&state.db, id, q.form_name(), form, String::new()).await;
+    let page = edit_page(&state.db, id, q.form_name(), form, String::new(), None).await;
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
@@ -340,42 +354,42 @@ pub async fn edit_post(
     htmx: Htmx,
     Path(id): Path<i64>,
     Query(q): Query<ModalNameQuery>,
-    DraftInvoiceFormPost { form, fields: _ }: DraftInvoiceFormPost,
+    DraftInvoiceFormPost { form, fields }: DraftInvoiceFormPost,
 ) -> Response {
     if find_active_quotation(&state.db, id).await.is_none() {
         return Redirect::to(&hub_tab_url("quotations")).into_response();
     }
     match form_to_input(&form, &ctx.timezone) {
         Ok(input) => {
-            let update = UpdateDraftInput {
-                number: input.number,
-                reference: input.reference,
-                eway_bill_number: input.eway_bill_number,
-                payment_reference: input.payment_reference,
-                bank_account: input.bank_account,
-                remarks: input.remarks,
-                datetime: input.datetime,
-                delivery_date: input.delivery_date,
-                customer_id: input.customer_id,
-                payment_term_lines: input.payment_term_lines,
-                header_tax_ids: input.header_tax_ids,
-                lines: input.lines,
-            };
+            let update = input.into_update();
             match update_quotation_invoice(&state.db, id, update, &ctx.timezone).await {
-                Ok(_) => respond_edit_modal_done(
-                    &htmx,
-                    QUOTATION_INVOICE_EDIT_MODAL,
-                    &QuotationInvoiceDetailRouteTag::new(id).url(),
-                ),
+                Ok(_) => {
+                    if let Err(e) = save_quotation_form_extras(&state.db, id, &fields).await {
+                        let page =
+                            edit_page(&state.db, id, q.form_name(), form, e, Some(&fields)).await;
+                        return html_built_page_with_slots(
+                            &page,
+                            &chrome,
+                            &SlotCtx::from_auth(&ctx),
+                        )
+                        .into_response();
+                    }
+                    respond_edit_modal_done(
+                        &htmx,
+                        QUOTATION_INVOICE_EDIT_MODAL,
+                        &QuotationInvoiceDetailRouteTag::new(id).url(),
+                    )
+                }
                 Err(e) => {
-                    let page = edit_page(&state.db, id, q.form_name(), form, e).await;
+                    let page =
+                        edit_page(&state.db, id, q.form_name(), form, e, Some(&fields)).await;
                     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                         .into_response()
                 }
             }
         }
         Err(e) => {
-            let page = edit_page(&state.db, id, q.form_name(), form, e).await;
+            let page = edit_page(&state.db, id, q.form_name(), form, e, Some(&fields)).await;
             html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
         }
     }
@@ -538,6 +552,7 @@ async fn bulk_edit_page(
     selected_count: usize,
     error: String,
     can_submit: bool,
+    posted: Option<&UrlencodedFields>,
 ) -> QuotationInvoiceBulkEditModalPage {
     let form = blank_bulk_edit_form();
     let ctx = form_context(db, form.customer_id, &form.taxes).await;
@@ -550,7 +565,7 @@ async fn bulk_edit_page(
         customer_display: ctx.customer_display,
         tax_items: ctx.tax_items,
         invoice_lines_preview: ctx.invoice_lines_preview,
-        extra_inputs: String::new(),
+        extra_inputs: render_quotation_bulk_extras(db, posted).await,
         error,
         can_submit,
     }
@@ -573,7 +588,16 @@ pub async fn bulk_edit_get(
     } else {
         (String::new(), true)
     };
-    let page = bulk_edit_page(&state.db, &q.modal, &ids_str, ids.len(), error, can_submit).await;
+    let page = bulk_edit_page(
+        &state.db,
+        &q.modal,
+        &ids_str,
+        ids.len(),
+        error,
+        can_submit,
+        None,
+    )
+    .await;
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
@@ -585,7 +609,7 @@ pub async fn bulk_edit_post(
     Query(modal): Query<ModalNameQuery>,
     DraftInvoiceBulkEditFormPost {
         form,
-        fields: _,
+        fields,
         ids: ids_raw,
     }: DraftInvoiceBulkEditFormPost,
 ) -> Response {
@@ -603,22 +627,53 @@ pub async fn bulk_edit_post(
             0,
             "Select at least one quotation to edit.".into(),
             false,
+            Some(&fields),
         )
         .await;
         return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
             .into_response();
     }
     let patch = match bulk_form_to_patch(&form, &ctx.timezone) {
-        Ok(patch) => patch,
+        Ok(patch) => Some(patch),
         Err(e) => {
-            let page = bulk_edit_page(&state.db, &modal, &ids_str, ids.len(), e, true).await;
-            return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
-                .into_response();
+            if e.contains("fill at least one field") && addons_bulk_has_values(&fields) {
+                None
+            } else {
+                let page = bulk_edit_page(
+                    &state.db,
+                    &modal,
+                    &ids_str,
+                    ids.len(),
+                    e,
+                    true,
+                    Some(&fields),
+                )
+                .await;
+                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    .into_response();
+            }
         }
     };
     for id in &ids {
-        if let Err(e) = patch_quotation_invoice(&state.db, *id, patch.clone(), &ctx.timezone).await
-        {
+        if let Some(ref patch) = patch {
+            if let Err(e) =
+                patch_quotation_invoice(&state.db, *id, patch.clone(), &ctx.timezone).await
+            {
+                let page = bulk_edit_page(
+                    &state.db,
+                    &modal,
+                    &ids_str,
+                    ids.len(),
+                    format!("Failed to update quotation #{id}: {e}"),
+                    true,
+                    Some(&fields),
+                )
+                .await;
+                return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+                    .into_response();
+            }
+        }
+        if let Err(e) = save_quotation_form_extras_bulk(&state.db, *id, &fields).await {
             let page = bulk_edit_page(
                 &state.db,
                 &modal,
@@ -626,6 +681,7 @@ pub async fn bulk_edit_post(
                 ids.len(),
                 format!("Failed to update quotation #{id}: {e}"),
                 true,
+                Some(&fields),
             )
             .await;
             return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))

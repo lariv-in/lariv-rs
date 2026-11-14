@@ -6,15 +6,16 @@
 //! plus their taxes. Journal templates are not copied: a sales template debits
 //! receivable and credits revenue, and the purchase seed writes the payable
 //! pair instead.
-use lariv_core::db::migration_sql::{
-    self, FK_CANCELLED_PURCHASE_GOODS_LINE_PRODUCT, FK_CANCELLED_PURCHASE_SERVICE_LINE_SERVICE,
+use crate::foreign_keys::{
+    FK_CANCELLED_PURCHASE_GOODS_LINE_PRODUCT, FK_CANCELLED_PURCHASE_SERVICE_LINE_SERVICE,
     FK_DRAFT_PURCHASE_GOODS_LINE_PRODUCT, FK_DRAFT_PURCHASE_SERVICE_LINE_SERVICE,
     FK_POSTED_PURCHASE_GOODS_LINE_PRODUCT, FK_POSTED_PURCHASE_SERVICE_LINE_SERVICE,
     FK_PURCHASE_PRODUCT_JOURNAL_ACCOUNT, FK_PURCHASE_PRODUCT_JOURNAL_JOURNAL,
     FK_PURCHASE_PRODUCT_PREFERENCE_TAX, FK_PURCHASE_PRODUCT_TAX, FK_PURCHASE_PRODUCTS_STOCK,
     FK_PURCHASE_SERVICE_JOURNAL_ACCOUNT, FK_PURCHASE_SERVICE_JOURNAL_JOURNAL,
-    FK_PURCHASE_SERVICE_PREFERENCE_TAX, FK_PURCHASE_SERVICE_TAX, exec_sql,
+    FK_PURCHASE_SERVICE_PREFERENCE_TAX, FK_PURCHASE_SERVICE_TAX,
 };
+use lariv_core::db::migration_sql::{self, exec_sql};
 
 use lariv_core::db::trigram;
 use sea_orm_migration::prelude::*;
@@ -137,7 +138,7 @@ BEGIN
           AND table_name = 'products'
           AND column_name = 'product_kind'
     ) THEN
-        NULL;
+        RETURN;
     END IF;
 
     IF EXISTS (

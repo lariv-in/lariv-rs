@@ -9,6 +9,7 @@ description = "Lariv finance_accounts plugin"
 
 [features]
 default = []
+cap-llm = ["lariv_core/cap-llm", "dep:rune", "dep:tokio"]
 
 [dependencies]
 lariv_core = { package = "lariv-core", path = "../../lariv-core" }
@@ -25,11 +26,13 @@ frunk = { workspace = true }
 frunk_core = { workspace = true }
 http = { workspace = true }
 maud = { workspace = true }
+rune = { workspace = true, optional = true }
 rust_decimal = { workspace = true }
 sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+tokio = { workspace = true, optional = true }
 tracing = { workspace = true }
 
 [lints]

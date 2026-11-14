@@ -316,6 +316,7 @@ pub struct PaymentCreateModalPage {
     pub form: PaymentForm,
     pub customer_display: String,
     pub tax_items: Vec<ManyToManyItem>,
+    pub gst_tax_items: Vec<ManyToManyItem>,
     pub error: String,
 }
 
@@ -355,7 +356,15 @@ impl RenderTemplate for PaymentCreateModalPage {
                             .value(PaymentFormField::Amount, &self.form.amount)
                             .value(PaymentFormField::Datetime, &self.form.datetime)
                             .value(PaymentFormField::JournalLines, &self.form.journal_lines)
-                            .m2m(PaymentFormField::Taxes, &self.tax_items),
+                            .m2m(PaymentFormField::Taxes, &self.tax_items)
+                            .value(PaymentFormField::IsGstAdvance, &self.form.is_gst_advance)
+                            .choices(
+                                PaymentFormField::IsGstAdvance,
+                                crate::forms::GST_ADVANCE_CHOICES,
+                            )
+                            .value(PaymentFormField::GstPos, &self.form.gst_pos)
+                            .m2m(PaymentFormField::GstTaxes, &self.gst_tax_items)
+                            .value(PaymentFormField::Adjustments, &self.form.adjustments),
                     ),
                     actions: html! {
                         (lariv_core::components::container_row("flex justify-end gap-2 mt-2", html! {

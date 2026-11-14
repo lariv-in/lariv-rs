@@ -84,6 +84,7 @@ lariv_core::define_register_items! {
 #[derive(Clone)]
 pub struct CreditNoteRow {
     pub id: i64,
+    pub credit_note_number: String,
     pub datetime: String,
     pub reason: String,
     pub original_entry_label: String,
@@ -105,6 +106,12 @@ impl CreditNoteListPage {
         let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
         let reason_label = format!("Reason{}", sort_indicator(&self.sort, "Reason"));
         let headers = [
+            TableColumnHeader {
+                key: "Number",
+                label: "Number",
+                sort_url: None,
+                push_url: true,
+            },
             TableColumnHeader {
                 key: "Date",
                 label: &date_label,
@@ -137,6 +144,10 @@ impl CreditNoteListPage {
             .map(|c| TableRow {
                 attrs: row_attr_navigate_route(CreditNoteDetailRouteTag::new(c.id)),
                 cells: vec![
+                    field_text(FieldText {
+                        value: &c.credit_note_number,
+                        classes: "",
+                    }),
                     field_text(FieldText {
                         value: &c.datetime,
                         classes: "",
@@ -212,6 +223,9 @@ impl RenderTemplate for CreditNoteListPage {
 #[derive(Generic)]
 pub struct CreditNoteDetailPage {
     pub id: i64,
+    pub credit_note_number: String,
+    pub original_note_number: String,
+    pub original_note_date: String,
     pub datetime: String,
     pub reason: String,
     pub journal_entry_id: i64,
@@ -224,10 +238,13 @@ impl CreditNoteDetailPage {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle {
-                        value: &format!("Credit note #{}", self.id),
+                        value: &self.credit_note_number,
                         classes: "",
                     }))
+                    (label("Number", field_text(FieldText { value: &self.credit_note_number, classes: "" })))
                     (label("Date", field_text(FieldText { value: &self.datetime, classes: "" })))
+                    (label("Original note number", field_text(FieldText { value: &self.original_note_number, classes: "" })))
+                    (label("Original note date", field_text(FieldText { value: &self.original_note_date, classes: "" })))
                     (label("Reason", field_text(FieldText { value: &self.reason, classes: "" })))
                     (label("Original journal entry", html! {
                         a href=(JournalEntryDetailRouteTag::new(self.journal_entry_id).url()) {

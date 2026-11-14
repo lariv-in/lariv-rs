@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! CRM plugin — leads.
 
 pub mod entities;

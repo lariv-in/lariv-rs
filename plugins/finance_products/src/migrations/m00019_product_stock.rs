@@ -3,7 +3,8 @@
 //! Without `inventory_stocks`, the column is `NOT NULL DEFAULT 0` so the
 //! product entity can load. The foreign key is attached only once the stock
 //! table exists.
-use lariv_core::db::migration_sql::{self, FK_PRODUCTS_STOCK, exec_sql};
+use crate::foreign_keys::FK_PRODUCTS_STOCK;
+use lariv_core::db::migration_sql::{self, exec_sql};
 
 use sea_orm_migration::prelude::*;
 

@@ -1,4 +1,4 @@
-//! Excel download of every invoice type.
+//! Excel download of posted invoices for GST filing.
 
 use axum::{
     body::Body,
@@ -10,16 +10,12 @@ use chrono::Utc;
 use lariv_core::http::Cap;
 use lariv_plugin_users::middleware::RequireAuth;
 
-use crate::state::InvoicesState;
+use crate::state::GstExportState;
 
-/// HTTP handler: download the posted-invoice GST workbook.
-pub async fn download(Cap(state): Cap<InvoicesState>, RequireAuth(_ctx): RequireAuth) -> Response {
+pub async fn download(Cap(state): Cap<GstExportState>, RequireAuth(_ctx): RequireAuth) -> Response {
     let bytes = match crate::xlsx::build_invoice_workbook(&state.db).await {
         Ok(bytes) => bytes,
-        Err(err) => {
-            tracing::error!(error = %err, "invoice workbook failed");
-            return (StatusCode::INTERNAL_SERVER_ERROR, err).into_response();
-        }
+        Err(err) => return (StatusCode::INTERNAL_SERVER_ERROR, err).into_response(),
     };
     let filename = format!("invoices_{}.xlsx", Utc::now().format("%Y%m%d_%H%M%S"));
     (

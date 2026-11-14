@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +13,10 @@ pub struct Model {
     pub updated_at: Option<DateTime<Utc>>,
     pub datetime: DateTime<Utc>,
     pub reason: Option<String>,
+    #[sea_orm(unique)]
+    pub credit_note_number: String,
+    pub original_note_number: Option<String>,
+    pub original_note_date: Option<NaiveDate>,
     pub journal_entry_id: i64,
     pub reversed_journal_entry_id: i64,
 }

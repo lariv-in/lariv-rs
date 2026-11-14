@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! Finance taxes plugin.
 
 pub mod accounting_preferences_patch;
@@ -6,6 +5,7 @@ pub mod accounting_sidebar;
 pub mod apps;
 pub mod create_modals;
 pub mod entities;
+pub mod foreign_keys;
 pub mod forms;
 pub mod handlers;
 pub mod journal_template;

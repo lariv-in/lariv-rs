@@ -6400,6 +6400,7 @@ dependencies = [
 name = "lariv-plugin-contacts"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "chrono",
  "frunk",
@@ -6412,6 +6413,7 @@ dependencies = [
  "maud",
  "rune",
  "sea-orm",
+ "sea-orm-migration",
  "serde",
  "serde_json",
  "tokio",
@@ -6579,11 +6581,13 @@ dependencies = [
  "lariv-plugin-users",
  "lariv-rs-macros",
  "maud",
+ "rune",
  "rust_decimal",
  "sea-orm",
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "tokio",
  "tracing",
 ]
 
@@ -6612,6 +6616,7 @@ dependencies = [
  "http 1.5.0",
  "lariv-core",
  "lariv-plugin-finance-accounts",
+ "lariv-plugin-finance-common",
  "lariv-plugin-users",
  "lariv-rs-macros",
  "maud",
@@ -6642,6 +6647,34 @@ dependencies = [
  "sea-orm",
  "serde",
  "tracing",
+]
+
+[[package]]
+name = "lariv-plugin-finance-gst-export"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "frunk",
+ "frunk_core",
+ "http 1.5.0",
+ "lariv-core",
+ "lariv-plugin-contacts",
+ "lariv-plugin-finance-invoices",
+ "lariv-plugin-finance-taxes",
+ "lariv-plugin-import-export",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "rust_decimal",
+ "rust_xlsxwriter",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "tokio",
+ "zip",
 ]
 
 [[package]]
@@ -6692,7 +6725,6 @@ dependencies = [
  "reqwest 0.13.5",
  "rune",
  "rust_decimal",
- "rust_xlsxwriter",
  "sea-orm",
  "sea-orm-migration",
  "serde",
@@ -7031,6 +7063,7 @@ dependencies = [
 name = "lariv-plugin-import-export"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "calamine",
  "chrono",
@@ -7125,6 +7158,27 @@ dependencies = [
  "typst",
  "uuid",
  "zip",
+]
+
+[[package]]
+name = "lariv-plugin-llm-assistant-tester"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "frunk",
+ "frunk_core",
+ "http 1.5.0",
+ "lariv-core",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -7423,6 +7477,7 @@ dependencies = [
  "lariv-plugin-finance-common",
  "lariv-plugin-finance-creditnotes",
  "lariv-plugin-finance-customers",
+ "lariv-plugin-finance-gst-export",
  "lariv-plugin-finance-indian",
  "lariv-plugin-finance-invoices",
  "lariv-plugin-finance-payments",
@@ -7439,6 +7494,7 @@ dependencies = [
  "lariv-plugin-import-export",
  "lariv-plugin-inventory",
  "lariv-plugin-llm-assistant",
+ "lariv-plugin-llm-assistant-tester",
  "lariv-plugin-mdbook",
  "lariv-plugin-meets",
  "lariv-plugin-otp",
@@ -11637,6 +11693,7 @@ version = "0.99.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34f2d2cda7223168a14fb86bc7411dbc3379bd7d49749ecc53b91ed98585b6b0"
 dependencies = [
+ "tempfile",
  "zip",
 ]
 

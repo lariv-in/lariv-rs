@@ -28,13 +28,20 @@ impl MigrationTrait for Migration {
             // `fk_*` while Postgres still keeps the original `*_service_id_fkey`
             // pointing at `services`, which rejects product ids.
             drop_service_fks(conn, table).await?;
+            // The map is created only when a legacy `services` table was folded
+            // into products. A fresh catalog already stores product ids.
             exec_sql(
                 manager,
                 &format!(
-                    r#"UPDATE {table} AS line
-                   SET service_id = map.product_id
-                   FROM {PRODUCT_SERVICE_ID_MAP} AS map
-                   WHERE line.service_id = map.service_id"#
+                    r#"DO $$
+                    BEGIN
+                        IF to_regclass('public.{PRODUCT_SERVICE_ID_MAP}') IS NOT NULL THEN
+                            UPDATE {table} AS line
+                               SET service_id = map.product_id
+                              FROM {PRODUCT_SERVICE_ID_MAP} AS map
+                             WHERE line.service_id = map.service_id;
+                        END IF;
+                    END $$;"#
                 ),
             )
             .await?;

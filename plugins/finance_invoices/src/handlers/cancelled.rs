@@ -149,6 +149,10 @@ pub async fn detail(
                     crate::routes::FinanceInvoicesMutate,
                 >(),
             ),
+            extra_detail: crate::draft_form_addon::render_cancelled_invoice_detail_extras(
+                &state.db, c.id,
+            )
+            .await,
         }
     } else {
         CancelledInvoiceDetailPage {
@@ -172,6 +176,7 @@ pub async fn detail(
             credit_note_label: String::new(),
             credit_note_href: None,
             can_edit: false,
+            extra_detail: String::new(),
         }
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()

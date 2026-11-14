@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! Per-user PDF signing.
 //!
 //! Each user has at most one [`entities::user_signature::Model`]. The private

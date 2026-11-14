@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! HR leaves addon — leave applications and leave-calc patched onto the HR hub.
 
 pub mod apps;

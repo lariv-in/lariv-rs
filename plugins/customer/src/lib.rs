@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! Customer support addon — `customers` entity, create modal, and list table.
 //!
 //! Historical migrations stay registered so existing databases still recognize
@@ -9,6 +8,7 @@
 
 pub mod create_modals;
 pub mod entities;
+pub mod foreign_keys;
 pub mod forms;
 pub mod gst_state;
 pub mod handlers;

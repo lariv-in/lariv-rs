@@ -96,7 +96,6 @@ lariv_core::define_plugin_routes! {
         get PartiallyPaidInvoicePdfModalRouteTag, "/finance-invoices/partial/{id}/pdf", bare handlers::pdf::partially_paid_pdf_modal, modal, authorize(FinanceInvoicesView, []);
         get PartiallyPaidInvoicePdfRouteTag, "/finance-invoices/partial/{id}/pdf/file", bare handlers::pdf::partially_paid_pdf, file, authorize(FinanceInvoicesView, []);
         get InvoiceBulkPdfsRouteTag, "/finance-invoices/bulk-pdfs", bare handlers::pdf::bulk_pdfs, file, authorize(FinanceInvoicesView, []);
-        get InvoiceExcelExportRouteTag, "/finance-invoices/export.xlsx", bare handlers::xlsx::download, file, authorize(FinanceInvoicesView, []);
 
         post InvoicePdfPreviewPostRouteTag, "/finance-invoices/invoice-pdf-preview", bare handlers::invoice_pdf_preview::modal_post, modal, authorize(FinanceInvoicesMutate, []);
         get InvoicePdfPreviewPdfRouteTag, "/finance-invoices/invoice-pdf-preview/{token}", bare handlers::invoice_pdf_preview::pdf_get, file, param token: String, authorize(FinanceInvoicesView, []);

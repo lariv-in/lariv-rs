@@ -3,13 +3,12 @@
 use maud::{Markup, PreEscaped, html};
 
 use lariv_core::components::{
-    ButtonDownload, ButtonModalForm, DataTable, DataTableDisplay, FieldText, FilterClauseView,
-    HtmlAttrs, ListFilterBuilder, ObjectList, ShellChrome, SwapKey, TableButtonFilter,
-    TableColumnHeader, TableListContent, TableRow, button_download, button_modal_form,
-    column_sort_url, container_column, data_table, field_text, filter_error_banner,
-    form_hx_get_picker_route, form_hx_get_route, form_hx_get_url, list_filter_builder,
-    render_pagination_push, row_attr_navigate, sort_indicator, table_button_bulk_actions,
-    table_button_columns, table_button_filter, table_list_content,
+    ButtonModalForm, DataTable, DataTableDisplay, FieldText, FilterClauseView, ListFilterBuilder,
+    ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader, TableListContent,
+    TableRow, button_modal_form, column_sort_url, container_column, data_table, field_text,
+    filter_error_banner, form_hx_get_picker_route, form_hx_get_route, form_hx_get_url,
+    list_filter_builder, render_pagination_push, row_attr_navigate, sort_indicator,
+    table_button_bulk_actions, table_button_columns, table_button_filter, table_list_content,
 };
 use lariv_core::http::{FkSelectGet, RouteQueryBuilder, RouteUrl};
 use lariv_core::template::{RenderAppPane, RenderTemplate};
@@ -26,10 +25,10 @@ use crate::routes::{
     CancelledInvoiceBulkNewDraftRouteTag, DraftInvoiceBulkDeleteGetRouteTag,
     DraftInvoiceBulkEditGetRouteTag, DraftInvoiceBulkPostRouteTag, DraftInvoiceCreateGetRouteTag,
     DraftInvoiceCreatePostRouteTag, InvoiceBulkPdfsRouteTag, InvoiceDefaultRouteTag,
-    InvoiceExcelExportRouteTag, PostedInvoiceBulkCancelGetRouteTag,
-    PostedInvoiceBulkNewDraftRouteTag, QuotationInvoiceBulkCreateDraftGetRouteTag,
-    QuotationInvoiceBulkDeleteGetRouteTag, QuotationInvoiceBulkEditGetRouteTag,
-    QuotationInvoiceCreateGetRouteTag, QuotationInvoiceCreatePostRouteTag,
+    PostedInvoiceBulkCancelGetRouteTag, PostedInvoiceBulkNewDraftRouteTag,
+    QuotationInvoiceBulkCreateDraftGetRouteTag, QuotationInvoiceBulkDeleteGetRouteTag,
+    QuotationInvoiceBulkEditGetRouteTag, QuotationInvoiceCreateGetRouteTag,
+    QuotationInvoiceCreatePostRouteTag,
 };
 use lariv_core::list_filters::{FilterField, FilterRowError};
 
@@ -679,7 +678,7 @@ impl InvoiceHubPage {
             html! {}
         };
 
-        let bulk_actions = if show_select {
+        let bulk_items = if show_select {
             let item = |label: &str, classes: &str, on_click: &str| {
                 format!(
                     r#"<button type="button" class="btn {classes} btn-sm justify-start w-full" x-bind:class="{sel}.selectedIds().length >= 1 ? '' : 'btn-disabled pointer-events-none opacity-50'" @click="{sel}.{on_click}($el); $el.closest('details')?.removeAttribute('open')">{label}</button>"#,
@@ -732,8 +731,13 @@ impl InvoiceHubPage {
                     "requestBulkNewDraft",
                 ));
             }
+            items
+        } else {
+            String::new()
+        };
+        let bulk_actions = if show_select {
             table_button_bulk_actions(html! {
-                (PreEscaped(items))
+                (PreEscaped(bulk_items))
             })
         } else {
             html! {}
@@ -744,23 +748,8 @@ impl InvoiceHubPage {
             panel: invoice_hub_filter_form(self),
             ..Default::default()
         });
-        let excel_export = InvoiceExcelExportRouteTag.path();
-        let excel = if self.filter_url.is_empty() {
-            button_download(ButtonDownload {
-                label: "",
-                href: &excel_export,
-                icon_name: Some("arrow-down-tray"),
-                classes: "btn-square btn-outline btn-sm",
-                attrs: HtmlAttrs::new()
-                    .set("aria-label", "Export Excel")
-                    .set("title", "Export Excel"),
-            })
-        } else {
-            html! {}
-        };
         let actions = html! {
             (page_size_filter)
-            (excel)
             (quotation_create)
             (draft_create)
             (bulk_actions)
@@ -829,5 +818,41 @@ impl RenderTemplate for InvoiceHubPage {
             self.body(),
             &self.path_and_query,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn page(can_edit: bool, filter_url: &str) -> InvoiceHubPage {
+        InvoiceHubPage {
+            invoices: ObjectList::from_page(Vec::new(), 1, 20, 0),
+            tab: "posted".into(),
+            sort: String::new(),
+            path_and_query: "/finance-invoices?tab=posted".into(),
+            fiscal_years: Vec::new(),
+            selected_fiscal_year_start: None,
+            can_edit,
+            extra_columns: Vec::new(),
+            page_size: 20,
+            fields: Vec::new(),
+            filters: Vec::new(),
+            filter_errors: Vec::new(),
+            extra_filters: String::new(),
+            table_key: crate::keys::INVOICE_HUB_TABLE,
+            filter_url: filter_url.into(),
+            push_history: true,
+            heading: String::new(),
+            create_customer_id: None,
+        }
+    }
+
+    #[test]
+    fn hub_actions_omit_the_gst_workbook() {
+        let html = page(true, "").render_table().into_string();
+        assert!(html.contains("Download PDFs"));
+        assert!(!html.contains("Download GST Excel"));
+        assert!(!html.contains("export.xlsx"));
     }
 }

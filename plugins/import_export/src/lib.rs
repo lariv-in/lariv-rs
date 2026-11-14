@@ -19,6 +19,7 @@
 //! layer, Axum's 2 MiB multipart default truncates the body mid-parse.
 
 pub mod apps;
+pub mod export_actions;
 pub mod forms;
 pub mod handlers;
 pub mod routes;
@@ -53,6 +54,7 @@ define_passthrough_cap!(
 define_plugin_install! {
     plugin: ImportExportPluginTag;
     steps: [
+        cap_attach(export_actions::ExportPageActionsTag, export_actions::ExportPageActionsCap, export_actions::ExportPageActionsCap::<frunk::HNil>::new()),
         apps(apps::Hook),
         templates(templates::Hook),
         slots(templates::SlotsHook),

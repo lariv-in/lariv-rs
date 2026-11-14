@@ -3,11 +3,13 @@
 pub mod apps;
 pub mod entities;
 pub mod forms;
+pub mod gst_state;
 pub mod handlers;
 #[cfg(feature = "plugin-llm-assistant")]
 pub mod hitl;
 pub mod keys;
 pub mod logic;
+pub mod migrations;
 pub mod routes;
 pub mod rune_env;
 pub mod scope;
@@ -36,6 +38,7 @@ lariv_core::define_plugin_install! {
     plugin: ContactsTag;
     steps: [
         cap_hook(lariv_plugin_llm_assistant::hitl::HitlTag, lariv_plugin_llm_assistant::hitl::HitlCap, hitl::Hook),
+        migrations(migrations::Hook),
         templates(templates::Hook),
         slots(templates::SlotsHook),
         rune_env(rune_env::Hook),
@@ -50,6 +53,7 @@ lariv_core::define_plugin_install! {
 lariv_core::define_plugin_install! {
     plugin: ContactsTag;
     steps: [
+        migrations(migrations::Hook),
         templates(templates::Hook),
         slots(templates::SlotsHook),
         rune_env(rune_env::Hook),

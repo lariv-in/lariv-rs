@@ -1,7 +1,7 @@
 use lariv_core::components::attrs::escape_attr;
 use lariv_core::html_form::{
     FieldRender, FormCtx, FormWidget, html_form,
-    widgets::{Datetime, Text},
+    widgets::{Datetime, Select, Text, Textarea},
 };
 use lariv_plugin_finance_accounts::journal_lines_editor::input_journal_lines;
 use maud::{Markup, PreEscaped, html};
@@ -83,7 +83,32 @@ pub struct PaymentForm {
 
     #[form(label = "Journal lines", required, widget = PaymentJournalLines)]
     pub journal_lines: String,
+
+    #[form(label = "GST advance", widget = Select, choices = "is_gst_advance")]
+    pub is_gst_advance: String,
+
+    #[form(label = "Advance place of supply", widget = Text)]
+    pub gst_pos: String,
+
+    #[form(
+        label = "Advance taxes",
+        widget = ManyToMany,
+        route = TaxMultiSelectRouteTag,
+        swap_key = "payment-gst-taxes",
+        placeholder = "Taxes on this advance…"
+    )]
+    pub gst_taxes: Vec<i64>,
+
+    #[form(
+        label = "Advance adjustments",
+        widget = Textarea,
+        rows = 4,
+        hint = "One adjustment per line: YYYY-MM-DD amount. The amount is the gross advance adjusted."
+    )]
+    pub adjustments: String,
 }
+
+pub const GST_ADVANCE_CHOICES: &[(&str, &str)] = &[("false", "No"), ("true", "Yes")];
 
 #[html_form]
 pub struct PaymentPreferencesForm {

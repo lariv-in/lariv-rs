@@ -43,12 +43,12 @@ fn register(rune_env: &mut RuneEnvCapability) {
     );
     rune_env.register_contextual(
         "create_company",
-        "create_company(#{ name: string, address_line_1?: string, address_line_2?: string, city?: string, pincode?: string, state?: string, website?: string, gstin?: string, cin?: string, pan?: string, phone?: string, email?: string }) -> int  // new company id. name is required.",
+        "create_company(#{ name: string, address_line_1?: string, address_line_2?: string, city?: string, pincode?: string, state?: string, website?: string, gstin?: string, cin?: string, pan?: string, phone?: string, email?: string }) -> int  // new company id. name is required. state is a GST code such as \"27\" or a state name such as \"Maharashtra\"; blank clears it.",
         |_ctx| NativeBinding::Function(Arc::new(create_company)),
     );
     rune_env.register_contextual(
         "update_company",
-        "update_company(#{ id: int, name: string, address_line_1?: string, address_line_2?: string, city?: string, pincode?: string, state?: string, website?: string, gstin?: string, cin?: string, pan?: string, phone?: string, email?: string }) -> int  // updated company id (full replace)",
+        "update_company(#{ id: int, name: string, address_line_1?: string, address_line_2?: string, city?: string, pincode?: string, state?: string, website?: string, gstin?: string, cin?: string, pan?: string, phone?: string, email?: string }) -> int  // updated company id (full replace). state is a GST code or state name; blank clears it.",
         |_ctx| NativeBinding::Function(Arc::new(update_company)),
     );
     rune_env.register_contextual(
@@ -278,7 +278,7 @@ fn company_write(parsed: CompanyArgs) -> Result<crate::logic::CompanyWrite, Stri
         address_line_2: blank(parsed.address_line_2),
         city: blank(parsed.city),
         pincode: blank(parsed.pincode),
-        state: blank(parsed.state),
+        state: crate::gst_state::parse_state(parsed.state.as_deref().unwrap_or(""))?,
         website: blank(parsed.website),
         gstin: blank(parsed.gstin),
         cin: blank(parsed.cin),

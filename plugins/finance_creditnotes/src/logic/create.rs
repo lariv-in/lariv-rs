@@ -40,6 +40,10 @@ pub async fn create_credit_note(
     .await
     .context("create reversal")?;
 
+    let credit_note_number =
+        crate::logic::credit_note_number::generate_credit_note_number(&txn, dt)
+            .await
+            .map_err(|error| anyhow::anyhow!(error))?;
     let am = credit_note::ActiveModel {
         datetime: Set(dt),
         reason: Set(if input.reason.is_empty() {
@@ -47,6 +51,7 @@ pub async fn create_credit_note(
         } else {
             Some(input.reason)
         }),
+        credit_note_number: Set(credit_note_number),
         journal_entry_id: Set(input.journal_entry_id),
         reversed_journal_entry_id: Set(reversed_id),
         created_at: Set(Some(now)),

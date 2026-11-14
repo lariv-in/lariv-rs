@@ -13,6 +13,7 @@ use lariv_core::components::{
     sort_indicator, table_button_filter,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
+
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 use lariv_core::web::{modal_create_post_url, modal_edit_post_url};
 
@@ -188,7 +189,7 @@ impl RenderTemplate for DraftInvoiceCreateModalPage {
                                     DraftInvoiceFormField::InvoiceLinesJson,
                                     &self.invoice_lines_preview,
                                 )
-                                .m2m(DraftInvoiceFormField::Taxes, &self.tax_items),
+                                .m2m(DraftInvoiceFormField::Taxes, &self.tax_items)
                         ))
                         (PreEscaped(&self.extra_inputs))
                     },
@@ -301,7 +302,7 @@ impl RenderTemplate for DraftInvoiceBulkEditModalPage {
                                     DraftInvoiceBulkEditFormField::InvoiceLinesJson,
                                     &self.invoice_lines_preview,
                                 )
-                                .m2m(DraftInvoiceBulkEditFormField::Taxes, &self.tax_items),
+                                .m2m(DraftInvoiceBulkEditFormField::Taxes, &self.tax_items)
                         ))
                         (PreEscaped(&self.extra_inputs))
                     },

@@ -1,7 +1,9 @@
 use lariv_core::html_form::{
     html_form,
-    widgets::{Checkbox, Text},
+    widgets::{Checkbox, Select, Text},
 };
+
+use crate::gst_state::GST_STATE_CHOICES;
 
 use super::routes::CompanyFkSelectRouteTag;
 
@@ -47,7 +49,7 @@ pub struct CompanyForm {
     #[form(label = "Pincode", widget = Text)]
     pub pincode: String,
 
-    #[form(label = "State", widget = Text)]
+    #[form(label = "State", widget = Select, choices = "state")]
     pub state: String,
 
     #[form(label = "Website", widget = Text)]
@@ -67,4 +69,29 @@ pub struct CompanyForm {
 
     #[form(label = "Email", widget = Text)]
     pub email: String,
+}
+
+impl CompanyForm {
+    pub fn state_choices() -> &'static [(&'static str, &'static str)] {
+        GST_STATE_CHOICES
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CompanyForm, CompanyFormField};
+    use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
+
+    #[test]
+    fn state_select_lists_gst_codes() {
+        let html = CompanyForm::render_inputs(
+            &FormCtx::form::<CompanyForm>(CsrfToken::current())
+                .choices(CompanyFormField::State, CompanyForm::state_choices()),
+        )
+        .into_string();
+        assert!(html.contains("<select"), "{html}");
+        assert!(html.contains("27 — MAHARASHTRA"), "{html}");
+        assert!(html.contains("value=\"27\""), "{html}");
+        assert!(!html.contains("value=\"25\""), "{html}");
+    }
 }

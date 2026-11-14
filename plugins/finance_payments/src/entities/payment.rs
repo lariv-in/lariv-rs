@@ -19,6 +19,8 @@ pub struct Model {
     #[sea_orm(unique)]
     pub number: String,
     pub journal_entry_id: i64,
+    pub is_gst_advance: bool,
+    pub gst_pos: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

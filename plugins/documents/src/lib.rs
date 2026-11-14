@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! Documents plugin — typed identity documents, starting with Aadhaar cards.
 //!
 //! The UI lists and edits [`entities::document::Model`] only. `document_type_id`

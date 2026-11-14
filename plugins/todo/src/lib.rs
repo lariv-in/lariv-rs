@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! Personal to-do items.
 //!
 //! Each item belongs to one user and one to-do page. A page is a titled collection

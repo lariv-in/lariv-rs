@@ -1,9 +1,8 @@
 //! Per-tax journal entry templates.
 //!
 //! The tax's ledger account stays until the default lines are copied from it.
-use lariv_core::db::migration_sql::{
-    self, FK_TAX_JOURNAL_ITEM_ACCOUNT, FK_TAX_JOURNAL_ITEM_JOURNAL, exec_sql,
-};
+use crate::foreign_keys::{FK_TAX_JOURNAL_ITEM_ACCOUNT, FK_TAX_JOURNAL_ITEM_JOURNAL};
+use lariv_core::db::migration_sql::{self, exec_sql};
 
 use sea_orm_migration::prelude::*;
 

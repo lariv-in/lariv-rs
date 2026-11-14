@@ -59,6 +59,7 @@ mod m00004_quotation_status;
 mod m00049_quotations_to_draft_invoices;
 mod m00050_split_quotation_invoices;
 mod m00051_invoice_line_qty_measure;
+mod m00052_invoice_gst_details;
 
 use super::FinanceInvoicesTag;
 
@@ -128,6 +129,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00049_quotations_to_draft_invoices::Migration),
             Box::new(m00050_split_quotation_invoices::Migration),
             Box::new(m00051_invoice_line_qty_measure::Migration),
+            Box::new(m00052_invoice_gst_details::Migration),
         ]
     }
 }
@@ -135,4 +137,5 @@ impl MigratorTrait for Migrator {
 lariv_core::define_register_migrations! {
     plugin: FinanceInvoicesTag;
     migrator: Migrator;
+    foreign_keys: crate::foreign_keys::DEFERRED_FOREIGN_KEYS;
 }

@@ -1,0 +1,35 @@
+[package]
+name = "lariv-plugin-finance-gst-export"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Lariv finance GST export plugin"
+
+[dependencies]
+lariv_core = { package = "lariv-core", path = "../../lariv-core" }
+lariv-rs-macros = { workspace = true }
+lariv-plugin-users = { path = "../users" }
+lariv-plugin-contacts = { path = "../contacts" }
+lariv-plugin-import-export = { path = "../import_export" }
+lariv-plugin-finance-invoices = { path = "../finance_invoices" }
+lariv-plugin-finance-taxes = { path = "../finance_taxes" }
+async-trait = { workspace = true }
+axum = { workspace = true }
+chrono = { workspace = true }
+frunk = { workspace = true }
+frunk_core = { workspace = true }
+http = { workspace = true }
+maud = { workspace = true }
+rust_decimal = { workspace = true }
+rust_xlsxwriter = { workspace = true }
+sea-orm = { workspace = true }
+sea-orm-migration = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+zip = { workspace = true }
+
+[lints]
+workspace = true

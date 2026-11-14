@@ -427,6 +427,25 @@ pub struct CreateDraftInput {
     pub lines: Vec<DraftLinePending>,
 }
 
+impl CreateDraftInput {
+    pub fn into_update(self) -> UpdateDraftInput {
+        UpdateDraftInput {
+            number: self.number,
+            reference: self.reference,
+            eway_bill_number: self.eway_bill_number,
+            payment_reference: self.payment_reference,
+            bank_account: self.bank_account,
+            remarks: self.remarks,
+            datetime: self.datetime,
+            delivery_date: self.delivery_date,
+            customer_id: self.customer_id,
+            payment_term_lines: self.payment_term_lines,
+            header_tax_ids: self.header_tax_ids,
+            lines: self.lines,
+        }
+    }
+}
+
 pub async fn create_draft_invoice(
     db: &DatabaseConnection,
     input: CreateDraftInput,

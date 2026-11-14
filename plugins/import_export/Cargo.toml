@@ -11,6 +11,7 @@ description = "Lariv import and export plugin"
 lariv_core = { package = "lariv-core", path = "../../lariv-core" }
 lariv-rs-macros = { workspace = true }
 lariv-plugin-users = { path = "../users" }
+async-trait = { workspace = true }
 axum = { workspace = true }
 calamine = { workspace = true }
 chrono = { workspace = true }

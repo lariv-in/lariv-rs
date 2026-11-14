@@ -67,6 +67,8 @@ To save a public file into the virtual filesystem, call download_file with the h
 
 To read a tabular VNode (csv, tsv, json, ndjson, parquet, ipc, avro, or a spreadsheet: xls, xlsx, xlsm, xlsb, xla, xlam, ods), call read_table, query_table, or list_sheets from run_rune. Call get_rune_env for the schema before using one. query_table runs one Polars SQL statement against the table named data.
 
+To create an .xlsx workbook, use the xlsx Rune module from run_rune (xlsx::Workbook, Worksheet, Format, Chart, and the other rust_xlsxwriter types). Call xlsx_api(()) before using it and follow that catalog. Workbook.save writes a new VNode and fails if that path already exists.
+
 When the user asks about the current date or time, call get_current_datetime. Do not guess. Pass an IANA timezone when the user names one; otherwise UTC is used.
 
 For normal answers (questions, explanations, summaries after tool results), reply in plain text or markdown.

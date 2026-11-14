@@ -1,7 +1,6 @@
 //! Fold quotation service lines into `quotation_lines`.
-use lariv_core::db::migration_sql::{
-    self, FK_QUOTATION_LINE_PRODUCT, FK_QUOTATION_LINE_TAX, exec_sql,
-};
+use crate::foreign_keys::{FK_QUOTATION_LINE_PRODUCT, FK_QUOTATION_LINE_TAX};
+use lariv_core::db::migration_sql::{self, exec_sql};
 
 use sea_orm_migration::prelude::*;
 

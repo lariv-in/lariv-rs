@@ -26,6 +26,7 @@
 //! define_register_migrations! {
 //!     plugin: BlogTag;
 //!     migrator: Migrator;
+//!     foreign_keys: DEFERRED_FOREIGN_KEYS;
 //! }
 //!
 //! let app = with_migrations(app);
@@ -39,6 +40,8 @@ use std::time::SystemTime;
 use frunk::{HCons, HNil, hlist::HList};
 use sea_orm::{ActiveValue, DatabaseConnection, DbErr, EntityTrait};
 use sea_orm_migration::{MigratorTrait, seaql_migrations};
+
+use crate::db::migration_sql::ForeignKey;
 
 use crate::{
     app::{App, MountedApp},
@@ -181,6 +184,58 @@ where
     }
 }
 
+/// A plugin migrator plus the foreign keys to retry after every plugin has migrated.
+///
+/// The registrar fold only keeps the migrator HList, so deferred keys travel with the
+/// migrator the plugin registers.
+#[derive(Clone, Copy)]
+pub struct RegisteredMigrator<M> {
+    keys: &'static [ForeignKey],
+    _migrator: std::marker::PhantomData<M>,
+}
+
+impl<M> RegisteredMigrator<M> {
+    /// Pair `migrator` with the foreign keys this plugin wants re-applied after `up`.
+    pub fn new(_migrator: M, keys: &'static [ForeignKey]) -> Self {
+        Self {
+            keys,
+            _migrator: std::marker::PhantomData,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl<M> MigratorTrait for RegisteredMigrator<M>
+where
+    M: MigratorTrait,
+{
+    fn migrations() -> Vec<Box<dyn sea_orm_migration::MigrationTrait>> {
+        M::migrations()
+    }
+}
+
+/// Gather deferred foreign keys registered with each plugin migrator.
+pub trait CollectForeignKeys {
+    fn collect_foreign_keys(&self) -> Vec<ForeignKey>;
+}
+
+impl CollectForeignKeys for HNil {
+    fn collect_foreign_keys(&self) -> Vec<ForeignKey> {
+        Vec::new()
+    }
+}
+
+impl<Tag, M, Tail> CollectForeignKeys for HCons<Tagged<Tag, RegisteredMigrator<M>>, Tail>
+where
+    Tail: CollectForeignKeys,
+{
+    fn collect_foreign_keys(&self) -> Vec<ForeignKey> {
+        let mut keys = self.tail.collect_foreign_keys();
+        keys.extend_from_slice(self.head.value.keys);
+        keys
+    }
+}
+
 thread_local! {
     static COMPOSITE_MIGRATIONS: std::cell::RefCell<
         Option<Vec<Box<dyn sea_orm_migration::MigrationTrait>>>,
@@ -198,9 +253,10 @@ impl MigratorTrait for CompositeMigrator {
 
 impl<L> RunMigrations for L
 where
-    L: CollectMigrations + Send,
+    L: CollectMigrations + CollectForeignKeys + Send,
 {
     async fn run_migrations(self, db: &DatabaseConnection) -> Result<(), DbErr> {
+        let keys = self.collect_foreign_keys();
         let migrations = self.collect_migrations();
         COMPOSITE_MIGRATIONS.with(|cell| {
             *cell.borrow_mut() = Some(migrations);
@@ -209,7 +265,7 @@ where
         CompositeMigrator::up(db, None).await?;
         // Peer plugins may have been installed in either order. Attach foreign keys
         // that were skipped while the referenced table was still absent.
-        crate::db::migration_sql::ensure_cross_plugin_foreign_keys(db).await
+        crate::db::migration_sql::ensure_foreign_keys(db, db.get_database_backend(), &keys).await
     }
 }
 
@@ -219,31 +275,54 @@ where
 /// define_register_migrations! {
 ///     plugin: BlogTag;
 ///     migrator: Migrator;
+///     foreign_keys: DEFERRED_FOREIGN_KEYS;
 /// }
 /// ```
+///
+/// `foreign_keys` is an optional `&'static [ForeignKey]`. Those keys are retried
+/// after every installed plugin has migrated, so a constraint that points at another
+/// plugin's table still attaches when that plugin was installed later.
 #[macro_export]
 macro_rules! define_register_migrations {
     (
         plugin: $plugin:ty;
         migrator: $migrator:ty;
+        $(foreign_keys: $keys:expr;)?
     ) => {
         #[derive(Clone, Copy, Default)]
         pub struct Hook;
 
         impl<M> $crate::migration::MigrationRegistrar<M> for Hook
         where
-            M: ::frunk::hlist::HList + Clone + $crate::migration::CollectMigrations + Send,
+            M: ::frunk::hlist::HList
+                + Clone
+                + $crate::migration::CollectMigrations
+                + $crate::migration::CollectForeignKeys
+                + Send,
         {
-            type Output =
-                impl ::frunk::hlist::HList + $crate::migration::CollectMigrations + Clone + Send;
+            // Concrete cons cell, not `impl Trait`. A stack of opaque associated types
+            // stops implementing `CollectForeignKeys` once enough plugins register.
+            type Output = ::frunk::HCons<
+                ::lariv_core::tag::Tagged<$plugin, $crate::migration::RegisteredMigrator<$migrator>>,
+                M,
+            >;
 
             fn register_migrations(
                 self,
                 cap: $crate::migration::MigrationCapability<M>,
             ) -> $crate::migration::MigrationCapability<Self::Output> {
-                cap.prepend::<$plugin, _>(<$migrator>::default())
+                cap.prepend::<$plugin, _>($crate::migration::RegisteredMigrator::new(
+                    <$migrator>::default(),
+                    $crate::define_register_migrations!(@keys $($keys)?),
+                ))
             }
         }
+    };
+    (@keys) => {
+        &[]
+    };
+    (@keys $keys:expr) => {
+        $keys
     };
 }
 

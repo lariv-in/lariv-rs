@@ -2,6 +2,7 @@ use sea_orm_migration::prelude::*;
 
 mod m00001_payment_customer_drop_invoice_and_batches;
 mod m00002_payment_number;
+mod m00003_gst_advance;
 
 use super::FinancePaymentsTag;
 
@@ -14,6 +15,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m00001_payment_customer_drop_invoice_and_batches::Migration),
             Box::new(m00002_payment_number::Migration),
+            Box::new(m00003_gst_advance::Migration),
         ]
     }
 }

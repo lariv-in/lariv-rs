@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! HR plugin — applicant lifecycle through employment.
 
 pub mod apps;

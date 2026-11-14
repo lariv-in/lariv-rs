@@ -10,6 +10,7 @@ use lariv_core::components::{
 use lariv_core::db::phonenumber::{parse_phone, tel_href, whatsapp_href};
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 
+use crate::gst_state::state_with_code;
 use crate::keys::{COMPANY_EDIT_MODAL, CONTACT_EDIT_MODAL};
 use crate::routes::{
     CompanyDefaultRouteTag, CompanyDetailRouteTag, CompanyEditGetRouteTag, CompanyEditPostRouteTag,
@@ -221,12 +222,14 @@ pub struct CompanyDetailPage {
 
 impl CompanyDetailPage {
     fn body(&self) -> Markup {
+        let state = state_with_code(&self.state, &self.gstin);
         html! {
             (detail(html! {
                 (container_column("", html! {
                     (field_title(FieldTitle { value: &self.name, classes: "" }))
                     (label("Address line 1", field_text(FieldText { value: &self.address_line_1, classes: "" })))
                     (label("City", field_text(FieldText { value: &self.city, classes: "" })))
+                    (label("State", field_text(FieldText { value: &state, classes: "" })))
                     (label("Website", field_text(FieldText { value: &self.website, classes: "" })))
                     (label("GSTIN", field_text(FieldText { value: &self.gstin, classes: "" })))
                     (label("CIN", field_text(FieldText { value: &self.cin, classes: "" })))
@@ -280,7 +283,7 @@ impl RenderTemplate for CompanyDetailPage {
 
 #[cfg(test)]
 mod tests {
-    use super::{ContactDetailPage, mailto_href};
+    use super::{CompanyDetailPage, ContactDetailPage, mailto_href};
 
     #[test]
     fn mailto_href_trims_and_validates() {
@@ -309,5 +312,27 @@ mod tests {
         assert!(html.contains("Email"));
         assert!(html.contains("target=\"_blank\""));
         assert!(!html.contains(">Edit<"));
+    }
+
+    #[test]
+    fn company_detail_shows_state_with_code() {
+        let page = CompanyDetailPage {
+            id: 1,
+            name: "Acme".into(),
+            address_line_1: String::new(),
+            address_line_2: String::new(),
+            city: "Bengaluru".into(),
+            pincode: String::new(),
+            state: "Karnataka".into(),
+            website: String::new(),
+            gstin: String::new(),
+            cin: String::new(),
+            pan: String::new(),
+            phone: String::new(),
+            email: String::new(),
+        };
+        let html = page.body().into_string();
+        assert!(html.contains(">State<"));
+        assert!(html.contains("29 — KARNATAKA"));
     }
 }

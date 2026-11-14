@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! Website routing from database-backed page records.
 //!
 //! Maps URL paths to filesystem VNodes, renders minijinja/HTML pages,

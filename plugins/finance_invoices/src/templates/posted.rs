@@ -1,7 +1,7 @@
 //! Posted invoice detail and paid / partially paid settlement views.
 
 use frunk::Generic;
-use maud::{Markup, html};
+use maud::{Markup, PreEscaped, html};
 
 use lariv_core::components::{
     ButtonModalForm, DetailHeader, FieldText, FieldTextarea, ShellChrome, button_modal_form,
@@ -50,6 +50,7 @@ pub struct PostedInvoiceDetailPage {
     pub journal_entry_id: i64,
     pub can_edit: bool,
     pub can_pay: bool,
+    pub extra_detail: String,
 }
 
 impl PostedInvoiceDetailPage {
@@ -102,6 +103,7 @@ impl PostedInvoiceDetailPage {
                     (label("Customer", customer_link(self.bill_to_individual, self.customer_id, &self.customer_name)))
                     (label("Payment schedule", field_payment_term_schedule(&self.payment_term_rows)))
                     (label("Taxes", field_text(FieldText { value: &self.tax_labels, classes: "" })))
+                    (PreEscaped(&self.extra_detail))
                     (label("Journal entry", journal_entry_link(self.journal_entry_id)))
                     h3 class="font-semibold mt-4" { "Lines" }
                     (field_invoice_lines(&self.line_rows))

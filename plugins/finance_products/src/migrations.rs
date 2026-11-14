@@ -75,4 +75,5 @@ impl MigratorTrait for Migrator {
 lariv_core::define_register_migrations! {
     plugin: FinanceProductsTag;
     migrator: Migrator;
+    foreign_keys: crate::foreign_keys::DEFERRED_FOREIGN_KEYS;
 }

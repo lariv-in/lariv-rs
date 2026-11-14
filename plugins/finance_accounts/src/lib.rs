@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! Finance accounts plugin (GL hub, sidebar registry, source-doc registry).
 
 pub mod account_select;
@@ -22,6 +21,7 @@ pub mod logic;
 pub mod migrations;
 pub mod preferences;
 pub mod routes;
+pub mod rune_env;
 pub mod scope;
 pub mod source_doc_label;
 pub mod source_doc_registry;
@@ -66,6 +66,7 @@ lariv_core::define_plugin_install! {
         cap_attach(source_doc_registry::SourceDocTag, source_doc_registry::SourceDocCap, source_doc_registry::SourceDocCap::<frunk::HNil>::new()),
         cap_hook(source_doc_registry::SourceDocTag, source_doc_registry::SourceDocCap, source_doc_registry::BaseHook),
         apps(apps::Hook),
+        rune_env(rune_env::Hook),
         migrations(migrations::Hook),
         templates(templates::Hook),
         slots(templates::SlotsHook),

@@ -192,6 +192,7 @@ pub struct ExportPage {
     pub tables: Vec<String>,
     pub deps_json: String,
     pub model_count: i64,
+    pub extra_actions_html: String,
 }
 
 impl ExportPage {
@@ -238,6 +239,7 @@ impl ExportPage {
                     },
                     ..Default::default()
                 }))
+                (PreEscaped(self.extra_actions_html.clone()))
             }
         }
     }

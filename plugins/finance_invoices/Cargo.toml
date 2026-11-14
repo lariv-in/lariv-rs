@@ -43,7 +43,6 @@ num2words = { workspace = true }
 reqwest = { workspace = true }
 rune = { workspace = true }
 rust_decimal = { workspace = true }
-rust_xlsxwriter = { workspace = true }
 sea-orm = { workspace = true }
 sea-orm-migration = { workspace = true }
 serde = { workspace = true }

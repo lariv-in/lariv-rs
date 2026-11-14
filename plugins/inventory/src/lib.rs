@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! Inventory plugin — stocks, movements, and on-hand quantity.
 
 pub mod apps;

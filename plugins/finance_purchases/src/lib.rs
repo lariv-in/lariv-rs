@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! Finance purchases plugin.
 
 pub mod accounting_preferences_patch;
@@ -8,6 +7,7 @@ pub mod components;
 pub mod create_modals;
 pub mod draft_form_addon;
 pub mod entities;
+pub mod foreign_keys;
 pub mod forms;
 pub mod handlers;
 #[cfg(feature = "plugin-llm-assistant")]

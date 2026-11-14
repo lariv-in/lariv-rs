@@ -117,6 +117,7 @@ impl RenderTemplate for CompanyEditModalPage {
                             .value(CompanyFormField::City, &self.city)
                             .value(CompanyFormField::Pincode, &self.pincode)
                             .value(CompanyFormField::State, &self.state)
+                            .choices(CompanyFormField::State, CompanyForm::state_choices())
                             .value(CompanyFormField::Website, &self.website)
                             .value(CompanyFormField::Gstin, &self.gstin)
                             .value(CompanyFormField::Cin, &self.cin)

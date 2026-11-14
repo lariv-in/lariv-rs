@@ -73,6 +73,11 @@ fn register(rune_env: &mut RuneEnvCapability) {
         "list_sheets(#{ path: string } | #{ id: int }, format?: string) -> #{ format: string, sheets: [string] }  // sheet names of a spreadsheet VNode (xls, xlsx, xlsm, xlsb, xla, xlam, ods), read with calamine",
         |_ctx| NativeBinding::Function(Arc::new(list_sheets)),
     );
+    rune_env.register_contextual(
+        "xlsx_api",
+        "xlsx_api(()) -> string  // method catalog for the xlsx Rune module (rust_xlsxwriter). Call this before using xlsx::Workbook",
+        |_ctx| NativeBinding::Function(Arc::new(xlsx_api)),
+    );
 }
 
 fn move_vnode(
@@ -671,6 +676,15 @@ fn query_table(
     json_to_rune(crate::table::query_table_bytes(&name, &bytes, &request)?)
 }
 
+fn xlsx_api(
+    _ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
+    _args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    use lariv_core::rune_env::json_to_rune;
+
+    json_to_rune(serde_json::json!(crate::xlsx::API))
+}
+
 fn list_sheets(
     ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
     args: &[rune::Value],
@@ -765,6 +779,7 @@ mod tests {
             "read_table",
             "query_table",
             "list_sheets",
+            "xlsx_api",
         ] {
             assert!(
                 names.iter().any(|name| name == expected),
@@ -980,6 +995,23 @@ mod tests {
         assert!(
             error.contains("path or id is required"),
             "unexpected error payload: {out}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn xlsx_api_returns_the_catalog() {
+        let cap = registered_env();
+        let db = sea_orm::DatabaseConnection::default();
+        let store: Arc<DynFilestore> = Arc::new(UnimplementedFilestore);
+        let env_ctx = test_env_ctx(&db, &store, None);
+        let out = rune_engine::compile_and_run(&cap, &env_ctx, "xlsx_api(())", &[]).await;
+        let catalog = out
+            .get("result")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        assert!(
+            catalog.contains("Workbook.new"),
+            "unexpected payload: {out}"
         );
     }
 

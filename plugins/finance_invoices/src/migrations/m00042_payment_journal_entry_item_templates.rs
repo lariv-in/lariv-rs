@@ -9,9 +9,8 @@
 //! `m00041_drop_invoice_gl_preferences` so `account_receivable_id` and
 //! `journal_id` can still be read. When a preference is blank, the latest
 //! posted invoice or payment supplies the same account.
-use lariv_core::db::migration_sql::{
-    self, FK_PAYMENT_JOURNAL_ITEM_ACCOUNT, FK_PAYMENT_JOURNAL_ITEM_JOURNAL, exec_sql,
-};
+use crate::foreign_keys::{FK_PAYMENT_JOURNAL_ITEM_ACCOUNT, FK_PAYMENT_JOURNAL_ITEM_JOURNAL};
+use lariv_core::db::migration_sql::{self, exec_sql};
 
 use sea_orm_migration::prelude::*;
 

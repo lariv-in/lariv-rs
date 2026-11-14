@@ -8,6 +8,8 @@ use rust_xlsxwriter::{Format, Workbook, Worksheet};
 use sea_orm::{ConnectionTrait, DatabaseBackend, QueryResult, Statement};
 
 const EXCEL_MAX_CHARS: usize = 32_767;
+/// Excel percentages are fractions: 18% is stored as 0.18 and displayed with this format.
+const PERCENT_FORMAT: &str = "0.##%";
 
 /// Build the GST workbook for every posted invoice.
 pub async fn build_invoice_workbook<C: ConnectionTrait>(db: &C) -> Result<Vec<u8>, String> {
@@ -131,7 +133,9 @@ async fn load<C: ConnectionTrait>(db: &C) -> Result<Loaded, String> {
 
 fn invoice_sql() -> &'static str {
     "SELECT i.id, i.number, i.datetime, i.posted_payment_term_id, \
-            c.is_individual, c.state, co.name, co.gstin, ct.name \
+            c.is_individual, \
+            COALESCE(NULLIF(TRIM(c.state), ''), NULLIF(TRIM(co.state), ''), ''), \
+            co.name, co.gstin, ct.name \
      FROM posted_invoices i \
      LEFT JOIN customers c ON c.id = i.customer_id \
      LEFT JOIN crm_companies co ON co.id = c.company_id \
@@ -300,7 +304,8 @@ fn export_invoice(
         date,
         name,
         gstin,
-        state: invoice.state.trim().to_string(),
+        state: lariv_plugin_contacts::gst_state::gst_state_code(&invoice.state)
+            .unwrap_or_else(|| invoice.state.trim().to_string()),
         is_individual: invoice.is_individual,
         receipt: paid.contains(&invoice.id),
         payment_term,
@@ -387,8 +392,9 @@ fn india_date(datetime: DateTime<Utc>) -> NaiveDate {
 fn write_workbook(invoices: &[ExportInvoice]) -> Result<Vec<u8>, String> {
     let mut workbook = Workbook::new();
     let header = Format::new().set_bold();
-    write_invoices(workbook.add_worksheet(), &header, invoices)?;
-    write_hsn(workbook.add_worksheet(), &header, invoices)?;
+    let percent = Format::new().set_num_format(PERCENT_FORMAT);
+    write_invoices(workbook.add_worksheet(), &header, &percent, invoices)?;
+    write_hsn(workbook.add_worksheet(), &header, &percent, invoices)?;
     workbook
         .save_to_buffer()
         .map_err(|err| format!("write workbook: {err}"))
@@ -397,6 +403,7 @@ fn write_workbook(invoices: &[ExportInvoice]) -> Result<Vec<u8>, String> {
 fn write_invoices(
     sheet: &mut Worksheet,
     header: &Format,
+    percent: &Format,
     invoices: &[ExportInvoice],
 ) -> Result<(), String> {
     sheet.set_name("invoices").map_err(|err| err.to_string())?;
@@ -433,7 +440,7 @@ fn write_invoices(
             write_text(sheet, row, 5, &invoice.state)?;
             write_num(sheet, row, 7, slice.tax)?;
             write_text(sheet, row, 8, invoice_type)?;
-            write_num(sheet, row, 10, slice.rate_pct / Decimal::from(100))?;
+            write_percent(sheet, row, 10, slice.rate_pct / Decimal::from(100), percent)?;
             write_num(sheet, row, 11, slice.basic)?;
             write_text(sheet, row, 12, receipt_label(invoice.receipt))?;
             write_text(sheet, row, 13, &invoice.payment_term)?;
@@ -446,6 +453,7 @@ fn write_invoices(
 fn write_hsn(
     sheet: &mut Worksheet,
     header: &Format,
+    percent: &Format,
     invoices: &[ExportInvoice],
 ) -> Result<(), String> {
     sheet.set_name("HSN").map_err(|err| err.to_string())?;
@@ -501,7 +509,7 @@ fn write_hsn(
         write_text(sheet, row, 2, &line.uqc)?;
         write_num(sheet, row, 3, line.quantity)?;
         write_num(sheet, row, 4, line.total_value)?;
-        write_num(sheet, row, 5, line.rate_fraction)?;
+        write_percent(sheet, row, 5, line.rate_fraction, percent)?;
         write_num(sheet, row, 6, line.taxable)?;
         write_num(sheet, row, 8, line.central)?;
         write_num(sheet, row, 9, line.state)?;
@@ -539,14 +547,32 @@ fn write_text(sheet: &mut Worksheet, row: u32, col: u16, value: &str) -> Result<
 }
 
 fn write_num(sheet: &mut Worksheet, row: u32, col: u16, value: Decimal) -> Result<(), String> {
-    let number = value
-        .to_string()
-        .parse::<f64>()
-        .map_err(|err| err.to_string())?;
+    let number = decimal_f64(value)?;
     sheet
         .write_number(row, col, number)
         .map_err(|err| err.to_string())?;
     Ok(())
+}
+
+fn write_percent(
+    sheet: &mut Worksheet,
+    row: u32,
+    col: u16,
+    value: Decimal,
+    format: &Format,
+) -> Result<(), String> {
+    let number = decimal_f64(value)?;
+    sheet
+        .write_number_with_format(row, col, number, format)
+        .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+fn decimal_f64(value: Decimal) -> Result<f64, String> {
+    value
+        .to_string()
+        .parse::<f64>()
+        .map_err(|err| err.to_string())
 }
 
 fn excel_text(value: &str) -> String {
@@ -720,11 +746,14 @@ mod tests {
         assert_eq!(b2b[8], "B2B");
         assert_eq!(b2b[9], "");
         assert_close(&b2b[10], 0.05);
+        assert_eq!(percent_format(&bytes, "invoices", "K2"), "0.##%");
         assert_close(&b2b[11], 200.0);
         assert_eq!(b2b[12], "RECEIPT");
         assert_eq!(b2b[13], "15 DAYS");
         let second_rate = row(invoices_sheet, 3);
         assert_close(&second_rate[4], 1390.0);
+        assert_close(&second_rate[10], 0.18);
+        assert_eq!(percent_format(&bytes, "invoices", "K3"), "0.##%");
         assert_close(&second_rate[11], 1000.0);
         assert_eq!(second_rate[8], "B2B");
         let taxable_sum = parse_num(&b2b[11]) + parse_num(&second_rate[11]);
@@ -758,6 +787,7 @@ mod tests {
         assert_close(&widget[3], 2.0);
         assert_close(&widget[4], 1180.0);
         assert_close(&widget[5], 0.09);
+        assert_eq!(percent_format(&bytes, "HSN", "F5"), "0.##%");
         assert_close(&widget[6], 1000.0);
         assert_eq!(widget[7], "");
         assert_close(&widget[8], 90.0);
@@ -767,6 +797,7 @@ mod tests {
         assert_close(&service[0], 9988.0);
         assert_eq!(service[2], "kg");
         assert_close(&service[5], 0.025);
+        assert_eq!(percent_format(&bytes, "HSN", "F6"), "0.##%");
         assert_close(&service[8], 5.0);
         assert_close(&service[9], 5.0);
     }
@@ -786,7 +817,7 @@ mod tests {
             individual_id INTEGER,
             state TEXT
         )",
-        "CREATE TABLE crm_companies (id INTEGER PRIMARY KEY, name TEXT, gstin TEXT)",
+        "CREATE TABLE crm_companies (id INTEGER PRIMARY KEY, name TEXT, gstin TEXT, state TEXT)",
         "CREATE TABLE crm_contacts (id INTEGER PRIMARY KEY, name TEXT)",
         "CREATE TABLE posted_invoice_lines (
             id INTEGER PRIMARY KEY,
@@ -815,9 +846,9 @@ mod tests {
     ];
 
     const FIXTURE: &[&str] = &[
-        "INSERT INTO crm_companies (id, name, gstin) VALUES (4, 'Acme', '27AAAAA0000A1Z5')",
+        "INSERT INTO crm_companies (id, name, gstin, state) VALUES (4, 'Acme', '27AAAAA0000A1Z5', 'Maharashtra')",
         "INSERT INTO crm_contacts (id, name) VALUES (9, 'Ada')",
-        "INSERT INTO customers (id, is_individual, company_id, state) VALUES (1, 0, 4, '27')",
+        "INSERT INTO customers (id, is_individual, company_id, state) VALUES (1, 0, 4, '')",
         "INSERT INTO customers (id, is_individual, individual_id) VALUES (2, 1, 9)",
         "INSERT INTO posted_invoices (id, number, datetime, customer_id, posted_payment_term_id)
          VALUES (1, 'INV/26-27/2', '2026-10-07T18:30:00+00:00', 1, 7)",
@@ -885,6 +916,78 @@ mod tests {
     }
 
     type SheetGrid = std::collections::BTreeMap<u32, Vec<(String, String)>>;
+
+    fn percent_format(bytes: &[u8], sheet_name: &str, cell_ref: &str) -> String {
+        let mut zip = ZipArchive::new(Cursor::new(bytes)).expect("zip");
+        let styles = zip_string(&mut zip, "xl/styles.xml");
+        let formats = num_format_codes(&styles);
+        let xfs = cell_xf_formats(&styles);
+        let workbook = zip_string(&mut zip, "xl/workbook.xml");
+        let rels = zip_string(&mut zip, "xl/_rels/workbook.xml.rels");
+        let rid = sheet_refs(&workbook)
+            .into_iter()
+            .find(|(name, _)| name == sheet_name)
+            .map(|(_, id)| id)
+            .unwrap_or_default();
+        let target = rel_target(&rels, &rid);
+        let path = if target.starts_with("xl/") {
+            target
+        } else if target.starts_with('/') {
+            target.trim_start_matches('/').to_string()
+        } else {
+            format!("xl/{target}")
+        };
+        let xml = zip_string(&mut zip, &path);
+        let style = cell_style(&xml, cell_ref);
+        let fmt_id = xfs.get(style).cloned().unwrap_or_default();
+        formats.get(&fmt_id).cloned().unwrap_or_default()
+    }
+
+    fn num_format_codes(styles: &str) -> std::collections::HashMap<String, String> {
+        let mut out = std::collections::HashMap::new();
+        out.insert("9".to_string(), "0%".to_string());
+        out.insert("10".to_string(), "0.00%".to_string());
+        for chunk in styles.split("<numFmt ").skip(1) {
+            let head = chunk.split('>').next().unwrap_or("");
+            let id = attr(head, "numFmtId");
+            if !id.is_empty() {
+                out.insert(id, unescape(&attr(head, "formatCode")));
+            }
+        }
+        out
+    }
+
+    fn cell_xf_formats(styles: &str) -> Vec<String> {
+        let Some(start) = styles.find("<cellXfs") else {
+            return Vec::new();
+        };
+        let rest = styles.get(start..).unwrap_or("");
+        let Some(end) = rest.find("</cellXfs>") else {
+            return Vec::new();
+        };
+        let section = rest.get(..end).unwrap_or("");
+        section
+            .split("<xf ")
+            .skip(1)
+            .map(|chunk| attr(chunk.split('>').next().unwrap_or(""), "numFmtId"))
+            .collect()
+    }
+
+    fn cell_style(xml: &str, cell_ref: &str) -> usize {
+        let needle = format!("r=\"{cell_ref}\"");
+        let Some(pos) = xml.find(&needle) else {
+            return 0;
+        };
+        let before = xml.get(..pos).unwrap_or("");
+        let start = before.rfind("<c ").unwrap_or(0);
+        let head = xml
+            .get(start..)
+            .unwrap_or("")
+            .split('>')
+            .next()
+            .unwrap_or("");
+        attr(head, "s").parse().unwrap_or(0)
+    }
 
     fn read_sheets(bytes: &[u8]) -> Vec<(String, SheetGrid)> {
         let mut zip = ZipArchive::new(Cursor::new(bytes)).expect("zip");

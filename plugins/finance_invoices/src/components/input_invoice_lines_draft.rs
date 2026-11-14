@@ -133,7 +133,7 @@ formatDec(n) {
 	return s;
 },
 blankLine() {
-	return { product_id: 0, quantity: '1', qty_kind: 'quantity', qty_unit: 'Number', rate: '', calculated_rate: '', product_label: '', product_name: '', fk_slot: this.allocFkSlot(), line_taxes: [], has_formula: false, variable_rows: [], pre_tax: '', price_error: '', remarks: '' };
+	return { product_id: 0, quantity: '1', qty_kind: 'quantity', qty_unit: 'Number', rate: '', calculated_rate: '', product_label: '', product_name: '', fk_slot: this.allocFkSlot(), line_taxes: [], has_formula: false, variable_rows: [], pre_tax: '', price_error: '', remarks: ''/*LINE_BLANK_EXTRA*/ };
 },
 variableMagnitude(raw) {
 	if (raw == null) return { value: '', unit: '' };
@@ -602,9 +602,20 @@ pub fn input_invoice_lines_draft(opts: InputInvoiceLinesDraft<'_>) -> Markup {
     };
     let price_url = serde_json::to_string(price_source).unwrap_or_else(|_| "\"\"".into());
     let (qty_kinds, qty_unit_choices, qty_fixed_units, qty_placeholders) = qty_measure_maps();
+    fn line_editor_methods() -> String {
+        use crate::line_editor_addon::{
+            line_editor_blank_js, line_editor_hydrate_js, line_editor_submit_js,
+        };
+        INVOICE_LINES_DRAFT_ALPINE_METHODS
+            .trim_end_matches(',')
+            .replace("/*LINE_BLANK_EXTRA*/", &line_editor_blank_js())
+            .replace("/*LINE_HYDRATE_EXTRA*/", &line_editor_hydrate_js())
+            .replace("/*LINE_SUBMIT_EXTRA*/", &line_editor_submit_js())
+    }
+
     let alpine_data = format!(
         "{{ lines: {defaults}, products: {products_json}, tax_pct_by_id: {tax_pct_json}, tax_kind_by_id: {tax_kind_json}, all_taxes: {all_taxes_json}, minorUnit: {minor_unit}, product_pick_base: {product_pick_base}, tax_pick_base: {tax_pick_base}, price_url: {price_url}, qtyKinds: {qty_kinds}.map(([key, label]) => ({{ key, label }})), qtyUnitChoices: {qty_unit_choices}, qtyFixedUnits: {qty_fixed_units}, qtyPlaceholders: {qty_placeholders}, {methods} }}",
-        methods = INVOICE_LINES_DRAFT_ALPINE_METHODS.trim_end_matches(',')
+        methods = line_editor_methods()
     );
 
     let name_escaped = escape_attr(opts.name);
@@ -634,6 +645,7 @@ if (typeof Alpine !== 'undefined' && Alpine.store && !Alpine.store('m2mSelection
 		if (line.pre_tax == null) line.pre_tax = '';
 		if (line.price_error == null) line.price_error = '';
 		if (line.remarks == null) line.remarks = '';
+		{hydrate}
 		if (line.has_formula) d.refreshPreTax(line);
 		const ids = line.tax_ids;
 		if (Array.isArray(ids) && ids.length > 0 && line.line_taxes.length === 0 && Array.isArray(d.all_taxes)) {{
@@ -663,10 +675,13 @@ $el.closest('form').addEventListener('submit', (ev) => {{
 		variables: d.variablePayload(l),
 		tax_ids: (l.line_taxes || []).map(t => parseInt(String(t.Key), 10)).filter(id => !isNaN(id) && id > 0),
 		remarks: l.remarks == null ? '' : String(l.remarks),
+		{submit}
 	}});
 	h.value = JSON.stringify(d.lines.map(strip));
 }}, true);"#,
-        name_q = serde_json::to_string(opts.name).unwrap_or_else(|_| "\"InvoiceLinesJSON\"".into())
+        name_q = serde_json::to_string(opts.name).unwrap_or_else(|_| "\"InvoiceLinesJSON\"".into()),
+        hydrate = crate::line_editor_addon::line_editor_hydrate_js(),
+        submit = crate::line_editor_addon::line_editor_submit_js(),
     );
 
     let fk_select_handler = r#"if (!$event.detail) return;
@@ -715,6 +730,7 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                         th class="whitespace-nowrap min-w-[16rem]" { "Product" }
                                         th class="whitespace-nowrap min-w-[12rem]" { "Product name" }
                                         th class="whitespace-nowrap min-w-[12rem]" { "Remarks" }
+                                        (PreEscaped(crate::line_editor_addon::line_editor_header_html()))
                                         th class="whitespace-nowrap min-w-[14rem]" { "Inputs" }
                                         th class="whitespace-nowrap min-w-[12rem]" { "Quantity" }
                                         th class="whitespace-nowrap min-w-[8rem]" { "Unit price" }
@@ -743,6 +759,7 @@ $el.closest('form').addEventListener('submit', (ev) => {{
                                                 textarea class="textarea textarea-bordered w-full min-w-[10rem] text-sm" rows="2"
                                                     x-model="line.remarks" placeholder="Remarks" {}
                                             }
+                                            (PreEscaped(crate::line_editor_addon::line_editor_cell_html()))
                                             td class="align-middle min-w-[14rem]" {
                                                 div class="flex flex-col gap-1.5 py-1" x-show="line.has_formula" {
                                                     template x-for="vrow in (line.variable_rows || [])" x-bind:key="String(line.product_id) + ':' + vrow.name" {
@@ -1046,7 +1063,7 @@ pub fn field_invoice_lines(rows: &[InvoiceLineDisplayRow]) -> Markup {
                     tbody {
                         @if rows.is_empty() {
                             tr {
-                                td colspan="11" class="text-center opacity-50 py-4" { "No lines" }
+                                td colspan="12" class="text-center opacity-50 py-4" { "No lines" }
                             }
                         } @else {
                             @for r in rows {

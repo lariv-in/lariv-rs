@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! User administration and authentication for Lariv.
 //!
 //! Manages users, roles, password hashes, session authentication, and route authorization.

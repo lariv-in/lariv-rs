@@ -51,12 +51,10 @@ tokio = { workspace = true }
 tokio-rustls = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
+rust_xlsxwriter = { workspace = true, features = ["constant_memory"] }
 typst = { workspace = true }
 uuid = { workspace = true }
 zip = { workspace = true }
-
-[dev-dependencies]
-rust_xlsxwriter = { workspace = true }
 
 [lints]
 workspace = true

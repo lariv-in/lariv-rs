@@ -1,4 +1,3 @@
-#![feature(impl_trait_in_assoc_type)]
 //! Virtual node (VNode) database filesystem.
 //!
 //! Integrates local or GCS blob storage with database VNode entities for

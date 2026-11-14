@@ -1,7 +1,8 @@
 //! Journal template lines point at the product. The header table goes away.
-use lariv_core::db::migration_sql::{
-    self, FK_PRODUCT_JOURNAL_ENTRY_TEMPLATES_JOURNAL, FK_PRODUCT_JOURNAL_ITEM_JOURNAL, exec_sql,
+use crate::foreign_keys::{
+    FK_PRODUCT_JOURNAL_ENTRY_TEMPLATES_JOURNAL, FK_PRODUCT_JOURNAL_ITEM_JOURNAL,
 };
+use lariv_core::db::migration_sql::{self, exec_sql};
 
 use sea_orm_migration::prelude::*;
 

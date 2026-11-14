@@ -51,6 +51,7 @@ fn build_context_with(
 ) -> Result<Context, String> {
     let mut context = Context::with_config(false).map_err(|e| e.to_string())?;
     install_lariv_module(&mut context, resolved, env_ctx, opts)?;
+    crate::xlsx::install(&mut context, env_ctx)?;
     Ok(context)
 }
 
