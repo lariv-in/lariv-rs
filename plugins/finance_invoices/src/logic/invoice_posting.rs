@@ -13,11 +13,11 @@ use sea_orm::{
 
 use lariv_formula::decimal;
 use lariv_plugin_finance_accounts::logic::custom_source_doc::{
-    SubmittedJournalLines, doc_line_indexes, index_of_item, journal_specs_editor_json,
-    stored_journal_line_specs,
+    SubmittedJournalLines, doc_line_indexes, journal_specs_editor_json,
 };
 use lariv_plugin_finance_accounts::logic::journal::{
-    JournalLineSpec, create_source_doc, insert_journal_entry, update_source_doc_id,
+    JournalLineSpec, create_source_doc, delete_journal_entry_recursive, insert_journal_entry,
+    update_source_doc_id,
 };
 use lariv_plugin_finance_accounts::scope::load_journal_entry_items;
 use lariv_plugin_finance_creditnotes::logic::{CreateCreditNoteInput, create_credit_note};
@@ -28,7 +28,9 @@ use lariv_plugin_finance_taxes::entities::tax::Model as TaxModel;
 use lariv_plugin_finance_taxes::journal_template::evaluate_tax_for_document;
 use lariv_plugin_finance_taxes::scope::load_taxes_by_ids;
 
-use crate::draft_form_addon::run_draft_invoice_on_posted;
+use crate::draft_form_addon::{
+    run_draft_invoice_on_new_draft_from_posted, run_draft_invoice_on_posted,
+};
 use crate::entities::{
     CancelledInvoiceEntity, DraftInvoiceEntity, DraftInvoiceLineEntity, PostedInvoiceEntity,
     PostedInvoiceLineEntity,
@@ -50,7 +52,7 @@ use crate::logic::tax_calculations::{
     InvoiceLinesTotals, document_level_header_taxes, invoice_line_amounts,
     invoice_receivable_grand_total, merge_invoice_line_tax_ids,
 };
-use crate::scope::find_cancellable_posted;
+use crate::scope::{find_active_posted, find_cancellable_posted};
 
 use crate::entities::posted_invoice::POSTED_INVOICE_SOURCE_DOC_TYPE;
 
@@ -97,16 +99,22 @@ async fn expand_product_journal(
             formula: item.formula.clone(),
         })
         .collect();
+    let variable_values = lariv_plugin_finance_products::pricing::values_with_line_columns(
+        variable_types,
+        variable_values,
+        quantity,
+        rate,
+    );
     let sales_price = lariv_plugin_finance_products::pricing::unit_formula_amount(
         variable_types,
         sales_price_formula,
-        variable_values,
+        &variable_values,
     )
     .map_err(|e| format!("{product_name} sales price: {e}"))?;
     let evaluated = evaluate_template_lines(
         variable_types,
         &parsed,
-        variable_values,
+        &variable_values,
         quantity,
         rate,
         pre_tax,
@@ -164,9 +172,86 @@ fn push_tax_lines(
     }
 }
 
-/// Journal lines confirmed when the invoice was posted.
+/// One invoice line evaluated against the current product and tax templates.
+struct ProductJournalSource {
+    product_id: Option<i64>,
+    product_name: String,
+    variable_types: String,
+    sales_price_formula: String,
+    variable_values: String,
+    quantity: Decimal,
+    rate: Decimal,
+    pre_tax_amount: Decimal,
+    taxes: Vec<TaxModel>,
+}
+
+/// Product lines first, then tax lines. `indexes[n]` anchors document line `n`.
+async fn journal_specs_for_products(
+    db: &DatabaseConnection,
+    lines: &[ProductJournalSource],
+    header_taxes: &[TaxModel],
+    empty_label: &str,
+) -> Result<(i64, Vec<JournalLineSpec>, Vec<usize>), String> {
+    if lines.is_empty() {
+        return Err(format!("{empty_label} has no lines"));
+    }
+    let mut specs = Vec::new();
+    let mut line_item_indexes = Vec::with_capacity(lines.len());
+    let mut journal_id = None;
+    for line in lines {
+        let expanded = expand_product_journal(
+            db,
+            line.product_id,
+            &line.product_name,
+            &line.variable_types,
+            &line.sales_price_formula,
+            &line.variable_values,
+            line.quantity,
+            line.rate,
+            line.pre_tax_amount,
+        )
+        .await?;
+        if let Some(existing) = journal_id {
+            if existing != expanded.journal_id {
+                return Err(
+                    "every product and service on an invoice must use the same journal".to_string(),
+                );
+            }
+        } else {
+            journal_id = Some(expanded.journal_id);
+        }
+        line_item_indexes.push(specs.len());
+        specs.extend(expanded.specs);
+    }
+    let journal_id = journal_id.ok_or_else(|| format!("{empty_label} has no lines"))?;
+    let tax_inputs: Vec<(Decimal, Vec<TaxModel>)> = lines
+        .iter()
+        .map(|line| (line.pre_tax_amount, line.taxes.clone()))
+        .collect();
+    append_invoice_tax_lines(db, &mut specs, &tax_inputs, header_taxes, journal_id).await?;
+    Ok((journal_id, specs, line_item_indexes))
+}
+
+fn product_journal_source_from_posted(
+    line: &posted_invoice_line::Model,
+    taxes: Vec<TaxModel>,
+) -> ProductJournalSource {
+    ProductJournalSource {
+        product_id: line.product_id,
+        product_name: line.product_name.clone(),
+        variable_types: line.variable_types.clone(),
+        sales_price_formula: line.sales_price_formula.clone(),
+        variable_values: line.variable_values.clone(),
+        quantity: line.quantity,
+        rate: line.rate,
+        pre_tax_amount: line.pre_tax_amount,
+        taxes,
+    }
+}
+
+/// Journal lines for a posted invoice, from its products and taxes as they are now.
 ///
-/// Regeneration copies these stored items. Template edits apply to the next post.
+/// Regeneration uses this instead of the amounts stored on the existing entry.
 pub async fn posted_invoice_journal_lines(
     db: &DatabaseConnection,
     posted_id: i64,
@@ -177,10 +262,6 @@ pub async fn posted_invoice_journal_lines(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("posted invoice {posted_id} not found"))?;
 
-    let stored = stored_journal_line_specs(db, posted.journal_entry_id).await?;
-    let item_ids: Vec<i64> = stored.iter().map(|(id, _)| *id).collect();
-    let specs = stored.into_iter().map(|(_, spec)| spec).collect();
-
     let lines = PostedInvoiceLineEntity::find()
         .filter(posted_invoice_line::Column::PostedInvoiceId.eq(posted_id))
         .order_by_asc(posted_invoice_line::Column::Id)
@@ -190,11 +271,99 @@ pub async fn posted_invoice_journal_lines(
     if lines.is_empty() {
         return Err(format!("posted invoice {posted_id} has no lines"));
     }
-    let mut indexes = Vec::with_capacity(lines.len());
+    let header_tax_ids = load_posted_invoice_tax_ids(db, posted_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let header_taxes = load_taxes_by_ids(db, &header_tax_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut sources = Vec::with_capacity(lines.len());
     for line in &lines {
-        indexes.push(index_of_item(&item_ids, line.journal_entry_item_id)?);
+        let tax_ids = load_posted_line_tax_ids(db, line.id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let taxes = load_taxes_by_ids(db, &tax_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+        sources.push(product_journal_source_from_posted(line, taxes));
     }
+    let (_journal_id, specs, indexes) =
+        journal_specs_for_products(db, &sources, &header_taxes, "posted invoice").await?;
     Ok((posted.datetime, specs, indexes))
+}
+
+/// Negated journal lines for a cancelled invoice, from its products and taxes as they are now.
+pub async fn cancelled_invoice_journal_lines(
+    db: &DatabaseConnection,
+    cancelled_id: i64,
+) -> Result<(DateTime<Utc>, Vec<JournalLineSpec>, Vec<usize>), String> {
+    let cancelled = CancelledInvoiceEntity::find_by_id(cancelled_id)
+        .one(db)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("cancelled invoice {cancelled_id} not found"))?;
+    let lines = load_cancelled_invoice_lines(db, cancelled_id).await?;
+    if lines.is_empty() {
+        return Err(format!("cancelled invoice {cancelled_id} has no lines"));
+    }
+    let header_tax_ids = load_cancelled_invoice_tax_ids(db, cancelled_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let header_taxes = load_taxes_by_ids(db, &header_tax_ids)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut sources = Vec::with_capacity(lines.len());
+    for line in &lines {
+        let tax_ids = load_cancelled_line_tax_ids(db, line.id)
+            .await
+            .map_err(|e| e.to_string())?;
+        let taxes = load_taxes_by_ids(db, &tax_ids)
+            .await
+            .map_err(|e| e.to_string())?;
+        sources.push(ProductJournalSource {
+            product_id: line.product_id,
+            product_name: line.product_name.clone(),
+            variable_types: line.variable_types.clone(),
+            sales_price_formula: line.sales_price_formula.clone(),
+            variable_values: line.variable_values.clone(),
+            quantity: line.quantity,
+            rate: line.rate,
+            pre_tax_amount: line.pre_tax_amount,
+            taxes,
+        });
+    }
+    let (_journal_id, mut specs, indexes) =
+        journal_specs_for_products(db, &sources, &header_taxes, "cancelled invoice").await?;
+    for spec in &mut specs {
+        spec.amount = decimal::dec_neg(spec.amount);
+    }
+    Ok((
+        cancelled.cancelled_at.unwrap_or(cancelled.datetime),
+        specs,
+        indexes,
+    ))
+}
+
+/// Cancelled-invoice journal for the credit note that reversed it, when there is one.
+pub async fn cancelled_invoice_journal_lines_for_credit_note(
+    db: &DatabaseConnection,
+    credit_note_id: i64,
+) -> Result<Option<(DateTime<Utc>, Vec<JournalLineSpec>, Vec<usize>)>, String> {
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT id FROM cancelled_invoices WHERE credit_note_id = $1 LIMIT 1",
+            [credit_note_id.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let cancelled_id: i64 = row.try_get("", "id").map_err(|e| e.to_string())?;
+    cancelled_invoice_journal_lines(db, cancelled_id)
+        .await
+        .map(Some)
 }
 
 /// Point a posted invoice, its lines, and credit notes that reverse it at a new entry.
@@ -328,9 +497,6 @@ async fn prepare_draft_journal(
         .map_err(|e| e.to_string())?;
 
     let mut lines_with_taxes = Vec::with_capacity(lines.len());
-    let mut specs = Vec::new();
-    let mut line_item_indexes = Vec::with_capacity(lines.len());
-    let mut journal_id = None;
     for line in lines {
         let tax_ids = load_draft_line_tax_ids(db, line.id)
             .await
@@ -338,37 +504,24 @@ async fn prepare_draft_journal(
         let taxes = load_taxes_by_ids(db, &tax_ids)
             .await
             .map_err(|e| e.to_string())?;
-        let expanded = expand_product_journal(
-            db,
-            Some(line.product_id),
-            &line.product_name,
-            &line.variable_types,
-            &line.sales_price_formula,
-            &line.variable_values,
-            line.quantity,
-            line.rate,
-            line.pre_tax_amount,
-        )
-        .await?;
-        if let Some(existing) = journal_id {
-            if existing != expanded.journal_id {
-                return Err(
-                    "every product and service on an invoice must use the same journal".to_string(),
-                );
-            }
-        } else {
-            journal_id = Some(expanded.journal_id);
-        }
-        line_item_indexes.push(specs.len());
-        specs.extend(expanded.specs);
         lines_with_taxes.push(LineWithTaxes { line, taxes });
     }
-    let journal_id = journal_id.ok_or("quotation has no lines")?;
-    let tax_inputs: Vec<(Decimal, Vec<TaxModel>)> = lines_with_taxes
+    let sources: Vec<ProductJournalSource> = lines_with_taxes
         .iter()
-        .map(|lwt| (lwt.line.pre_tax_amount, lwt.taxes.clone()))
+        .map(|lwt| ProductJournalSource {
+            product_id: Some(lwt.line.product_id),
+            product_name: lwt.line.product_name.clone(),
+            variable_types: lwt.line.variable_types.clone(),
+            sales_price_formula: lwt.line.sales_price_formula.clone(),
+            variable_values: lwt.line.variable_values.clone(),
+            quantity: lwt.line.quantity,
+            rate: lwt.line.rate,
+            pre_tax_amount: lwt.line.pre_tax_amount,
+            taxes: lwt.taxes.clone(),
+        })
         .collect();
-    append_invoice_tax_lines(db, &mut specs, &tax_inputs, &header_taxes, journal_id).await?;
+    let (journal_id, specs, line_item_indexes) =
+        journal_specs_for_products(db, &sources, &header_taxes, "quotation").await?;
     let mut totals = InvoiceLinesTotals::default();
     let mut all_line_tax_ids = HashSet::new();
     for (pre_tax_amount, taxes) in lines_with_taxes
@@ -967,4 +1120,108 @@ async fn insert_cancelled_line<C: ConnectionTrait>(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "insert cancelled line failed".to_string())?;
     row.try_get("", "id").map_err(|e| e.to_string())
+}
+
+/// Copy a posted invoice into a draft, then delete the posted journal entry.
+///
+/// This is the "Reset to draft" action: new quotation from the posted invoice,
+/// quotation copied to a draft, intermediate quotation removed, addon data copied,
+/// then the posted journal entry (and the posted invoice) deleted.
+pub async fn reset_posted_invoice_to_draft(
+    db: &DatabaseConnection,
+    posted_id: i64,
+) -> Result<i64, String> {
+    let posted = find_active_posted(db, posted_id)
+        .await
+        .ok_or_else(|| format!("posted invoice {posted_id} not found"))?;
+    let journal_entry_id = posted.journal_entry_id;
+    if journal_entry_id <= 0 {
+        return Err("This posted invoice has no journal entry.".into());
+    }
+    let draft_id = copy_posted_invoice_to_draft(db, posted_id).await?;
+    match delete_journal_entry_recursive(db, journal_entry_id).await {
+        Ok(()) => Ok(draft_id),
+        Err(error) => {
+            tracing::error!(
+                error = %error,
+                posted_id,
+                journal_entry_id,
+                draft_id,
+                "failed to delete journal entry while resetting posted invoice"
+            );
+            let message = match crate::logic::draft::delete_draft(db, draft_id).await {
+                Ok(()) => error.to_string(),
+                Err(rollback) => {
+                    tracing::error!(
+                        error = %rollback,
+                        draft_id,
+                        "failed to roll back draft after reset-to-draft delete failed"
+                    );
+                    format!(
+                        "{error} (the new draft invoice #{draft_id} could not be removed: {rollback})"
+                    )
+                }
+            };
+            Err(message)
+        }
+    }
+}
+
+async fn copy_posted_invoice_to_draft(
+    db: &DatabaseConnection,
+    posted_id: i64,
+) -> Result<i64, String> {
+    let quotation = posted_new_draft(db, posted_id, "UTC").await?;
+    let draft = match crate::logic::quotation::quotation_to_draft(db, quotation.id).await {
+        Ok(draft) => draft,
+        Err(error) => {
+            return Err(rollback_quotation(db, quotation.id, error).await);
+        }
+    };
+    if let Err(error) = crate::logic::quotation::delete_quotation(db, quotation.id).await {
+        return Err(rollback_draft(db, draft.id, error).await);
+    }
+    let txn = match db.begin().await {
+        Ok(txn) => txn,
+        Err(error) => return Err(rollback_draft(db, draft.id, error.to_string()).await),
+    };
+    if let Err(error) = run_draft_invoice_on_new_draft_from_posted(&txn, posted_id, draft.id).await
+    {
+        if let Err(rollback) = txn.rollback().await {
+            tracing::error!(error = %rollback, "failed to roll back draft addon copy");
+        }
+        return Err(rollback_draft(db, draft.id, error).await);
+    }
+    if let Err(error) = txn.commit().await {
+        return Err(rollback_draft(db, draft.id, error.to_string()).await);
+    }
+    Ok(draft.id)
+}
+
+async fn rollback_quotation(db: &DatabaseConnection, quotation_id: i64, error: String) -> String {
+    match crate::logic::quotation::delete_quotation(db, quotation_id).await {
+        Ok(()) => error,
+        Err(rollback) => {
+            tracing::error!(
+                error = %rollback,
+                quotation_id,
+                "failed to remove quotation created during reset to draft"
+            );
+            format!("{error} (quotation #{quotation_id} could not be removed: {rollback})")
+        }
+    }
+}
+
+async fn rollback_draft(db: &DatabaseConnection, draft_id: i64, error: String) -> String {
+    match crate::logic::draft::delete_draft(db, draft_id).await {
+        Ok(()) => error,
+        Err(rollback) => {
+            tracing::error!(
+                error = %rollback,
+                draft_id,
+                "failed to remove draft created during reset to draft"
+            );
+            format!("{error} (draft invoice #{draft_id} could not be removed: {rollback})")
+        }
+    }
 }

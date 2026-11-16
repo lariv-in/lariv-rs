@@ -32,6 +32,7 @@ pub use invoice_list_metrics::{
 };
 pub use invoice_posting::{
     cancelled_new_draft, draft_new_posted, posted_new_cancelled, posted_new_draft,
+    reset_posted_invoice_to_draft,
 };
 pub use payment::{
     PayPostedInvoiceInput, PayPostedInvoiceResult, pay_posted_invoice,

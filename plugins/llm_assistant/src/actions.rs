@@ -8,17 +8,19 @@ use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 
-use crate::genai::util::{content_answer_text, content_is_thought_only};
+use crate::genai::util::{content_answer_text, content_is_thought_only, content_thought_text};
 use crate::llm_tools::{HitlGate, LlmToolsCapability, ToolCtx, ToolResult};
 use lariv_core::rune_env::RuneEnvCapability;
 use lariv_plugin_filesystem::storage::{DynFilestore, erase_store};
 
 use super::{
-    compaction::{CompactionError, contents_for_api, latest_fence, load_session_fences},
+    compaction::{
+        CompactionError, CompactionFence, contents_for_api, latest_fence, load_session_fences,
+    },
     config::ASSISTANT_TOOL_ROUNDS,
     content::{
         PersistError, SessionTurn, ZWSP, elide_attachment_parts_for_api, load_session_turns,
-        save_content,
+        save_content, save_content_with_interaction,
     },
     email_send,
     entities::session::{self, Entity as SessionEntity},
@@ -55,10 +57,9 @@ pub enum ActionError {
 
 /// History + last user turn, optionally eliding attachments only in history.
 ///
-/// Gemini document understanding only sees top-level `file_data` / `inline_data`
-/// on the request. Nested `functionResponse.parts` are not placed in that window,
-/// and eliding the latest user turn would drop a file attached in the current tool
-/// round before the model can read it.
+/// Used when bootstrapping a new Interactions chain (no `previous_interaction_id`).
+/// Nested `functionResponse.parts` media is lifted onto the Content so Files API
+/// URIs enter the multimodal window.
 fn contents_for_generate(
     contents: &[Content],
     elide_history_attachments: bool,
@@ -73,6 +74,50 @@ fn contents_for_generate(
     }
     history.push(last_user);
     Ok(history)
+}
+
+/// Latest model message in the post-compaction window, when it has an interaction id.
+///
+/// Missing id (legacy rows, cancelled partial) means the next call must bootstrap
+/// the full window instead of chaining.
+pub fn chain_head_interaction_id(
+    turns: &[SessionTurn],
+    fence: Option<&CompactionFence>,
+) -> Option<String> {
+    let min_id = fence.map(|f| f.through_message_id).unwrap_or(0);
+    turns
+        .iter()
+        .rev()
+        .filter(|t| t.id > min_id)
+        .find(|t| t.content.role == Role::Model)
+        .and_then(|t| t.interaction_id.clone())
+}
+
+/// Prepare the Interactions input for this round.
+///
+/// When chaining, only the newest user/tool turn is sent. When bootstrapping,
+/// the full API window is sent.
+fn contents_for_interaction_round(
+    contents: &[Content],
+    previous_interaction_id: Option<&str>,
+    elide_history_attachments: bool,
+) -> Result<Vec<Content>, ActionError> {
+    if previous_interaction_id.is_some() {
+        let mut last = contents
+            .last()
+            .cloned()
+            .ok_or_else(|| ActionError::Other("empty session".into()))?;
+        if last.role != Role::User {
+            return Err(ActionError::Other(format!(
+                "last message must be user (got {:?})",
+                last.role
+            )));
+        }
+        lift_function_response_media(&mut last);
+        Ok(vec![last])
+    } else {
+        contents_for_generate(contents, elide_history_attachments)
+    }
 }
 
 /// Split history vs last user turn.
@@ -187,7 +232,7 @@ async fn maybe_title_from_first_prompt(
         .map_err(ActionError::Other)
 }
 
-/// Save user text → generateContent → save model reply (legacy / tests; no tools).
+/// Save user text → Interactions create → save model reply (legacy / tests; no tools).
 pub async fn run_one_turn(
     state: &LlmAssistantState,
     session_id: i64,
@@ -205,7 +250,10 @@ pub async fn run_one_turn(
 
     let turns = load_session_turns(&state.db, session_id).await?;
     let fences = load_session_fences(&state.db, session_id).await?;
-    let for_api = contents_for_generate(&contents_for_api(&turns, latest_fence(&fences)), false)?;
+    let fence = latest_fence(&fences);
+    let previous = chain_head_interaction_id(&turns, fence);
+    let window = contents_for_api(&turns, fence);
+    let for_api = contents_for_interaction_round(&window, previous.as_deref(), false)?;
 
     let genai = state
         .genai_with_key()
@@ -214,13 +262,19 @@ pub async fn run_one_turn(
     let max_output_tokens = resolved_max_output_tokens(&state.db)
         .await
         .map_err(|e| ActionError::Other(e.to_string()))?;
-    let model = genai
-        .generate_content(for_api, max_output_tokens, &[])
+    let result = genai
+        .generate_content_with_usage(for_api, max_output_tokens, &[], previous)
         .await?;
-    if model.parts.is_empty() {
+    if result.content.parts.is_empty() {
         return Err(ActionError::Other("empty model response".into()));
     }
-    save_content(&state.db, session_id, &model).await?;
+    save_content_with_interaction(
+        &state.db,
+        session_id,
+        &result.content,
+        result.interaction_id.as_deref(),
+    )
+    .await?;
     bump_session(&state.db, session_id).await?;
 
     Ok(())
@@ -288,7 +342,9 @@ pub async fn run_stream_turn(
     // Pre-compaction messages are omitted; the latest summary seeds the API window.
     let turns = load_session_turns(&state.db, session_id).await?;
     let fences = load_session_fences(&state.db, session_id).await?;
-    let mut contents = contents_for_api(&turns, latest_fence(&fences));
+    let fence = latest_fence(&fences);
+    let mut contents = contents_for_api(&turns, fence);
+    let mut previous_interaction_id = chain_head_interaction_id(&turns, fence);
     let genai = state
         .genai_with_key()
         .await
@@ -314,20 +370,26 @@ pub async fn run_stream_turn(
             .await;
         }
 
-        // First generate sees attachments; later *tool* rounds elide them from
-        // history so Gemini does not re-process PDFs on every hop. Thought-only
-        // continuations keep attachments so reasoning can still use them.
-        let for_api = contents_for_generate(&contents, elide_history_attachments)?;
+        // Bootstrap sends the full window (attachments elided on later rounds).
+        // Chained rounds send only the newest user/tool turn.
+        let for_api = contents_for_interaction_round(
+            &contents,
+            previous_interaction_id.as_deref(),
+            elide_history_attachments,
+        )?;
 
         let (partial_tx, mut partial_rx) = mpsc::unbounded_channel::<Content>();
         let genai_stream = genai.clone();
         let decls_clone = decls.clone();
+        let prev_id = previous_interaction_id.clone();
         let join = tokio::spawn(async move {
             genai_stream
                 .stream_generate_content_with_usage(
                     for_api,
                     max_output_tokens,
                     &decls_clone,
+                    true,
+                    prev_id,
                     |merged| {
                         let _ = partial_tx.send(merged.clone());
                     },
@@ -378,14 +440,28 @@ pub async fn run_stream_turn(
             Err(e) => return Err(ActionError::Other(format!("stream task: {e}"))),
         };
         let model = result.content;
+        previous_interaction_id = result.interaction_id.clone();
         emit_context_usage(state, session_id, &tx, max_tokens, result.usage.as_ref()).await;
+        crate::token_usage::record_session_usage(
+            &state.db,
+            session_id,
+            genai.model(),
+            result.usage.as_ref(),
+        )
+        .await;
         last_partial = None;
         if model.parts.is_empty() {
             return Err(ActionError::Other("empty model response".into()));
         }
 
         if content_has_function_call(&model) {
-            save_content(&state.db, session_id, &model).await?;
+            save_content_with_interaction(
+                &state.db,
+                session_id,
+                &model,
+                result.interaction_id.as_deref(),
+            )
+            .await?;
             bump_session(&state.db, session_id).await?;
             // Show the tool call (with args) in the transcript before the response.
             live_turn::emit(&tx, StreamEvent::ToolCall(model.clone()));
@@ -453,12 +529,31 @@ pub async fn run_stream_turn(
                 thought_only_rounds,
                 "llm_assistant: thought-only model turn; continuing"
             );
+            // Persist the reasoning so a reload can show it. The continue stub
+            // stays in history for Gemini (the next turn must be a user turn)
+            // and is omitted from the transcript.
+            save_content_with_interaction(
+                &state.db,
+                session_id,
+                &model,
+                result.interaction_id.as_deref(),
+            )
+            .await?;
+            let cont = Content::text(Role::User, THOUGHT_ONLY_CONTINUE);
+            save_content(&state.db, session_id, &cont).await?;
+            bump_session(&state.db, session_id).await?;
             contents.push(model);
-            contents.push(Content::text(Role::User, THOUGHT_ONLY_CONTINUE));
+            contents.push(cont);
             continue;
         }
 
-        save_content(&state.db, session_id, &model).await?;
+        save_content_with_interaction(
+            &state.db,
+            session_id,
+            &model,
+            result.interaction_id.as_deref(),
+        )
+        .await?;
         bump_session(&state.db, session_id).await?;
         live_turn::emit(&tx, StreamEvent::Final(model.clone()));
         spawn_reply_email_if_needed(state, session_id, &model).await;
@@ -816,6 +911,7 @@ pub fn transcript_html(contents: &[Content]) -> String {
         .map(|(i, c)| SessionTurn {
             id: i as i64 + 1,
             content: c.clone(),
+            interaction_id: None,
         })
         .collect();
     transcript_html_with_fences(&turns, &[])
@@ -840,13 +936,35 @@ pub fn transcript_html_with_fences(
     while i < turns.len() {
         let c = &turns[i].content;
 
+        // Reasoning-only turns are their own messages. Show them even though they
+        // have no answer text, and hide the synthetic "Continue." that follows.
+        if content_is_thought_only(c) {
+            push_thinking_group(&mut out, c);
+            let msg_id = turns[i].id;
+            if let Some(summary) = fence_by_id.get(&msg_id) {
+                out.push_str(&compaction_group_html(summary));
+            }
+            i += 1;
+            continue;
+        }
+        let follows_thought_only = i > 0
+            && turns
+                .get(i - 1)
+                .is_some_and(|turn| content_is_thought_only(&turn.content));
+        if follows_thought_only && is_thought_continue_stub(c) {
+            i += 1;
+            continue;
+        }
+
         // Coalesce consecutive tool call / tool response turns under one Tools Called dropdown.
         if content_has_function_call(c) || content_has_tool_response_parts(c) {
+            let mut thinking = String::new();
             let mut working = String::new();
             let mut group_ids = Vec::new();
             while i < turns.len() {
                 let cur = &turns[i];
                 if content_has_function_call(&cur.content) {
+                    push_thinking_group(&mut thinking, &cur.content);
                     working.push_str(&tool_call_inner_html(&cur.content));
                     group_ids.push(cur.id);
                     i += 1;
@@ -858,6 +976,7 @@ pub fn transcript_html_with_fences(
                     break;
                 }
             }
+            out.push_str(&thinking);
             out.push_str(&working_group_html(&working));
             for id in group_ids {
                 if let Some(summary) = fence_by_id.get(&id) {
@@ -887,6 +1006,7 @@ pub fn transcript_html_with_fences(
             continue;
         }
         if kind == "assistant" {
+            push_thinking_group(&mut out, c);
             out.push_str(&assistant_bubble_html(c));
         } else {
             out.push_str(&user_bubble_html(c));
@@ -897,6 +1017,31 @@ pub fn transcript_html_with_fences(
         i += 1;
     }
     out
+}
+
+fn is_thought_continue_stub(content: &Content) -> bool {
+    if content.role != Role::User || content.parts.len() != 1 {
+        return false;
+    }
+    let Some(part) = content.parts.first() else {
+        return false;
+    };
+    part.text.as_deref() == Some(THOUGHT_ONLY_CONTINUE)
+        && part.function_call.is_none()
+        && part.function_response.is_none()
+        && part.inline_data.is_none()
+        && part.file_data.is_none()
+}
+
+fn push_thinking_group(out: &mut String, content: &Content) {
+    use crate::ws::html::thinking_group_html;
+
+    let text = content_thought_text(content);
+    let trimmed = text.trim();
+    if trimmed.is_empty() || trimmed == ZWSP {
+        return;
+    }
+    out.push_str(&thinking_group_html(&text));
 }
 
 pub async fn session_transcript_html(
@@ -927,6 +1072,172 @@ mod tests {
         };
         assert!(content_has_function_call(&c));
         assert!(!content_has_tool_response_parts(&c));
+    }
+
+    #[test]
+    fn chain_head_uses_latest_model_interaction_id() {
+        let turns = vec![
+            SessionTurn {
+                id: 1,
+                content: Content::text(Role::User, "hi"),
+                interaction_id: None,
+            },
+            SessionTurn {
+                id: 2,
+                content: Content::text(Role::Model, "hello"),
+                interaction_id: Some("int_a".into()),
+            },
+            SessionTurn {
+                id: 3,
+                content: Content::text(Role::User, "again"),
+                interaction_id: None,
+            },
+        ];
+        assert_eq!(
+            chain_head_interaction_id(&turns, None).as_deref(),
+            Some("int_a")
+        );
+    }
+
+    #[test]
+    fn chain_head_missing_when_latest_model_has_no_id() {
+        let turns = vec![
+            SessionTurn {
+                id: 1,
+                content: Content::text(Role::Model, "old"),
+                interaction_id: Some("int_a".into()),
+            },
+            SessionTurn {
+                id: 2,
+                content: Content::text(Role::User, "hi"),
+                interaction_id: None,
+            },
+            SessionTurn {
+                id: 3,
+                content: Content::text(Role::Model, "partial"),
+                interaction_id: None,
+            },
+            SessionTurn {
+                id: 4,
+                content: Content::text(Role::User, "next"),
+                interaction_id: None,
+            },
+        ];
+        assert_eq!(chain_head_interaction_id(&turns, None), None);
+    }
+
+    #[test]
+    fn chain_head_ignores_model_behind_compaction_fence() {
+        let turns = vec![
+            SessionTurn {
+                id: 1,
+                content: Content::text(Role::Model, "old"),
+                interaction_id: Some("int_old".into()),
+            },
+            SessionTurn {
+                id: 2,
+                content: Content::text(Role::User, "new"),
+                interaction_id: None,
+            },
+        ];
+        let fence = CompactionFence {
+            through_message_id: 1,
+            summary: "summarized".into(),
+        };
+        assert_eq!(chain_head_interaction_id(&turns, Some(&fence)), None);
+    }
+
+    #[test]
+    fn interaction_round_chains_only_last_user() {
+        let contents = vec![
+            Content::text(Role::User, "hi"),
+            Content::text(Role::Model, "hello"),
+            Content::text(Role::User, "name?"),
+        ];
+        let chained =
+            contents_for_interaction_round(&contents, Some("int_1"), false).expect("chain");
+        assert_eq!(chained.len(), 1);
+        assert_eq!(chained[0].parts[0].text.as_deref(), Some("name?"));
+        let bootstrap = contents_for_interaction_round(&contents, None, false).expect("bootstrap");
+        assert_eq!(bootstrap.len(), 3);
+    }
+
+    #[test]
+    fn transcript_renders_persisted_thought_only_turn() {
+        let contents = vec![
+            Content::text(Role::User, "question"),
+            Content {
+                role: Role::Model,
+                parts: vec![Part {
+                    thought: true,
+                    text: Some("reasoned it out".into()),
+                    ..Default::default()
+                }],
+            },
+            Content::text(Role::User, THOUGHT_ONLY_CONTINUE),
+            Content::text(Role::Model, "visible answer"),
+        ];
+        let html = transcript_html(&contents);
+        let thinking_at = html.find("Thinking").expect("thinking group");
+        let answer_at = html.find("visible answer").expect("answer");
+        assert!(thinking_at < answer_at);
+        assert!(html.contains("reasoned it out"));
+        assert!(!html.contains("Continue."));
+        assert!(html.contains("question"));
+    }
+
+    #[test]
+    fn transcript_renders_thought_before_answer() {
+        let contents = vec![Content {
+            role: Role::Model,
+            parts: vec![
+                Part {
+                    thought: true,
+                    text: Some("secret reasoning".into()),
+                    ..Default::default()
+                },
+                Part {
+                    text: Some("visible answer".into()),
+                    ..Default::default()
+                },
+            ],
+        }];
+        let html = transcript_html(&contents);
+        let thinking_at = html.find("Thinking").expect("thinking group");
+        let answer_at = html.find("visible answer").expect("answer");
+        assert!(thinking_at < answer_at);
+        assert!(html.contains("secret reasoning"));
+        assert_eq!(html.matches("secret reasoning").count(), 1);
+        assert!(!html.contains(" open>"));
+    }
+
+    #[test]
+    fn transcript_renders_thought_before_tools() {
+        let contents = vec![Content {
+            role: Role::Model,
+            parts: vec![
+                Part {
+                    thought: true,
+                    text: Some("plan the call".into()),
+                    ..Default::default()
+                },
+                Part {
+                    function_call: Some(FunctionCall {
+                        name: "read_file".into(),
+                        args: Some(serde_json::json!({ "path": "/tmp/foo.txt" })),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
+        }];
+        let html = transcript_html(&contents);
+        let thinking_at = html.find("Thinking").expect("thinking group");
+        let tools_at = html.find("Tools Called").expect("tools group");
+        assert!(thinking_at < tools_at);
+        assert!(html.contains("plan the call"));
+        assert_eq!(html.matches("plan the call").count(), 1);
+        assert!(html.contains("Function call: read_file"));
     }
 
     #[test]
@@ -1004,14 +1315,17 @@ mod tests {
             SessionTurn {
                 id: 1,
                 content: Content::text(Role::User, "old question"),
+                interaction_id: None,
             },
             SessionTurn {
                 id: 2,
                 content: Content::text(Role::Model, "old answer"),
+                interaction_id: None,
             },
             SessionTurn {
                 id: 3,
                 content: Content::text(Role::User, "new question"),
+                interaction_id: None,
             },
         ];
         let fences = [CompactionFence {

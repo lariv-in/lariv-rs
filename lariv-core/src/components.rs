@@ -91,6 +91,7 @@ pub mod field;
 pub mod form;
 pub mod htmx;
 pub mod input;
+pub mod jsondiff;
 pub mod label;
 pub mod layout;
 pub mod length;
@@ -152,6 +153,7 @@ pub use input::{
     input_list, input_many_to_many, input_number, input_password, input_phone, input_radio_group,
     input_select, input_single_choice_combobox, input_text, input_textarea, input_time,
 };
+pub use jsondiff::{JsonDiff, json_diff};
 pub use label::{label, label_hint};
 pub use layout::{
     AppLayoutHtml, LayoutCard, LayoutMain, LayoutSidebar, LayoutSimple, LayoutTopbar,

@@ -21,7 +21,9 @@ use lariv_core::html_form::HtmlFormBody;
 use lariv_core::http::Cap;
 use lariv_core::web::{Htmx, html_built_page_or_app_layout};
 use lariv_plugin_filesystem::{node, state::FilesystemState};
-use lariv_plugin_users::{entities::user::Entity as UserEntity, middleware::RequireAuth};
+use lariv_plugin_users::{
+    entities::user::Entity as UserEntity, middleware::RequireAuth, roles::Superuser,
+};
 
 async fn email_attachments_parent_display(db: &DatabaseConnection, node_id: Option<i64>) -> String {
     let Some(id) = node_id.filter(|id| *id > 0) else {
@@ -71,6 +73,7 @@ async fn prefs_page(
     prefs: LlmAssistantPreferences,
     fallback_model: &str,
     error: String,
+    show_api_key: bool,
 ) -> LlmAssistantPreferencesPage {
     let chat_model = chat_model_or_default(&prefs.chat_model, fallback_model);
     let compactor_model = chat_model_or_default(&prefs.compactor_model, DEFAULT_CHAT_MODEL);
@@ -91,6 +94,11 @@ async fn prefs_page(
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
         .join(" ");
+    let error = if show_api_key {
+        error
+    } else {
+        redact_api_key(&error, &prefs.api_key)
+    };
     let email_owner_user_id = prefs.email_owner_user_id.unwrap_or(0);
     let email_owner_display = email_owner_display(db, prefs.email_owner_user_id).await;
     let email_attachments_parent_id = prefs.email_attachments_parent_id.unwrap_or(0);
@@ -100,7 +108,12 @@ async fn prefs_page(
     let chat_attachments_parent_display =
         chat_attachments_parent_display(db, prefs.chat_attachments_parent_id).await;
     LlmAssistantPreferencesPage {
-        api_key: prefs.api_key,
+        api_key: if show_api_key {
+            prefs.api_key
+        } else {
+            String::new()
+        },
+        show_api_key,
         chat_model,
         chat_model_choices,
         compactor_model,
@@ -124,6 +137,28 @@ async fn prefs_page(
         chat_attachments_parent_display,
         error,
     }
+}
+
+fn redact_api_key(text: &str, secret: &str) -> String {
+    let secret = secret.trim();
+    if secret.is_empty() {
+        return text.to_string();
+    }
+    text.replace(secret, "[redacted]")
+        .replace(&percent_encode(secret), "[redacted]")
+}
+
+fn percent_encode(value: &str) -> String {
+    let mut out = String::new();
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char);
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
 }
 
 fn empty_prefs() -> LlmAssistantPreferences {
@@ -169,6 +204,7 @@ pub async fn get(
                 empty_prefs(),
                 &state.config.chat_model,
                 e.to_string(),
+                Superuser::matches(&ctx.role),
             )
             .await;
             return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response();
@@ -184,7 +220,14 @@ pub async fn get(
             Err(e) => tracing::warn!("ensure chat attachments folder: {e}"),
         }
     }
-    let page = prefs_page(&state.db, prefs, &state.config.chat_model, String::new()).await;
+    let page = prefs_page(
+        &state.db,
+        prefs,
+        &state.config.chat_model,
+        String::new(),
+        Superuser::matches(&ctx.role),
+    )
+    .await;
     html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
 }
 
@@ -205,6 +248,7 @@ pub async fn post(
                     empty_prefs(),
                     &state.config.chat_model,
                     format!("Session owner user not found: {owner_id}"),
+                    Superuser::matches(&ctx.role),
                 )
                 .await;
                 return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
@@ -217,6 +261,7 @@ pub async fn post(
                     empty_prefs(),
                     &state.config.chat_model,
                     e.to_string(),
+                    Superuser::matches(&ctx.role),
                 )
                 .await;
                 return html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx)
@@ -226,6 +271,15 @@ pub async fn post(
     }
 
     let existing = load_preferences(&state.db).await.ok();
+    let show_api_key = Superuser::matches(&ctx.role);
+    let api_key = if show_api_key {
+        form.api_key.trim().to_string()
+    } else {
+        existing
+            .as_ref()
+            .map(|prefs| prefs.api_key.clone())
+            .unwrap_or_default()
+    };
     let password = if form.password.trim().is_empty() {
         existing
             .as_ref()
@@ -238,7 +292,7 @@ pub async fn post(
         id: 1,
         created_at: None,
         updated_at: None,
-        api_key: form.api_key.trim().to_string(),
+        api_key,
         chat_model: chat_model_or_default(&form.chat_model, &state.config.chat_model),
         cse_api_key: form.cse_api_key.trim().to_string(),
         cse_cx: form.cse_cx.trim().to_string(),
@@ -263,11 +317,25 @@ pub async fn post(
     match save_preferences(&state.db, prefs.clone()).await {
         Ok(_) => {
             state.email_listener.restart();
-            let page = prefs_page(&state.db, prefs, &state.config.chat_model, String::new()).await;
+            let page = prefs_page(
+                &state.db,
+                prefs,
+                &state.config.chat_model,
+                String::new(),
+                show_api_key,
+            )
+            .await;
             html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
         }
         Err(e) => {
-            let page = prefs_page(&state.db, prefs, &state.config.chat_model, e.to_string()).await;
+            let page = prefs_page(
+                &state.db,
+                prefs,
+                &state.config.chat_model,
+                e.to_string(),
+                show_api_key,
+            )
+            .await;
             html_built_page_or_app_layout(&page, &htmx, &chrome, &slot_ctx).into_response()
         }
     }

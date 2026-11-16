@@ -27,6 +27,9 @@ mod m20260909_000002_llm_assistant_max_output_tokens;
 mod m20260913_000001_llm_assistant_session_is_subagent;
 mod m20261107_000001_llm_assistant_adversarial_model;
 mod m20261107_000002_drop_llm_assistant_adversarial_model;
+mod m20261115_000001_llm_assistant_token_usage;
+mod m20261115_000002_llm_assistant_token_usage_model;
+mod m20261116_000001_llm_assistant_message_interaction_id;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -60,6 +63,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20260913_000001_llm_assistant_session_is_subagent::Migration),
             Box::new(m20261107_000001_llm_assistant_adversarial_model::Migration),
             Box::new(m20261107_000002_drop_llm_assistant_adversarial_model::Migration),
+            Box::new(m20261115_000001_llm_assistant_token_usage::Migration),
+            Box::new(m20261115_000002_llm_assistant_token_usage_model::Migration),
+            Box::new(m20261116_000001_llm_assistant_message_interaction_id::Migration),
         ]
     }
 }

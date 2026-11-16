@@ -85,11 +85,6 @@ fn register(rune_env: &mut RuneEnvCapability) {
         |_ctx| NativeBinding::Function(Arc::new(delete_draft_invoice)),
     );
     rune_env.register_contextual(
-        "create_posted_invoice",
-        "create_posted_invoice(#{ draft_id: int, posted_at?: string, timezone?: string }) -> int  // posts the draft and returns the posted invoice id. The draft is removed.",
-        |_ctx| NativeBinding::Function(Arc::new(create_posted_invoice)),
-    );
-    rune_env.register_contextual(
         "get_posted_invoice",
         documented(concat!(
             "get_posted_invoice(#{ id: int }) -> #{ id: int, number: string, reference: string|null, customer_id: int, datetime: string, delivery_date: string|null, remarks: string|null, eway_bill_number: string|null, payment_reference: string|null, bank_account: string|null, posted_at: string|null, settlement: \"open\"|\"partial\"|\"paid\", pre_tax_amount: string, tax_levied: string, total_amount: string, ",
@@ -165,10 +160,76 @@ fn register(rune_env: &mut RuneEnvCapability) {
         |_ctx| NativeBinding::Function(Arc::new(search_quotations)),
     );
     rune_env.register_contextual(
+        "request_reset_posted_invoice_to_draft",
+        "request_reset_posted_invoice_to_draft(#{ id: int }) -> #{ posted_invoice_id: int, journal_entry_id: int|null, can_confirm: bool, error: string|null, deletes: [#{ kind: string, label: string, url: string }] }  // lists what confirm_reset_posted_invoice_to_draft would permanently delete after copying the invoice into a new draft. Does not change anything.",
+        |_ctx| NativeBinding::Function(Arc::new(request_reset_posted_invoice_to_draft)),
+    );
+    rune_env.register_contextual(
         "delete_quotation",
         "delete_quotation(#{ id: int }) ->  // permanently deletes the quotation",
         |_ctx| NativeBinding::Function(Arc::new(delete_quotation)),
     );
+}
+
+#[cfg(feature = "cap-llm")]
+fn request_reset_posted_invoice_to_draft(
+    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    use serde::Deserialize;
+
+    #[derive(Debug, Deserialize)]
+    struct IdArgs {
+        id: i64,
+    }
+
+    let value = args.first().ok_or_else(|| {
+        "request_reset_posted_invoice_to_draft requires an object argument".to_string()
+    })?;
+    let parsed: IdArgs =
+        serde_json::from_value(lariv_core::rune_env::rune_to_json(value).map_err(|error| {
+            format!("invalid request_reset_posted_invoice_to_draft arguments: {error}")
+        })?)
+        .map_err(|error| {
+            format!("invalid request_reset_posted_invoice_to_draft arguments: {error}")
+        })?;
+    if parsed.id <= 0 {
+        return Err(
+            "request_reset_posted_invoice_to_draft requires a positive posted invoice id"
+                .to_string(),
+        );
+    }
+    let posted_id = parsed.id;
+    let db = ctx.db.clone();
+    let preview = lariv_core::rune_env::block_on_async(async move {
+        let posted = crate::scope::find_active_posted(&db, posted_id)
+            .await
+            .ok_or_else(|| format!("posted invoice {posted_id} not found"))?;
+        let journal_entry_id = posted.journal_entry_id;
+        if journal_entry_id <= 0 {
+            return Ok(serde_json::json!({
+                "posted_invoice_id": posted_id,
+                "journal_entry_id": null,
+                "can_confirm": false,
+                "error": "This posted invoice has no journal entry.",
+                "deletes": [],
+            }));
+        }
+        let (deletes, error) =
+            lariv_plugin_finance_accounts::logic::journal::journal_entry_cascade_items(
+                &db,
+                journal_entry_id,
+            )
+            .await;
+        Ok::<_, String>(serde_json::json!({
+            "posted_invoice_id": posted_id,
+            "journal_entry_id": journal_entry_id,
+            "can_confirm": error.is_none(),
+            "error": error,
+            "deletes": deletes,
+        }))
+    })?;
+    lariv_core::rune_env::json_to_rune(preview)
 }
 
 #[cfg(feature = "cap-llm")]
@@ -1470,36 +1531,6 @@ fn delete_draft_invoice(
 }
 
 #[cfg(feature = "cap-llm")]
-fn create_posted_invoice(
-    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
-    args: &[rune::Value],
-) -> Result<rune::Value, String> {
-    use serde::Deserialize;
-
-    #[derive(Debug, Deserialize)]
-    struct PostArgs {
-        draft_id: i64,
-        #[serde(default)]
-        posted_at: Option<String>,
-        #[serde(default)]
-        timezone: Option<String>,
-    }
-
-    let parsed: PostArgs = rows::parse_json(
-        rows::object_arg(args, "create_posted_invoice")?,
-        "create_posted_invoice",
-    )?;
-    rows::require_id(parsed.draft_id, "create_posted_invoice", "draft")?;
-    let tz = parsed.timezone.unwrap_or_else(|| "UTC".to_string());
-    let posted_at = rows::when(parsed.posted_at, &tz);
-    let db = ctx.db.clone();
-    let posted = lariv_core::rune_env::block_on_async(async move {
-        crate::logic::draft_new_posted(&db, parsed.draft_id, posted_at, &tz).await
-    })?;
-    Ok(rune::Value::from(posted.id))
-}
-
-#[cfg(feature = "cap-llm")]
 fn get_posted_invoice(
     ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
     args: &[rune::Value],
@@ -2157,7 +2188,6 @@ mod tests {
             "search_draft_invoices",
             "update_draft_invoice",
             "delete_draft_invoice",
-            "create_posted_invoice",
             "get_posted_invoice",
             "search_posted_invoices",
             "create_cancelled_invoice",
@@ -2171,6 +2201,7 @@ mod tests {
             "update_quotation",
             "search_quotations",
             "delete_quotation",
+            "request_reset_posted_invoice_to_draft",
         ] {
             assert!(
                 names.iter().any(|registered| registered == name),
@@ -2376,7 +2407,6 @@ create_draft_invoice(#{
                 "positive",
             ),
             ("delete_draft_invoice(#{ id: 0 })", "positive"),
-            ("create_posted_invoice(#{})", "draft_id"),
             (
                 "create_cancelled_invoice(#{ posted_invoice_id: 1 })",
                 "reason",

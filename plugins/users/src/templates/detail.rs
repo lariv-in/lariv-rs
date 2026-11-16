@@ -13,41 +13,67 @@ use crate::routes::{
     UsersChangePasswordGetRouteTag, UsersDetailRouteTag, UsersEditGetRouteTag,
     UsersEditPostRouteTag, UsersListRouteTag, UsersSelfEditGetRouteTag, UsersSelfEditPostRouteTag,
 };
+use crate::user_detail_menu::user_detail_links;
 
 use super::self_::user_self_menu;
 use super::{app_scaffold, scaffold_main, scaffold_pane, self_crumbs};
 
-pub(crate) fn user_detail_menu(
+struct DetailMenuNavItem {
+    title: &'static str,
+    url: String,
+    active: bool,
+}
+
+fn detail_sidebar_menu(menu_title: String, nav_items: &[DetailMenuNavItem]) -> Markup {
+    sidebar_menu(SidebarMenu {
+        title: menu_title.as_str(),
+        children: {
+            let mut children = Markup::default();
+            for item in nav_items {
+                children = html! {
+                    (children)
+                    (sidebar_menu_item_pane(SidebarMenuItem {
+                        title: item.title,
+                        url: &item.url,
+                        active: item.active,
+                        ..Default::default()
+                    }))
+                };
+            }
+            children
+        },
+    })
+}
+
+pub fn user_detail_menu(
     user_id: i64,
     user_name: &str,
     active: &str,
     show_change_password: bool,
 ) -> Markup {
-    let title = format!("User: {user_name}");
-    let detail_url = UsersDetailRouteTag::new(user_id).url();
-    let pw_url = UsersChangePasswordGetRouteTag::new(user_id).url();
-    sidebar_menu(SidebarMenu {
-        title: &title,
-        children: html! {
-            (sidebar_menu_item_pane(SidebarMenuItem {
-                title: "User Detail",
-                url: &detail_url,
-                active: active == "detail",
-                ..Default::default()
-            }))
-            @if show_change_password {
-                (sidebar_menu_item_pane(SidebarMenuItem {
-                    title: "Change Password",
-                    url: &pw_url,
-                    active: active == "password",
-                    ..Default::default()
-                }))
-            }
-        },
-    })
+    let mut items = vec![DetailMenuNavItem {
+        title: "User Detail",
+        url: UsersDetailRouteTag::new(user_id).url(),
+        active: active == "detail",
+    }];
+    if show_change_password {
+        items.push(DetailMenuNavItem {
+            title: "Change Password",
+            url: UsersChangePasswordGetRouteTag::new(user_id).url(),
+            active: active == "password",
+        });
+    }
+    for link in user_detail_links() {
+        items.push(DetailMenuNavItem {
+            title: link.title,
+            url: (link.url_fn)(user_id),
+            active: active == link.key,
+        });
+    }
+    detail_sidebar_menu(format!("User: {user_name}"), &items)
 }
 
-pub(crate) fn user_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
+pub fn user_crumbs(id: i64, name: &str, action: Option<&str>) -> Markup {
     use lariv_core::components::breadcrumbs;
     let list_url = UsersListRouteTag.url();
     let detail_url = UsersDetailRouteTag::new(id).url();

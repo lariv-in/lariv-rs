@@ -11,13 +11,13 @@ use frunk::{HCons, HNil, hlist::HList};
 use lariv_core::app::App;
 use lariv_core::capability::{CapHookExt, Capability, HasCapTag};
 use lariv_core::components::{
-    SidebarMenu, SidebarNavLink, active_nav_key, normalize_nav_path, sidebar_menu,
-    sidebar_nav_items_pane,
+    SidebarMenu, SidebarMenuItem, SidebarNavLink, active_nav_key, normalize_nav_path, sidebar_menu,
+    sidebar_menu_item_pane,
 };
 use lariv_core::http::RouteUrl;
 use lariv_core::tag::Tagged;
 use lariv_core::traits::add::{AddCapability, CapTagAbsent};
-use maud::Markup;
+use maud::{Markup, html};
 
 use crate::accounting_preferences_patch::{
     AccountingPreferencesRegistry, store_accounting_preferences_addons,
@@ -69,6 +69,16 @@ pub struct AccountingSidebarLink {
     pub icon: Option<&'static str>,
     /// Extra path prefixes that mark this link active. Empty ⇒ use [`Self::url`] only.
     pub match_prefixes: &'static [&'static str],
+    /// Link leaves the Accounting app for another app.
+    pub external: bool,
+}
+
+impl AccountingSidebarLink {
+    /// Mark this link as leaving the Accounting app.
+    pub fn external(mut self) -> Self {
+        self.external = true;
+        self
+    }
 }
 
 /// Build a sidebar link from a typed route tag (compile-time path checking).
@@ -85,6 +95,7 @@ pub fn link<R: RouteUrl + Default>(
         order,
         icon,
         match_prefixes: &[],
+        external: false,
     }
 }
 
@@ -103,6 +114,7 @@ pub fn link_with_prefixes<R: RouteUrl + Default>(
         order,
         icon,
         match_prefixes,
+        external: false,
     }
 }
 
@@ -169,7 +181,8 @@ impl AccountingSidebarRegistry {
 
     fn sorted_links(self) -> Vec<AccountingSidebarLink> {
         let mut links = self.links;
-        links.sort_by_key(|l| (l.order, l.label));
+        // External links leave Accounting, so they sit below every in-app link.
+        links.sort_by_key(|l| (l.external, l.order, l.label));
         links
     }
 
@@ -314,10 +327,26 @@ pub fn accounting_sidebar(current_path: &str) -> Markup {
     let links = LINKS
         .get()
         .expect("accounting sidebar not initialized — mount the app after finance plugins install");
+    sidebar_markup(links, current_path)
+}
+
+fn sidebar_markup(links: &[AccountingSidebarLink], current_path: &str) -> Markup {
     let nav = nav_links_from(links);
+    let active = active_nav_key(&nav, current_path);
+    let mut children = Markup::default();
+    for link in links {
+        let item = sidebar_menu_item_pane(SidebarMenuItem {
+            title: link.label,
+            url: &link.url,
+            icon_name: link.icon,
+            active: active == Some(link.section),
+            external: link.external,
+        });
+        children = html! { (children) (item) };
+    }
     sidebar_menu(SidebarMenu {
         title: "Accounting",
-        children: sidebar_nav_items_pane(&nav, current_path),
+        children,
     })
 }
 
@@ -405,6 +434,7 @@ mod tests {
                 order: 10,
                 icon: None,
                 match_prefixes: ACCOUNTS_MATCH_PREFIXES,
+                external: false,
             },
             AccountingSidebarLink {
                 section: "customers",
@@ -413,6 +443,7 @@ mod tests {
                 order: 50,
                 icon: None,
                 match_prefixes: &[],
+                external: false,
             },
             AccountingSidebarLink {
                 section: "journals",
@@ -421,6 +452,7 @@ mod tests {
                 order: 30,
                 icon: None,
                 match_prefixes: JOURNALS_MATCH_PREFIXES,
+                external: false,
             },
             AccountingSidebarLink {
                 section: "preferences",
@@ -429,6 +461,7 @@ mod tests {
                 order: 40,
                 icon: None,
                 match_prefixes: &[],
+                external: false,
             },
         ]
     }
@@ -474,6 +507,31 @@ mod tests {
             .resolve_hooks();
         let sorted = cap.items.clone().sorted_links();
         assert_eq!(sorted.last().map(|link| link.section), Some("preferences"));
+    }
+
+    #[test]
+    fn external_links_sort_after_in_app_links() {
+        #[derive(Copy, Clone)]
+        struct ExternalLink;
+
+        impl AccountingSidebarRegistrar for ExternalLink {
+            fn register_accounting_sidebar(
+                self,
+                cap: AccountingSidebarRegistry,
+            ) -> AccountingSidebarRegistry {
+                cap.push(link::<FinanceDefaultRouteTag>("contacts", "Contacts", 1, None).external())
+            }
+        }
+
+        let cap = AccountingSidebarCap::<HNil>::new()
+            .add_hook::<crate::FinanceAccountsTag, _>(BaseHook)
+            .add_hook::<TestAddonTag, _>(ExternalLink)
+            .resolve_hooks();
+        let sorted = cap.items.clone().sorted_links();
+        assert_eq!(sorted.last().map(|link| link.section), Some("contacts"));
+        let preferences = sorted.iter().position(|link| link.section == "preferences");
+        let contacts = sorted.iter().position(|link| link.section == "contacts");
+        assert!(preferences < contacts);
     }
 
     #[test]
@@ -532,5 +590,19 @@ mod tests {
             active_section_for_path(&links, AccountingPreferencesRouteTag::PATH),
             Some("preferences")
         );
+    }
+
+    #[test]
+    fn external_links_show_the_leave_app_icon() {
+        let mut links = sample_links();
+        links.push(
+            link::<FinanceDefaultRouteTag>("contacts", "Contacts", 45, Some("users")).external(),
+        );
+        let html = sidebar_markup(&links, FinanceDefaultRouteTag::PATH).into_string();
+        let contacts = html.find("Contacts").expect("contacts label");
+        assert!(html[contacts..].contains("arrow-top-right-on-square"));
+        let accounts = html.find(">Accounts").expect("accounts label");
+        let accounts_end = html[accounts..].find("</a>").expect("accounts close");
+        assert!(!html[accounts..accounts + accounts_end].contains("arrow-top-right-on-square"));
     }
 }

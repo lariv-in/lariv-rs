@@ -467,6 +467,7 @@ pub fn hr_menu_for_active(active: &str) -> Option<Markup> {
             url: &link.url,
             icon_name: link.icon,
             active: link.section == active,
+            ..Default::default()
         });
         children = maud::html! { (children) (item) };
     }

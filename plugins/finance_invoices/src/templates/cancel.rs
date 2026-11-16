@@ -47,7 +47,7 @@ impl CancelInvoicePage {
     }
 
     fn menu(&self) -> Markup {
-        posted_invoice_detail_menu(self.id, "")
+        posted_invoice_detail_menu(self.id, "", "detail")
     }
 }
 

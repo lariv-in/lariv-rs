@@ -1,18 +1,22 @@
-//! Invoice preferences singleton.
+//! Invoice preferences for the signed-in user.
 
 use chrono::{DateTime, NaiveDate, Utc};
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
+use sea_orm::{
+    ActiveModelTrait,
+    ActiveValue::{NotSet, Set},
+    DatabaseConnection, EntityTrait, QuerySelect,
+};
 
 use crate::entities::preferences::{self, Entity as InvoicePreferencesEntity};
 
 pub async fn load_invoice_preferences(db: &DatabaseConnection) -> preferences::Model {
-    if let Ok(Some(p)) = InvoicePreferencesEntity::find_by_id(1i64).one(db).await {
+    if let Ok(Some(p)) = InvoicePreferencesEntity::find().limit(1).one(db).await {
         return p;
     }
     let now = Utc::now();
     let default_format = "INV-{{YYYY}}-{{POSTED_SEQ}}".to_string();
     let am = preferences::ActiveModel {
-        id: Set(1),
+        id: NotSet,
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         invoice_number_format: Set(Some(default_format.clone())),

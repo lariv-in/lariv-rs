@@ -288,16 +288,21 @@ pub struct MigrateCommand;
 pub struct MigrateArgs {}
 
 #[async_trait::async_trait]
-impl<M, MigIdx, DbIdx, Migrators> RunCommand<M, (MigIdx, DbIdx, Migrators)> for MigrateCommand
+impl<M, MigIdx, DbIdx, Migrators, CfgIdx, Configs, AppCfgIdx>
+    RunCommand<M, (MigIdx, DbIdx, Migrators, CfgIdx, Configs, AppCfgIdx)> for MigrateCommand
 where
     M: GetByTag<MigrationTag, MigIdx, Value = MigrationCapability<Migrators>>
         + GetByTag<DbTag, DbIdx, Value = DbState>
+        + GetByTag<ConfigTag, CfgIdx, Value = ConfigCapability<Configs>>
         + Sync
         + Send
         + 'static,
+    Configs: GetByTag<AppConfigTag, AppCfgIdx, Value = AppConfig>,
     Migrators: RunMigrations + Clone + Send + Sync,
     MigIdx: Send + Sync + 'static,
     DbIdx: Send + Sync + 'static,
+    CfgIdx: Send + Sync + 'static,
+    AppCfgIdx: Send + Sync + 'static,
 {
     type Args = MigrateArgs;
     const NAME: &'static str = "migrate";

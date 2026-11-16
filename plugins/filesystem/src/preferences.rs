@@ -1,24 +1,28 @@
 //! Singleton access settings for the filesystem root.
 
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
+use sea_orm::{
+    ActiveModelTrait,
+    ActiveValue::{NotSet, Set},
+    DatabaseConnection, EntityTrait, QuerySelect,
+};
 
 use super::entities::filesystem_preferences::{
     self, Entity as PreferencesEntity, Model as FilesystemPreferences,
 };
 use super::permissions::NodePermissions;
 
-/// Load the singleton row, creating open defaults when it is missing.
+/// Load the visible preferences row, creating open defaults when it is missing.
 ///
 /// The default matches access before this row existed: a null owner, a null role,
 /// and [`NodePermissions::legacy`] so every principal can view, change, and open the root.
 pub async fn load(db: &DatabaseConnection) -> Result<FilesystemPreferences, sea_orm::DbErr> {
-    if let Some(row) = PreferencesEntity::find_by_id(1).one(db).await? {
+    if let Some(row) = PreferencesEntity::find().limit(1).one(db).await? {
         return Ok(row);
     }
     let now = Utc::now();
     let model = filesystem_preferences::ActiveModel {
-        id: Set(1),
+        id: NotSet,
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         owner_id: Set(None),

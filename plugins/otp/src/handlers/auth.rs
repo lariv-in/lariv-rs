@@ -47,23 +47,26 @@ pub async fn login_post(
     HtmlFormBody(form): HtmlFormBody<LoginForm>,
 ) -> Response {
     match auth::authenticate(&state.db, &form.email, &form.password).await {
-        Ok(user) => match auth::record_login(&state.db, user.id)
-            .await
-            .and_then(|_| auth::login_token(&user, &state.signing_key, &state.jwt_issuer))
-        {
-            Ok(token) => {
-                let mut response = htmx.redirect(&UsersLoginSuccessRouteTag.url());
-                set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));
-                response
+        Ok(user) => {
+            if let Err(err) = auth::record_login(&state.db, user.id).await {
+                tracing::error!(user_id = user.id, error = %err, "failed to record login");
             }
-            Err(_) => {
-                let page = LoginPageWithForgot {
-                    error: "Could not create session".into(),
-                };
-                html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
-                    .into_response()
+            match auth::login_token(&user, &state.signing_key, &state.jwt_issuer) {
+                Ok(token) => {
+                    let mut response = htmx.redirect(&UsersLoginSuccessRouteTag.url());
+                    set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));
+                    response
+                }
+                Err(err) => {
+                    tracing::error!(user_id = user.id, error = %err, "failed to issue login token");
+                    let page = LoginPageWithForgot {
+                        error: "Could not create session".into(),
+                    };
+                    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
+                        .into_response()
+                }
             }
-        },
+        }
         Err(_) => {
             let page = LoginPageWithForgot {
                 error: "Invalid email or password".into(),
@@ -329,16 +332,17 @@ pub async fn verify_post(
         }
     };
 
-    match auth::record_login(&state.db, user.id)
-        .await
-        .and_then(|_| auth::login_token(&user, &users.signing_key, &users.jwt_issuer))
-    {
+    if let Err(err) = auth::record_login(&state.db, user.id).await {
+        tracing::error!(user_id = user.id, error = %err, "failed to record login");
+    }
+    match auth::login_token(&user, &users.signing_key, &users.jwt_issuer) {
         Ok(token) => {
             let mut response = htmx.redirect(&UsersLoginSuccessRouteTag.url());
             set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));
             response
         }
-        Err(_) => {
+        Err(err) => {
+            tracing::error!(user_id = user.id, error = %err, "failed to issue login token");
             let page = LoginPageWithForgot {
                 error: "Could not create session".into(),
             };

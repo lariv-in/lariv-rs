@@ -37,10 +37,11 @@ pub async fn login_post(
     let Ok(user) = auth::authenticate(&state.db, &form.email, &form.password).await else {
         return login_error(&htmx, &chrome, "Invalid email or password");
     };
-    let Ok(token) = auth::record_login(&state.db, user.id)
-        .await
-        .and_then(|_| auth::login_token(&user, &state.signing_key, &state.jwt_issuer))
-    else {
+    if let Err(err) = auth::record_login(&state.db, user.id).await {
+        tracing::error!(user_id = user.id, error = %err, "failed to record login");
+    }
+    let Ok(token) = auth::login_token(&user, &state.signing_key, &state.jwt_issuer) else {
+        tracing::error!(user_id = user.id, "failed to issue login token");
         return login_error(&htmx, &chrome, "Could not create session");
     };
 

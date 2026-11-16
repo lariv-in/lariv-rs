@@ -6578,6 +6578,7 @@ dependencies = [
  "lariv-formula",
  "lariv-plugin-filesystem",
  "lariv-plugin-finance-common",
+ "lariv-plugin-llm-assistant",
  "lariv-plugin-users",
  "lariv-rs-macros",
  "maud",
@@ -6736,6 +6737,24 @@ dependencies = [
  "tracing",
  "typst",
  "zip",
+]
+
+[[package]]
+name = "lariv-plugin-finance-invoices-log"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "frunk",
+ "lariv-core",
+ "lariv-plugin-finance-accounts",
+ "lariv-plugin-finance-invoices",
+ "lariv-plugin-logging",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "sea-orm",
+ "tracing",
 ]
 
 [[package]]
@@ -7182,6 +7201,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "lariv-plugin-logging"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "frunk",
+ "frunk_core",
+ "futures-util",
+ "http 1.5.0",
+ "lariv-core",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "lariv-plugin-mdbook"
 version = "0.1.0"
 dependencies = [
@@ -7340,6 +7382,7 @@ dependencies = [
  "lariv-rs-macros",
  "maud",
  "serde",
+ "tracing",
 ]
 
 [[package]]
@@ -7392,6 +7435,21 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "lariv-plugin-user-log"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "frunk",
+ "lariv-core",
+ "lariv-plugin-logging",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "sea-orm",
+ "tracing",
 ]
 
 [[package]]
@@ -7480,6 +7538,7 @@ dependencies = [
  "lariv-plugin-finance-gst-export",
  "lariv-plugin-finance-indian",
  "lariv-plugin-finance-invoices",
+ "lariv-plugin-finance-invoices-log",
  "lariv-plugin-finance-payments",
  "lariv-plugin-finance-products",
  "lariv-plugin-finance-purchases",
@@ -7495,6 +7554,7 @@ dependencies = [
  "lariv-plugin-inventory",
  "lariv-plugin-llm-assistant",
  "lariv-plugin-llm-assistant-tester",
+ "lariv-plugin-logging",
  "lariv-plugin-mdbook",
  "lariv-plugin-meets",
  "lariv-plugin-otp",
@@ -7503,6 +7563,7 @@ dependencies = [
  "lariv-plugin-signup",
  "lariv-plugin-tasks",
  "lariv-plugin-todo",
+ "lariv-plugin-user-log",
  "lariv-plugin-users",
  "lariv-plugin-website",
  "lariv-rs-macros",

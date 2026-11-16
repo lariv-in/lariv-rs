@@ -8,6 +8,7 @@
 //! - [`part_is_empty`] — skip no-op parts when merging
 //! - [`content_text`] — concatenate text parts for display
 //! - [`content_answer_text`] — text without thought parts
+//! - [`content_thought_text`] — thought text without answer parts
 //! - [`coerce_json_text`] — strip prose/fences around a JSON value
 //! - [`merge_content`] — accumulate streaming deltas
 
@@ -55,6 +56,18 @@ pub fn content_answer_text(content: &Content) -> String {
         .join("")
 }
 
+/// Concatenate thought-text parts. Signature-only parts contribute nothing.
+pub fn content_thought_text(content: &Content) -> String {
+    content
+        .parts
+        .iter()
+        .filter(|p| p.thought)
+        .filter_map(|p| p.text.as_deref())
+        .filter(|t| !t.is_empty())
+        .collect::<Vec<_>>()
+        .join("")
+}
+
 fn part_has_visible_answer_text(part: &Part) -> bool {
     !part.thought
         && part.text.as_deref().is_some_and(|t| {
@@ -64,7 +77,19 @@ fn part_has_visible_answer_text(part: &Part) -> bool {
 }
 
 fn part_has_thought_marker(part: &Part) -> bool {
-    part.thought || !part.thought_signature.as_deref().unwrap_or("").is_empty()
+    part_records_thought(part)
+}
+
+/// True when the part should be stored and queried as a thought.
+///
+/// Gemini often sends `thoughtSignature` on a function-call or empty text part
+/// and leaves `thought` false. The signature is the durable marker.
+pub fn part_records_thought(part: &Part) -> bool {
+    part.thought
+        || part
+            .thought_signature
+            .as_deref()
+            .is_some_and(|sig| !sig.is_empty())
 }
 
 /// True when the model turn is reasoning-only: `thought` and/or `thoughtSignature`,
@@ -137,28 +162,40 @@ fn extract_first_json_object(s: &str) -> Option<&str> {
     Some(&s[start..=end])
 }
 
+fn part_has_non_text_payload(part: &Part) -> bool {
+    part.media_resolution.is_some()
+        || part.code_execution_result.is_some()
+        || part.executable_code.is_some()
+        || part.file_data.is_some()
+        || part.function_call.is_some()
+        || part.function_response.is_some()
+        || part.inline_data.is_some()
+        || part.video_metadata.is_some()
+        || part.tool_call.is_some()
+        || part.tool_response.is_some()
+        || part.part_metadata.is_some()
+}
+
 /// True when the part is plain UTF-8 text only (safe to concatenate with the previous text part).
 fn is_plain_text_part(part: &Part) -> bool {
     part.text.as_ref().is_some_and(|t| !t.is_empty())
-        && part.media_resolution.is_none()
-        && part.code_execution_result.is_none()
-        && part.executable_code.is_none()
-        && part.file_data.is_none()
-        && part.function_call.is_none()
-        && part.function_response.is_none()
-        && part.inline_data.is_none()
+        && !part_has_non_text_payload(part)
         && !part.thought
         && part.thought_signature.as_deref().unwrap_or("").is_empty()
-        && part.video_metadata.is_none()
-        && part.tool_call.is_none()
-        && part.tool_response.is_none()
-        && part.part_metadata.is_none()
+}
+
+/// Thought prose. A signature may ride on the same part and is kept when deltas merge.
+fn is_thought_text_part(part: &Part) -> bool {
+    part.thought
+        && part.text.as_ref().is_some_and(|t| !t.is_empty())
+        && !part_has_non_text_payload(part)
 }
 
 /// Merge streaming Content chunks.
 ///
-/// Adjacent plain-text deltas are concatenated into one part so markdown rendering
-/// does not wrap each stream token in its own `<p>`.
+/// Adjacent plain-text deltas, and adjacent thought-text deltas, are concatenated
+/// into one part so markdown rendering does not wrap each stream token in its own `<p>`.
+/// A `thoughtSignature` on a later thought chunk is kept on the merged part.
 pub fn merge_content(dst: Option<Content>, src: Content) -> Content {
     let Some(mut dst) = dst else {
         let mut parts: Vec<Part> = Vec::new();
@@ -188,6 +225,19 @@ fn append_merged_part(parts: &mut Vec<Part>, p: Part) {
                 }
             }
         }
+    }
+    if is_thought_text_part(&p) && parts.last().is_some_and(is_thought_text_part) {
+        let chunk = p.text.clone().unwrap_or_default();
+        let signature = p.thought_signature.filter(|sig| !sig.is_empty());
+        if let Some(last) = parts.last_mut() {
+            if let Some(existing) = last.text.as_mut() {
+                existing.push_str(&chunk);
+            }
+            if let Some(sig) = signature {
+                last.thought_signature = Some(sig);
+            }
+        }
+        return;
     }
     parts.push(p);
 }
@@ -342,5 +392,79 @@ mod tests {
         let merged = merge_content(Some(a), b);
         assert_eq!(merged.parts.len(), 1);
         assert_eq!(merged.parts[0].text.as_deref(), Some("Hello"));
+    }
+
+    #[test]
+    fn merge_content_concatenates_thought_deltas_and_keeps_signature() {
+        let a = Content {
+            role: Role::Model,
+            parts: vec![Part {
+                thought: true,
+                text: Some("thi".into()),
+                ..Default::default()
+            }],
+        };
+        let b = Content {
+            role: Role::Model,
+            parts: vec![Part {
+                thought: true,
+                text: Some("nk".into()),
+                thought_signature: Some("sig".into()),
+                ..Default::default()
+            }],
+        };
+        let merged = merge_content(Some(a), b);
+        assert_eq!(merged.parts.len(), 1);
+        let part = merged.parts.first().expect("merged thought");
+        assert!(part.thought);
+        assert_eq!(part.text.as_deref(), Some("think"));
+        assert_eq!(part.thought_signature.as_deref(), Some("sig"));
+        assert_eq!(content_thought_text(&merged), "think");
+
+        let answer = Content {
+            role: Role::Model,
+            parts: vec![Part {
+                text: Some("done".into()),
+                ..Default::default()
+            }],
+        };
+        let with_answer = merge_content(Some(merged), answer);
+        assert_eq!(with_answer.parts.len(), 2);
+        assert_eq!(content_thought_text(&with_answer), "think");
+        assert_eq!(content_answer_text(&with_answer), "done");
+    }
+
+    #[test]
+    fn content_thought_text_skips_signature_only_parts() {
+        let c = Content {
+            role: Role::Model,
+            parts: vec![
+                Part {
+                    thought: true,
+                    thought_signature: Some("sig".into()),
+                    ..Default::default()
+                },
+                Part {
+                    text: Some("answer".into()),
+                    ..Default::default()
+                },
+            ],
+        };
+        assert_eq!(content_thought_text(&c), "");
+        assert_eq!(content_answer_text(&c), "answer");
+    }
+
+    #[test]
+    fn signature_without_thought_flag_still_records_thought() {
+        let signed = Part {
+            thought_signature: Some("sig".into()),
+            ..Default::default()
+        };
+        assert!(part_records_thought(&signed));
+        let plain = Part {
+            text: Some("answer".into()),
+            ..Default::default()
+        };
+        assert!(!part_records_thought(&plain));
     }
 }

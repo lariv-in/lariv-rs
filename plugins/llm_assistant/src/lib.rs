@@ -16,11 +16,12 @@
 //! - [`entities::SessionMessage`] / part entities: message contents, roles, tool calls/responses.
 //! - [`entities::Skill`]: custom prompt templates / system instructions.
 //! - [`entities::LlmAssistantPreferences`]: Gemini API key, model, CSE credentials, and related settings.
+//! - [`entities::TokenUsage`]: billed tokens and model for each Gemini generate, per user.
 //! - [`entities::CronJob`]: interval + prompt; each firing is a [`entities::CronJobRun`].
 //!
 //! # Templates
 //!
-//! Chat UI, session history list, skills management, and preferences pages (see [`templates`]).
+//! Chat UI, session history list, skills management, usage, and preferences pages (see [`templates`]).
 //!
 //! # Routes
 //!
@@ -28,6 +29,7 @@
 //! - `/llm-assistant/history/` — previous sessions
 //! - `/llm-assistant/skills/` — skill CRUD
 //! - `/llm-assistant/cron-jobs/` — interval jobs that open a new conversation
+//! - `/llm-assistant/usage/` — billed token calendar for the signed-in user
 //! - `/llm-assistant/preferences/` — Gemini API key, model, CSE credentials, and assistant settings
 //! - `/llm-assistant/ws/` — WebSocket streaming endpoint
 
@@ -71,6 +73,7 @@ pub mod state;
 pub mod subagents;
 mod table;
 pub mod templates;
+pub mod token_usage;
 pub mod tools;
 pub mod vnode_text;
 pub mod ws;

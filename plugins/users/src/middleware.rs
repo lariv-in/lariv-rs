@@ -40,10 +40,14 @@ pub async fn resolve_auth_headers(
     let token = lariv_core::web::cookie_value_from_headers(headers, session::AUTH_COOKIE)?;
     let claims = jwt::parse_token(&token, &state.signing_key, &state.jwt_issuer).ok()?;
     let user_id = jwt::user_id_from_subject(&claims.sub).ok()?;
-    let user = lariv_core::web::opt_or_log(
-        UserEntity::find_by_id(user_id).one(&state.db).await,
-        "find user by id for auth",
-    )?;
+    let db = state.db.clone();
+    let user = lariv_core::db::with_db_actor(user_id, async move {
+        lariv_core::web::opt_or_log(
+            UserEntity::find_by_id(user_id).one(&db).await,
+            "find user by id for auth",
+        )
+    })
+    .await?;
     if claims.sub != jwt::subject(&user) {
         return None;
     }

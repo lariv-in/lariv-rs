@@ -10,6 +10,7 @@ mod persist_tests;
 
 pub use persist::{
     PersistError, SessionTurn, load_session_contents, load_session_turns, save_content,
+    save_content_with_interaction,
 };
 pub use sanitize::{
     ZWSP, elide_attachment_parts_for_api, sanitize_content_parts_for_genai_chat,

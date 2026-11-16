@@ -21,7 +21,7 @@ pub struct ChatUploadForm {
 
 #[html_form]
 pub struct PreferencesForm {
-    #[form(label = "Gemini API key", widget = Text)]
+    #[form(label = "Gemini API key", widget = Text, when = "show_api_key")]
     pub api_key: String,
 
     #[form(label = "Gemini model", widget = Select, required, choices = "chat_model")]

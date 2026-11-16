@@ -104,17 +104,25 @@ impl CronSchedulerHandle {
             Ok(session_id) => {
                 let state = state.clone();
                 let running = self.running.clone();
+                let actor = lariv_core::db::db_actor();
                 tokio::spawn(async move {
-                    if let Err(e) = run_llm_turn(&state, session_id, &job.prompt).await {
-                        tracing::error!(
-                            target: LOG_TARGET,
-                            job_id = job.id,
-                            "cron job failed: {e:#}"
-                        );
-                        tokio::time::sleep(Duration::from_secs(30)).await;
+                    let work = async move {
+                        if let Err(e) = run_llm_turn(&state, session_id, &job.prompt).await {
+                            tracing::error!(
+                                target: LOG_TARGET,
+                                job_id = job.id,
+                                "cron job failed: {e:#}"
+                            );
+                            tokio::time::sleep(Duration::from_secs(30)).await;
+                        }
+                        unmark_running(&running, job.id);
+                        reload.notify_waiters();
+                    };
+                    if let Some(user_id) = actor {
+                        lariv_core::db::with_db_actor(user_id, work).await;
+                    } else {
+                        work.await;
                     }
-                    unmark_running(&running, job.id);
-                    reload.notify_waiters();
                 });
                 Ok(())
             }

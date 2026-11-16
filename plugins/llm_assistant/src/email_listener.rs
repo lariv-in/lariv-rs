@@ -17,7 +17,7 @@ use tokio_rustls::client::TlsStream;
 
 use super::email_pipeline::process_inbound_email;
 use super::entities::LlmAssistantPreferences;
-use super::preferences::{load_preferences, mail_encryption_or_default};
+use super::preferences::{background_preferences, load_preferences, mail_encryption_or_default};
 use super::state::LlmAssistantState;
 
 type ImapStream = TlsStream<TcpStream>;
@@ -223,7 +223,35 @@ async fn run_session(
     restart: &Arc<Notify>,
     logged_missing: &mut Option<MissingImapConfig>,
 ) -> anyhow::Result<()> {
-    let prefs = load_preferences(&state.db).await?;
+    let prefs = if let Some(source) = background_preferences() {
+        let owned = source.owned_preferences(&state.db).await?;
+        let Some((user_id, prefs)) = owned
+            .into_iter()
+            .find(|(_, prefs)| EmailImapConfig::from_prefs(prefs).is_ok())
+        else {
+            if *logged_missing != Some(MissingImapConfig::ImapServer) {
+                imap_status!("IMAP listener waiting — no mailbox is configured");
+                *logged_missing = Some(MissingImapConfig::ImapServer);
+            }
+            wait_or_restart(restart, CONFIG_POLL_DELAY).await;
+            return Ok(());
+        };
+        return lariv_core::db::with_db_actor(user_id, async move {
+            run_configured_session(state, restart, logged_missing, prefs).await
+        })
+        .await;
+    } else {
+        load_preferences(&state.db).await?
+    };
+    run_configured_session(state, restart, logged_missing, prefs).await
+}
+
+async fn run_configured_session(
+    state: &LlmAssistantState,
+    restart: &Arc<Notify>,
+    logged_missing: &mut Option<MissingImapConfig>,
+    prefs: LlmAssistantPreferences,
+) -> anyhow::Result<()> {
     let config = match EmailImapConfig::from_prefs(&prefs) {
         Ok(config) => config,
         Err(missing) => {

@@ -14,11 +14,11 @@ use lariv_core::components::{
     TableListContent, TableRow, breadcrumbs, button_clear, button_modal, button_modal_form,
     button_post_route, button_submit, column_sort_url, container_column, container_row, data_table,
     detail, detail_header, field_duration, field_many_to_many, field_markdown, field_text,
-    filter_error_banner, form, form_hx_get_route, form_hx_post_selector, form_hx_post_url, icon,
-    label, layout_main, layout_sidebar, list_filter_builder, list_filter_common_inputs, modal,
-    modal_keyed, render_pagination_push, row_attr_navigate_route, shell_scaffold, sidebar_menu,
-    sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator, table_button_columns,
-    table_button_filter, table_list_content,
+    filter_error_banner, form, form_hx_get_route, form_hx_post_selector, form_hx_post_url,
+    hx_nav_app_layout, icon, label, layout_main, layout_sidebar, list_filter_builder,
+    list_filter_common_inputs, modal, modal_keyed, render_pagination_push, row_attr_navigate_route,
+    shell_scaffold, sidebar_menu, sidebar_menu_item_pane, sidebar_nav_items_pane, sort_indicator,
+    table_button_columns, table_button_filter, table_list_content,
 };
 use lariv_core::html_form::{CSRF_FIELD, CsrfToken, FormCtx, HtmlForm, csrf_hidden_field};
 use lariv_core::http::{ProvideRequestCaps, RouteQueryBuilder};
@@ -27,8 +27,8 @@ use lariv_core::template::{RenderTemplate, TemplateCapability, TemplateOf, Templ
 use lariv_core::web::{modal_create_post_url, modal_edit_post_url};
 
 use super::forms::{
-    CronJobForm, CronJobFormField, PreferencesForm, PreferencesFormField, SkillForm,
-    SkillFormField, SkillImportForm,
+    CronJobForm, CronJobFormField, PreferencesForm, PreferencesFormField, PreferencesFormFlag,
+    SkillForm, SkillFormField, SkillImportForm,
 };
 use super::keys::{
     CRON_JOB_CREATE_MODAL, CRON_JOB_DELETE_MODAL, CRON_JOB_EDIT_MODAL, CRON_JOBS_TABLE,
@@ -45,7 +45,10 @@ use super::routes::{
     PrefsGetRouteTag, PrefsPostRouteTag, SkillsCreateGetRouteTag, SkillsCreatePostRouteTag,
     SkillsDeleteGetRouteTag, SkillsDeletePostRouteTag, SkillsDetailRouteTag, SkillsExportRouteTag,
     SkillsImportGetRouteTag, SkillsImportPostRouteTag, SkillsListRouteTag, SkillsUpdateGetRouteTag,
-    SkillsUpdatePostRouteTag,
+    SkillsUpdatePostRouteTag, TokenUsageGetRouteTag, UsageGetRouteTag,
+};
+use super::token_usage::{
+    TOKEN_USAGE_CALENDAR_ID, TokenUsageCalendar, TokenUsageDay, format_token_total,
 };
 use super::ws::html::context_usage_html;
 use crate::context_usage::ContextUsageView;
@@ -73,6 +76,7 @@ define_register_items! {
         CronJobEditModalIdx: CronJobEditModalPageTag => CronJobEditModalPage,
         CronJobCreateModalIdx: CronJobCreateModalPageTag => CronJobCreateModalPage,
         CronJobConfirmDeleteIdx: CronJobConfirmDeletePageTag => CronJobConfirmDeletePage,
+        UsageIdx: LlmAssistantUsagePageTag => LlmAssistantUsagePage,
     ]
 }
 
@@ -245,6 +249,7 @@ fn assistant_menu(current_path: &str) -> Markup {
     let history_url = HistoryListRouteTag.url();
     let skills_url = SkillsListRouteTag.url();
     let cron_url = CronJobsListRouteTag.url();
+    let usage_url = UsageGetRouteTag.url();
     let prefs_url = PrefsGetRouteTag.url();
     let mut links = vec![SidebarNavLink {
         key: "history",
@@ -271,6 +276,13 @@ fn assistant_menu(current_path: &str) -> Markup {
     });
     if nav_allowed::<LlmPrefsAdmin>() {
         links.push(SidebarNavLink {
+            key: "usage",
+            title: "Usage",
+            url: &usage_url,
+            icon_name: None,
+            match_prefixes: &[],
+        });
+        links.push(SidebarNavLink {
             key: "preferences",
             title: "Preferences",
             url: &prefs_url,
@@ -282,6 +294,20 @@ fn assistant_menu(current_path: &str) -> Markup {
         title: "Assistant",
         children: sidebar_nav_items_pane(&links, current_path),
     })
+}
+
+fn assistant_usage_crumbs() -> Markup {
+    let index_url = ChatIndexRouteTag.url();
+    breadcrumbs(&[
+        Crumb {
+            label: "Assistant",
+            href: Some(&index_url),
+        },
+        Crumb {
+            label: "Usage",
+            href: None,
+        },
+    ])
 }
 
 fn assistant_prefs_crumbs() -> Markup {
@@ -501,10 +527,12 @@ const ASSISTANT_CHAT_SCRIPT: &str = r##"
   function llmAssistantApplyWorkingClose() {
     var closer = document.getElementById("llm_assistant_working_close");
     if (!closer) return;
-    var detailsId = closer.getAttribute("data-details-id");
-    if (!detailsId) return;
-    var details = document.getElementById(detailsId);
-    if (details) details.removeAttribute("open");
+    var raw = closer.getAttribute("data-details-id") || "";
+    raw.split(/\s+/).forEach(function(detailsId) {
+      if (!detailsId) return;
+      var details = document.getElementById(detailsId);
+      if (details) details.removeAttribute("open");
+    });
     closer.removeAttribute("data-details-id");
   }
   document.body.addEventListener("htmx:after:ws:message", function() {
@@ -719,9 +747,82 @@ pub fn chat_shell(
     }
 }
 
+pub fn token_usage_calendar(cal: &TokenUsageCalendar) -> Markup {
+    let prev = token_usage_month_url(cal.prev_year, cal.prev_month);
+    let next = token_usage_month_url(cal.next_year, cal.next_month);
+    let month_total = format_token_total(cal.month_total);
+    let lifetime_total = format_token_total(cal.lifetime_total);
+    let target = format!("#{TOKEN_USAGE_CALENDAR_ID}");
+    html! {
+        div id=(TOKEN_USAGE_CALENDAR_ID) class="flex flex-col gap-3" {
+            h2 class="text-lg font-semibold" { "Token usage" }
+            div class="flex items-center justify-between gap-2" {
+                a href=(prev)
+                    hx-get=(prev)
+                    hx-target=(target)
+                    hx-swap="outerHTML"
+                    hx-push-url="false"
+                    class="btn btn-sm btn-ghost"
+                { "Previous" }
+                span class="font-medium" { (cal.label) }
+                a href=(next)
+                    hx-get=(next)
+                    hx-target=(target)
+                    hx-swap="outerHTML"
+                    hx-push-url="false"
+                    class="btn btn-sm btn-ghost"
+                { "Next" }
+            }
+            div class="text-sm" {
+                div { "This month: " (month_total) }
+                div { "All time: " (lifetime_total) }
+            }
+            div class="grid grid-cols-7 gap-1 text-center text-sm" {
+                @for name in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] {
+                    div class="opacity-60" { (name) }
+                }
+                @for week in &cal.weeks {
+                    @for day in &week.days {
+                        (token_usage_day_cell(day))
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn token_usage_month_url(year: i32, month: u32) -> String {
+    RouteQueryBuilder::new(TokenUsageGetRouteTag)
+        .query("year", year)
+        .query("month", month)
+        .build()
+}
+
+fn token_usage_day_cell(day: &Option<TokenUsageDay>) -> Markup {
+    let Some(day) = day else {
+        return html! { div class="p-1 min-h-12" {} };
+    };
+    let class = if day.is_today {
+        "rounded-md bg-base-200 p-1 min-h-12 font-semibold"
+    } else {
+        "p-1 min-h-12"
+    };
+    let tokens = format_token_total(day.tokens);
+    html! {
+        div class=(class) {
+            div { (day.day) }
+            @if day.tokens > 0 {
+                div class="text-xs" { (tokens) }
+            }
+        }
+    }
+}
+
 #[derive(Generic)]
 pub struct LlmAssistantPreferencesPage {
     pub api_key: String,
+    /// When false the Gemini key is omitted from the rendered form.
+    pub show_api_key: bool,
     pub chat_model: String,
     pub chat_model_choices: Vec<(String, String)>,
     pub compactor_model: String,
@@ -746,8 +847,49 @@ pub struct LlmAssistantPreferencesPage {
     pub error: String,
 }
 
+#[derive(Generic)]
+pub struct LlmAssistantUsagePage {
+    pub token_usage: TokenUsageCalendar,
+}
+
+impl LlmAssistantUsagePage {
+    fn body(&self) -> Markup {
+        token_usage_calendar(&self.token_usage)
+    }
+}
+
+impl lariv_core::template::RenderAppPane for LlmAssistantUsagePage {
+    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
+        scaffold_pane(
+            assistant_menu(&UsageGetRouteTag.url()),
+            assistant_usage_crumbs(),
+            self.body(),
+        )
+    }
+
+    fn render_main(&self) -> lariv_core::components::MainContentHtml {
+        scaffold_main(assistant_usage_crumbs(), self.body())
+    }
+}
+
+impl RenderTemplate for LlmAssistantUsagePage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        app_scaffold(
+            "Usage — Lariv",
+            chrome,
+            assistant_menu(&UsageGetRouteTag.url()),
+            assistant_usage_crumbs(),
+            self.body(),
+        )
+    }
+}
+
 impl LlmAssistantPreferencesPage {
     fn body(&self) -> Markup {
+        self.preferences_form()
+    }
+
+    fn preferences_form(&self) -> Markup {
         let threshold = self.compaction_threshold_percent.to_string();
         let max_output_tokens = self.max_output_tokens.to_string();
         form(
@@ -760,7 +902,15 @@ impl LlmAssistantPreferencesPage {
                 form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
                 inputs: PreferencesForm::render_inputs(
                     &FormCtx::form::<PreferencesForm>(CsrfToken::current())
-                        .value(PreferencesFormField::ApiKey, self.api_key.as_str())
+                        .flag(PreferencesFormFlag::ShowApiKey, self.show_api_key)
+                        .value(
+                            PreferencesFormField::ApiKey,
+                            if self.show_api_key {
+                                self.api_key.as_str()
+                            } else {
+                                ""
+                            },
+                        )
                         .value(PreferencesFormField::ChatModel, self.chat_model.as_str())
                         .choices(PreferencesFormField::ChatModel, &self.chat_model_choices)
                         .value(
@@ -1979,11 +2129,13 @@ pub fn history_sidebar_panel_html(
                     (active_session_name)
                 }
                 div class="flex gap-1 flex-none" {
-                    (PreEscaped(
-                        r##"<button type="button" class="btn btn-sm btn-ghost btn-circle" @click="showModal = true">"##,
-                    ))
-                    (icon("clock", ""))
-                    (PreEscaped("</button>"))
+                    (PreEscaped(format!(
+                        r##"<a href="{url}" class="btn btn-sm btn-ghost btn-circle" aria-label="Assistant"{nav}>"##,
+                        url = HistoryListRouteTag.url(),
+                        nav = hx_nav_app_layout(HistoryListRouteTag).as_string(),
+                    )))
+                    (icon("cog-6-tooth", ""))
+                    (PreEscaped("</a>"))
                     (PreEscaped(
                         r##"<button type="button" class="btn btn-sm btn-ghost btn-circle" @click="openDraft()">"##,
                     ))

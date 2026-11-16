@@ -182,6 +182,37 @@ pub struct JournalCreateForm {
     pub currency_id: String,
 }
 
+/// New journal plus the existing journal whose references move onto it.
+#[html_form]
+pub struct JournalGenerateForm {
+    #[form(label = "Name", required, widget = Text)]
+    pub name: String,
+
+    #[form(label = "Active", widget = Checkbox)]
+    pub is_active: String,
+
+    #[form(
+        label = "Currency",
+        required,
+        widget = ForeignKey,
+        route = CurrencySelectRouteTag,
+        display = "currency_display",
+        placeholder = "Select currency…"
+    )]
+    pub currency_id: String,
+
+    #[form(
+        label = "Journal",
+        required,
+        widget = ForeignKey,
+        route = JournalSelectRouteTag,
+        display = "journal_display",
+        placeholder = "Select journal…",
+        hint = "Entries on this journal are rebuilt from the current templates, and every foreign key that references it is pointed at the new journal."
+    )]
+    pub journal_id: String,
+}
+
 #[html_form]
 pub struct JournalForm {
     #[form(label = "Name", required, widget = Text)]

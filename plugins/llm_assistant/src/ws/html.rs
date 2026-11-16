@@ -172,6 +172,40 @@ pub fn working_group_html(inner: &str) -> String {
     )
 }
 
+fn thinking_body_html(text: &str) -> String {
+    format!(
+        r#"<div class="assistant-part assistant-part-thought text-sm whitespace-pre-wrap">{}</div>"#,
+        html_escape(text)
+    )
+}
+
+/// Collapsed "Thinking" group for a persisted model turn.
+pub fn thinking_group_html(text: &str) -> String {
+    format!(
+        r#"<div class="w-full min-w-0 max-w-full flex flex-col"><details class="text-sm w-full min-w-0"><summary class="text-xs opacity-70 cursor-pointer">Thinking</summary><div class="overflow-x-auto p-2 flex flex-col gap-1">{}</div></details></div>"#,
+        thinking_body_html(text)
+    )
+}
+
+/// First thought tokens in a live turn: open Thinking and seed its body.
+pub fn thinking_open_oob(details_id: &str, body_id: &str, text: &str) -> String {
+    format!(
+        r#"<div id="llm_assistant_transcript" hx-swap-oob="beforeend"><div class="w-full min-w-0 max-w-full flex flex-col"><details id="{}" class="text-sm w-full min-w-0" open><summary class="text-xs opacity-70 cursor-pointer">Thinking</summary><div id="{}" class="overflow-x-auto p-2 flex flex-col gap-1">{}</div></details></div></div>"#,
+        html_escape(details_id),
+        html_escape(body_id),
+        thinking_body_html(text)
+    )
+}
+
+/// Replace the live Thinking body with the accumulated thought text.
+pub fn thinking_replace_oob(body_id: &str, text: &str) -> String {
+    format!(
+        r#"<div id="{}" hx-swap-oob="innerHTML">{}</div>"#,
+        html_escape(body_id),
+        thinking_body_html(text)
+    )
+}
+
 /// First tool activity in a live turn: open Tools Called and seed its body.
 pub fn working_open_oob(details_id: &str, body_id: &str, inner: &str) -> String {
     format!(
@@ -419,6 +453,40 @@ mod tests {
         assert!(html.contains(">Send</button>"));
         assert!(!html.contains("data-stop"));
         assert!(!html.contains(">Stop</button>"));
+    }
+
+    #[test]
+    fn thinking_open_includes_details_id_and_open() {
+        let html = thinking_open_oob(
+            "llm_assistant_thinking_details_1",
+            "llm_assistant_thinking_body_1",
+            "reason <here>",
+        );
+        assert!(html.contains(r#"id="llm_assistant_thinking_details_1""#));
+        assert!(html.contains(r#"id="llm_assistant_thinking_body_1""#));
+        assert!(html.contains(" open>"));
+        assert!(html.contains("Thinking"));
+        assert!(html.contains("whitespace-pre-wrap"));
+        assert!(html.contains("reason &lt;here&gt;"));
+        assert!(!html.contains("reason <here>"));
+    }
+
+    #[test]
+    fn thinking_replace_swaps_body_inner_html() {
+        let html = thinking_replace_oob("llm_assistant_thinking_body_1", "more thought");
+        assert!(html.contains(r#"id="llm_assistant_thinking_body_1""#));
+        assert!(html.contains(r#"hx-swap-oob="innerHTML""#));
+        assert!(html.contains("more thought"));
+        assert!(!html.contains("<details"));
+    }
+
+    #[test]
+    fn thinking_group_is_collapsed() {
+        let html = thinking_group_html("saved thought");
+        assert!(html.contains("Thinking"));
+        assert!(html.contains("saved thought"));
+        assert!(html.contains("<details"));
+        assert!(!html.contains(" open>"));
     }
 
     #[test]

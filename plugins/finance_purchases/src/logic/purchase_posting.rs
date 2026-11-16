@@ -113,16 +113,18 @@ async fn expand_catalog_line_journal(
             formula: item.formula.clone(),
         })
         .collect();
+    let variable_values =
+        pricing::values_with_line_columns(&product.variables, variable_values, quantity, rate);
     let sales_price = pricing::unit_formula_amount(
         &product.variables,
         &product.sales_price_formula,
-        variable_values,
+        &variable_values,
     )
     .map_err(|e| format!("{} sales price: {e}", product.name))?;
     let evaluated = evaluate_template_lines(
         &product.variables,
         &parsed,
-        variable_values,
+        &variable_values,
         quantity,
         rate,
         pre_tax,

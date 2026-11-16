@@ -15,6 +15,7 @@ mod m00009_rename_crm_customers;
 mod m00010_consolidate_customers_rename;
 mod m00011_consolidate_customers_rename;
 mod m00012_customer_state;
+mod m00013_recreate_crm_customers;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -35,6 +36,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00010_consolidate_customers_rename::Migration),
             Box::new(m00011_consolidate_customers_rename::Migration),
             Box::new(m00012_customer_state::Migration),
+            Box::new(m00013_recreate_crm_customers::Migration),
         ]
     }
 }

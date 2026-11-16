@@ -23,7 +23,7 @@ use crate::{
     content::attachments::attachment_part,
     context_usage::ContextUsageView,
     entities::session::{self, Entity as SessionEntity},
-    genai::{Content, Part, Role},
+    genai::{Content, Part, Role, content_thought_text},
     handlers::history::{HistoryListQuery, load_history_page, session_display_title},
     live_turn,
     state::LlmAssistantState,
@@ -31,9 +31,9 @@ use crate::{
     ws::{
         UserMessage, assistant_bubble_html, compacted_oob, context_usage_oob, error_notice_oob,
         error_oob, final_assistant_oob, form_busy_oob, form_ready_oob, hitl_pending_inner_html,
-        hitl_resolved_oob, session_name_oob, tool_call_inner_html, tool_response_inner_html,
-        transcript_replace_oob, user_ack_oob, user_bubble_html, working_append_oob,
-        working_close_oob, working_open_oob,
+        hitl_resolved_oob, session_name_oob, thinking_open_oob, thinking_replace_oob,
+        tool_call_inner_html, tool_response_inner_html, transcript_replace_oob, user_ack_oob,
+        user_bubble_html, working_append_oob, working_close_oob, working_open_oob,
     },
 };
 use lariv_core::http::Cap;
@@ -43,6 +43,76 @@ use lariv_plugin_users::middleware::RequireAuth;
 
 fn can_access_session(session: &session::Model, user_id: i64, role: &str) -> bool {
     lariv_plugin_users::roles::Superuser::matches(role) || session.user_id == user_id
+}
+
+/// Live Thinking `<details>` for the socket that is forwarding this turn.
+struct ThinkingStream {
+    ids: Option<(String, String)>,
+    seq: u64,
+    text: String,
+}
+
+impl ThinkingStream {
+    fn new() -> Self {
+        Self {
+            ids: None,
+            seq: 0,
+            text: String::new(),
+        }
+    }
+}
+
+/// Open, replace, or roll the live Thinking group for a cumulative thought string.
+///
+/// Returns HTML when the displayed thought changed. Answer-only partials return `None`.
+fn thinking_partial_oob(thinking: &mut ThinkingStream, content: &Content) -> Option<String> {
+    let thought = content_thought_text(content);
+    let trimmed = thought.trim();
+    if trimmed.is_empty() || trimmed == crate::content::ZWSP || thought == thinking.text {
+        return None;
+    }
+    let extending_body = thinking.ids.as_ref().and_then(|(_, body_id)| {
+        thought
+            .starts_with(thinking.text.as_str())
+            .then(|| body_id.clone())
+    });
+    if let Some(body_id) = extending_body {
+        thinking.text = thought;
+        return Some(thinking_replace_oob(&body_id, &thinking.text));
+    }
+    let mut html = String::new();
+    if let Some((details_id, _)) = thinking.ids.take() {
+        html.push_str(&working_close_oob(&details_id));
+    }
+    thinking.seq += 1;
+    let details_id = format!("llm_assistant_thinking_details_{}", thinking.seq);
+    let body_id = format!("llm_assistant_thinking_body_{}", thinking.seq);
+    html.push_str(&thinking_open_oob(&details_id, &body_id, &thought));
+    thinking.ids = Some((details_id, body_id));
+    thinking.text = thought;
+    Some(html)
+}
+
+/// Collapse every open Thinking / Tools Called group in one closer span.
+///
+/// `#llm_assistant_working_close` is a single element, so both ids travel together
+/// and the client splits `data-details-id` on whitespace.
+fn collapse_open_oob(
+    thinking: &mut ThinkingStream,
+    working_ids: &mut Option<(String, String)>,
+) -> String {
+    let mut ids = Vec::new();
+    if let Some((id, _)) = thinking.ids.take() {
+        ids.push(id);
+    }
+    if let Some((id, _)) = working_ids.take() {
+        ids.push(id);
+    }
+    if ids.is_empty() {
+        String::new()
+    } else {
+        working_close_oob(&ids.join(" "))
+    }
 }
 
 /// Open or append into the live Tools Called group for this turn.
@@ -84,8 +154,14 @@ pub async fn upgrade(
     let user_id = ctx.user.id;
     let role = ctx.role.clone();
     let timezone = ctx.timezone.clone();
+    // The upgrade task does not inherit the request's auth task-local. Without
+    // this scope the checkout hook clears `app.user_id` and row-level security
+    // rejects the new session.
     ws.on_upgrade(move |socket| {
-        handle_socket(socket, state, fs, tools, rune_env, user_id, role, timezone)
+        lariv_core::db::with_db_actor(
+            user_id,
+            handle_socket(socket, state, fs, tools, rune_env, user_id, role, timezone),
+        )
     })
 }
 
@@ -254,6 +330,7 @@ async fn attach_session(
     html.push_str(&context_usage_oob(usage));
     let mut working_ids: Option<(String, String)> = None;
     let mut working_seq: u64 = 0;
+    let mut thinking = ThinkingStream::new();
     if live {
         html.push_str(&form_busy_oob());
         if let Some(pending) = state.live_turns.pending_hitl(session_id) {
@@ -284,6 +361,7 @@ async fn attach_session(
         rx,
         &mut working_ids,
         &mut working_seq,
+        &mut thinking,
         ForwardCtx {
             session_id,
             user_id,
@@ -343,31 +421,37 @@ async fn process_message(
     let state_clone = state.clone();
     let store = fs.store.clone();
     let live_turns = state.live_turns.clone();
+    let actor_id = user_id;
     let join = tokio::spawn(async move {
-        let result = run_stream_turn(
-            &state_clone,
-            store,
-            tools,
-            rune_env,
-            session_id,
-            user,
-            tx,
-            cancel,
-            Some(live_turns.hitl_gate(session_id)),
-        )
-        .await;
-        live_turns.remove(session_id);
-        result
+        lariv_core::db::with_db_actor(actor_id, async move {
+            let result = run_stream_turn(
+                &state_clone,
+                store,
+                tools,
+                rune_env,
+                session_id,
+                user,
+                tx,
+                cancel,
+                Some(live_turns.hitl_gate(session_id)),
+            )
+            .await;
+            live_turns.remove(session_id);
+            result
+        })
+        .await
     });
 
     let mut working_ids: Option<(String, String)> = None;
     let mut working_seq: u64 = 0;
+    let mut thinking = ThinkingStream::new();
 
     let forward = forward_events(
         socket,
         rx,
         &mut working_ids,
         &mut working_seq,
+        &mut thinking,
         ForwardCtx {
             session_id,
             user_id,
@@ -414,6 +498,7 @@ async fn forward_events(
     mut rx: broadcast::Receiver<StreamEvent>,
     working_ids: &mut Option<(String, String)>,
     working_seq: &mut u64,
+    thinking: &mut ThinkingStream,
     ctx: ForwardCtx<'_>,
 ) -> Result<(), String> {
     loop {
@@ -457,16 +542,23 @@ async fn forward_events(
                                 }
                                 html
                             }
-                            StreamEvent::Partial(_content) => {
-                                // Live stream panel removed; Final/ToolCall/Tool update the transcript.
-                                continue;
+                            StreamEvent::Partial(content) => {
+                                match thinking_partial_oob(thinking, &content) {
+                                    Some(html) => html,
+                                    None => continue,
+                                }
                             }
                             StreamEvent::ToolCall(content) => {
-                                working_tool_oob(
+                                let mut html = String::new();
+                                if let Some((details_id, _)) = thinking.ids.take() {
+                                    html.push_str(&working_close_oob(&details_id));
+                                }
+                                html.push_str(&working_tool_oob(
                                     working_ids,
                                     working_seq,
                                     &tool_call_inner_html(&content),
-                                )
+                                ));
+                                html
                             }
                             StreamEvent::Tool(content) => working_tool_oob(
                                 working_ids,
@@ -482,20 +574,14 @@ async fn forward_events(
                                 hitl_resolved_oob(&id, &name, approved)
                             },
                             StreamEvent::Final(content) => {
-                                let mut html = String::new();
-                                if let Some((details_id, _)) = working_ids.take() {
-                                    html.push_str(&working_close_oob(&details_id));
-                                }
+                                let mut html = collapse_open_oob(thinking, working_ids);
                                 html.push_str(&final_assistant_oob(&assistant_bubble_html(&content)));
                                 html
                             }
                             StreamEvent::Compacted { summary } => compacted_oob(&summary),
                             StreamEvent::TurnReady => form_ready_oob(),
                             StreamEvent::Stopped => {
-                                let mut html = String::new();
-                                if let Some((details_id, _)) = working_ids.take() {
-                                    html.push_str(&working_close_oob(&details_id));
-                                }
+                                let mut html = collapse_open_oob(thinking, working_ids);
                                 html.push_str(&form_ready_oob());
                                 html
                             }

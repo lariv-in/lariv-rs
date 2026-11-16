@@ -2,11 +2,11 @@
 
 use maud::{Markup, PreEscaped, html};
 
-use crate::components::attrs::escape_attr;
+use crate::components::attrs::{HtmlAttrs, escape_attr};
 use crate::components::button::{ButtonDeletePost, button_delete_post_route};
 use crate::components::htmx::{HTMX_SWAP_BODY_MODAL, HTMX_TARGET_BODY_MODAL};
 use crate::components::swap::{APP_LAYOUT, MAIN_CONTENT};
-use crate::components::text::icon;
+use crate::components::text::{icon, icon_with_attrs};
 use crate::http::{BoostPost, RouteUrl};
 
 pub struct SidebarMenuItem<'a> {
@@ -14,6 +14,8 @@ pub struct SidebarMenuItem<'a> {
     pub url: &'a str,
     pub icon_name: Option<&'a str>,
     pub active: bool,
+    /// Link leaves the app that owns this sidebar.
+    pub external: bool,
 }
 
 impl Default for SidebarMenuItem<'_> {
@@ -23,6 +25,7 @@ impl Default for SidebarMenuItem<'_> {
             url: "#",
             icon_name: None,
             active: false,
+            external: false,
         }
     }
 }
@@ -60,6 +63,13 @@ fn sidebar_menu_item_target(opts: SidebarMenuItem<'_>, target: &str, select: &st
                 (icon(name, "heroicon-sm"))
             }
             (opts.title)
+            @if opts.external {
+                (icon_with_attrs(
+                    "arrow-top-right-on-square",
+                    "heroicon-sm ml-1 opacity-60",
+                    &HtmlAttrs::new().set("title", "Leaves this app"),
+                ))
+            }
             (PreEscaped("</a>"))
         }
     }
@@ -290,6 +300,7 @@ pub fn sidebar_nav_items_pane_with_competitors(
                 url: link.url,
                 icon_name: link.icon_name,
                 active: is_active,
+                ..Default::default()
             }))
         };
     }
@@ -412,5 +423,27 @@ mod tests {
         assert!(!html.contains("btn"));
         assert!(!html.contains("<button"));
         assert!(!html.contains("fk-modal-host"));
+    }
+
+    #[test]
+    fn external_sidebar_item_shows_leave_app_icon() {
+        let html = sidebar_menu_item(SidebarMenuItem {
+            title: "Contacts",
+            url: "/dashboard/contacts/",
+            external: true,
+            ..Default::default()
+        })
+        .into_string();
+        assert!(html.contains("Contacts"));
+        assert!(html.contains("arrow-top-right-on-square"));
+        assert!(html.contains("Leaves this app"));
+
+        let internal = sidebar_menu_item(SidebarMenuItem {
+            title: "Invoices",
+            url: "/dashboard/invoices/",
+            ..Default::default()
+        })
+        .into_string();
+        assert!(!internal.contains("arrow-top-right-on-square"));
     }
 }

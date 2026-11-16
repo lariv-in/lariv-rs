@@ -12,6 +12,8 @@ pub struct Model {
     pub updated_at: Option<DateTime<Utc>>,
     pub llm_assistant_session_id: i64,
     pub role: String,
+    /// Interactions API id for this model turn (`previous_interaction_id` chain).
+    pub interaction_id: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -26,6 +26,7 @@ use crate::{
     forms::{
         JournalCreateForm, JournalCreateFormField, JournalEntryForm, JournalEntryFormField,
         JournalEntryLinesForm, JournalEntryLinesFormField, JournalForm, JournalFormField,
+        JournalGenerateForm, JournalGenerateFormField,
     },
     keys::{
         JOURNAL_CREATE_MODAL, JOURNAL_DELETE_MODAL, JOURNAL_EDIT_MODAL, JOURNAL_ENTRY_CREATE_MODAL,
@@ -261,7 +262,7 @@ impl JournalListPage {
             actions = html! {
                 (actions)
                 (button_modal_form(ButtonModalForm {
-                    name: "p_finance_accounts.JournalCreateForm",
+                    name: "p_finance_accounts.JournalGenerateForm",
                     href: &JournalGenerateGetRouteTag.url(),
                     form_post_url: &JournalGenerateGetRouteTag.path(),
                     modal_uid: JOURNAL_GENERATE_MODAL.id(),
@@ -635,13 +636,15 @@ pub struct JournalGenerateModalPage {
     pub is_active: bool,
     pub currency_id: String,
     pub currency_display: String,
+    pub journal_id: String,
+    pub journal_display: String,
     pub error: String,
 }
 
 impl RenderTemplate for JournalGenerateModalPage {
     fn render(&self, _chrome: &ShellChrome) -> Markup {
         let form_name = if self.form_name.is_empty() {
-            "p_finance_accounts.JournalCreateForm"
+            "p_finance_accounts.JournalGenerateForm"
         } else {
             self.form_name.as_str()
         };
@@ -652,7 +655,7 @@ impl RenderTemplate for JournalGenerateModalPage {
                 &CsrfToken::current(),
                 FormOpts {
                     title: "Migrate to new journal",
-                    subtitle: "Create a journal and move every source document onto its new entries",
+                    subtitle: "Create a journal, rebuild its entries from the current templates, and point every reference to the selected journal at it",
                     attrs: form_hx_post_url(
                         JOURNAL_GENERATE_MODAL,
                         &modal_create_post_url(
@@ -662,12 +665,14 @@ impl RenderTemplate for JournalGenerateModalPage {
                         ),
                     ),
                     form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: JournalCreateForm::render_inputs(
-                        &FormCtx::form::<JournalCreateForm>(CsrfToken::current())
-                            .value(JournalCreateFormField::Name, &self.name)
-                            .checked(JournalCreateFormField::IsActive, self.is_active)
-                            .value(JournalCreateFormField::CurrencyId, &self.currency_id)
-                            .display(JournalCreateFormField::CurrencyId, &self.currency_display),
+                    inputs: JournalGenerateForm::render_inputs(
+                        &FormCtx::form::<JournalGenerateForm>(CsrfToken::current())
+                            .value(JournalGenerateFormField::Name, &self.name)
+                            .checked(JournalGenerateFormField::IsActive, self.is_active)
+                            .value(JournalGenerateFormField::CurrencyId, &self.currency_id)
+                            .display(JournalGenerateFormField::CurrencyId, &self.currency_display)
+                            .value(JournalGenerateFormField::JournalId, &self.journal_id)
+                            .display(JournalGenerateFormField::JournalId, &self.journal_display),
                     ),
                     actions: html! {
                         (container_row("flex justify-end gap-2 mt-2", html! {

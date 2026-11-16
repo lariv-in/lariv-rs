@@ -113,7 +113,7 @@ impl PostedInvoiceDetailPage {
     }
 
     fn menu(&self) -> Markup {
-        posted_invoice_detail_menu(self.id, &self.number)
+        posted_invoice_detail_menu(self.id, &self.number, "detail")
     }
 }
 

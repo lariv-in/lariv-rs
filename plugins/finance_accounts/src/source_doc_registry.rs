@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
@@ -74,6 +74,8 @@ pub trait SourceDocType: Send + Sync {
         line_item_indexes: &[usize],
     ) -> Result<()>;
 }
+
+static INSTALLED: OnceLock<SourceDocRegistry> = OnceLock::new();
 
 /// Folded map of registered source document type loaders (mounted capability value).
 #[derive(Clone, Default)]
@@ -216,8 +218,16 @@ where
 
     fn mount(self) -> Self::Output {
         let registry = self.hooks.fold(self.items);
+        if INSTALLED.set(registry.clone()).is_err() {
+            tracing::error!("source doc registry already initialized");
+        }
         Tagged::new(registry)
     }
+}
+
+/// Source-doc loaders folded at app mount. Empty before mount.
+pub fn installed_source_doc_registry() -> SourceDocRegistry {
+    INSTALLED.get().cloned().unwrap_or_default()
 }
 
 /// No-op base hook from the accounts hub plugin.

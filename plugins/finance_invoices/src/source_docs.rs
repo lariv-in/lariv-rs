@@ -8,6 +8,9 @@ use lariv_plugin_finance_accounts::{
     SourceDocInstance, SourceDocJournalLine, SourceDocJournalSpec, SourceDocRegistrar,
     SourceDocRegistry, SourceDocType, logic::journal::JournalLineSpec,
 };
+use lariv_plugin_finance_creditnotes::{
+    CreditNoteJournalLines, register_credit_note_journal_lines,
+};
 use sea_orm::{DatabaseConnection, DatabaseTransaction, EntityTrait};
 
 use crate::logic::invoice_posting;
@@ -19,8 +22,33 @@ use crate::{
 #[derive(Clone, Copy, Default)]
 pub struct Hook;
 
+struct CancelledInvoiceCreditNoteJournal;
+
+#[async_trait]
+impl CreditNoteJournalLines for CancelledInvoiceCreditNoteJournal {
+    async fn lines_for_credit_note(
+        &self,
+        db: &DatabaseConnection,
+        credit_note_id: i64,
+    ) -> Result<Option<SourceDocJournalSpec>> {
+        let Some((datetime, lines, line_item_indexes)) =
+            invoice_posting::cancelled_invoice_journal_lines_for_credit_note(db, credit_note_id)
+                .await
+                .map_err(anyhow::Error::msg)?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(journal_spec_indexed(
+            datetime,
+            lines,
+            line_item_indexes,
+        )))
+    }
+}
+
 impl SourceDocRegistrar for Hook {
     fn register_source_docs(self, registry: SourceDocRegistry) -> SourceDocRegistry {
+        register_credit_note_journal_lines(Arc::new(CancelledInvoiceCreditNoteJournal));
         registry.register(Arc::new(PostedInvoiceSourceDocType))
     }
 }

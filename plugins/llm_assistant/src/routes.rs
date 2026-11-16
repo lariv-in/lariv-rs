@@ -26,6 +26,8 @@ define_plugin_routes! {
         get ChatHistoryPanelRouteTag, "/llm-assistant/history-panel", bare handlers::chat::history_panel, raw;
         get ChatSidebarSessionRouteTag, "/llm-assistant/sidebar-chat/{id}", bare handlers::chat::sidebar_session, raw;
         get ChatWsRouteTag, "/llm-assistant/ws", bare handlers::ws::upgrade, raw;
+        get UsageGetRouteTag, "/llm-assistant/usage", handlers::usage::get, authorize(LlmPrefsAdmin, []);
+        get TokenUsageGetRouteTag, "/llm-assistant/usage/calendar", bare handlers::usage::calendar, raw, authorize(LlmPrefsAdmin, []);
         get PrefsGetRouteTag, "/llm-assistant/preferences", handlers::preferences::get, authorize(LlmPrefsAdmin, []);
         post PrefsPostRouteTag, "/llm-assistant/preferences", handlers::preferences::post, authorize(LlmPrefsAdmin, []);
         post ChatUploadRouteTag, "/llm-assistant/chat-upload", bare handlers::chat_upload::chat_upload, raw;

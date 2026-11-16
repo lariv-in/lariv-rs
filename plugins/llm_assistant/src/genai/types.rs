@@ -1,13 +1,14 @@
-//! Gemini REST Content/Part shapes (camelCase), enough for persist + generateContent.
+//! Local chat Content/Part shapes for persistence and UI.
 //!
-//! Serde types matching the [Generative Language API](https://ai.google.dev/api) wire format.
-//! Used for chat history persistence, request bodies, and streaming response parsing.
+//! These mirror the classic Gemini Content model (camelCase on the wire for
+//! `countTokens` and Files API). Chat generation uses the Interactions API;
+//! see [`crate::genai::interactions`] for request/response conversion.
 //!
 //! # Core message types
 //!
 //! - [`Content`] / [`Part`] — multi-part messages (text, inline files, function calls)
 //! - [`FunctionDeclaration`] / [`Tool`] / [`ToolConfig`] — function calling schema
-//! - [`GenerateContentRequest`] / [`GenerateContentResponse`] — API envelope
+//! - [`UsageMetadata`] — token counts mapped from Interactions `usage`
 //!
 //! # Roles
 //!
@@ -399,6 +400,16 @@ impl ThinkingConfig {
             thinking_level: Some("minimal".into()),
         }
     }
+
+    /// Return thought text without forcing a budget or level. Model-specific
+    /// rewrite in the client drops fields that model rejects.
+    pub fn include() -> Self {
+        Self {
+            thinking_budget: None,
+            include_thoughts: Some(true),
+            thinking_level: None,
+        }
+    }
 }
 
 /// Token counts returned on `generateContent` / `streamGenerateContent`.
@@ -424,6 +435,18 @@ impl UsageMetadata {
             let prompt = self.prompt_token_count.unwrap_or(0);
             let candidates = self.candidates_token_count.unwrap_or(0);
             let sum = prompt.saturating_add(candidates);
+            (sum > 0).then_some(sum)
+        })?;
+        u32::try_from(n).ok()
+    }
+
+    /// Billed tokens for this request. Prefers `totalTokenCount`, else prompt + candidates + thoughts.
+    pub fn billed_tokens(&self) -> Option<u32> {
+        let n = self.total_token_count.filter(|&n| n > 0).or_else(|| {
+            let prompt = self.prompt_token_count.unwrap_or(0);
+            let candidates = self.candidates_token_count.unwrap_or(0);
+            let thoughts = self.thoughts_token_count.unwrap_or(0);
+            let sum = prompt.saturating_add(candidates).saturating_add(thoughts);
             (sum > 0).then_some(sum)
         })?;
         u32::try_from(n).ok()
@@ -489,6 +512,14 @@ mod tests {
     }
 
     #[test]
+    fn thinking_config_include_serializes_thoughts_only() {
+        let v = serde_json::to_value(ThinkingConfig::include()).expect("thinking config");
+        assert_eq!(v["includeThoughts"], true);
+        assert!(v.get("thinkingBudget").is_none());
+        assert!(v.get("thinkingLevel").is_none());
+    }
+
+    #[test]
     fn thinking_level_minimal_omits_budget() {
         let v = serde_json::to_value(ThinkingConfig::minimal()).expect("thinking config");
         assert_eq!(v["thinkingLevel"], "minimal");
@@ -549,6 +580,26 @@ mod tests {
         };
         assert_eq!(summed.context_tokens(), Some(15));
         assert_eq!(UsageMetadata::default().context_tokens(), None);
+    }
+
+    #[test]
+    fn billed_tokens_prefers_total_token_count() {
+        let usage = UsageMetadata {
+            prompt_token_count: Some(10),
+            candidates_token_count: Some(5),
+            thoughts_token_count: Some(3),
+            total_token_count: Some(20),
+            ..Default::default()
+        };
+        assert_eq!(usage.billed_tokens(), Some(20));
+        let summed = UsageMetadata {
+            prompt_token_count: Some(10),
+            candidates_token_count: Some(5),
+            thoughts_token_count: Some(3),
+            ..Default::default()
+        };
+        assert_eq!(summed.billed_tokens(), Some(18));
+        assert_eq!(UsageMetadata::default().billed_tokens(), None);
     }
 
     #[test]

@@ -9,7 +9,8 @@ description = "Lariv finance_accounts plugin"
 
 [features]
 default = []
-cap-llm = ["lariv_core/cap-llm", "dep:rune", "dep:tokio"]
+plugin-llm-assistant = ["dep:lariv-plugin-llm-assistant", "dep:rune", "dep:tokio"]
+cap-llm = ["lariv_core/cap-llm", "dep:rune", "dep:tokio", "plugin-llm-assistant"]
 
 [dependencies]
 lariv_core = { package = "lariv-core", path = "../../lariv-core" }
@@ -18,6 +19,7 @@ lariv-rs-macros = { workspace = true }
 lariv-plugin-users = { path = "../users" }
 lariv-plugin-filesystem = { path = "../filesystem" }
 lariv-plugin-finance-common = { path = "../finance_common" }
+lariv-plugin-llm-assistant = { path = "../llm_assistant", optional = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }

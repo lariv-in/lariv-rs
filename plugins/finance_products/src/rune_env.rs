@@ -32,6 +32,11 @@ fn register(rune_env: &mut RuneEnvCapability) {
         |_ctx| NativeBinding::Function(Arc::new(update_product)),
     );
     rune_env.register_contextual(
+        "get_product",
+        "get_product(#{ id: int }) -> #{ id: int, name: string, product_kind: string, remarks: string|null, hsn_code: int|null, sales_price_formula: string, variables: object, tax_ids: [int], taxes: [#{ id: int, name: string, percentage: string, tax_type: string }], journal_id: int|null, journal_name: string|null, journal_lines: [#{ id: int, account_id: int, account_name: string, formula: string }] }  // full product, including taxes and journal entry item templates",
+        |_ctx| NativeBinding::Function(Arc::new(get_product)),
+    );
+    rune_env.register_contextual(
         "search_products",
         "search_products(#{ query: string, limit?: int }) -> #{ results: [#{ id: int, name: string, product_kind: string, remarks: string|null, hsn_code: int|null }] }",
         |_ctx| NativeBinding::Function(Arc::new(search_products)),
@@ -58,6 +63,113 @@ fn update_product(
     let db = ctx.db.clone();
     lariv_core::rune_env::block_on_async(async move { replace_product(&db, id, input).await })?;
     Ok(rune::Value::from(id))
+}
+
+#[cfg(feature = "cap-llm")]
+fn get_product(
+    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
+    use crate::entities::product::Entity as ProductEntity;
+    use crate::journal_template::load_template;
+    use crate::preferences::load_product_tax_ids;
+    use lariv_core::rune_env::{block_on_async, json_to_rune};
+    use lariv_plugin_finance_accounts::scope::{
+        load_account_parent_label, load_journal_display_label,
+    };
+    use lariv_plugin_finance_taxes::entities::tax::{self, Entity as TaxEntity};
+
+    let id = parse_product_id(args)?;
+    let db = ctx.db.clone();
+    let payload = block_on_async(async move {
+        let product = ProductEntity::find_by_id(id)
+            .one(&db)
+            .await
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| format!("product {id} not found"))?;
+        let tax_ids = load_product_tax_ids(&db, id).await;
+        let taxes = if tax_ids.is_empty() {
+            Vec::new()
+        } else {
+            TaxEntity::find()
+                .filter(tax::Column::Id.is_in(tax_ids.clone()))
+                .all(&db)
+                .await
+                .map_err(|error| error.to_string())?
+        };
+        let mut tax_rows = Vec::new();
+        for tax_id in &tax_ids {
+            let Some(tax) = taxes.iter().find(|tax| tax.id == *tax_id) else {
+                continue;
+            };
+            tax_rows.push(serde_json::json!({
+                "id": tax.id,
+                "name": tax.name,
+                "percentage": tax.percentage.to_string(),
+                "tax_type": tax.tax_type.as_str(),
+            }));
+        }
+        let template = load_template(&db, id).await?;
+        let (journal_id, journal_name, journal_lines) = match template {
+            None => (None, None, Vec::new()),
+            Some(template) => {
+                let name = load_journal_display_label(&db, Some(template.journal_id)).await;
+                let journal_name = (name != "—").then_some(name);
+                let mut lines = Vec::new();
+                for item in template.items {
+                    let account_name = load_account_parent_label(&db, Some(item.account_id)).await;
+                    lines.push(serde_json::json!({
+                        "id": item.id,
+                        "account_id": item.account_id,
+                        "account_name": account_name,
+                        "formula": item.formula,
+                    }));
+                }
+                (Some(template.journal_id), journal_name, lines)
+            }
+        };
+        let variables = serde_json::from_str::<serde_json::Value>(&product.variables)
+            .unwrap_or_else(|_| serde_json::Value::String(product.variables.clone()));
+        Ok::<_, String>(serde_json::json!({
+            "id": product.id,
+            "name": product.name,
+            "product_kind": product.product_kind.as_str(),
+            "remarks": product.remarks,
+            "hsn_code": product.hsn_code,
+            "sales_price_formula": product.sales_price_formula,
+            "variables": variables,
+            "tax_ids": tax_ids,
+            "taxes": tax_rows,
+            "journal_id": journal_id,
+            "journal_name": journal_name,
+            "journal_lines": journal_lines,
+        }))
+    })?;
+    json_to_rune(payload)
+}
+
+#[cfg(feature = "cap-llm")]
+fn parse_product_id(args: &[rune::Value]) -> Result<i64, String> {
+    use serde::Deserialize;
+
+    use lariv_core::rune_env::rune_to_json;
+
+    #[derive(Debug, Deserialize)]
+    struct IdArgs {
+        id: i64,
+    }
+
+    let value = args
+        .first()
+        .ok_or_else(|| "get_product requires an object argument".to_string())?;
+    let parsed: IdArgs = serde_json::from_value(rune_to_json(value)?)
+        .map_err(|error| format!("invalid get_product arguments: {error}"))?;
+    if parsed.id <= 0 {
+        return Err("get_product requires a positive product id".into());
+    }
+    Ok(parsed.id)
 }
 
 #[cfg(feature = "cap-llm")]
@@ -395,6 +507,10 @@ mod tests {
         assert!(
             names.iter().any(|name| name == "search_products"),
             "expected search_products in {names:?}"
+        );
+        assert!(
+            names.iter().any(|name| name == "get_product"),
+            "expected get_product in {names:?}"
         );
     }
 

@@ -1,6 +1,6 @@
 //! Part kind strings + IsPartType matching (concrete payloads before text catch-all).
 
-use crate::genai::{Part, part_is_empty};
+use crate::genai::{Part, part_is_empty, part_records_thought};
 
 pub const KIND_INLINE_DATA: &str = "inlineData";
 pub const KIND_FILE_DATA: &str = "fileData";
@@ -53,8 +53,7 @@ pub fn classify_part_kind(part: &Part) -> Option<&'static str> {
         && part.tool_call.is_none()
         && part.tool_response.is_none()
         && (!part.text.as_deref().unwrap_or("").is_empty()
-            || part.thought
-            || !part.thought_signature.as_deref().unwrap_or("").is_empty()
+            || part_records_thought(part)
             || part_is_empty(part))
     {
         return Some(KIND_TEXT);

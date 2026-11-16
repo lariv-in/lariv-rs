@@ -1,6 +1,8 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    ActiveModelTrait,
+    ActiveValue::{NotSet, Set},
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect,
 };
 
 use crate::entities::product_preferences::{self, Entity as ProductPreferencesEntity};
@@ -10,12 +12,12 @@ pub fn optional_i64(v: Option<i64>) -> i64 {
 }
 
 pub async fn load_product_preferences(db: &DatabaseConnection) -> product_preferences::Model {
-    if let Ok(Some(p)) = ProductPreferencesEntity::find_by_id(1i64).one(db).await {
+    if let Ok(Some(p)) = ProductPreferencesEntity::find().limit(1).one(db).await {
         return p;
     }
     let now = Utc::now();
     let am = product_preferences::ActiveModel {
-        id: Set(1),
+        id: NotSet,
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         ..Default::default()

@@ -8,6 +8,7 @@ use lariv_plugin_finance_accounts::routes::JournalEntryDetailRouteTag;
 
 use lariv_core::components::{Crumb, FieldLink, FieldText, breadcrumbs, field_link, field_text};
 
+use crate::invoice_detail_menu::{InvoiceDetailKind, invoice_detail_links};
 use crate::logic::PaymentTermLineDisplayRow;
 
 use crate::routes::{
@@ -54,7 +55,7 @@ pub(super) fn invoice_preferences_crumbs() -> Markup {
     }])
 }
 
-pub(super) fn invoice_number_label(id: i64, number: &str) -> String {
+pub fn invoice_number_label(id: i64, number: &str) -> String {
     if number.is_empty() {
         format!("#{id}")
     } else {
@@ -62,7 +63,7 @@ pub(super) fn invoice_number_label(id: i64, number: &str) -> String {
     }
 }
 
-pub(super) fn quotation_invoice_label(id: i64, number: &str) -> String {
+pub fn quotation_invoice_label(id: i64, number: &str) -> String {
     if number.is_empty() {
         format!("Quotation #{id}")
     } else {
@@ -70,18 +71,18 @@ pub(super) fn quotation_invoice_label(id: i64, number: &str) -> String {
     }
 }
 
-pub(super) fn quotation_invoice_detail_menu(id: i64, number: &str) -> Markup {
+pub fn quotation_invoice_detail_menu(id: i64, number: &str, active: &str) -> Markup {
     let label = quotation_invoice_label(id, number);
-    let detail = QuotationInvoiceDetailRouteTag::new(id).url();
-    let nav = vec![DetailMenuNavItem {
+    let mut nav = vec![DetailMenuNavItem {
         title: "Quotation Detail",
-        url: detail,
-        active: true,
+        url: QuotationInvoiceDetailRouteTag::new(id).url(),
+        active: active == "detail",
     }];
+    push_detail_links(&mut nav, InvoiceDetailKind::Quotation, id, active);
     detail_sidebar_menu(format!("Quotation: {label}"), &nav, None, html! {})
 }
 
-pub(super) fn draft_invoice_label(id: i64, number: &str) -> String {
+pub fn draft_invoice_label(id: i64, number: &str) -> String {
     if number.is_empty() {
         format!("Draft invoice #{id}")
     } else {
@@ -89,11 +90,7 @@ pub(super) fn draft_invoice_label(id: i64, number: &str) -> String {
     }
 }
 
-pub(super) fn invoice_section_crumbs(
-    label: &str,
-    detail_url: &str,
-    action: Option<&str>,
-) -> Markup {
+pub fn invoice_section_crumbs(label: &str, detail_url: &str, action: Option<&str>) -> Markup {
     let list_url = InvoiceDefaultRouteTag.url();
     match action {
         None => breadcrumbs(&[
@@ -128,55 +125,64 @@ pub(super) fn tab_href(tab: &str) -> String {
         .build()
 }
 
-pub(super) fn draft_invoice_detail_menu(id: i64, number: &str) -> Markup {
+pub fn draft_invoice_detail_menu(id: i64, number: &str, active: &str) -> Markup {
     let label = if number.is_empty() {
         format!("#{id}")
     } else {
         number.to_string()
     };
-    let detail_url = DraftInvoiceDetailRouteTag::new(id).url();
-    let nav = vec![DetailMenuNavItem {
+    let mut nav = vec![DetailMenuNavItem {
         title: "Draft Invoice Detail",
-        url: detail_url,
-        active: true,
+        url: DraftInvoiceDetailRouteTag::new(id).url(),
+        active: active == "detail",
     }];
+    push_detail_links(&mut nav, InvoiceDetailKind::Draft, id, active);
     detail_sidebar_menu(format!("Draft invoice: {label}"), &nav, None, html! {})
 }
 
-pub(super) fn posted_invoice_detail_menu(id: i64, number: &str) -> Markup {
+pub fn posted_invoice_detail_menu(id: i64, number: &str, active: &str) -> Markup {
     let label = if number.is_empty() {
         format!("#{id}")
     } else {
         number.to_string()
     };
-    detail_sidebar_menu(
-        format!("Posted invoice: {label}"),
-        &[DetailMenuNavItem {
-            title: "Posted Invoice Detail",
-            url: PostedInvoiceDetailRouteTag::new(id).url(),
-            active: true,
-        }],
-        None,
-        html! {},
-    )
+    let mut nav = vec![DetailMenuNavItem {
+        title: "Posted Invoice Detail",
+        url: PostedInvoiceDetailRouteTag::new(id).url(),
+        active: active == "detail",
+    }];
+    push_detail_links(&mut nav, InvoiceDetailKind::Posted, id, active);
+    detail_sidebar_menu(format!("Posted invoice: {label}"), &nav, None, html! {})
 }
 
-pub(super) fn cancelled_invoice_detail_menu(id: i64, number: &str) -> Markup {
+pub fn cancelled_invoice_detail_menu(id: i64, number: &str, active: &str) -> Markup {
     let label = if number.is_empty() {
         format!("#{id}")
     } else {
         number.to_string()
     };
-    detail_sidebar_menu(
-        format!("Cancelled invoice: {label}"),
-        &[DetailMenuNavItem {
-            title: "Cancelled Invoice Detail",
-            url: CancelledInvoiceDetailRouteTag::new(id).url(),
-            active: true,
-        }],
-        None,
-        html! {},
-    )
+    let mut nav = vec![DetailMenuNavItem {
+        title: "Cancelled Invoice Detail",
+        url: CancelledInvoiceDetailRouteTag::new(id).url(),
+        active: active == "detail",
+    }];
+    push_detail_links(&mut nav, InvoiceDetailKind::Cancelled, id, active);
+    detail_sidebar_menu(format!("Cancelled invoice: {label}"), &nav, None, html! {})
+}
+
+fn push_detail_links(
+    nav: &mut Vec<DetailMenuNavItem>,
+    kind: InvoiceDetailKind,
+    id: i64,
+    active: &str,
+) {
+    for link in invoice_detail_links() {
+        nav.push(DetailMenuNavItem {
+            title: link.title,
+            url: (link.url_fn)(kind, id),
+            active: active == link.key,
+        });
+    }
 }
 
 pub(super) fn paid_invoice_detail_menu(id: i64, number: &str) -> Markup {

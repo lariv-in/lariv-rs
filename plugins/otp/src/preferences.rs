@@ -1,5 +1,9 @@
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
+use sea_orm::{
+    ActiveModelTrait,
+    ActiveValue::{NotSet, Set},
+    DatabaseConnection, EntityTrait, QuerySelect,
+};
 use serde_json::Map;
 use tracing::warn;
 
@@ -9,15 +13,15 @@ use super::entities::{
 };
 use super::error::OtpError;
 
-/// Load singleton preferences row (`id = 1`), creating it if missing.
+/// Load the visible preferences row, creating it if missing.
 pub async fn load_preferences(db: &DatabaseConnection) -> Result<OtpPreferences, OtpError> {
-    if let Some(prefs) = OtpPreferencesEntity::find_by_id(1).one(db).await? {
+    if let Some(prefs) = OtpPreferencesEntity::find().limit(1).one(db).await? {
         return Ok(prefs);
     }
 
     let now = Utc::now();
     let model = otp_preferences::ActiveModel {
-        id: Set(1),
+        id: NotSet,
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         sms_otp_template_id: Set(String::new()),

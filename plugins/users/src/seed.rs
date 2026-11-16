@@ -1,13 +1,9 @@
 //! Startup seed helpers for the users plugin (default admin).
 
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::DatabaseConnection;
 
 use crate::{
-    auth,
-    config::UsersConfig,
-    entities::user::{self, Entity as UserEntity},
-    error::UsersError,
-    roles::Superuser,
+    auth, config::UsersConfig, entities::user, error::UsersError, roles::Superuser,
     state::UsersState,
 };
 
@@ -19,11 +15,7 @@ pub async fn ensure_admin(
         return Ok(None);
     }
 
-    if let Some(existing) = UserEntity::find()
-        .filter(user::Column::Email.eq(&config.admin_email))
-        .one(db)
-        .await?
-    {
+    if let Some(existing) = auth::find_by_email(db, &config.admin_email).await? {
         return Ok(Some(existing));
     }
 

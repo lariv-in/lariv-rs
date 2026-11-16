@@ -1,10 +1,16 @@
-//! Singleton LLM Assistant preferences (`id = 1`).
+//! LLM Assistant preferences for the signed-in user.
 //!
 //! Holds Gemini API key / chat model, Google Custom Search (`cse_api_key`, `cse_cx`),
 //! and email (IMAP/SMTP) credentials.
 
+use std::sync::{Arc, Mutex};
+
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DbErr, EntityTrait};
+use sea_orm::{
+    ActiveModelTrait,
+    ActiveValue::{NotSet, Set},
+    DatabaseConnection, DbErr, EntityTrait, QuerySelect,
+};
 
 use crate::genai::GenaiClient;
 
@@ -16,15 +22,51 @@ use super::entities::{
     llm_assistant_preferences::{self, Entity as PrefsEntity},
 };
 
-/// Load singleton preferences row (`id = 1`), creating it if missing.
+/// Preferences plus the user who owns the row, for background workers.
+#[async_trait::async_trait]
+pub trait BackgroundPreferences: Send + Sync {
+    /// Rows a worker may use. Empty when nobody has configured the assistant.
+    async fn owned_preferences(
+        &self,
+        db: &DatabaseConnection,
+    ) -> Result<Vec<(i64, LlmAssistantPreferences)>, DbErr>;
+}
+
+static BACKGROUND: Mutex<Option<Arc<dyn BackgroundPreferences>>> = Mutex::new(None);
+
+/// Install the loader used by the IMAP listener when row visibility is per user.
+pub fn set_background_preferences(source: Arc<dyn BackgroundPreferences>) {
+    *BACKGROUND
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(source);
+}
+
+pub(crate) fn background_preferences() -> Option<Arc<dyn BackgroundPreferences>> {
+    BACKGROUND
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
+
+/// Load the visible preferences row, creating it if missing.
+///
+/// A background task with no session user does not insert. That insert is rejected
+/// when row-level security is on, and it would create an unowned row.
+///
+/// The Gemini key on this row is the superuser's. Postgres copies it on write.
 pub async fn load_preferences(db: &DatabaseConnection) -> Result<LlmAssistantPreferences, DbErr> {
-    if let Some(prefs) = PrefsEntity::find_by_id(1).one(db).await? {
+    if let Some(prefs) = PrefsEntity::find().limit(1).one(db).await? {
         return Ok(prefs);
+    }
+    if lariv_core::db::db_actor().is_none()
+        && lariv_plugin_users::role_authorization::current_auth().is_none()
+    {
+        return Ok(empty_preferences());
     }
 
     let now = Utc::now();
     let model = llm_assistant_preferences::ActiveModel {
-        id: Set(1),
+        id: NotSet,
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         api_key: Set(String::new()),
@@ -47,6 +89,32 @@ pub async fn load_preferences(db: &DatabaseConnection) -> Result<LlmAssistantPre
         max_output_tokens: Set(DEFAULT_CHAT_MAX_OUTPUT_TOKENS),
     };
     model.insert(db).await
+}
+
+fn empty_preferences() -> LlmAssistantPreferences {
+    LlmAssistantPreferences {
+        id: 0,
+        created_at: None,
+        updated_at: None,
+        api_key: String::new(),
+        chat_model: DEFAULT_CHAT_MODEL.to_string(),
+        cse_api_key: String::new(),
+        cse_cx: String::new(),
+        imap_server: String::new(),
+        imap_port: String::new(),
+        smtp_server: String::new(),
+        smtp_port: String::new(),
+        email: String::new(),
+        password: String::new(),
+        mail_encryption: DEFAULT_MAIL_ENCRYPTION.to_string(),
+        email_filter: String::new(),
+        email_owner_user_id: None,
+        email_attachments_parent_id: None,
+        chat_attachments_parent_id: None,
+        compactor_model: DEFAULT_CHAT_MODEL.to_string(),
+        compaction_threshold_percent: COMPACTION_THRESHOLD_PERCENT as i32,
+        max_output_tokens: DEFAULT_CHAT_MAX_OUTPUT_TOKENS,
+    }
 }
 
 /// Persist preferences fields onto the singleton row.

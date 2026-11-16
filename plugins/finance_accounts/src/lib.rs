@@ -13,6 +13,8 @@ pub mod entities;
 pub mod filters;
 pub mod forms;
 pub mod handlers;
+#[cfg(feature = "plugin-llm-assistant")]
+pub mod hitl;
 pub mod journal_lines_editor;
 pub mod journal_template;
 pub mod journal_template_editor;
@@ -58,6 +60,27 @@ pub struct FinanceAccountsTag;
 
 lariv_core::define_passthrough_cap!(FinanceAccountsStateCap, FinanceAccountsTag, AccountsState);
 
+#[cfg(feature = "plugin-llm-assistant")]
+lariv_core::define_plugin_install! {
+    plugin: FinanceAccountsTag;
+    steps: [
+        cap_attach(accounting_sidebar::AccountingSidebarTag, accounting_sidebar::AccountingSidebarCap, accounting_sidebar::AccountingSidebarCap::<frunk::HNil>::new()),
+        cap_hook(accounting_sidebar::AccountingSidebarTag, accounting_sidebar::AccountingSidebarCap, accounting_sidebar::BaseHook),
+        cap_attach(source_doc_registry::SourceDocTag, source_doc_registry::SourceDocCap, source_doc_registry::SourceDocCap::<frunk::HNil>::new()),
+        cap_hook(source_doc_registry::SourceDocTag, source_doc_registry::SourceDocCap, source_doc_registry::BaseHook),
+        cap_hook(lariv_plugin_llm_assistant::hitl::HitlTag, lariv_plugin_llm_assistant::hitl::HitlCap, hitl::Hook),
+        apps(apps::Hook),
+        rune_env(rune_env::Hook),
+        migrations(migrations::Hook),
+        templates(templates::Hook),
+        slots(templates::SlotsHook),
+        cap_hook(lariv_plugin_users::role_authorization::RoleAuthorizationTag, lariv_plugin_users::role_authorization::RoleAuthorizationCap, routes::RoleHook),
+        http(routes::Hook),
+        state(StateHook),
+    ]
+}
+
+#[cfg(not(feature = "plugin-llm-assistant"))]
 lariv_core::define_plugin_install! {
     plugin: FinanceAccountsTag;
     steps: [

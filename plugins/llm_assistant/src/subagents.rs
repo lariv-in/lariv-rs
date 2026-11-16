@@ -186,20 +186,24 @@ impl SubagentHost for SubagentHostImpl {
         let live_turns = state.live_turns.clone();
         let hitl_gate = self.hitl_gate.clone();
         let user = Content::text(Role::User, prompt.to_string());
+        let actor_id = user_id;
 
         tokio::spawn(async move {
-            let result = run_stream_turn(
-                &state, store, tools, rune_env, session_id, user, tx, cancel, hitl_gate,
-            )
+            lariv_core::db::with_db_actor(actor_id, async move {
+                let result = run_stream_turn(
+                    &state, store, tools, rune_env, session_id, user, tx, cancel, hitl_gate,
+                )
+                .await;
+                live_turns.remove(session_id);
+                if let Err(e) = result {
+                    tracing::error!(
+                        target: LOG_TARGET,
+                        session_id,
+                        "subagent turn failed: {e}"
+                    );
+                }
+            })
             .await;
-            live_turns.remove(session_id);
-            if let Err(e) = result {
-                tracing::error!(
-                    target: LOG_TARGET,
-                    session_id,
-                    "subagent turn failed: {e}"
-                );
-            }
         });
 
         Ok(json!({

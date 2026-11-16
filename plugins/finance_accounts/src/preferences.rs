@@ -1,17 +1,21 @@
-//! Singleton accounting preferences (`id = 1`).
+//! Accounting preferences for the signed-in user (the visible row, otherwise a new one).
 
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
+use sea_orm::{
+    ActiveModelTrait,
+    ActiveValue::{NotSet, Set},
+    DatabaseConnection, EntityTrait, QuerySelect,
+};
 
 use crate::entities::accounting_preferences::{self, Entity as AccountingPreferencesEntity};
 
 pub async fn load_accounting_preferences(db: &DatabaseConnection) -> accounting_preferences::Model {
-    if let Ok(Some(p)) = AccountingPreferencesEntity::find_by_id(1i64).one(db).await {
+    if let Ok(Some(p)) = AccountingPreferencesEntity::find().limit(1).one(db).await {
         return p;
     }
     let now = Utc::now();
     let am = accounting_preferences::ActiveModel {
-        id: Set(1),
+        id: NotSet,
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         default_currency_id: Set(None),

@@ -18,6 +18,7 @@ pub mod hub_filter_addon;
 pub mod hub_sort;
 pub mod hub_table_addon;
 pub mod invoice_addon_key;
+pub mod invoice_detail_menu;
 pub mod invoice_pdf_addon;
 pub mod invoice_pdf_assets;
 pub mod invoice_pdf_template;
@@ -66,6 +67,8 @@ lariv_core::define_plugin_install! {
     plugin: FinanceInvoicesTag;
     steps: [
         cap_attach(hub_table_addon::InvoiceHubTableTag, hub_table_addon::InvoiceHubTableCap, hub_table_addon::InvoiceHubTableCap::<frunk::HNil>::new()),
+        cap_attach(invoice_detail_menu::InvoiceDetailMenuTag, invoice_detail_menu::InvoiceDetailMenuCap, invoice_detail_menu::InvoiceDetailMenuCap::<frunk::HNil>::new()),
+        cap_hook(invoice_detail_menu::InvoiceDetailMenuTag, invoice_detail_menu::InvoiceDetailMenuCap, invoice_detail_menu::BaseHook),
         cap_hook(lariv_plugin_finance_accounts::accounting_sidebar::AccountingSidebarTag, lariv_plugin_finance_accounts::accounting_sidebar::AccountingSidebarCap, accounting_sidebar::Hook),
         cap_hook(lariv_plugin_finance_accounts::SourceDocTag, lariv_plugin_finance_accounts::SourceDocCap, source_docs::Hook),
         cap_hook(lariv_plugin_finance_customers::journal::CustomerJournalTag, lariv_plugin_finance_customers::journal::CustomerJournalCap, customer_journal::Hook),
@@ -86,6 +89,8 @@ lariv_core::define_plugin_install! {
     plugin: FinanceInvoicesTag;
     steps: [
         cap_attach(hub_table_addon::InvoiceHubTableTag, hub_table_addon::InvoiceHubTableCap, hub_table_addon::InvoiceHubTableCap::<frunk::HNil>::new()),
+        cap_attach(invoice_detail_menu::InvoiceDetailMenuTag, invoice_detail_menu::InvoiceDetailMenuCap, invoice_detail_menu::InvoiceDetailMenuCap::<frunk::HNil>::new()),
+        cap_hook(invoice_detail_menu::InvoiceDetailMenuTag, invoice_detail_menu::InvoiceDetailMenuCap, invoice_detail_menu::BaseHook),
         cap_hook(lariv_plugin_finance_accounts::accounting_sidebar::AccountingSidebarTag, lariv_plugin_finance_accounts::accounting_sidebar::AccountingSidebarCap, accounting_sidebar::Hook),
         cap_hook(lariv_plugin_finance_accounts::SourceDocTag, lariv_plugin_finance_accounts::SourceDocCap, source_docs::Hook),
         cap_hook(lariv_plugin_finance_customers::journal::CustomerJournalTag, lariv_plugin_finance_customers::journal::CustomerJournalCap, customer_journal::Hook),

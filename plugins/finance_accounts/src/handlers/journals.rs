@@ -28,17 +28,18 @@ use lariv_plugin_finance_common::environment::{
 
 use crate::{
     entities::journal::{self, Entity as JournalEntity},
-    forms::{JournalCreateForm, JournalForm},
+    forms::{JournalCreateForm, JournalForm, JournalGenerateForm},
     handlers::ModalNameQuery,
     keys::{
         JOURNAL_CREATE_MODAL, JOURNAL_DELETE_MODAL, JOURNAL_EDIT_MODAL, JOURNAL_GENERATE_MODAL,
         JOURNAL_SELECT_MODAL, JOURNAL_SELECT_TABLE, JOURNAL_TABLE,
     },
-    logic::journal::generate_journal_from_source_docs,
+    logic::journal::{error_text, migrate_to_new_journal},
     routes::{JournalDetailRouteTag, JournalListRouteTag},
     scope::{
         JOURNAL_FISCAL_YEAR_COOKIE, currency_summary, find_journal_scoped, journal_entry_sort,
-        load_currency_by_id, load_journal_entries_for_journal, load_journal_entry_transfer_amounts,
+        load_currency_by_id, load_default_journal_form, load_journal_display_label,
+        load_journal_entries_for_journal, load_journal_entry_transfer_amounts,
     },
     source_doc_label::resolve_source_doc_display,
     source_doc_registry::SourceDocRegistry,
@@ -347,6 +348,7 @@ pub async fn generate_get(
         }
         None => (String::new(), String::new()),
     };
+    let (journal_id, journal_display) = load_default_journal_form(&state.db).await;
     let page = JournalGenerateModalPage {
         form_name: q.form_name(),
         refresh_table: q.refresh_table(),
@@ -354,6 +356,8 @@ pub async fn generate_get(
         is_active: true,
         currency_id,
         currency_display,
+        journal_id,
+        journal_display,
         error: String::new(),
     };
     html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
@@ -366,16 +370,44 @@ pub async fn generate_post(
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Query(q): Query<ModalNameQuery>,
-    HtmlFormBody(form): HtmlFormBody<JournalCreateForm>,
+    HtmlFormBody(form): HtmlFormBody<JournalGenerateForm>,
 ) -> Response {
     let is_active = checkbox_on(&form.is_active) || form.is_active.is_empty();
     let currency_id = parse_i64(&form.currency_id).unwrap_or(0);
-    match generate_journal_from_source_docs(
+    let Some(old_journal_id) = parse_i64(&form.journal_id).filter(|&id| id > 0) else {
+        return journal_generate_error(
+            &state,
+            &chrome,
+            &ctx,
+            &q,
+            &form,
+            is_active,
+            "Select the journal to migrate.".into(),
+        )
+        .await;
+    };
+    if find_journal_scoped(&state.db, old_journal_id)
+        .await
+        .is_none()
+    {
+        return journal_generate_error(
+            &state,
+            &chrome,
+            &ctx,
+            &q,
+            &form,
+            is_active,
+            "That journal was not found.".into(),
+        )
+        .await;
+    }
+    match migrate_to_new_journal(
         &state.db,
         &source_docs,
         form.name.clone(),
         is_active,
         currency_id,
+        old_journal_id,
     )
     .await
     {
@@ -389,26 +421,49 @@ pub async fn generate_post(
             &q.target_input(),
         ),
         Err(e) => {
-            let currency_display = if !form.currency_id.is_empty() {
-                load_currency_by_id(&state.db, currency_id)
-                    .await
-                    .map(|c| currency_summary(&c))
-                    .unwrap_or_default()
-            } else {
-                String::new()
-            };
-            let page = JournalGenerateModalPage {
-                form_name: q.form_name(),
-                refresh_table: q.refresh_table(),
-                name: form.name,
-                is_active,
-                currency_id: form.currency_id,
-                currency_display,
-                error: e.to_string(),
-            };
-            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+            journal_generate_error(&state, &chrome, &ctx, &q, &form, is_active, error_text(&e))
+                .await
         }
     }
+}
+
+async fn journal_generate_error(
+    state: &AccountsState,
+    chrome: &SharedChromeFolder,
+    ctx: &lariv_plugin_users::state::AuthContext,
+    q: &ModalNameQuery,
+    form: &JournalGenerateForm,
+    is_active: bool,
+    error: String,
+) -> Response {
+    let currency_id = parse_i64(&form.currency_id).unwrap_or(0);
+    let currency_display = if currency_id > 0 {
+        load_currency_by_id(&state.db, currency_id)
+            .await
+            .map(|c| currency_summary(&c))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let journal_id = parse_i64(&form.journal_id).unwrap_or(0);
+    let journal_display = if journal_id > 0 {
+        let label = load_journal_display_label(&state.db, Some(journal_id)).await;
+        if label == "—" { String::new() } else { label }
+    } else {
+        String::new()
+    };
+    let page = JournalGenerateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
+        name: form.name.clone(),
+        is_active,
+        currency_id: form.currency_id.clone(),
+        currency_display,
+        journal_id: form.journal_id.clone(),
+        journal_display,
+        error,
+    };
+    html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx)).into_response()
 }
 
 pub async fn edit_get(

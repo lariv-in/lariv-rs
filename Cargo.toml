@@ -136,6 +136,8 @@ full = [
     "plugin-mdbook",
     "plugin-inventory",
     "plugin-todo",
+    "plugin-logging",
+    "plugin-user-log",
     "plugin-customer",
     "plugin-finance-accounts",
     "plugin-finance-customers",
@@ -149,7 +151,7 @@ plugin-forms = ["plugin-users", "plugin-filesystem", "dep:lariv-plugin-forms"]
 plugin-filesystem = ["plugin-users", "typst", "dep:lariv-plugin-filesystem"]
 plugin-filesystem-sync-git = ["plugin-filesystem", "dep:lariv-plugin-filesystem-sync-git"]
 plugin-website = ["plugin-filesystem", "plugin-users", "dep:lariv-plugin-website"]
-plugin-llm-assistant = ["plugin-users", "plugin-filesystem", "cap-llm", "typst", "cap-llm", "dep:lariv-plugin-llm-assistant", "lariv-plugin-finance-invoices?/plugin-llm-assistant", "lariv-plugin-finance-purchases?/plugin-llm-assistant", "lariv-plugin-finance-products?/plugin-llm-assistant", "lariv-plugin-documents?/plugin-llm-assistant", "lariv-plugin-website?/plugin-llm-assistant", "lariv-plugin-contacts?/plugin-llm-assistant", "lariv-plugin-customer?/plugin-llm-assistant", "lariv-plugin-crm?/plugin-llm-assistant"]
+plugin-llm-assistant = ["plugin-users", "plugin-filesystem", "cap-llm", "typst", "cap-llm", "dep:lariv-plugin-llm-assistant", "lariv-plugin-finance-accounts?/plugin-llm-assistant", "lariv-plugin-finance-invoices?/plugin-llm-assistant", "lariv-plugin-finance-purchases?/plugin-llm-assistant", "lariv-plugin-finance-products?/plugin-llm-assistant", "lariv-plugin-documents?/plugin-llm-assistant", "lariv-plugin-website?/plugin-llm-assistant", "lariv-plugin-contacts?/plugin-llm-assistant", "lariv-plugin-customer?/plugin-llm-assistant", "lariv-plugin-crm?/plugin-llm-assistant"]
 plugin-llm-assistant-tester = ["plugin-users", "dep:lariv-plugin-llm-assistant-tester"]
 plugin-otp = ["plugin-users", "dep:lariv-plugin-otp"]
 plugin-pwa = ["dep:lariv-plugin-pwa"]
@@ -172,6 +174,8 @@ plugin-contacts = ["plugin-users", "dep:lariv-plugin-contacts"]
 plugin-crm = ["plugin-contacts", "plugin-customer", "dep:lariv-plugin-crm"]
 plugin-tasks = ["plugin-users", "plugin-pwa", "dep:lariv-plugin-tasks"]
 plugin-todo = ["plugin-users", "dep:lariv-plugin-todo"]
+plugin-logging = ["plugin-users", "dep:lariv-plugin-logging"]
+plugin-user-log = ["plugin-users", "plugin-logging", "dep:lariv-plugin-user-log"]
 plugin-documents = ["plugin-filesystem", "dep:lariv-plugin-documents"]
 plugin-signing = ["plugin-users", "plugin-documents", "plugin-filesystem", "dep:lariv-plugin-signing"]
 plugin-finance-taxes = ["plugin-finance-accounts", "dep:lariv-plugin-finance-taxes"]
@@ -179,6 +183,7 @@ plugin-finance-products = ["plugin-finance-accounts", "plugin-finance-taxes", "d
 plugin-finance-creditnotes = ["plugin-finance-accounts", "dep:lariv-plugin-finance-creditnotes"]
 plugin-finance-payments = ["plugin-finance-accounts", "plugin-finance-customers", "plugin-crm", "plugin-customer", "plugin-finance-taxes", "dep:lariv-plugin-finance-payments"]
 plugin-finance-invoices = ["plugin-finance-accounts", "plugin-finance-customers", "plugin-crm", "plugin-customer", "plugin-finance-products", "plugin-finance-taxes", "plugin-finance-creditnotes", "plugin-finance-payments", "plugin-filesystem", "typst", "dep:lariv-plugin-finance-invoices"]
+plugin-finance-invoices-log = ["plugin-finance-invoices", "plugin-logging", "dep:lariv-plugin-finance-invoices-log"]
 plugin-finance-purchases = ["plugin-finance-accounts", "plugin-crm", "plugin-customer", "plugin-finance-products", "plugin-finance-taxes", "plugin-filesystem", "typst", "dep:lariv-plugin-finance-purchases"]
 plugin-finance-indian = ["plugin-finance-accounts", "dep:lariv-plugin-finance-indian"]
 plugin-finance = ["plugin-finance-invoices", "plugin-finance-purchases", "plugin-finance-indian"]
@@ -211,6 +216,7 @@ lariv-plugin-finance-creditnotes = { path = "plugins/finance_creditnotes", optio
 lariv-plugin-finance-customers = { path = "plugins/finance_customers", optional = true }
 lariv-plugin-finance-indian = { path = "plugins/finance_indian", optional = true }
 lariv-plugin-finance-invoices = { path = "plugins/finance_invoices", optional = true }
+lariv-plugin-finance-invoices-log = { path = "plugins/finance_invoices_log", optional = true }
 lariv-plugin-finance-payments = { path = "plugins/finance_payments", optional = true }
 lariv-plugin-finance-purchases = { path = "plugins/finance_purchases", optional = true }
 lariv-plugin-finance-products = { path = "plugins/finance_products", optional = true }
@@ -227,6 +233,7 @@ lariv-plugin-import-export = { path = "plugins/import_export", optional = true }
 lariv-plugin-inventory = { path = "plugins/inventory", optional = true }
 lariv-plugin-llm-assistant = { path = "plugins/llm_assistant", optional = true }
 lariv-plugin-llm-assistant-tester = { path = "plugins/llm_assistant_tester", optional = true }
+lariv-plugin-logging = { path = "plugins/logging", optional = true }
 lariv-plugin-meets = { path = "plugins/meets", optional = true }
 lariv-plugin-mdbook = { path = "plugins/mdbook", optional = true }
 lariv-plugin-otp = { path = "plugins/otp", optional = true }
@@ -235,6 +242,7 @@ lariv-plugin-signing = { path = "plugins/signing", optional = true }
 lariv-plugin-signup = { path = "plugins/signup", optional = true }
 lariv-plugin-tasks = { path = "plugins/tasks", optional = true }
 lariv-plugin-todo = { path = "plugins/todo", optional = true }
+lariv-plugin-user-log = { path = "plugins/user_log", optional = true }
 lariv-plugin-users = { path = "plugins/users", optional = true }
 lariv-plugin-website = { path = "plugins/website", optional = true }
 
@@ -303,6 +311,21 @@ required-features = ["plugin-tasks"]
 name = "todo_plugin_compile"
 path = "tests/todo_plugin_compile.rs"
 required-features = ["plugin-todo"]
+
+[[test]]
+name = "logging_plugin_compile"
+path = "tests/logging_plugin_compile.rs"
+required-features = ["plugin-logging"]
+
+[[test]]
+name = "user_log_plugin_compile"
+path = "tests/user_log_plugin_compile.rs"
+required-features = ["plugin-user-log"]
+
+[[test]]
+name = "finance_invoices_log_plugin_compile"
+path = "tests/finance_invoices_log_plugin_compile.rs"
+required-features = ["plugin-finance-invoices-log"]
 
 [[test]]
 name = "todo_pages_integration"

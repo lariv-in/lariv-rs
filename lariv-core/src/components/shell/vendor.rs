@@ -17,6 +17,8 @@
 //!   `maplibre-gl-worker.mjs`, and `.css`, served as `/maplibre.js`,
 //!   `/maplibre-gl-worker.mjs`, and `/maplibre.css`). The library loads the
 //!   worker from `import.meta.url`, so the worker path stays beside `/maplibre.js`.
+//! - jsondiffpatch@0.7.7 (`src/components/jsondiff/vendor/jsondiffpatch.js` and
+//!   `.css`, served as `/jsondiffpatch.js` and `/jsondiffpatch.css`).
 //! - Fontshare Satoshi CSS (`f[]=satoshi@300,400,500,600,700`)
 //! - Google Fonts Roboto Mono CSS (`wght@400;500;600;700`)
 
@@ -81,12 +83,20 @@ pub(crate) const MAPLIBRE_WORKER_JS: &str = include_str!("../map/vendor/maplibre
 /// MapLibre GL JS 6.15.0 stylesheet served at `/maplibre.css`.
 pub(crate) const MAPLIBRE_CSS: &str = include_str!("../map/vendor/maplibre-gl.css");
 
+/// jsondiffpatch 0.7.7 browser bundle served at `/jsondiffpatch.js`.
+pub(crate) const JSONDIFFPATCH_JS: &str = include_str!("../jsondiff/vendor/jsondiffpatch.js");
+
+/// jsondiffpatch 0.7.7 HTML formatter stylesheet served at `/jsondiffpatch.css`.
+pub(crate) const JSONDIFFPATCH_CSS: &str = include_str!("../jsondiff/vendor/jsondiffpatch.css");
+
 static BUNDLE_CSS_HASH: LazyLock<u64> = LazyLock::new(|| fnv1a_64(BUNDLE_CSS));
 static BUNDLE_JS_HASH: LazyLock<u64> = LazyLock::new(|| fnv1a_64(BUNDLE_JS));
 static CODEMIRROR_JS_HASH: LazyLock<u64> = LazyLock::new(|| fnv1a_64(CODEMIRROR_JS));
 static MAPLIBRE_JS_HASH: LazyLock<u64> = LazyLock::new(|| fnv1a_64(MAPLIBRE_JS));
 static MAPLIBRE_WORKER_JS_HASH: LazyLock<u64> = LazyLock::new(|| fnv1a_64(MAPLIBRE_WORKER_JS));
 static MAPLIBRE_CSS_HASH: LazyLock<u64> = LazyLock::new(|| fnv1a_64(MAPLIBRE_CSS));
+static JSONDIFFPATCH_JS_HASH: LazyLock<u64> = LazyLock::new(|| fnv1a_64(JSONDIFFPATCH_JS));
+static JSONDIFFPATCH_CSS_HASH: LazyLock<u64> = LazyLock::new(|| fnv1a_64(JSONDIFFPATCH_CSS));
 
 fn fnv1a_64(s: &str) -> u64 {
     let mut hash: u64 = 0xcbf29ce484222325;
@@ -122,6 +132,16 @@ pub(crate) fn maplibre_css_href() -> String {
     format!("/maplibre.css?v={:016x}", *MAPLIBRE_CSS_HASH)
 }
 
+/// Cache-busting jsondiffpatch script URL (`/jsondiffpatch.js?v=…`).
+pub(crate) fn jsondiffpatch_js_href() -> String {
+    format!("/jsondiffpatch.js?v={:016x}", *JSONDIFFPATCH_JS_HASH)
+}
+
+/// Cache-busting jsondiffpatch stylesheet URL (`/jsondiffpatch.css?v=…`).
+pub(crate) fn jsondiffpatch_css_href() -> String {
+    format!("/jsondiffpatch.css?v={:016x}", *JSONDIFFPATCH_CSS_HASH)
+}
+
 /// Head tags: HTMX config, cached CSS/JS links, Tailwind `@theme` (must stay a
 /// `style[type="text/tailwindcss"]` for `@tailwindcss/browser`).
 pub fn vendor_head() -> Markup {
@@ -139,7 +159,7 @@ pub fn vendor_head() -> Markup {
     }
 }
 
-/// Register `/bundle.css`, `/bundle.js`, `/codemirror.js`, and MapLibre on the axum router.
+/// Register `/bundle.css`, `/bundle.js`, `/codemirror.js`, MapLibre, and jsondiffpatch on the axum router.
 pub fn mount_vendor_bundles(router: Router<()>) -> Router<()> {
     router
         .route("/bundle.css", get(bundle_css))
@@ -148,6 +168,8 @@ pub fn mount_vendor_bundles(router: Router<()>) -> Router<()> {
         .route("/maplibre.js", get(maplibre_js))
         .route("/maplibre-gl-worker.mjs", get(maplibre_worker_js))
         .route("/maplibre.css", get(maplibre_css))
+        .route("/jsondiffpatch.js", get(jsondiffpatch_js))
+        .route("/jsondiffpatch.css", get(jsondiffpatch_css))
 }
 
 async fn bundle_css() -> Response {
@@ -184,6 +206,22 @@ async fn maplibre_worker_js() -> Response {
 
 async fn maplibre_css() -> Response {
     static_asset(MAPLIBRE_CSS, "text/css; charset=utf-8", *MAPLIBRE_CSS_HASH)
+}
+
+async fn jsondiffpatch_js() -> Response {
+    static_asset(
+        JSONDIFFPATCH_JS,
+        "text/javascript; charset=utf-8",
+        *JSONDIFFPATCH_JS_HASH,
+    )
+}
+
+async fn jsondiffpatch_css() -> Response {
+    static_asset(
+        JSONDIFFPATCH_CSS,
+        "text/css; charset=utf-8",
+        *JSONDIFFPATCH_CSS_HASH,
+    )
 }
 
 fn static_asset(body: &'static str, content_type: &'static str, hash: u64) -> Response {

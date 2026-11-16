@@ -138,6 +138,28 @@ where
         .await
 }
 
+/// Case-insensitive match against one SQL expression, such as `column::text`.
+///
+/// Postgres matches `word_similarity` at [`WORD_SIMILARITY_THRESHOLD`] or a
+/// `LIKE` substring. Other backends use `LIKE` only.
+pub fn text_match_expr(backend: DatabaseBackend, expr: SimpleExpr, needle: &str) -> Condition {
+    let needle = needle.trim();
+    if needle.is_empty() {
+        return Condition::any().add(Expr::val(false));
+    }
+    let lowered: SimpleExpr = Func::cust("LOWER").arg(expr).into();
+    let mut cond = Condition::any();
+    if matches!(backend, DatabaseBackend::Postgres) {
+        cond = cond.add(
+            Func::cust("word_similarity")
+                .arg(needle.to_lowercase())
+                .arg(lowered.clone())
+                .gte(WORD_SIMILARITY_THRESHOLD),
+        );
+    }
+    cond.add(Expr::expr(lowered).like(like_contains_pattern(needle)))
+}
+
 /// Case-insensitive trigram match on `columns`, without changing row order.
 ///
 /// Postgres matches `word_similarity` at [`WORD_SIMILARITY_THRESHOLD`] or a

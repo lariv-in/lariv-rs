@@ -41,6 +41,11 @@ fn register(rune_env: &mut RuneEnvCapability) {
         |_ctx| NativeBinding::Function(Arc::new(list_accounts)),
     );
     rune_env.register_contextual(
+        "request_delete_journal_entry",
+        "request_delete_journal_entry(#{ id: int }) -> #{ journal_entry_id: int, journal_id: int, can_confirm: bool, error: string|null, deletes: [#{ kind: string, label: string, url: string }] }  // lists what confirm_delete_journal_entry would permanently delete. Does not delete anything. can_confirm is false when the journal is immutable or the list cannot be built.",
+        |_ctx| NativeBinding::Function(Arc::new(request_delete_journal_entry)),
+    );
+    rune_env.register_contextual(
         "get_journal_entry",
         "get_journal_entry(#{ id: int }) -> #{ id: int, datetime: string, journal_id: int, journal_name: string|null, source_doc_id: int, source_doc_type: string|null, source_ref_id: int|null, transferred_amount: string, lines: [#{ id: int, account_id: int, account_name: string|null, account_code: int|null, amount: string, debit: string|null, credit: string|null }] }  // amount is positive for a debit and negative for a credit. transferred_amount is that debit total. source_doc_id is the source_docs row. source_ref_id is the business document id, such as a posted invoice.",
         |_ctx| NativeBinding::Function(Arc::new(get_journal_entry)),
@@ -64,6 +69,16 @@ fn register(rune_env: &mut RuneEnvCapability) {
         "get_source_doc",
         "get_source_doc(#{ id: int }) -> #{ id: int, source_doc_type: string, source_ref_id: int|null, journal_entries: [#{ id: int, datetime: string, journal_id: int, journal_name: string|null, source_doc_id: int, source_doc_type: string|null, source_ref_id: int|null, transferred_amount: string, lines: [#{ id: int, account_id: int, account_name: string|null, account_code: int|null, amount: string, debit: string|null, credit: string|null }] }] }  // id is the source_docs row. source_ref_id is the business document id.",
         |_ctx| NativeBinding::Function(Arc::new(get_source_doc)),
+    );
+    rune_env.register_contextual(
+        "edit_account",
+        "edit_account(#{ id: int, name?: string, code?: int, is_group?: bool, balance_type?: \"Debit\"|\"Credit\", parent_id?: int|null, child_ids?: [int] }) -> #{ id: int, name: string, code: int, is_group: bool, balance_type: \"Debit\"|\"Credit\", parent_id: int|null, balance: string, ancestors: [#{ id: int, name: string, code: int }], children: [#{ id: int, name: string, code: int, is_group: bool, balance_type: \"Debit\"|\"Credit\" }] }  // updates only the fields that are present. parent_id null clears the parent. child_ids replaces direct sub-accounts when the account is a group.",
+        |_ctx| NativeBinding::Function(Arc::new(edit_account)),
+    );
+    rune_env.register_contextual(
+        "delete_account",
+        "delete_account(#{ id: int }) -> ()  // deletes the account and every sub-account under it",
+        |_ctx| NativeBinding::Function(Arc::new(delete_account)),
     );
     rune_env.register_contextual(
         "list_source_docs",
@@ -121,6 +136,23 @@ fn list_accounts(
             async move { rows::list_accounts(&db, &parsed).await },
         )?;
     rows::to_rune(serde_json::json!({ "results": accounts }))
+}
+
+#[cfg(feature = "cap-llm")]
+fn request_delete_journal_entry(
+    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    let id = args::require_id(
+        args::parse_id(args, "request_delete_journal_entry")?,
+        "request_delete_journal_entry",
+        "journal entry",
+    )?;
+    let db = ctx.db.clone();
+    let preview = lariv_core::rune_env::block_on_async(async move {
+        crate::logic::journal::journal_entry_delete_request(&db, id).await
+    })?;
+    rows::to_rune(preview)
 }
 
 #[cfg(feature = "cap-llm")]
@@ -210,6 +242,82 @@ fn get_source_doc(
             .ok_or_else(|| "source doc not found".to_string())
     })?;
     rows::to_rune(doc)
+}
+
+#[cfg(feature = "cap-llm")]
+fn edit_account(
+    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    use chrono::Utc;
+    use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+
+    use crate::account_validation::{sync_account_children, validate_parent_not_cycle};
+    use crate::balance_type::BalanceType;
+    use crate::entities::account;
+
+    let parsed = args::parse_account_edit(args)?;
+    let db = ctx.db.clone();
+    let detail = lariv_core::rune_env::block_on_async(async move {
+        let existing = rows::find_account(&db, parsed.id).await?;
+        let name = parsed.name.unwrap_or(existing.name.clone());
+        let code = parsed.code.unwrap_or(existing.code);
+        let is_group = parsed.is_group.unwrap_or(existing.is_group);
+        let balance_type = match parsed.balance_type {
+            Some(raw) => BalanceType::parse(&raw)
+                .ok_or_else(|| "edit_account balance_type must be Debit or Credit".to_string())?,
+            None => existing.balance_type,
+        };
+        let parent_id = if parsed.parent_id_set {
+            parsed.parent_id
+        } else {
+            existing.parent_id
+        };
+        validate_parent_not_cycle(&db, Some(existing.id), parent_id).await?;
+        let saved = account::ActiveModel {
+            id: Set(existing.id),
+            updated_at: Set(Some(Utc::now())),
+            name: Set(name),
+            code: Set(code),
+            is_group: Set(is_group),
+            balance_type: Set(balance_type),
+            parent_id: Set(parent_id),
+            ..Default::default()
+        }
+        .update(&db)
+        .await
+        .map_err(|error| error.to_string())?;
+        if saved.is_group {
+            if let Some(child_ids) = parsed.child_ids.as_deref() {
+                sync_account_children(&db, saved.id, child_ids).await?;
+            }
+        }
+        let balance = rows::account_balance(&db, saved.id).await?;
+        let ancestors = rows::account_ancestors(&db, saved.parent_id).await?;
+        let children = rows::account_children(&db, saved.id).await?;
+        Ok::<_, String>(rows::account_detail(&saved, &balance, ancestors, children))
+    })?;
+    rows::to_rune(detail)
+}
+
+#[cfg(feature = "cap-llm")]
+fn delete_account(
+    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
+    args: &[rune::Value],
+) -> Result<rune::Value, String> {
+    let id = args::require_id(
+        args::parse_id(args, "delete_account")?,
+        "delete_account",
+        "account",
+    )?;
+    let db = ctx.db.clone();
+    lariv_core::rune_env::block_on_async(async move {
+        rows::find_account(&db, id).await?;
+        crate::account_validation::delete_account_recursive(&db, id)
+            .await
+            .map_err(|error| error.to_string())
+    })?;
+    Ok(rune::Value::from(()))
 }
 
 #[cfg(feature = "cap-llm")]
@@ -617,6 +725,119 @@ mod args {
             source_doc_id: parsed.source_doc_id,
             query,
             limit: parse_limit(parsed.limit, "list_source_docs")?,
+        })
+    }
+
+    #[derive(Debug)]
+    pub(super) struct AccountEdit {
+        pub id: i64,
+        pub name: Option<String>,
+        pub code: Option<i32>,
+        pub is_group: Option<bool>,
+        pub balance_type: Option<String>,
+        pub parent_id: Option<i64>,
+        pub parent_id_set: bool,
+        pub child_ids: Option<Vec<i64>>,
+    }
+
+    pub(super) fn parse_account_edit(args: &[rune::Value]) -> Result<AccountEdit, String> {
+        let json: serde_json::Value =
+            parse_json(object_arg(args, "edit_account")?, "edit_account")?;
+        let fields = json
+            .as_object()
+            .ok_or_else(|| "edit_account requires an object argument".to_string())?;
+        let id = fields
+            .get("id")
+            .and_then(serde_json::Value::as_i64)
+            .ok_or_else(|| "edit_account requires id".to_string())?;
+        if id <= 0 {
+            return Err("edit_account requires a positive account id".to_string());
+        }
+        let name = match fields.get("name") {
+            None => None,
+            Some(value) => {
+                let name = value
+                    .as_str()
+                    .ok_or_else(|| "edit_account name must be a string".to_string())?
+                    .trim()
+                    .to_string();
+                if name.is_empty() {
+                    return Err("edit_account name cannot be empty".to_string());
+                }
+                Some(name)
+            }
+        };
+        let code = match fields.get("code") {
+            None => None,
+            Some(value) => {
+                let code = value
+                    .as_i64()
+                    .ok_or_else(|| "edit_account code must be an int".to_string())?;
+                Some(
+                    i32::try_from(code)
+                        .map_err(|_| "edit_account code is out of range".to_string())?,
+                )
+            }
+        };
+        let is_group = match fields.get("is_group") {
+            None => None,
+            Some(value) => Some(
+                value
+                    .as_bool()
+                    .ok_or_else(|| "edit_account is_group must be a bool".to_string())?,
+            ),
+        };
+        let balance_type = match fields.get("balance_type") {
+            None => None,
+            Some(value) => Some(
+                value
+                    .as_str()
+                    .ok_or_else(|| "edit_account balance_type must be a string".to_string())?
+                    .to_string(),
+            ),
+        };
+        let parent_id_set = fields.contains_key("parent_id");
+        let parent_id = if parent_id_set {
+            match fields.get("parent_id") {
+                Some(serde_json::Value::Null) => None,
+                Some(value) => {
+                    let parent = value
+                        .as_i64()
+                        .ok_or_else(|| "edit_account parent_id must be an int".to_string())?;
+                    if parent <= 0 { None } else { Some(parent) }
+                }
+                None => None,
+            }
+        } else {
+            None
+        };
+        let child_ids = match fields.get("child_ids") {
+            None => None,
+            Some(value) => {
+                let ids = value
+                    .as_array()
+                    .ok_or_else(|| "edit_account child_ids must be an array of ints".to_string())?;
+                let mut parsed = Vec::new();
+                for id in ids {
+                    let id = id.as_i64().ok_or_else(|| {
+                        "edit_account child_ids must be an array of ints".to_string()
+                    })?;
+                    if id > 0 {
+                        parsed.push(id);
+                    }
+                }
+                Some(parsed)
+            }
+        };
+        Ok(AccountEdit {
+            id,
+            name,
+            code,
+            is_group,
+            balance_type,
+            parent_id,
+            parent_id_set,
+            child_ids,
         })
     }
 }
@@ -1546,8 +1767,9 @@ mod tests {
 
     use super::args::{parse_account_list, parse_bound, parse_entry_list, parse_source_list};
     use super::{
-        Hook, get_account, get_journal_entry, get_journal_entry_item, get_source_doc,
-        list_journal_entries, list_journal_entry_items, list_source_docs, search_accounts,
+        Hook, delete_account, edit_account, get_account, get_journal_entry, get_journal_entry_item,
+        get_source_doc, list_journal_entries, list_journal_entry_items, list_source_docs,
+        search_accounts,
     };
 
     fn ctx<'a>(
@@ -1575,11 +1797,14 @@ mod tests {
             "search_accounts",
             "list_accounts",
             "get_journal_entry",
+            "request_delete_journal_entry",
             "list_journal_entries",
             "get_journal_entry_item",
             "list_journal_entry_items",
             "get_source_doc",
             "list_source_docs",
+            "edit_account",
+            "delete_account",
         ] {
             assert!(
                 names.iter().any(|registered| registered == name),
@@ -1597,6 +1822,10 @@ mod tests {
         assert!(missing.contains("object"));
         let bad_account = get_account(&ctx, &[value(json!({"id": 0}))]).expect_err("id");
         assert!(bad_account.contains("positive"));
+        let bad_edit = edit_account(&ctx, &[value(json!({"id": 0}))]).expect_err("edit");
+        assert!(bad_edit.contains("positive"));
+        let bad_delete = delete_account(&ctx, &[]).expect_err("delete");
+        assert!(bad_delete.contains("object"));
         let bad_entry = get_journal_entry(&ctx, &[value(json!({"id": -1}))]).expect_err("entry");
         assert!(bad_entry.contains("positive"));
         let bad_item = get_journal_entry_item(&ctx, &[value(json!({"id": 0}))]).expect_err("item");

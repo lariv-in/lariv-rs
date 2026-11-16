@@ -91,7 +91,7 @@ impl CancelledInvoiceDetailPage {
     }
 
     fn menu(&self) -> Markup {
-        cancelled_invoice_detail_menu(self.id, &self.number)
+        cancelled_invoice_detail_menu(self.id, &self.number, "detail")
     }
 }
 

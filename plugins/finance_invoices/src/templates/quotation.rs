@@ -399,7 +399,7 @@ impl QuotationInvoiceDetailPage {
     }
 
     fn menu(&self) -> Markup {
-        quotation_invoice_detail_menu(self.id, &self.number)
+        quotation_invoice_detail_menu(self.id, &self.number, "detail")
     }
 }
 

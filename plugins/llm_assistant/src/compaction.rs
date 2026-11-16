@@ -137,15 +137,21 @@ pub async fn compact_session(
         .await
         .map_err(CompactionError::Db)?;
     let genai = genai.with_model(model);
-    let summary = genai
-        .generate_text_with_tokens(
+    let generated = genai
+        .generate_text_with_usage(
             COMPACTOR_SYSTEM_PROMPT,
             &user_prompt,
             COMPACTION_MAX_OUTPUT_TOKENS,
         )
-        .await?
-        .trim()
-        .to_string();
+        .await?;
+    crate::token_usage::record_session_usage(
+        &state.db,
+        session_id,
+        genai.model(),
+        generated.usage.as_ref(),
+    )
+    .await;
+    let summary = generated.text.trim().to_string();
     if summary.is_empty() {
         return Err(CompactionError::Other("empty compaction summary".into()));
     }
@@ -186,14 +192,13 @@ fn append_turn(out: &mut String, turn: &SessionTurn) {
     };
     out.push_str(&format!("\n{role}:\n"));
     for part in &turn.content.parts {
-        if part.thought {
-            continue;
-        }
-        if let Some(text) = part.text.as_deref().map(str::trim) {
-            if !text.is_empty() && text != super::content::ZWSP {
-                out.push_str(text);
-                out.push('\n');
-            }
+        if !part.thought
+            && let Some(text) = part.text.as_deref().map(str::trim)
+            && !text.is_empty()
+            && text != super::content::ZWSP
+        {
+            out.push_str(text);
+            out.push('\n');
         }
         if part.inline_data.is_some() || part.file_data.is_some() {
             let name = if part.display_name.is_empty() {
@@ -248,6 +253,7 @@ mod tests {
         SessionTurn {
             id,
             content: Content::text(role, text),
+            interaction_id: None,
         }
     }
 
@@ -345,6 +351,7 @@ mod tests {
                         },
                     ],
                 },
+                interaction_id: Some("int_old".into()),
             },
             SessionTurn {
                 id: 3,
@@ -359,6 +366,7 @@ mod tests {
                         ..Default::default()
                     }],
                 },
+                interaction_id: None,
             },
         ];
         let refs: Vec<&SessionTurn> = turns.iter().collect();

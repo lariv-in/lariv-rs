@@ -10,7 +10,8 @@
 //! 1. Attach an empty migration capability via [`with_migrations`].
 //! 2. Plugins queue [`MigrationRegistrar`] hooks during install (or use `define_register_migrations!`).
 //! 3. At mount, hooks fold over the migrator HList → [`MigrationCapability`].
-//! 4. [`run_migrations`] (or the `migrate` CLI command) runs all migrators against [`DbTag`].
+//! 4. [`run_migrations`] (or the `migrate` CLI command) runs all migrators. When
+//!    `admin_database_url` is set, DDL uses that connection instead of the serving pool.
 //!
 //! # Core types
 //!
@@ -38,6 +39,7 @@ use std::collections::HashSet;
 use std::time::SystemTime;
 
 use frunk::{HCons, HNil, hlist::HList};
+use futures_util::future::BoxFuture;
 use sea_orm::{ActiveValue, DatabaseConnection, DbErr, EntityTrait};
 use sea_orm_migration::{MigratorTrait, seaql_migrations};
 
@@ -46,7 +48,8 @@ use crate::db::migration_sql::ForeignKey;
 use crate::{
     app::{App, MountedApp},
     capability::{CapStore, Capability, FoldRegistrarHooks, apply_registrar_hook, mount_registrar},
-    db::{DbState, DbTag},
+    config::{AppConfig, AppConfigTag, ConfigCapability, ConfigTag},
+    db::{self, DbState, DbTag},
     tag::Tagged,
     traits::{
         add::{AddCapability, CapTagAbsent},
@@ -184,23 +187,46 @@ where
     }
 }
 
-/// A plugin migrator plus the foreign keys to retry after every plugin has migrated.
+/// Work a plugin wants run after every migration pass, including one with nothing pending.
 ///
-/// The registrar fold only keeps the migrator HList, so deferred keys travel with the
-/// migrator the plugin registers.
+/// SeaORM records each migration once. Schema that has to follow tables added later
+/// (audit triggers, row-level security) cannot live only in that migration.
+pub type AfterMigrateHook = for<'a> fn(&'a DatabaseConnection) -> BoxFuture<'a, Result<(), DbErr>>;
+
+/// No after-migrate work. The default for [`RegisteredMigrator`].
+pub fn noop_after_migrate(_db: &DatabaseConnection) -> BoxFuture<'_, Result<(), DbErr>> {
+    Box::pin(async { Ok(()) })
+}
+
+/// A plugin migrator plus the foreign keys and after-migrate hook retried once every
+/// plugin has migrated.
+///
+/// The registrar fold only keeps the migrator HList, so deferred keys and the hook
+/// travel with the migrator the plugin registers.
 #[derive(Clone, Copy)]
 pub struct RegisteredMigrator<M> {
     keys: &'static [ForeignKey],
+    after: AfterMigrateHook,
     _migrator: std::marker::PhantomData<M>,
 }
 
 impl<M> RegisteredMigrator<M> {
     /// Pair `migrator` with the foreign keys this plugin wants re-applied after `up`.
+    ///
+    /// The after-migrate hook is a no-op. Use [`RegisteredMigrator::with_after`] when
+    /// the plugin must scan the schema again on every pass.
     pub fn new(_migrator: M, keys: &'static [ForeignKey]) -> Self {
         Self {
             keys,
+            after: noop_after_migrate,
             _migrator: std::marker::PhantomData,
         }
+    }
+
+    /// Replace the after-migrate hook. It runs after deferred foreign keys.
+    pub fn with_after(mut self, after: AfterMigrateHook) -> Self {
+        self.after = after;
+        self
     }
 }
 
@@ -236,6 +262,28 @@ where
     }
 }
 
+/// Gather after-migrate hooks in install order (tail first, so the last install runs last).
+pub trait CollectAfterMigrate {
+    fn collect_after_migrate(&self) -> Vec<AfterMigrateHook>;
+}
+
+impl CollectAfterMigrate for HNil {
+    fn collect_after_migrate(&self) -> Vec<AfterMigrateHook> {
+        Vec::new()
+    }
+}
+
+impl<Tag, M, Tail> CollectAfterMigrate for HCons<Tagged<Tag, RegisteredMigrator<M>>, Tail>
+where
+    Tail: CollectAfterMigrate,
+{
+    fn collect_after_migrate(&self) -> Vec<AfterMigrateHook> {
+        let mut hooks = self.tail.collect_after_migrate();
+        hooks.push(self.head.value.after);
+        hooks
+    }
+}
+
 thread_local! {
     static COMPOSITE_MIGRATIONS: std::cell::RefCell<
         Option<Vec<Box<dyn sea_orm_migration::MigrationTrait>>>,
@@ -253,10 +301,11 @@ impl MigratorTrait for CompositeMigrator {
 
 impl<L> RunMigrations for L
 where
-    L: CollectMigrations + CollectForeignKeys + Send,
+    L: CollectMigrations + CollectForeignKeys + CollectAfterMigrate + Send,
 {
     async fn run_migrations(self, db: &DatabaseConnection) -> Result<(), DbErr> {
         let keys = self.collect_foreign_keys();
+        let after = self.collect_after_migrate();
         let migrations = self.collect_migrations();
         COMPOSITE_MIGRATIONS.with(|cell| {
             *cell.borrow_mut() = Some(migrations);
@@ -265,7 +314,13 @@ where
         CompositeMigrator::up(db, None).await?;
         // Peer plugins may have been installed in either order. Attach foreign keys
         // that were skipped while the referenced table was still absent.
-        crate::db::migration_sql::ensure_foreign_keys(db, db.get_database_backend(), &keys).await
+        crate::db::migration_sql::ensure_foreign_keys(db, db.get_database_backend(), &keys).await?;
+        // Hooks run even when every migration is already applied, so a plugin can
+        // attach triggers or policies to tables created by a later migration.
+        for hook in after {
+            hook(db).await?;
+        }
+        Ok(())
     }
 }
 
@@ -276,18 +331,24 @@ where
 ///     plugin: BlogTag;
 ///     migrator: Migrator;
 ///     foreign_keys: DEFERRED_FOREIGN_KEYS;
+///     after: after_migrate;
 /// }
 /// ```
 ///
 /// `foreign_keys` is an optional `&'static [ForeignKey]`. Those keys are retried
 /// after every installed plugin has migrated, so a constraint that points at another
 /// plugin's table still attaches when that plugin was installed later.
+///
+/// `after` is an optional [`AfterMigrateHook`](crate::migration::AfterMigrateHook). It
+/// runs at the end of every migration pass, including a pass with nothing pending.
+/// `foreign_keys` must come before `after` when both are set.
 #[macro_export]
 macro_rules! define_register_migrations {
     (
         plugin: $plugin:ty;
         migrator: $migrator:ty;
         $(foreign_keys: $keys:expr;)?
+        $(after: $after:expr;)?
     ) => {
         #[derive(Clone, Copy, Default)]
         pub struct Hook;
@@ -298,6 +359,7 @@ macro_rules! define_register_migrations {
                 + Clone
                 + $crate::migration::CollectMigrations
                 + $crate::migration::CollectForeignKeys
+                + $crate::migration::CollectAfterMigrate
                 + Send,
         {
             // Concrete cons cell, not `impl Trait`. A stack of opaque associated types
@@ -311,10 +373,13 @@ macro_rules! define_register_migrations {
                 self,
                 cap: $crate::migration::MigrationCapability<M>,
             ) -> $crate::migration::MigrationCapability<Self::Output> {
-                cap.prepend::<$plugin, _>($crate::migration::RegisteredMigrator::new(
-                    <$migrator>::default(),
-                    $crate::define_register_migrations!(@keys $($keys)?),
-                ))
+                cap.prepend::<$plugin, _>(
+                    $crate::migration::RegisteredMigrator::new(
+                        <$migrator>::default(),
+                        $crate::define_register_migrations!(@keys $($keys)?),
+                    )
+                    .with_after($crate::define_register_migrations!(@after $($after)?)),
+                )
             }
         }
     };
@@ -323,6 +388,12 @@ macro_rules! define_register_migrations {
     };
     (@keys $keys:expr) => {
         $keys
+    };
+    (@after) => {
+        $crate::migration::noop_after_migrate
+    };
+    (@after $after:expr) => {
+        $after
     };
 }
 
@@ -336,18 +407,33 @@ where
     app.add_capability(CapStore::with_items(HNil))
 }
 
-/// Run all migrators registered on [`MigrationTag`], using the connection from [`DbTag`].
+/// Run all migrators registered on [`MigrationTag`].
 ///
-/// Requires both capabilities to be present on the mounted app. Prefer
-/// [`MountedApp::run_migrations`](crate::app::MountedApp::run_migrations) in application code.
-pub async fn run_migrations<M, MigIdx, DbIdx, Migrators>(app: &MountedApp<M>) -> Result<(), DbErr>
+/// Uses [`AppConfig::admin_database_url`] when it is set, so a serving role that is
+/// subject to row-level security is not the role that applies DDL. Otherwise uses
+/// the [`DbTag`] pool.
+pub async fn run_migrations<M, MigIdx, DbIdx, Migrators, CfgIdx, Configs, AppCfgIdx>(
+    app: &MountedApp<M>,
+) -> Result<(), DbErr>
 where
     M: GetByTag<MigrationTag, MigIdx, Value = MigrationCapability<Migrators>>,
     M: GetByTag<DbTag, DbIdx, Value = DbState>,
+    M: GetByTag<ConfigTag, CfgIdx, Value = ConfigCapability<Configs>>,
+    Configs: GetByTag<AppConfigTag, AppCfgIdx, Value = AppConfig>,
     Migrators: RunMigrations + Clone,
 {
-    let db = app.get_capability_output::<DbTag, DbIdx>().conn.clone();
     let migrations = app.get_capability_output::<MigrationTag, MigIdx>().clone();
+    let admin_url = app
+        .get_capability_output::<ConfigTag, CfgIdx>()
+        .get::<AppConfigTag, AppCfgIdx>()
+        .admin_database_url
+        .clone()
+        .filter(|url| !url.is_empty());
+    if let Some(url) = admin_url {
+        let admin = db::connect(&url).await?;
+        return migrations.run(&admin).await;
+    }
+    let db = app.get_capability_output::<DbTag, DbIdx>().conn.clone();
     migrations.run(&db).await
 }
 

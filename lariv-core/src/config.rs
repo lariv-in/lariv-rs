@@ -5,7 +5,7 @@
 //!
 //! # Core configuration
 //!
-//! - [`AppConfigTag`] → [`AppConfig`] — `database_url`, `bind` / `uds` (document root)
+//! - [`AppConfigTag`] → [`AppConfig`] — `database_url`, `admin_database_url`, `bind` / `uds` (document root)
 //!
 //! # Examples
 //!
@@ -160,11 +160,16 @@ pub enum BindTarget {
 #[derive(Debug, Clone, Deserialize)]
 /// Core application configuration loaded from the TOML document root.
 ///
-/// Fields can be overridden by environment variables `DATABASE_URL`, `BIND`,
-/// and `UDS` during [`App::load_config`](crate::app::App::load_config).
+/// Fields can be overridden by environment variables `DATABASE_URL`,
+/// `ADMIN_DATABASE_URL`, `BIND`, and `UDS` during
+/// [`App::load_config`](crate::app::App::load_config).
 pub struct AppConfig {
     #[serde(default = "default_database_url")]
     pub database_url: String,
+    /// Superuser connection used for DDL when row-level security is enforced on
+    /// [`Self::database_url`]. Empty means migrations use the serving pool.
+    #[serde(default, alias = "adminDatabaseUrl")]
+    pub admin_database_url: Option<String>,
     #[serde(default = "default_bind")]
     pub bind: Option<String>,
     /// Unix domain socket path; when set, overrides [`Self::bind`].
@@ -186,6 +191,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             database_url: default_database_url(),
+            admin_database_url: None,
             bind: default_bind(),
             uds: None,
         }

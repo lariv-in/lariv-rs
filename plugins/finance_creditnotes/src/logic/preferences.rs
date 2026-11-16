@@ -1,17 +1,21 @@
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ConnectionTrait, EntityTrait};
+use sea_orm::{
+    ActiveModelTrait,
+    ActiveValue::{NotSet, Set},
+    ConnectionTrait, EntityTrait, QuerySelect,
+};
 
 use crate::entities::credit_note_preferences::{self, Entity as CreditNotePreferencesEntity};
 
 pub async fn load_credit_note_preferences<C: ConnectionTrait>(
     db: &C,
 ) -> credit_note_preferences::Model {
-    if let Ok(Some(prefs)) = CreditNotePreferencesEntity::find_by_id(1i64).one(db).await {
+    if let Ok(Some(prefs)) = CreditNotePreferencesEntity::find().limit(1).one(db).await {
         return prefs;
     }
     let now = Utc::now();
     let am = credit_note_preferences::ActiveModel {
-        id: Set(1),
+        id: NotSet,
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         credit_note_number_format: Set(None),

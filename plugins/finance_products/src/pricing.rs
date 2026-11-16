@@ -94,6 +94,38 @@ pub fn unit_amount(formula: &str) -> Result<Decimal, String> {
     Ok(decimal::normalize(amount))
 }
 
+/// Copy line quantity and rate into variable values when the schema names them
+/// and the saved JSON left them out. Quantity and rate live on the line.
+pub fn values_with_line_columns(
+    schema_json: &str,
+    raw: &str,
+    quantity: Decimal,
+    rate: Decimal,
+) -> String {
+    let Ok(schema) = load_schema(schema_json) else {
+        return raw.to_string();
+    };
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(raw.trim()) else {
+        return raw.to_string();
+    };
+    let Some(obj) = value.as_object_mut() else {
+        return raw.to_string();
+    };
+    if schema.contains_key("quantity") && !obj.contains_key("quantity") {
+        obj.insert(
+            "quantity".to_string(),
+            serde_json::Value::String(decimal::normalize(quantity).to_string()),
+        );
+    }
+    if schema.contains_key("rate") && !obj.contains_key("rate") {
+        obj.insert(
+            "rate".to_string(),
+            serde_json::Value::String(decimal::normalize(rate).to_string()),
+        );
+    }
+    value.to_string()
+}
+
 /// Unit price from a product formula (for one product). Empty formula returns 0.
 pub fn unit_formula_amount(
     schema_json: &str,
@@ -343,6 +375,17 @@ mod tests {
         assert_eq!(mass.accepted_unit, "g");
         let qty = specs.iter().find(|spec| spec.name == "qty").unwrap();
         assert_eq!(qty.accepted_unit, "Number");
+    }
+
+    #[test]
+    fn line_quantity_fills_a_missing_schema_value() {
+        let (schema, _) =
+            store_schema(&["quantity:quantity".into(), "rate:decimal".into()]).unwrap();
+        let raw = r#"{"rate":{"kind":"decimal","unit":"None","value":"3.5"}}"#;
+        let values =
+            values_with_line_columns(&schema, raw, Decimal::from(1), Decimal::new(20475, 1));
+        let amount = unit_formula_amount(&schema, "quantity* rate", &values).unwrap();
+        assert_eq!(amount, Decimal::new(35, 1));
     }
 
     #[test]

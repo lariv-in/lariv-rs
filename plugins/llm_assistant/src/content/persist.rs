@@ -29,6 +29,7 @@ use crate::{
         Blob, CodeExecutionResult, Content, ExecutableCode, FileData, FunctionCall,
         FunctionResponse, FunctionResponseBlob, FunctionResponseFileData, FunctionResponsePart,
         Part, PartMediaResolution, Role, ToolCall, ToolResponse, VideoMetadata,
+        part_records_thought,
     },
 };
 
@@ -83,10 +84,20 @@ pub async fn save_content(
     session_id: i64,
     content: &Content,
 ) -> Result<i64, PersistError> {
+    save_content_with_interaction(db, session_id, content, None).await
+}
+
+/// Persist a turn, optionally recording the Interactions API id on the message row.
+pub async fn save_content_with_interaction(
+    db: &DatabaseConnection,
+    session_id: i64,
+    content: &Content,
+    interaction_id: Option<&str>,
+) -> Result<i64, PersistError> {
     // Parent part rows + kind payloads must commit together; otherwise a jsonb
     // insert failure leaves orphans that break session load (`* row missing`).
     let txn = db.begin().await?;
-    let result = save_content_in(&txn, session_id, content).await;
+    let result = save_content_in(&txn, session_id, content, interaction_id).await;
     match result {
         Ok(id) => {
             txn.commit().await?;
@@ -103,14 +114,20 @@ async fn save_content_in<C: ConnectionTrait>(
     db: &C,
     session_id: i64,
     content: &Content,
+    interaction_id: Option<&str>,
 ) -> Result<i64, PersistError> {
     let ts = now();
+    let interaction_id = interaction_id
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
     let msg = session_message::ActiveModel {
         id: Default::default(),
         created_at: Set(Some(ts)),
         updated_at: Set(Some(ts)),
         llm_assistant_session_id: Set(session_id),
         role: Set(content.role.as_str().to_string()),
+        interaction_id: Set(interaction_id),
     };
     let saved = msg.insert(db).await?;
     save_parts(db, saved.id, &content.parts).await?;
@@ -156,7 +173,7 @@ async fn save_parts<C: ConnectionTrait>(
             updated_at: Set(Some(ts)),
             kind: Set(kind.to_string()),
             llm_assistant_session_message_id: Set(message_id),
-            thought: Set(part.thought),
+            thought: Set(part_records_thought(part)),
             thought_signature: Set(thought_sig),
             video_metadata_id: Set(video_metadata_id),
             part_metadata: Set(part_meta),
@@ -469,10 +486,12 @@ async fn apply_part_common(
     row: &session_message_part::Model,
     mut part: Part,
 ) -> Result<Part, PersistError> {
-    part.thought = row.thought;
-    if let Some(sig) = &row.thought_signature
-        && !sig.is_empty()
-    {
+    let has_signature = row
+        .thought_signature
+        .as_ref()
+        .is_some_and(|sig| !sig.is_empty());
+    part.thought = row.thought || has_signature;
+    if has_signature && let Some(sig) = &row.thought_signature {
         part.thought_signature = Some(encode_b64(sig));
     }
     if let Some(vmid) = row.video_metadata_id
@@ -801,6 +820,8 @@ pub async fn load_content(
 pub struct SessionTurn {
     pub id: i64,
     pub content: Content,
+    /// Interactions API id when this model turn completed a stored interaction.
+    pub interaction_id: Option<String>,
 }
 
 pub async fn load_session_turns(
@@ -819,6 +840,11 @@ pub async fn load_session_turns(
         turns.push(SessionTurn {
             id: message.id,
             content,
+            interaction_id: message
+                .interaction_id
+                .as_ref()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
         });
     }
     Ok(turns)

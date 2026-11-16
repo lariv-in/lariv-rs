@@ -10,7 +10,7 @@ use sea_orm::DatabaseBackend;
 use sea_orm::sea_query::{Condition, Expr, ExprTrait, IntoColumnRef, SimpleExpr, Value};
 
 use crate::datetime::{DatetimeLocalInput, parse_date, parse_time};
-use crate::db::trigram::text_match_condition;
+use crate::db::trigram::{text_match_condition, text_match_expr};
 use crate::duration::parse_duration;
 
 /// How a clause combines with the previous clause.
@@ -363,6 +363,24 @@ fn known_choice(choices: &[(String, String)], raw: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!("unknown value: {raw}"))
+    }
+}
+
+/// Case-insensitive match on a SQL expression, such as a jsonb column cast to text.
+pub fn text_expr_column(key: &'static str, label: &'static str, expr: SimpleExpr) -> FilterField {
+    FilterField {
+        key,
+        label,
+        widget: FilterWidget::Text,
+        choices: Vec::new(),
+        post_filter: false,
+        apply: Box::new(move |clause, backend| {
+            let needle = clause.value().trim();
+            if needle.is_empty() {
+                return Ok(Condition::all());
+            }
+            Ok(text_match_expr(backend, expr.clone(), needle))
+        }),
     }
 }
 

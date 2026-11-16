@@ -1,9 +1,10 @@
-//! Thin Gemini HTTP client (`generateContent`, `streamGenerateContent`, `models.list`, Files API).
+//! Thin Gemini HTTP client (Interactions API, `models.list`, Files API).
 //!
 //! [`GenaiClient`] wraps reqwest calls to `generativelanguage.googleapis.com`. Use
-//! [`GenaiClient::generate_text`] for one-shot prompts (Totschool workers) or
+//! [`GenaiClient::generate_text`] for one-shot prompts or
 //! [`GenaiClient::generate_content`] / [`GenaiClient::stream_generate_content`] for
-//! multi-turn LLM Assistant chat with optional function declarations.
+//! multi-turn LLM Assistant chat with optional function declarations (via
+//! `POST /v1beta/interactions`).
 //! [`GenaiClient::list_generate_content_models`] / [`GenaiClient::list_embed_content_models`]
 //! list models by supported action (`generateContent` / `embedContent`).
 //! [`GenaiClient::upload_file`] uploads bytes via the Files API and waits until `ACTIVE`
@@ -31,16 +32,19 @@
 
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tokio::time::{Duration, sleep};
 
 use chrono::{DateTime, Utc};
 
 use super::errors::GenaiError;
-use super::types::{
-    Content, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
-    GenerationConfig, Role, ThinkingConfig, Tool, ToolConfig, UsageMetadata,
+use super::interactions::{
+    CreateInteractionRequest, Interaction, InteractionGenerationConfig, InteractionSseEvent,
+    InteractionTool, StreamAccumulator, contents_to_interaction_input, json_response_format,
+    steps_to_model_content, user_content_to_interaction_input,
 };
-use super::util::{coerce_json_text, content_answer_text, content_text, merge_content};
+use super::types::{Content, FunctionDeclaration, Role, UsageMetadata};
+use super::util::{coerce_json_text, content_answer_text, content_text};
 
 /// Default system prompt for the LLM Assistant plugin (skills, tools, multimodal guidance).
 pub const ASSISTANT_SYSTEM_PROMPT: &str = r#"You are LLM Assistant inside the Lariv app. You help operators search the public web via Google Programmable Search and read specific pages with the read_webpage tool.
@@ -126,14 +130,23 @@ impl UploadFileTiming {
     }
 }
 
-/// Merged model turn plus optional [`UsageMetadata`] from `streamGenerateContent`.
+/// Merged model turn plus optional [`UsageMetadata`] from Interactions.
 #[derive(Debug, Clone)]
 pub struct GenerateContentResult {
     pub content: Content,
     pub usage: Option<UsageMetadata>,
+    /// Server interaction id when `store=true` (for `previous_interaction_id`).
+    pub interaction_id: Option<String>,
 }
 
-/// HTTP client for Gemini `generateContent`, `streamGenerateContent`, and `models.list`.
+/// One-shot text plus optional [`UsageMetadata`] from Interactions.
+#[derive(Debug, Clone)]
+pub struct GenerateTextResult {
+    pub text: String,
+    pub usage: Option<UsageMetadata>,
+}
+
+/// HTTP client for Gemini Interactions, Files API, and `models.list`.
 #[derive(Clone)]
 pub struct GenaiClient {
     http: reqwest::Client,
@@ -225,7 +238,7 @@ impl GenaiClient {
         Ok((ready, timing))
     }
 
-    /// Serialize a `generateContent` request body and return its JSON byte length.
+    /// Serialize an Interactions request body and return its JSON byte length.
     ///
     /// Used by latency tests to compare `inline_data` vs `file_data` payload sizes
     /// across simulated tool rounds (no network).
@@ -234,11 +247,16 @@ impl GenaiClient {
         max_output_tokens: i32,
         tool_decls: &[FunctionDeclaration],
     ) -> Result<usize, GenaiError> {
-        let body = Self::request_body(
-            contents,
-            Some(Content::text(Role::User, ASSISTANT_SYSTEM_PROMPT)),
+        let body = Self::interaction_request(
+            "model",
+            contents_to_interaction_input(&contents),
+            Some(ASSISTANT_SYSTEM_PROMPT),
             max_output_tokens,
             tool_decls,
+            None,
+            None,
+            false,
+            false,
         );
         let bytes = serde_json::to_vec(&body).map_err(|e| GenaiError::Json(e.to_string()))?;
         Ok(bytes.len())
@@ -429,49 +447,66 @@ impl GenaiClient {
         Ok(out)
     }
 
-    fn request_body(
-        contents: Vec<Content>,
-        system_instruction: Option<Content>,
+    #[allow(clippy::too_many_arguments)]
+    fn interaction_request(
+        model: &str,
+        input: Value,
+        system_instruction: Option<&str>,
         max_output_tokens: i32,
         tool_decls: &[FunctionDeclaration],
-    ) -> GenerateContentRequest {
-        Self::request_body_with_config(
-            contents,
-            system_instruction,
-            GenerationConfig {
-                temperature: Some(0.35),
-                max_output_tokens: Some(max_output_tokens.max(1)),
-                response_mime_type: None,
-                response_schema: None,
-                response_json_schema: None,
-                thinking_config: None,
+        previous_interaction_id: Option<String>,
+        response_format: Option<Value>,
+        include_thoughts: bool,
+        stream: bool,
+    ) -> CreateInteractionRequest {
+        let tools = if tool_decls.is_empty() {
+            None
+        } else {
+            Some(tool_decls.iter().map(InteractionTool::from).collect())
+        };
+        let mut generation_config = InteractionGenerationConfig {
+            max_output_tokens: Some(max_output_tokens.max(1)),
+            thinking_level: None,
+            thinking_summaries: None,
+            tool_choice: if tools.is_some() {
+                Some("auto".into())
+            } else {
+                None
             },
-            tool_decls,
-        )
+        };
+        if include_thoughts {
+            generation_config.thinking_summaries = Some("auto".into());
+        }
+        CreateInteractionRequest {
+            model: model.to_string(),
+            input,
+            system_instruction: system_instruction
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string),
+            tools,
+            generation_config: Some(generation_config),
+            response_format,
+            previous_interaction_id: previous_interaction_id
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
+            store: Some(true),
+            stream: stream.then_some(true),
+        }
     }
 
-    fn request_body_with_config(
-        contents: Vec<Content>,
-        system_instruction: Option<Content>,
-        generation_config: GenerationConfig,
-        tool_decls: &[FunctionDeclaration],
-    ) -> GenerateContentRequest {
-        let (tools, tool_config) = if tool_decls.is_empty() {
-            (None, None)
+    /// Build Interactions input: full window when bootstrapping, single turn when chaining.
+    fn input_for_call(contents: &[Content], previous_interaction_id: Option<&str>) -> Value {
+        if previous_interaction_id.is_some() {
+            match contents {
+                [only] => user_content_to_interaction_input(only),
+                _ => contents
+                    .last()
+                    .map(user_content_to_interaction_input)
+                    .unwrap_or(Value::Array(vec![])),
+            }
         } else {
-            (
-                Some(vec![Tool {
-                    function_declarations: tool_decls.to_vec(),
-                }]),
-                Some(ToolConfig::auto()),
-            )
-        };
-        GenerateContentRequest {
-            contents,
-            system_instruction,
-            generation_config: Some(generation_config),
-            tools,
-            tool_config,
+            contents_to_interaction_input(contents)
         }
     }
 
@@ -491,31 +526,48 @@ impl GenaiClient {
         user_prompt: &str,
         max_output_tokens: i32,
     ) -> Result<String, GenaiError> {
+        Ok(self
+            .generate_text_with_usage(system_prompt, user_prompt, max_output_tokens)
+            .await?
+            .text)
+    }
+
+    /// Like [`Self::generate_text_with_tokens`], but also returns Interactions `usage`.
+    pub async fn generate_text_with_usage(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        max_output_tokens: i32,
+    ) -> Result<GenerateTextResult, GenaiError> {
         let system = if system_prompt.trim().is_empty() {
             None
         } else {
-            Some(Content::text(Role::User, system_prompt))
+            Some(system_prompt)
         };
-        let content = self
-            .generate_content_with_system(
+        let generated = self
+            .create_interaction(
                 vec![Content::text(Role::User, user_prompt)],
                 system,
                 max_output_tokens,
                 &[],
+                None,
+                None,
+                false,
             )
             .await?;
-        let text = content_text(&content);
+        let text = content_text(&generated.content);
         if text.trim().is_empty() {
             return Err(GenaiError::EmptyResponse);
         }
-        Ok(text)
+        Ok(GenerateTextResult {
+            text,
+            usage: generated.usage,
+        })
     }
 
-    /// One-shot JSON generation with a response schema (`responseMimeType: application/json`).
+    /// One-shot JSON generation with Interactions `response_format`.
     ///
-    /// Sends the schema as `responseJsonSchema` (JSON Schema). Thinking is turned off
-    /// only when the model supports it, using that model's control (`thinkingBudget`
-    /// or `thinkingLevel`).
+    /// Thinking is disabled when the model supports it (`thinking_level: minimal`).
     pub async fn generate_json(
         &self,
         system_prompt: &str,
@@ -523,111 +575,140 @@ impl GenaiClient {
         schema: serde_json::Value,
         max_output_tokens: i32,
     ) -> Result<String, GenaiError> {
-        if self.api_key.trim().is_empty() {
-            return Err(GenaiError::MissingApiKey);
-        }
-        let url = format!(
-            "{GEMINI_BASE}/models/{}:generateContent?key={}",
-            self.model, self.api_key
-        );
+        Ok(self
+            .generate_json_with_usage(system_prompt, user_prompt, schema, max_output_tokens)
+            .await?
+            .text)
+    }
+
+    /// Like [`Self::generate_json`], but also returns Interactions `usage`.
+    pub async fn generate_json_with_usage(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        schema: serde_json::Value,
+        max_output_tokens: i32,
+    ) -> Result<GenerateTextResult, GenaiError> {
         let system = if system_prompt.trim().is_empty() {
             None
         } else {
-            Some(Content::text(Role::User, system_prompt))
+            Some(system_prompt)
         };
-        let body = Self::request_body_with_config(
-            vec![Content::text(Role::User, user_prompt)],
-            system,
-            GenerationConfig {
-                temperature: Some(0.2),
-                max_output_tokens: Some(max_output_tokens.max(1)),
-                response_mime_type: Some("application/json".into()),
-                // Callers pass JSON Schema (lowercase `type`). That belongs on
-                // `responseJsonSchema`, not the OpenAPI `responseSchema` field.
-                response_schema: None,
-                response_json_schema: Some(schema),
-                thinking_config: Some(ThinkingConfig::disabled()),
-            },
-            &[],
-        );
-        let body = self.finish_request_body(body).await;
-
-        let resp = self.http.post(&url).json(&body).send().await?;
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        if !status.is_success() {
-            return Err(GenaiError::Api {
-                status: status.as_u16(),
-                body: text,
-            });
-        }
-
-        let parsed: GenerateContentResponse =
-            serde_json::from_str(&text).map_err(|e| GenaiError::Json(e.to_string()))?;
-        if let Some(err) = parsed.error {
-            return Err(GenaiError::ApiMessage {
-                message: err.message,
-            });
-        }
-        let candidate = parsed
-            .candidates
-            .into_iter()
-            .next()
-            .ok_or(GenaiError::EmptyResponse)?;
-        if let Some(reason) = candidate.finish_reason.as_deref() {
-            if reason.eq_ignore_ascii_case("MAX_TOKENS") {
-                return Err(GenaiError::ApiMessage {
-                    message: format!(
-                        "JSON generation hit MAX_TOKENS (raise max_output_tokens or disable thinking)"
-                    ),
-                });
-            }
-        }
-        let content = candidate.content.ok_or(GenaiError::EmptyResponse)?;
-        // Skip model "thought" parts — concatenating them breaks JSON parsing.
-        let text = content_answer_text(&content);
+        let generated = self
+            .create_interaction(
+                vec![Content::text(Role::User, user_prompt)],
+                system,
+                max_output_tokens,
+                &[],
+                None,
+                Some(json_response_format(schema)),
+                false,
+            )
+            .await?;
+        let text = content_answer_text(&generated.content);
         if text.trim().is_empty() {
             return Err(GenaiError::EmptyResponse);
         }
-        // Models may still wrap JSON in prose/fences despite responseMimeType.
-        Ok(coerce_json_text(&text).to_string())
+        Ok(GenerateTextResult {
+            text: coerce_json_text(&text).to_string(),
+            usage: generated.usage,
+        })
     }
 
-    /// Non-streaming `generateContent` with the LLM Assistant default system prompt.
+    /// Non-streaming Interactions create with the LLM Assistant default system prompt.
     pub async fn generate_content(
         &self,
         contents: Vec<Content>,
         max_output_tokens: i32,
         tool_decls: &[FunctionDeclaration],
     ) -> Result<Content, GenaiError> {
-        self.generate_content_with_system(
+        Ok(self
+            .generate_content_with_usage(contents, max_output_tokens, tool_decls, None)
+            .await?
+            .content)
+    }
+
+    /// Non-streaming Interactions create; returns content, usage, and interaction id.
+    pub async fn generate_content_with_usage(
+        &self,
+        contents: Vec<Content>,
+        max_output_tokens: i32,
+        tool_decls: &[FunctionDeclaration],
+        previous_interaction_id: Option<String>,
+    ) -> Result<GenerateContentResult, GenaiError> {
+        self.create_interaction(
             contents,
-            Some(Content::text(Role::User, ASSISTANT_SYSTEM_PROMPT)),
+            Some(ASSISTANT_SYSTEM_PROMPT),
             max_output_tokens,
             tool_decls,
+            previous_interaction_id,
+            None,
+            false,
         )
         .await
     }
 
-    /// Non-streaming `generateContent` with a custom system instruction and optional tools.
+    /// Non-streaming Interactions create with a custom system instruction string.
     pub async fn generate_content_with_system(
         &self,
         contents: Vec<Content>,
-        system_instruction: Option<Content>,
+        system_instruction: Option<&str>,
         max_output_tokens: i32,
         tool_decls: &[FunctionDeclaration],
     ) -> Result<Content, GenaiError> {
+        Ok(self
+            .create_interaction(
+                contents,
+                system_instruction,
+                max_output_tokens,
+                tool_decls,
+                None,
+                None,
+                false,
+            )
+            .await?
+            .content)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn create_interaction(
+        &self,
+        contents: Vec<Content>,
+        system_instruction: Option<&str>,
+        max_output_tokens: i32,
+        tool_decls: &[FunctionDeclaration],
+        previous_interaction_id: Option<String>,
+        response_format: Option<Value>,
+        include_thoughts: bool,
+    ) -> Result<GenerateContentResult, GenaiError> {
         if self.api_key.trim().is_empty() {
             return Err(GenaiError::MissingApiKey);
         }
-        let url = format!(
-            "{GEMINI_BASE}/models/{}:generateContent?key={}",
-            self.model, self.api_key
+        let url = format!("{GEMINI_BASE}/interactions");
+        let input = Self::input_for_call(&contents, previous_interaction_id.as_deref());
+        let disable_thinking = response_format.is_some();
+        let mut body = Self::interaction_request(
+            &self.model,
+            input,
+            system_instruction,
+            max_output_tokens,
+            tool_decls,
+            previous_interaction_id,
+            response_format,
+            include_thoughts,
+            false,
         );
-        let body = Self::request_body(contents, system_instruction, max_output_tokens, tool_decls);
-        let body = self.finish_request_body(body).await;
+        body = self
+            .finish_interaction_request(body, disable_thinking, include_thoughts)
+            .await;
 
-        let resp = self.http.post(&url).json(&body).send().await?;
+        let resp = self
+            .http
+            .post(&url)
+            .header("x-goog-api-key", &self.api_key)
+            .json(&body)
+            .send()
+            .await?;
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
         if !status.is_success() {
@@ -637,22 +718,33 @@ impl GenaiClient {
             });
         }
 
-        let parsed: GenerateContentResponse =
+        let parsed: Interaction =
             serde_json::from_str(&text).map_err(|e| GenaiError::Json(e.to_string()))?;
         if let Some(err) = parsed.error {
             return Err(GenaiError::ApiMessage {
                 message: err.message,
             });
         }
-        let content = parsed
-            .candidates
-            .into_iter()
-            .find_map(|c| c.content)
-            .ok_or(GenaiError::EmptyResponse)?;
-        Ok(content)
+        let usage = parsed.usage.as_ref().map(|u| u.to_usage_metadata());
+        let content = steps_to_model_content(&parsed.steps);
+        if content.parts.is_empty() {
+            if let Some(text) = parsed.output_text.filter(|t| !t.trim().is_empty()) {
+                return Ok(GenerateContentResult {
+                    content: Content::text(Role::Model, text),
+                    usage,
+                    interaction_id: (!parsed.id.is_empty()).then_some(parsed.id),
+                });
+            }
+            return Err(GenaiError::EmptyResponse);
+        }
+        Ok(GenerateContentResult {
+            content,
+            usage,
+            interaction_id: (!parsed.id.is_empty()).then_some(parsed.id),
+        })
     }
 
-    /// Streaming `streamGenerateContent` (SSE).
+    /// Streaming Interactions create (SSE).
     ///
     /// Calls `on_chunk` with progressively merged content; returns the final merged
     /// [`Content`]. Retries on quota / 429 errors up to four attempts.
@@ -667,17 +759,29 @@ impl GenaiClient {
         F: FnMut(&Content) + Send,
     {
         Ok(self
-            .stream_generate_content_with_usage(contents, max_output_tokens, tool_decls, on_chunk)
+            .stream_generate_content_with_usage(
+                contents,
+                max_output_tokens,
+                tool_decls,
+                false,
+                None,
+                on_chunk,
+            )
             .await?
             .content)
     }
 
-    /// Like [`Self::stream_generate_content`], but also returns Gemini `usageMetadata`.
+    /// Like [`Self::stream_generate_content`], but also returns usage and interaction id.
+    ///
+    /// `include_thoughts` asks for `thinking_summaries: auto`.
+    /// `previous_interaction_id` chains a turn; when set, `contents` is only the new input.
     pub async fn stream_generate_content_with_usage<F>(
         &self,
         contents: Vec<Content>,
         max_output_tokens: i32,
         tool_decls: &[FunctionDeclaration],
+        include_thoughts: bool,
+        previous_interaction_id: Option<String>,
         mut on_chunk: F,
     ) -> Result<GenerateContentResult, GenaiError>
     where
@@ -686,17 +790,21 @@ impl GenaiClient {
         if self.api_key.trim().is_empty() {
             return Err(GenaiError::MissingApiKey);
         }
-        let url = format!(
-            "{GEMINI_BASE}/models/{}:streamGenerateContent?alt=sse&key={}",
-            self.model, self.api_key
+        let url = format!("{GEMINI_BASE}/interactions");
+        let input = Self::input_for_call(&contents, previous_interaction_id.as_deref());
+        let mut body = Self::interaction_request(
+            &self.model,
+            input,
+            Some(ASSISTANT_SYSTEM_PROMPT),
+            max_output_tokens,
+            tool_decls,
+            previous_interaction_id,
+            None,
+            include_thoughts,
+            true,
         );
-        let body = self
-            .finish_request_body(Self::request_body(
-                contents,
-                Some(Content::text(Role::User, ASSISTANT_SYSTEM_PROMPT)),
-                max_output_tokens,
-                tool_decls,
-            ))
+        body = self
+            .finish_interaction_request(body, false, include_thoughts)
             .await;
 
         let mut last_err = None;
@@ -774,20 +882,33 @@ impl GenaiClient {
         }
     }
 
-    /// Drop or rewrite `thinkingConfig` using `models.get` `thinking`, then the model id.
-    async fn finish_request_body(
+    /// Apply thinking controls using `models.get` `thinking`, then the model id.
+    async fn finish_interaction_request(
         &self,
-        mut body: GenerateContentRequest,
-    ) -> GenerateContentRequest {
-        let Some(config) = body.generation_config.take() else {
-            return body;
-        };
-        let features = if config.thinking_config.is_some() {
+        mut body: CreateInteractionRequest,
+        disable_thinking: bool,
+        include_thoughts: bool,
+    ) -> CreateInteractionRequest {
+        let wants_thinking = disable_thinking || include_thoughts;
+        let features = if wants_thinking {
             self.model_features().await.ok()
         } else {
             None
         };
-        body.generation_config = Some(apply_model_features(&self.model, features.as_ref(), config));
+        let Some(config) = body.generation_config.as_mut() else {
+            return body;
+        };
+        if !supports_thinking(&self.model, features.as_ref()) {
+            config.thinking_level = None;
+            config.thinking_summaries = None;
+            return body;
+        }
+        if disable_thinking {
+            config.thinking_level = Some("minimal".into());
+            config.thinking_summaries = Some("none".into());
+        } else if include_thoughts {
+            config.thinking_summaries = Some("auto".into());
+        }
         body
     }
 
@@ -822,13 +943,19 @@ impl GenaiClient {
     async fn stream_once<F>(
         &self,
         url: &str,
-        body: &GenerateContentRequest,
+        body: &CreateInteractionRequest,
         on_chunk: &mut F,
     ) -> Result<GenerateContentResult, GenaiError>
     where
         F: FnMut(&Content) + Send,
     {
-        let resp = self.http.post(url).json(body).send().await?;
+        let resp = self
+            .http
+            .post(url)
+            .header("x-goog-api-key", &self.api_key)
+            .json(body)
+            .send()
+            .await?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -838,8 +965,7 @@ impl GenaiClient {
             });
         }
 
-        let mut merged: Option<Content> = None;
-        let mut usage: Option<UsageMetadata> = None;
+        let mut acc = StreamAccumulator::default();
         let mut buffer = String::new();
         let mut stream = resp.bytes_stream();
         while let Some(item) = stream.next().await {
@@ -853,21 +979,19 @@ impl GenaiClient {
                     if data.is_empty() || data == "[DONE]" {
                         continue;
                     }
-                    let parsed: GenerateContentResponse =
+                    let parsed: InteractionSseEvent =
                         serde_json::from_str(data).map_err(|e| GenaiError::Json(e.to_string()))?;
-                    if let Some(err) = parsed.error {
+                    if let Some(ix) = &parsed.interaction
+                        && let Some(err) = &ix.error
+                    {
                         return Err(GenaiError::ApiMessage {
-                            message: err.message,
+                            message: err.message.clone(),
                         });
                     }
-                    if parsed.usage_metadata.is_some() {
-                        usage = parsed.usage_metadata;
-                    }
-                    if let Some(delta) = parsed.candidates.into_iter().find_map(|c| c.content) {
-                        merged = Some(merge_content(merged, delta));
-                        if let Some(ref m) = merged {
-                            on_chunk(m);
-                        }
+                    acc.on_event(&parsed);
+                    let content = acc.content();
+                    if !content.parts.is_empty() {
+                        on_chunk(&content);
                     }
                 }
             }
@@ -876,22 +1000,25 @@ impl GenaiClient {
         if let Some(data) = trailing.strip_prefix("data:") {
             let data = data.trim();
             if !data.is_empty() && data != "[DONE]" {
-                let parsed: GenerateContentResponse =
+                let parsed: InteractionSseEvent =
                     serde_json::from_str(data).map_err(|e| GenaiError::Json(e.to_string()))?;
-                if parsed.usage_metadata.is_some() {
-                    usage = parsed.usage_metadata;
-                }
-                if let Some(delta) = parsed.candidates.into_iter().find_map(|c| c.content) {
-                    merged = Some(merge_content(merged, delta));
-                    if let Some(ref m) = merged {
-                        on_chunk(m);
-                    }
+                acc.on_event(&parsed);
+                let content = acc.content();
+                if !content.parts.is_empty() {
+                    on_chunk(&content);
                 }
             }
         }
 
-        let content = merged.ok_or(GenaiError::EmptyResponse)?;
-        Ok(GenerateContentResult { content, usage })
+        let result = acc.into_result();
+        if result.content.parts.is_empty() {
+            return Err(GenaiError::EmptyResponse);
+        }
+        Ok(GenerateContentResult {
+            content: result.content,
+            usage: result.usage,
+            interaction_id: (!result.id.is_empty()).then_some(result.id),
+        })
     }
 }
 
@@ -1049,22 +1176,6 @@ fn store_model_features(key: String, features: ModelFeatures) {
         .insert(key, features);
 }
 
-/// Keep `thinkingConfig` only when the model supports thinking, and use the control that model accepts.
-fn apply_model_features(
-    model: &str,
-    features: Option<&ModelFeatures>,
-    mut config: GenerationConfig,
-) -> GenerationConfig {
-    let Some(requested) = config.thinking_config.take() else {
-        return config;
-    };
-    if !supports_thinking(model, features) {
-        return config;
-    }
-    config.thinking_config = Some(thinking_config_for_model(model, &requested));
-    config
-}
-
 fn supports_thinking(model: &str, features: Option<&ModelFeatures>) -> bool {
     match features.and_then(|features| features.thinking) {
         Some(thinking) => thinking,
@@ -1075,44 +1186,24 @@ fn supports_thinking(model: &str, features: Option<&ModelFeatures>) -> bool {
 /// Used when `models.get` omits `thinking` or the lookup fails.
 fn model_id_supports_thinking(model: &str) -> bool {
     let id = model_cache_key(model);
-    if id.starts_with("gemma-4") {
+    if id.contains("thinking") || id.starts_with("gemma-4") {
         return true;
     }
     if id.starts_with("gemma") {
         return false;
     }
-    id.starts_with("gemini-2.5") || id.starts_with("gemini-3") || id.contains("thinking")
+    match gemini_generation(&id) {
+        Some(major) if major >= 3 => true,
+        Some(2) => id.starts_with("gemini-2.5"),
+        _ => false,
+    }
 }
 
-/// Gemini 3 and Gemma 4 reject `thinkingBudget`. Gemini 2.5 rejects `thinkingLevel`.
-fn thinking_config_for_model(model: &str, requested: &ThinkingConfig) -> ThinkingConfig {
-    let id = model_cache_key(model);
-    let wants_off = requested.thinking_budget == Some(0)
-        || requested
-            .thinking_level
-            .as_deref()
-            .is_some_and(|level| level.eq_ignore_ascii_case("minimal"));
-    if id.starts_with("gemma") || id.starts_with("gemini-3") {
-        if wants_off {
-            ThinkingConfig::minimal()
-        } else if requested.thinking_level.is_some() {
-            ThinkingConfig {
-                thinking_budget: None,
-                include_thoughts: None,
-                thinking_level: requested.thinking_level.clone(),
-            }
-        } else {
-            ThinkingConfig::minimal()
-        }
-    } else if wants_off {
-        ThinkingConfig::disabled()
-    } else {
-        ThinkingConfig {
-            thinking_budget: requested.thinking_budget,
-            include_thoughts: requested.include_thoughts,
-            thinking_level: None,
-        }
-    }
+/// Leading generation of a `gemini-*` id. `gemini-2.5-flash` is 2, `gemini-4-argon` is 4.
+fn gemini_generation(id: &str) -> Option<u32> {
+    let rest = id.strip_prefix("gemini-")?;
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    digits.parse().ok()
 }
 
 #[derive(Debug, Default, Clone, Deserialize)]
@@ -1298,14 +1389,17 @@ mod tests {
     }
 
     #[test]
-    fn gemma_without_thinking_drops_thinking_config() {
+    fn supports_thinking_respects_model_flag() {
         let features = ModelFeatures {
             input_token_limit: 8192,
             thinking: Some(false),
         };
-        let config =
-            apply_model_features("gemma-3-27b-it", Some(&features), json_generation_config());
-        assert!(config.thinking_config.is_none());
+        assert!(!supports_thinking("gemma-3-27b-it", Some(&features)));
+        let features = ModelFeatures {
+            input_token_limit: 8192,
+            thinking: Some(true),
+        };
+        assert!(supports_thinking("gemini-2.5-flash", Some(&features)));
     }
 
     #[test]
@@ -1314,33 +1408,48 @@ mod tests {
             input_token_limit: 8192,
             thinking: None,
         };
-        let gemma =
-            apply_model_features("gemma-2-9b-it", Some(&features), json_generation_config());
-        assert!(gemma.thinking_config.is_none());
-        let flash = apply_model_features(
-            "gemini-2.5-flash",
-            Some(&features),
-            json_generation_config(),
-        );
-        let thinking = flash.thinking_config.expect("gemini 2.5 thinking");
-        assert_eq!(thinking.thinking_budget, Some(0));
-        assert!(thinking.thinking_level.is_none());
+        assert!(!supports_thinking("gemma-2-9b-it", Some(&features)));
+        assert!(supports_thinking("gemini-2.5-flash", Some(&features)));
+        assert!(supports_thinking("gemini-4-argon", Some(&features)));
+        assert!(supports_thinking("gemma-4-26b-a4b-it", Some(&features)));
     }
 
     #[test]
-    fn gemma_4_thinking_uses_level_not_budget() {
-        let features = ModelFeatures {
-            input_token_limit: 8192,
-            thinking: Some(true),
-        };
-        let config = apply_model_features(
-            "gemma-4-26b-a4b-it",
-            Some(&features),
-            json_generation_config(),
+    fn interaction_request_is_snake_case_and_stores() {
+        let body = GenaiClient::interaction_request(
+            "gemini-2.5-flash",
+            serde_json::json!("hello"),
+            Some("sys"),
+            1024,
+            &[],
+            Some("int_1".into()),
+            None,
+            true,
+            true,
         );
-        let thinking = config.thinking_config.expect("gemma 4 thinking");
-        assert_eq!(thinking.thinking_level.as_deref(), Some("minimal"));
-        assert!(thinking.thinking_budget.is_none());
+        let v = serde_json::to_value(&body).expect("json");
+        assert_eq!(v["model"], "gemini-2.5-flash");
+        assert_eq!(v["system_instruction"], "sys");
+        assert_eq!(v["previous_interaction_id"], "int_1");
+        assert_eq!(v["store"], true);
+        assert_eq!(v["stream"], true);
+        assert_eq!(v["generation_config"]["max_output_tokens"], 1024);
+        assert_eq!(v["generation_config"]["thinking_summaries"], "auto");
+        assert!(v.get("temperature").is_none());
+    }
+
+    #[test]
+    fn input_for_call_chains_last_user_only() {
+        let contents = vec![
+            Content::text(Role::User, "Hi"),
+            Content::text(Role::Model, "Hello"),
+            Content::text(Role::User, "Name?"),
+        ];
+        let chained = GenaiClient::input_for_call(&contents, Some("int_1"));
+        assert_eq!(chained["type"], "text");
+        assert_eq!(chained["text"], "Name?");
+        let bootstrap = GenaiClient::input_for_call(&contents, None);
+        assert!(bootstrap.as_array().unwrap().len() >= 3);
     }
 
     #[test]
@@ -1365,17 +1474,6 @@ mod tests {
     fn count_tokens_response_reads_total() {
         let parsed: CountTokensResponse = serde_json::from_str(r#"{"totalTokens":2048}"#).unwrap();
         assert_eq!(parsed.total_tokens, 2048);
-    }
-
-    fn json_generation_config() -> GenerationConfig {
-        GenerationConfig {
-            temperature: Some(0.2),
-            max_output_tokens: Some(1024),
-            response_mime_type: Some("application/json".into()),
-            response_schema: None,
-            response_json_schema: Some(serde_json::json!({"type": "object"})),
-            thinking_config: Some(ThinkingConfig::disabled()),
-        }
     }
 }
 

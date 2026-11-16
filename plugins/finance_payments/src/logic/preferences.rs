@@ -1,15 +1,19 @@
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ConnectionTrait, EntityTrait};
+use sea_orm::{
+    ActiveModelTrait,
+    ActiveValue::{NotSet, Set},
+    ConnectionTrait, EntityTrait, QuerySelect,
+};
 
 use crate::entities::payment_preferences::{self, Entity as PaymentPreferencesEntity};
 
 pub async fn load_payment_preferences<C: ConnectionTrait>(db: &C) -> payment_preferences::Model {
-    if let Ok(Some(p)) = PaymentPreferencesEntity::find_by_id(1i64).one(db).await {
+    if let Ok(Some(p)) = PaymentPreferencesEntity::find().limit(1).one(db).await {
         return p;
     }
     let now = Utc::now();
     let am = payment_preferences::ActiveModel {
-        id: Set(1),
+        id: NotSet,
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
         payment_number_format: Set(None),

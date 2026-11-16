@@ -71,6 +71,11 @@
 //! is skipped. After every installed plugin has migrated, the mounted app retries the
 //! keys those plugins registered.
 //!
+//! `after:` names a function that runs at the end of every migration pass, including
+//! one where every migration is already applied. Use it for schema that has to cover
+//! tables added by a later migration, such as audit triggers. `foreign_keys` comes
+//! before `after` when both are set.
+//!
 //! # Running migrations
 //!
 //! Lariv merges all plugin migrators into one composite migrator. Apply pending migrations:

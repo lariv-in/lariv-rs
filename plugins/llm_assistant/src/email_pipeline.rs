@@ -55,9 +55,17 @@ pub fn process_inbound_email(
     subject: String,
     raw: Vec<u8>,
 ) {
+    let actor = lariv_core::db::db_actor();
     tokio::spawn(async move {
-        if let Err(e) = process_inbound_email_inner(&state, uid, &from, &subject, &raw).await {
-            tracing::error!(target: LOG_TARGET, "email pipeline uid={uid}: {e:#}");
+        let work = async move {
+            if let Err(e) = process_inbound_email_inner(&state, uid, &from, &subject, &raw).await {
+                tracing::error!(target: LOG_TARGET, "email pipeline uid={uid}: {e:#}");
+            }
+        };
+        if let Some(user_id) = actor {
+            lariv_core::db::with_db_actor(user_id, work).await;
+        } else {
+            work.await;
         }
     });
 }
@@ -95,7 +103,8 @@ async fn process_inbound_email_inner(
         return Ok(());
     }
 
-    let judgment = match run_filter_judgment(state, filter, &parsed).await {
+    let owner_id = prefs.email_owner_user_id.filter(|id| *id > 0);
+    let judgment = match run_filter_judgment(state, filter, &parsed, owner_id).await {
         Ok(j) => j,
         Err(e) => {
             tracing::warn!(target: LOG_TARGET, uid, "filter LLM failed: {e:#}; skipping mail");
@@ -115,7 +124,6 @@ async fn process_inbound_email_inner(
         return Ok(());
     }
 
-    let owner_id = prefs.email_owner_user_id.filter(|id| *id > 0);
     let Some(owner_id) = owner_id else {
         tracing::error!(target: LOG_TARGET, "email owner not configured; skipping uid={uid}");
         return Ok(());
@@ -217,6 +225,7 @@ async fn run_filter_judgment(
     state: &LlmAssistantState,
     filter: &str,
     parsed: &ParsedEmail,
+    owner_id: Option<i64>,
 ) -> anyhow::Result<FilterJudgment> {
     let system = format!(
         "You triage inbound email for an assistant inbox.\n\n\
@@ -241,8 +250,8 @@ async fn run_filter_judgment(
     user.push_str(&parsed.body_text.chars().take(8000).collect::<String>());
 
     let genai = state.genai_with_key().await?;
-    let raw = genai
-        .generate_json(
+    let generated = genai
+        .generate_json_with_usage(
             &system,
             &user,
             serde_json::from_str(FILTER_SCHEMA)?,
@@ -250,6 +259,12 @@ async fn run_filter_judgment(
         )
         .await
         .map_err(|e| anyhow::anyhow!("filter LLM: {e}"))?;
+    if let Some(owner_id) = owner_id
+        && let Some(tokens) = generated.usage.as_ref().and_then(|u| u.billed_tokens())
+    {
+        crate::token_usage::record_token_usage(&state.db, owner_id, genai.model(), tokens).await;
+    }
+    let raw = generated.text;
     serde_json::from_str(&raw).map_err(|e| anyhow::anyhow!("filter JSON: {e}: {raw}"))
 }
 

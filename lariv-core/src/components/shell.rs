@@ -18,4 +18,7 @@ pub use topbar::{ShellTopbar, shell_topbar};
 pub use vendor::{
     apexcharts_script, bundle_css_href, bundle_js_href, mount_vendor_bundles, vendor_head,
 };
-pub(crate) use vendor::{codemirror_js_href, maplibre_css_href, maplibre_js_href};
+pub(crate) use vendor::{
+    codemirror_js_href, jsondiffpatch_css_href, jsondiffpatch_js_href, maplibre_css_href,
+    maplibre_js_href,
+};

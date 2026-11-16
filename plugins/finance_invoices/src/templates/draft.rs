@@ -397,7 +397,7 @@ impl DraftInvoiceDetailPage {
     }
 
     fn menu(&self) -> Markup {
-        draft_invoice_detail_menu(self.id, &self.number)
+        draft_invoice_detail_menu(self.id, &self.number, "detail")
     }
 }
 

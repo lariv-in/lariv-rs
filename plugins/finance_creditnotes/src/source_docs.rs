@@ -1,6 +1,6 @@
 //! Source document type registration for credit notes.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
@@ -20,6 +20,33 @@ use crate::{
     entities::credit_note::{CREDIT_NOTE_SOURCE_DOC_TYPE, Entity as CreditNoteEntity},
     routes::CreditNoteDetailRouteTag,
 };
+
+/// Recomputed journal for a credit note that reverses a cancelled invoice.
+///
+/// Invoices register this. Credit notes that do not reverse an invoice keep the
+/// stored reversal.
+#[async_trait]
+pub trait CreditNoteJournalLines: Send + Sync {
+    async fn lines_for_credit_note(
+        &self,
+        db: &DatabaseConnection,
+        credit_note_id: i64,
+    ) -> Result<Option<SourceDocJournalSpec>>;
+}
+
+static CREDIT_NOTE_JOURNAL_LINES: OnceLock<Arc<dyn CreditNoteJournalLines>> = OnceLock::new();
+
+/// Install the cancelled-invoice recalculation. The first registration wins.
+pub fn register_credit_note_journal_lines(provider: Arc<dyn CreditNoteJournalLines>) {
+    let already_registered = CREDIT_NOTE_JOURNAL_LINES.set(provider).is_err();
+    if already_registered {
+        return;
+    }
+}
+
+fn credit_note_journal_lines() -> Option<Arc<dyn CreditNoteJournalLines>> {
+    CREDIT_NOTE_JOURNAL_LINES.get().cloned()
+}
 
 #[derive(Clone, Copy, Default)]
 pub struct Hook;
@@ -105,6 +132,15 @@ impl SourceDocType for CreditNoteSourceDocType {
         if model.journal_entry_id <= 0 {
             bail!("credit note {id} does not reverse a journal entry");
         }
+        if let Some(provider) = credit_note_journal_lines()
+            && let Some(mut spec) = provider.lines_for_credit_note(db, id).await?
+        {
+            spec.datetime = model.datetime;
+            if spec.lines.is_empty() {
+                bail!("credit note {id} produced no journal lines");
+            }
+            return Ok(spec);
+        }
         let items = JournalEntryItemEntity::find()
             .filter(journal_entry_item::Column::JournalEntryId.eq(model.journal_entry_id))
             .order_by_asc(journal_entry_item::Column::Id)
@@ -136,32 +172,82 @@ impl SourceDocType for CreditNoteSourceDocType {
         _journal_id: i64,
         journal_entry_id: i64,
         item_ids: &[i64],
-        _line_item_indexes: &[usize],
+        line_item_indexes: &[usize],
     ) -> Result<()> {
         let model = CreditNoteEntity::find_by_id(backing_id)
             .one(txn)
             .await?
             .with_context(|| format!("credit note {backing_id} not found"))?;
-        let old_items = JournalEntryItemEntity::find()
-            .filter(journal_entry_item::Column::JournalEntryId.eq(model.reversed_journal_entry_id))
-            .order_by_asc(journal_entry_item::Column::Id)
-            .all(txn)
-            .await?;
-        if old_items.len() != item_ids.len() {
-            bail!(
-                "credit note {backing_id} reversal has {} lines but the new entry has {}",
-                old_items.len(),
-                item_ids.len()
-            );
-        }
-        for (old, new_id) in old_items.iter().zip(item_ids.iter().copied()) {
-            txn.execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "UPDATE cancelled_invoice_lines SET journal_entry_item_id = $1, updated_at = NOW() \
-                 WHERE journal_entry_item_id = $2",
-                [new_id.into(), old.id.into()],
-            ))
-            .await?;
+        if line_item_indexes.is_empty() {
+            let old_items = JournalEntryItemEntity::find()
+                .filter(
+                    journal_entry_item::Column::JournalEntryId.eq(model.reversed_journal_entry_id),
+                )
+                .order_by_asc(journal_entry_item::Column::Id)
+                .all(txn)
+                .await?;
+            if old_items.len() != item_ids.len() {
+                bail!(
+                    "credit note {backing_id} reversal has {} lines but the new entry has {}",
+                    old_items.len(),
+                    item_ids.len()
+                );
+            }
+            for (old, new_id) in old_items.iter().zip(item_ids.iter().copied()) {
+                txn.execute_raw(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "UPDATE cancelled_invoice_lines SET journal_entry_item_id = $1, updated_at = NOW() \
+                     WHERE journal_entry_item_id = $2",
+                    [new_id.into(), old.id.into()],
+                ))
+                .await?;
+            }
+        } else {
+            let cancelled_id: Option<i64> = txn
+                .query_one_raw(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "SELECT id FROM cancelled_invoices WHERE credit_note_id = $1 LIMIT 1",
+                    [backing_id.into()],
+                ))
+                .await?
+                .map(|row| row.try_get("", "id"))
+                .transpose()
+                .context("read cancelled invoice id")?;
+            let cancelled_id = cancelled_id.ok_or_else(|| {
+                anyhow::anyhow!("credit note {backing_id} has no cancelled invoice to retarget")
+            })?;
+            let line_rows = txn
+                .query_all_raw(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "SELECT id FROM cancelled_invoice_lines WHERE cancelled_invoice_id = $1 ORDER BY id ASC",
+                    [cancelled_id.into()],
+                ))
+                .await?;
+            let line_ids: Vec<i64> = line_rows
+                .into_iter()
+                .map(|row| row.try_get("", "id"))
+                .collect::<Result<Vec<_>, _>>()
+                .context("read cancelled invoice line ids")?;
+            if line_ids.len() != line_item_indexes.len() {
+                bail!(
+                    "cancelled invoice {cancelled_id} line count {} does not match {} journal item indexes",
+                    line_ids.len(),
+                    line_item_indexes.len()
+                );
+            }
+            for (line_id, index) in line_ids.into_iter().zip(line_item_indexes.iter().copied()) {
+                let item_id = item_ids.get(index).copied().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "cancelled invoice {cancelled_id} journal item index {index} is out of range"
+                    )
+                })?;
+                txn.execute_raw(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "UPDATE cancelled_invoice_lines SET journal_entry_item_id = $1, updated_at = NOW() WHERE id = $2",
+                    [item_id.into(), line_id.into()],
+                ))
+                .await?;
+            }
         }
         let mut am: crate::entities::credit_note::ActiveModel = model.into();
         am.reversed_journal_entry_id = Set(journal_entry_id);

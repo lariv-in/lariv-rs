@@ -13,11 +13,13 @@ use lariv_rs::plugins::finance_customers;
 use lariv_rs::plugins::forms;
 use lariv_rs::plugins::inventory;
 use lariv_rs::plugins::llm_assistant;
+use lariv_rs::plugins::logging;
 use lariv_rs::plugins::mdbook;
 use lariv_rs::plugins::meets;
 use lariv_rs::plugins::otp;
 use lariv_rs::plugins::pwa;
 use lariv_rs::plugins::todo;
+use lariv_rs::plugins::user_log;
 use lariv_rs::plugins::users;
 use lariv_rs::plugins::website;
 use tracing_subscriber::EnvFilter;
@@ -53,6 +55,12 @@ async fn main() -> anyhow::Result<()> {
     // After dashboard so website can own `/` (CMS home) over the auth redirect.
     let app = website::install(app);
     let app = mdbook::install(app);
+    // Logging's migration runs after every other plugin has created its tables.
+    // The session hook must be installed before load_config opens the pool.
+    // user_log only reads `logs` and adds no tables.
+    let app = logging::install(app);
+    logging::install_session_hook();
+    let app = user_log::install(app);
 
     let app = app.load_config("config.toml").await?;
     let app = app.mount();

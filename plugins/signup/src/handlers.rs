@@ -65,23 +65,26 @@ pub async fn signup_post(
     )
     .await
     {
-        Ok(user) => match auth::record_login(&state.db, user.id)
-            .await
-            .and_then(|_| auth::login_token(&user, &state.signing_key, &state.jwt_issuer))
-        {
-            Ok(token) => {
-                let mut response = htmx.redirect(&UsersLoginSuccessRouteTag.url());
-                set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));
-                response
+        Ok(user) => {
+            if let Err(err) = auth::record_login(&state.db, user.id).await {
+                tracing::error!(user_id = user.id, error = %err, "failed to record login");
             }
-            Err(_) => {
-                let page = SignupPage {
-                    error: "Account created but session failed".into(),
-                };
-                html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
-                    .into_response()
+            match auth::login_token(&user, &state.signing_key, &state.jwt_issuer) {
+                Ok(token) => {
+                    let mut response = htmx.redirect(&UsersLoginSuccessRouteTag.url());
+                    set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));
+                    response
+                }
+                Err(err) => {
+                    tracing::error!(user_id = user.id, error = %err, "failed to issue login token");
+                    let page = SignupPage {
+                        error: "Account created but session failed".into(),
+                    };
+                    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
+                        .into_response()
+                }
             }
-        },
+        }
         Err(e) => {
             let page = SignupPage {
                 error: e.to_string(),
@@ -109,23 +112,26 @@ pub async fn login_post(
     HtmlFormBody(form): HtmlFormBody<LoginForm>,
 ) -> Response {
     match auth::authenticate(&state.db, &form.email, &form.password).await {
-        Ok(user) => match auth::record_login(&state.db, user.id)
-            .await
-            .and_then(|_| auth::login_token(&user, &state.signing_key, &state.jwt_issuer))
-        {
-            Ok(token) => {
-                let mut response = htmx.redirect(&UsersLoginSuccessRouteTag.url());
-                set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));
-                response
+        Ok(user) => {
+            if let Err(err) = auth::record_login(&state.db, user.id).await {
+                tracing::error!(user_id = user.id, error = %err, "failed to record login");
             }
-            Err(_) => {
-                let page = LoginPageWithSignup {
-                    error: "Could not create session".into(),
-                };
-                html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
-                    .into_response()
+            match auth::login_token(&user, &state.signing_key, &state.jwt_issuer) {
+                Ok(token) => {
+                    let mut response = htmx.redirect(&UsersLoginSuccessRouteTag.url());
+                    set_auth_cookie(response.headers_mut(), &token, is_secure_request(&headers));
+                    response
+                }
+                Err(err) => {
+                    tracing::error!(user_id = user.id, error = %err, "failed to issue login token");
+                    let page = LoginPageWithSignup {
+                        error: "Could not create session".into(),
+                    };
+                    html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::default())
+                        .into_response()
+                }
             }
-        },
+        }
         Err(_) => {
             let page = LoginPageWithSignup {
                 error: "Invalid email or password".into(),

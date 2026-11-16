@@ -105,6 +105,15 @@ where
     T: Send,
     F: std::future::Future<Output = T> + Send,
 {
+    // Read the request user before leaving its thread. The blocking thread does
+    // not see task-locals, and row-level security keys off this id.
+    let actor = crate::db::db_actor_resolved();
+    let fut = async move {
+        match actor {
+            Some(user_id) => crate::db::with_db_actor(user_id, fut).await,
+            None => fut.await,
+        }
+    };
     match tokio::runtime::Handle::try_current() {
         Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
             tokio::task::block_in_place(|| handle.block_on(fut))

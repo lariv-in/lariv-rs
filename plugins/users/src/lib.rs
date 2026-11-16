@@ -59,6 +59,7 @@ pub mod seed;
 pub mod session;
 pub mod state;
 pub mod templates;
+pub mod user_detail_menu;
 
 #[cfg(test)]
 mod tests;
@@ -93,6 +94,8 @@ define_plugin_install! {
         cap_hook(role_authorization::RoleAuthorizationTag, role_authorization::RoleAuthorizationCap, routes::RoleHook),
         cap_attach(role_registry::RoleRegistryTag, role_registry::RoleRegistryCap, role_registry::RoleRegistryCap::<frunk::HNil>::new()),
         cap_hook(role_registry::RoleRegistryTag, role_registry::RoleRegistryCap, roles::Hook),
+        cap_attach(user_detail_menu::UserDetailMenuTag, user_detail_menu::UserDetailMenuCap, user_detail_menu::UserDetailMenuCap::<frunk::HNil>::new()),
+        cap_hook(user_detail_menu::UserDetailMenuTag, user_detail_menu::UserDetailMenuCap, user_detail_menu::BaseHook),
         apps(apps::Hook),
         export(export::ExportHook),
         migrations(migrations::Hook),

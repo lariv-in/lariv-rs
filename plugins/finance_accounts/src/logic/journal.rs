@@ -236,20 +236,43 @@ pub async fn update_journal_entry_lines(
     Ok(())
 }
 
-/// Create one journal and move every source document onto a new entry in it.
+/// Context plus every underlying cause. `Display` on the outer error is only the wrapper.
+pub fn error_text(err: &anyhow::Error) -> String {
+    let mut parts = Vec::new();
+    for cause in err.chain() {
+        let msg = cause.to_string();
+        if parts.last().is_none_or(|prev| prev != &msg) {
+            parts.push(msg);
+        }
+    }
+    parts.join(": ")
+}
+
+/// Create one journal, rebuild the selected journal's entries from current
+/// templates, and point every remaining foreign key at the new journal.
 ///
-/// Each entry is stored on a new `source_docs` row. The backing document is
-/// repointed at that entry, then the previous entry and source-doc row are
-/// removed. Line computation reads committed data on `db`. Writes stay on one
-/// transaction.
-pub async fn generate_journal_from_source_docs(
+/// Line computation reads committed data on `db`, so product, tax, and payment
+/// templates already saved are what get posted. Writes stay on one transaction.
+/// The old journal row stays.
+pub async fn migrate_to_new_journal(
     db: &DatabaseConnection,
     registry: &SourceDocRegistry,
     name: String,
     is_active: bool,
     currency_id: i64,
+    old_journal_id: i64,
 ) -> Result<journal::Model> {
+    if old_journal_id <= 0 {
+        bail!("select the journal to migrate");
+    }
     let txn = db.begin().await?;
+    if JournalEntity::find_by_id(old_journal_id)
+        .one(&txn)
+        .await?
+        .is_none()
+    {
+        bail!("journal {old_journal_id} not found");
+    }
     let now = Utc::now();
     let saved = journal::ActiveModel {
         created_at: Set(Some(now)),
@@ -263,103 +286,177 @@ pub async fn generate_journal_from_source_docs(
     .insert(&txn)
     .await?;
 
-    let docs = source_doc::Entity::find()
-        .order_by_asc(source_doc::Column::Id)
-        .all(&txn)
-        .await?;
-
-    for doc in docs {
-        let typ = doc.source_doc_type.trim();
-        if typ.is_empty() {
-            bail!("source document {} has an empty type", doc.id);
-        }
-        if doc.source_doc_id <= 0 {
-            bail!(
-                "source document {} ({typ}) is not linked to a backing document",
-                doc.id
-            );
-        }
-        let loader = registry
-            .get(typ)
-            .ok_or_else(|| anyhow!("source document {} has unknown type {typ:?}", doc.id))?;
-        let spec = loader
-            .journal_lines(db, doc.source_doc_id)
-            .await
-            .with_context(|| {
-                format!(
-                    "journal lines for source document {} ({typ} #{})",
-                    doc.id, doc.source_doc_id
-                )
-            })?;
-        if spec.lines.is_empty() {
-            bail!(
-                "source document {} ({typ} #{}) produced no journal lines",
-                doc.id,
-                doc.source_doc_id
-            );
-        }
-        let old_entry_ids = query_i64_col(
-            &txn,
-            "SELECT id FROM journal_entries WHERE source_doc_id = $1",
-            doc.id,
-        )
-        .await?;
-        let new_doc_id = create_source_doc(&txn, typ).await?;
-        update_source_doc_id(&txn, new_doc_id, doc.source_doc_id).await?;
-        let line_item_indexes = spec.line_item_indexes.clone();
-        let lines: Vec<JournalLineSpec> = spec
-            .lines
-            .into_iter()
-            .map(|line| JournalLineSpec {
-                account_id: line.account_id,
-                amount: line.amount,
-            })
-            .collect();
-        let (new_entry_id, new_items) =
-            insert_journal_entry(&txn, spec.datetime, saved.id, new_doc_id, &lines)
-                .await
-                .with_context(|| {
-                    format!(
-                        "insert journal entry for source document {} ({typ} #{})",
-                        doc.id, doc.source_doc_id
-                    )
-                })?;
-        let item_ids: Vec<i64> = new_items.iter().map(|item| item.id).collect();
-        loader
-            .adopt_journal_entry(
-                &txn,
-                doc.source_doc_id,
-                saved.id,
-                new_entry_id,
-                &item_ids,
-                &line_item_indexes,
-            )
-            .await
-            .with_context(|| {
-                format!(
-                    "repoint source document {} ({typ} #{}) at journal entry {new_entry_id}",
-                    doc.id, doc.source_doc_id
-                )
-            })?;
-        for old_entry_id in old_entry_ids {
-            delete_where(
-                &txn,
-                "DELETE FROM journal_entry_items WHERE journal_entry_id = $1",
-                old_entry_id,
-            )
-            .await?;
-            delete_where(
-                &txn,
-                "DELETE FROM journal_entries WHERE id = $1",
-                old_entry_id,
-            )
-            .await?;
-        }
-        delete_where(&txn, "DELETE FROM source_docs WHERE id = $1", doc.id).await?;
+    let doc_ids = query_i64_col(
+        &txn,
+        "SELECT DISTINCT source_doc_id FROM journal_entries WHERE journal_id = $1 ORDER BY source_doc_id",
+        old_journal_id,
+    )
+    .await?;
+    for doc_id in doc_ids {
+        let Some(doc) = source_doc::Entity::find_by_id(doc_id).one(&txn).await? else {
+            bail!("source document {doc_id} not found");
+        };
+        rebuild_source_doc_on_journal(&txn, db, registry, &doc, saved.id).await?;
     }
 
+    repoint_journal_foreign_keys(&txn, old_journal_id, saved.id).await?;
     txn.commit().await?;
     Ok(saved)
+}
+
+/// Replace one source document's entries with lines from its current template.
+async fn rebuild_source_doc_on_journal(
+    txn: &sea_orm::DatabaseTransaction,
+    db: &DatabaseConnection,
+    registry: &SourceDocRegistry,
+    doc: &source_doc::Model,
+    journal_id: i64,
+) -> Result<()> {
+    let typ = doc.source_doc_type.trim();
+    if typ.is_empty() {
+        bail!("source document {} has an empty type", doc.id);
+    }
+    if doc.source_doc_id <= 0 {
+        bail!(
+            "source document {} ({typ}) is not linked to a backing document",
+            doc.id
+        );
+    }
+    let loader = registry
+        .get(typ)
+        .ok_or_else(|| anyhow!("source document {} has unknown type {typ:?}", doc.id))?;
+    let spec = loader
+        .journal_lines(db, doc.source_doc_id)
+        .await
+        .with_context(|| {
+            format!(
+                "journal lines for source document {} ({typ} #{})",
+                doc.id, doc.source_doc_id
+            )
+        })?;
+    if spec.lines.is_empty() {
+        bail!(
+            "source document {} ({typ} #{}) produced no journal lines",
+            doc.id,
+            doc.source_doc_id
+        );
+    }
+    let old_entry_ids = query_i64_col(
+        txn,
+        "SELECT id FROM journal_entries WHERE source_doc_id = $1",
+        doc.id,
+    )
+    .await?;
+    let new_doc_id = create_source_doc(txn, typ).await?;
+    update_source_doc_id(txn, new_doc_id, doc.source_doc_id).await?;
+    let line_item_indexes = spec.line_item_indexes.clone();
+    let lines: Vec<JournalLineSpec> = spec
+        .lines
+        .into_iter()
+        .map(|line| JournalLineSpec {
+            account_id: line.account_id,
+            amount: line.amount,
+        })
+        .collect();
+    let (new_entry_id, new_items) =
+        insert_journal_entry(txn, spec.datetime, journal_id, new_doc_id, &lines)
+            .await
+            .with_context(|| {
+                format!(
+                    "insert journal entry for source document {} ({typ} #{})",
+                    doc.id, doc.source_doc_id
+                )
+            })?;
+    let item_ids: Vec<i64> = new_items.iter().map(|item| item.id).collect();
+    loader
+        .adopt_journal_entry(
+            txn,
+            doc.source_doc_id,
+            journal_id,
+            new_entry_id,
+            &item_ids,
+            &line_item_indexes,
+        )
+        .await
+        .with_context(|| {
+            format!(
+                "repoint source document {} ({typ} #{}) at journal entry {new_entry_id}",
+                doc.id, doc.source_doc_id
+            )
+        })?;
+    for old_entry_id in old_entry_ids {
+        delete_where(
+            txn,
+            "DELETE FROM journal_entry_items WHERE journal_entry_id = $1",
+            old_entry_id,
+        )
+        .await?;
+        delete_where(
+            txn,
+            "DELETE FROM journal_entries WHERE id = $1",
+            old_entry_id,
+        )
+        .await?;
+    }
+    delete_where(txn, "DELETE FROM source_docs WHERE id = $1", doc.id).await?;
+    Ok(())
+}
+
+/// `UPDATE` every column whose foreign key references `journals(id)`.
+async fn repoint_journal_foreign_keys<C: ConnectionTrait>(
+    db: &C,
+    old_journal_id: i64,
+    new_journal_id: i64,
+) -> Result<()> {
+    if old_journal_id == new_journal_id {
+        return Ok(());
+    }
+    let rows = db
+        .query_all_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            r#"SELECT DISTINCT n.nspname AS schema_name,
+                      rel.relname AS table_name,
+                      att.attname AS column_name
+                 FROM pg_constraint AS c
+                 JOIN pg_class AS rel ON rel.oid = c.conrelid
+                 JOIN pg_namespace AS n ON n.oid = rel.relnamespace
+                 JOIN LATERAL unnest(c.conkey) AS cols(attnum) ON true
+                 JOIN pg_attribute AS att
+                   ON att.attrelid = c.conrelid
+                  AND att.attnum = cols.attnum
+                  AND NOT att.attisdropped
+                WHERE c.contype = 'f'
+                  AND c.confrelid = 'public.journals'::regclass
+                  AND n.nspname <> 'pg_catalog'"#
+                .to_string(),
+        ))
+        .await?;
+    for row in rows {
+        let schema: String = row.try_get("", "schema_name")?;
+        let table: String = row.try_get("", "table_name")?;
+        let column: String = row.try_get("", "column_name")?;
+        let sql = format!(
+            "UPDATE {}.{} SET {} = $1 WHERE {} = $2",
+            quote_ident(&schema),
+            quote_ident(&table),
+            quote_ident(&column),
+            quote_ident(&column),
+        );
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            &sql,
+            [new_journal_id.into(), old_journal_id.into()],
+        ))
+        .await
+        .with_context(|| {
+            format!("repoint {schema}.{table}.{column} from journal {old_journal_id}")
+        })?;
+    }
+    Ok(())
+}
+
+fn quote_ident(name: &str) -> String {
+    format!("\"{}\"", name.replace('"', "\"\""))
 }
 
 pub async fn create_journal_entry_with_lines(
@@ -531,6 +628,95 @@ pub async fn delete_journal_entry_recursive(db: &DatabaseConnection, entry_id: i
     apply_cascade_deletes(&txn, &graph).await?;
     txn.commit().await?;
     Ok(())
+}
+
+/// What `confirm_delete_journal_entry` would permanently remove.
+///
+/// `can_confirm` is false when the journal is immutable or the cascade cannot be listed.
+pub async fn journal_entry_delete_request(
+    db: &DatabaseConnection,
+    entry_id: i64,
+) -> Result<serde_json::Value, String> {
+    let entry = JournalEntryEntity::find_by_id(entry_id)
+        .one(db)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("journal entry {entry_id} not found"))?;
+    let journal = JournalEntity::find_by_id(entry.journal_id)
+        .one(db)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("journal {} not found", entry.journal_id))?;
+    if !journal.is_mutable {
+        return Ok(serde_json::json!({
+            "journal_entry_id": entry.id,
+            "journal_id": journal.id,
+            "can_confirm": false,
+            "error": "This journal is immutable. Enable Mutable on the journal edit page before deleting entries.",
+            "deletes": [],
+        }));
+    }
+    let (deletes, error) = journal_entry_cascade_items(db, entry.id).await;
+    Ok(serde_json::json!({
+        "journal_entry_id": entry.id,
+        "journal_id": journal.id,
+        "can_confirm": error.is_none(),
+        "error": error,
+        "deletes": deletes,
+    }))
+}
+
+/// Delete one journal entry after the same checks as the delete button.
+pub async fn delete_mutable_journal_entry(
+    db: &DatabaseConnection,
+    entry_id: i64,
+) -> Result<(), String> {
+    let entry = JournalEntryEntity::find_by_id(entry_id)
+        .one(db)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("journal entry {entry_id} not found"))?;
+    let journal = JournalEntity::find_by_id(entry.journal_id)
+        .one(db)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("journal {} not found", entry.journal_id))?;
+    if !journal.is_mutable {
+        return Err(
+            "This journal is immutable. Enable Mutable on the journal edit page before deleting entries."
+                .into(),
+        );
+    }
+    delete_journal_entry_recursive(db, entry.id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+/// Records that deleting this journal entry would remove, with an error when the list cannot be built.
+pub async fn journal_entry_cascade_items(
+    db: &DatabaseConnection,
+    entry_id: i64,
+) -> (Vec<serde_json::Value>, Option<String>) {
+    let registry = crate::source_doc_registry::installed_source_doc_registry();
+    match collect_journal_entry_cascade(db, entry_id).await {
+        Ok(graph) => match cascade_delete_preview(db, &registry, &graph).await {
+            Ok(items) => (
+                items
+                    .into_iter()
+                    .map(|item| {
+                        serde_json::json!({
+                            "kind": item.kind,
+                            "label": item.label,
+                            "url": item.url,
+                        })
+                    })
+                    .collect(),
+                None,
+            ),
+            Err(error) => (Vec::new(), Some(error.to_string())),
+        },
+        Err(error) => (Vec::new(), Some(error.to_string())),
+    }
 }
 
 /// Labeled rows for the delete confirmation modal.

@@ -238,6 +238,11 @@ impl<L> App<L> {
             if let Ok(url) = std::env::var("DATABASE_URL") {
                 app_cfg.database_url = url;
             }
+            if let Ok(url) = std::env::var("ADMIN_DATABASE_URL") {
+                if !url.is_empty() {
+                    app_cfg.admin_database_url = Some(url);
+                }
+            }
             if let Ok(bind) = std::env::var("BIND") {
                 app_cfg.bind = Some(bind);
             }
@@ -272,10 +277,18 @@ impl<L> App<L> {
 
 impl<M> MountedApp<M> {
     /// Run registered migrators (requires [`DbTag`]).
-    pub async fn run_migrations<MigIdx, DbIdx, Migrators>(&self) -> Result<(), DbErr>
+    pub async fn run_migrations<MigIdx, DbIdx, Migrators, CfgIdx, Configs, AppCfgIdx>(
+        &self,
+    ) -> Result<(), DbErr>
     where
         M: GetByTag<MigrationTag, MigIdx, Value = MigrationCapability<Migrators>>,
         M: GetByTag<DbTag, DbIdx, Value = crate::db::DbState>,
+        M: GetByTag<
+                crate::config::ConfigTag,
+                CfgIdx,
+                Value = crate::config::ConfigCapability<Configs>,
+            >,
+        Configs: GetByTag<crate::config::AppConfigTag, AppCfgIdx, Value = crate::config::AppConfig>,
         Migrators: RunMigrations + Clone,
     {
         crate::migration::run_migrations(self).await

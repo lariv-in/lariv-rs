@@ -56,6 +56,8 @@ pub mod plugins {
     pub use lariv_plugin_finance_indian as finance_indian;
     #[cfg(feature = "plugin-finance-invoices")]
     pub use lariv_plugin_finance_invoices as finance_invoices;
+    #[cfg(feature = "plugin-finance-invoices-log")]
+    pub use lariv_plugin_finance_invoices_log as finance_invoices_log;
     #[cfg(feature = "plugin-finance-payments")]
     pub use lariv_plugin_finance_payments as finance_payments;
     #[cfg(feature = "plugin-finance-products")]
@@ -86,6 +88,8 @@ pub mod plugins {
     pub use lariv_plugin_llm_assistant as llm_assistant;
     #[cfg(feature = "plugin-llm-assistant-tester")]
     pub use lariv_plugin_llm_assistant_tester as llm_assistant_tester;
+    #[cfg(feature = "plugin-logging")]
+    pub use lariv_plugin_logging as logging;
     #[cfg(feature = "plugin-mdbook")]
     pub use lariv_plugin_mdbook as mdbook;
     #[cfg(feature = "plugin-meets")]
@@ -102,6 +106,8 @@ pub mod plugins {
     pub use lariv_plugin_tasks as tasks;
     #[cfg(feature = "plugin-todo")]
     pub use lariv_plugin_todo as todo;
+    #[cfg(feature = "plugin-user-log")]
+    pub use lariv_plugin_user_log as user_log;
     #[cfg(feature = "plugin-users")]
     pub use lariv_plugin_users as users;
     #[cfg(feature = "plugin-website")]

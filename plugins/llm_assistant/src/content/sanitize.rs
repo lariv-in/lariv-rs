@@ -71,7 +71,7 @@ pub fn sanitize_content_parts_for_genai_chat(content: &mut Content) {
 
 /// Replace `inline_data` / `file_data` parts with a short text stub.
 ///
-/// Used on tool-loop follow-up `generateContent` calls so Gemini does not
+/// Used on tool-loop bootstrap Interactions calls so Gemini does not
 /// re-process large attachments every round. DB / UI history keep the originals.
 pub fn elide_attachment_parts_for_api(contents: &mut [Content]) {
     for content in contents.iter_mut() {

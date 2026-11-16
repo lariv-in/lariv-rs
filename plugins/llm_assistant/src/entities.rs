@@ -24,6 +24,7 @@ pub mod session_message_part;
 pub mod session_vnode_read;
 pub mod skill;
 pub mod skill_file_link;
+pub mod token_usage;
 pub mod video_metadata;
 
 pub use cron_job::Entity as CronJobEntity;
@@ -44,5 +45,7 @@ pub use skill::Entity as SkillEntity;
 pub use skill::Model as Skill;
 pub use skill_file_link::Entity as SkillFileLinkEntity;
 pub use skill_file_link::Model as SkillFileLink;
+pub use token_usage::Entity as TokenUsageEntity;
+pub use token_usage::Model as TokenUsage;
 pub use video_metadata::Entity as VideoMetadataEntity;
 pub use video_metadata::Model as VideoMetadata;

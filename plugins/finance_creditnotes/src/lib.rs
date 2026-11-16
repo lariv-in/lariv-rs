@@ -12,6 +12,8 @@ pub mod migrations;
 pub mod routes;
 pub mod scope;
 pub mod source_docs;
+
+pub use source_docs::{CreditNoteJournalLines, register_credit_note_journal_lines};
 pub mod state;
 pub mod templates;
 
