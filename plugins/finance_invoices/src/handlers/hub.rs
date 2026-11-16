@@ -61,6 +61,17 @@ fn format_hub_delivery_date(d: Option<chrono::NaiveDate>, dates: &InvoiceDateFor
     dates.calendar_or_dash(d)
 }
 
+fn format_hub_posted_at(
+    posted_at: Option<chrono::DateTime<chrono::Utc>>,
+    dates: &InvoiceDateFormats,
+    tz: &str,
+) -> String {
+    match posted_at {
+        Some(posted_at) => dates.datetime(posted_at, tz),
+        None => "—".to_string(),
+    }
+}
+
 fn format_metrics(
     metrics: &InvoiceListMetrics,
     fmt: &CurrencyFormat,
@@ -426,6 +437,7 @@ async fn quotation_models_to_rows(
             addon_key: Some(InvoiceAddonKey::Quotation(d.id)),
             number: d.number.clone().unwrap_or_else(|| "—".to_string()),
             datetime: dates.datetime(d.datetime, tz),
+            posted_at: String::new(),
             delivery_date: format_hub_delivery_date(d.delivery_date, dates),
             detail_href: QuotationInvoiceDetailRouteTag::new(d.id).url(),
             customer_name: customers.name(party),
@@ -536,6 +548,13 @@ fn apply_posted_sql_sort(
                 query.order_by_asc(posted_invoice::Column::Datetime)
             }
         }
+        HubSortKey::PostedDate => {
+            if desc {
+                query.order_by_desc(posted_invoice::Column::PostedAt)
+            } else {
+                query.order_by_asc(posted_invoice::Column::PostedAt)
+            }
+        }
         HubSortKey::DeliveryDate => {
             if desc {
                 query.order_by_desc(posted_invoice::Column::DeliveryDate)
@@ -604,6 +623,13 @@ fn apply_cancelled_sql_sort(
                 query.order_by_desc(cancelled_invoice::Column::Datetime)
             } else {
                 query.order_by_asc(cancelled_invoice::Column::Datetime)
+            }
+        }
+        HubSortKey::PostedDate => {
+            if desc {
+                query.order_by_desc(cancelled_invoice::Column::PostedAt)
+            } else {
+                query.order_by_asc(cancelled_invoice::Column::PostedAt)
             }
         }
         HubSortKey::DeliveryDate => {
@@ -758,6 +784,7 @@ async fn draft_models_to_rows(
             addon_key: Some(InvoiceAddonKey::Draft(d.id)),
             number: d.number.clone().unwrap_or_else(|| "—".to_string()),
             datetime: dates.datetime(d.datetime, tz),
+            posted_at: String::new(),
             delivery_date: format_hub_delivery_date(d.delivery_date, dates),
             detail_href: DraftInvoiceDetailRouteTag::new(d.id).url(),
             customer_name: customers.name(party),
@@ -821,6 +848,7 @@ async fn query_posted_rows(
             addon_key: Some(InvoiceAddonKey::Posted(p.id)),
             number: p.number,
             datetime: dates.datetime(p.datetime, tz),
+            posted_at: format_hub_posted_at(p.posted_at, dates, tz),
             delivery_date: format_hub_delivery_date(p.delivery_date, dates),
             detail_href: PostedInvoiceDetailRouteTag::new(p.id).url(),
             customer_name: customers.name(party),
@@ -952,6 +980,7 @@ async fn cancelled_models_to_rows(
             addon_key: Some(InvoiceAddonKey::Posted(c.posted_invoice_id)),
             number: c.number.clone(),
             datetime: dates.datetime(c.datetime, tz),
+            posted_at: format_hub_posted_at(c.posted_at, dates, tz),
             delivery_date: format_hub_delivery_date(c.delivery_date, dates),
             detail_href: CancelledInvoiceDetailRouteTag::new(c.id).url(),
             customer_name,

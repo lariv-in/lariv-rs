@@ -8,7 +8,7 @@ use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 
-use crate::genai::util::{content_answer_text, content_is_thought_only, content_thought_text};
+use crate::genai::util::{content_answer_text, content_is_thought_only};
 use crate::llm_tools::{HitlGate, LlmToolsCapability, ToolCtx, ToolResult};
 use lariv_core::rune_env::RuneEnvCapability;
 use lariv_plugin_filesystem::storage::{DynFilestore, erase_store};
@@ -922,8 +922,8 @@ pub fn transcript_html_with_fences(
     fences: &[super::compaction::CompactionFence],
 ) -> String {
     use crate::ws::html::{
-        assistant_bubble_html, compaction_group_html, tool_call_inner_html,
-        tool_response_inner_html, user_bubble_html, working_group_html,
+        assistant_bubble_html, compaction_group_html, tool_response_inner_html, user_bubble_html,
+        work_group_html, work_parts_inner_html,
     };
 
     let mut fence_by_id = std::collections::HashMap::<i64, &str>::new();
@@ -936,36 +936,27 @@ pub fn transcript_html_with_fences(
     while i < turns.len() {
         let c = &turns[i].content;
 
-        // Reasoning-only turns are their own messages. Show them even though they
-        // have no answer text, and hide the synthetic "Continue." that follows.
-        if content_is_thought_only(c) {
-            push_thinking_group(&mut out, c);
-            let msg_id = turns[i].id;
-            if let Some(summary) = fence_by_id.get(&msg_id) {
-                out.push_str(&compaction_group_html(summary));
-            }
-            i += 1;
-            continue;
-        }
-        let follows_thought_only = i > 0
-            && turns
-                .get(i - 1)
-                .is_some_and(|turn| content_is_thought_only(&turn.content));
-        if follows_thought_only && is_thought_continue_stub(c) {
-            i += 1;
-            continue;
-        }
-
-        // Coalesce consecutive tool call / tool response turns under one Tools Called dropdown.
-        if content_has_function_call(c) || content_has_tool_response_parts(c) {
-            let mut thinking = String::new();
+        // Coalesce thought-only turns, tool calls/responses, and Continue stubs
+        // under one interleaved Work dropdown.
+        if content_is_thought_only(c)
+            || content_has_function_call(c)
+            || content_has_tool_response_parts(c)
+        {
             let mut working = String::new();
             let mut group_ids = Vec::new();
             while i < turns.len() {
                 let cur = &turns[i];
-                if content_has_function_call(&cur.content) {
-                    push_thinking_group(&mut thinking, &cur.content);
-                    working.push_str(&tool_call_inner_html(&cur.content));
+                if content_is_thought_only(&cur.content) {
+                    working.push_str(&work_parts_inner_html(&cur.content));
+                    group_ids.push(cur.id);
+                    i += 1;
+                    if i < turns.len() && is_thought_continue_stub(&turns[i].content) {
+                        i += 1;
+                    }
+                } else if is_thought_continue_stub(&cur.content) {
+                    i += 1;
+                } else if content_has_function_call(&cur.content) {
+                    working.push_str(&work_parts_inner_html(&cur.content));
                     group_ids.push(cur.id);
                     i += 1;
                 } else if content_has_tool_response_parts(&cur.content) {
@@ -976,13 +967,53 @@ pub fn transcript_html_with_fences(
                     break;
                 }
             }
-            out.push_str(&thinking);
-            out.push_str(&working_group_html(&working));
+
+            // Fold thoughts from the following answer message into the same Work group.
+            let mut answer: Option<&Content> = None;
+            let mut answer_id: Option<i64> = None;
+            if i < turns.len() {
+                let next = &turns[i];
+                if next.content.role == Role::Model && content_has_visible_answer(&next.content) {
+                    let thought_parts: Vec<_> = next
+                        .content
+                        .parts
+                        .iter()
+                        .filter(|p| p.thought)
+                        .cloned()
+                        .collect();
+                    if !thought_parts.is_empty() {
+                        working.push_str(&work_parts_inner_html(&Content {
+                            role: Role::Model,
+                            parts: thought_parts,
+                        }));
+                    }
+                    answer = Some(&next.content);
+                    answer_id = Some(next.id);
+                    i += 1;
+                }
+            }
+
+            if !working.is_empty() {
+                out.push_str(&work_group_html(&working));
+            }
             for id in group_ids {
                 if let Some(summary) = fence_by_id.get(&id) {
                     out.push_str(&compaction_group_html(summary));
                 }
             }
+            if let Some(content) = answer {
+                out.push_str(&assistant_bubble_html(content));
+                if let Some(id) = answer_id {
+                    if let Some(summary) = fence_by_id.get(&id) {
+                        out.push_str(&compaction_group_html(summary));
+                    }
+                }
+            }
+            continue;
+        }
+
+        if is_thought_continue_stub(c) {
+            i += 1;
             continue;
         }
 
@@ -1006,7 +1037,7 @@ pub fn transcript_html_with_fences(
             continue;
         }
         if kind == "assistant" {
-            push_thinking_group(&mut out, c);
+            push_work_thoughts(&mut out, c);
             out.push_str(&assistant_bubble_html(c));
         } else {
             out.push_str(&user_bubble_html(c));
@@ -1033,15 +1064,29 @@ fn is_thought_continue_stub(content: &Content) -> bool {
         && part.file_data.is_none()
 }
 
-fn push_thinking_group(out: &mut String, content: &Content) {
-    use crate::ws::html::thinking_group_html;
+fn content_has_visible_answer(content: &Content) -> bool {
+    content.parts.iter().any(|p| {
+        (!p.thought && p.text.as_ref().is_some_and(|t| t != ZWSP && !t.is_empty()))
+            || p.inline_data.is_some()
+            || p.file_data.is_some()
+    }) && !content_has_function_call(content)
+}
 
-    let text = content_thought_text(content);
-    let trimmed = text.trim();
-    if trimmed.is_empty() || trimmed == ZWSP {
+fn push_work_thoughts(out: &mut String, content: &Content) {
+    use crate::ws::html::{work_group_html, work_parts_inner_html};
+
+    let thought_parts: Vec<_> = content.parts.iter().filter(|p| p.thought).cloned().collect();
+    if thought_parts.is_empty() {
         return;
     }
-    out.push_str(&thinking_group_html(&text));
+    let inner = work_parts_inner_html(&Content {
+        role: Role::Model,
+        parts: thought_parts,
+    });
+    if inner.is_empty() {
+        return;
+    }
+    out.push_str(&work_group_html(&inner));
 }
 
 pub async fn session_transcript_html(
@@ -1178,12 +1223,16 @@ mod tests {
             Content::text(Role::Model, "visible answer"),
         ];
         let html = transcript_html(&contents);
+        let work_at = html.find("Work").expect("work group");
         let thinking_at = html.find("Thinking").expect("thinking group");
         let answer_at = html.find("visible answer").expect("answer");
+        assert!(work_at < thinking_at);
         assert!(thinking_at < answer_at);
         assert!(html.contains("reasoned it out"));
         assert!(!html.contains("Continue."));
         assert!(html.contains("question"));
+        assert_eq!(html.matches("Work").count(), 1);
+        assert_eq!(html.matches(">Thinking</summary>").count(), 1);
     }
 
     #[test]
@@ -1193,7 +1242,7 @@ mod tests {
             parts: vec![
                 Part {
                     thought: true,
-                    text: Some("secret reasoning".into()),
+                    text: Some("secret **reasoning**".into()),
                     ..Default::default()
                 },
                 Part {
@@ -1203,11 +1252,14 @@ mod tests {
             ],
         }];
         let html = transcript_html(&contents);
+        let work_at = html.find("Work").expect("work group");
         let thinking_at = html.find("Thinking").expect("thinking group");
         let answer_at = html.find("visible answer").expect("answer");
+        assert!(work_at < thinking_at);
         assert!(thinking_at < answer_at);
-        assert!(html.contains("secret reasoning"));
-        assert_eq!(html.matches("secret reasoning").count(), 1);
+        assert!(html.contains("<strong"));
+        assert!(html.contains("reasoning"));
+        assert!(!html.contains("**reasoning**"));
         assert!(!html.contains(" open>"));
     }
 
@@ -1232,12 +1284,88 @@ mod tests {
             ],
         }];
         let html = transcript_html(&contents);
-        let thinking_at = html.find("Thinking").expect("thinking group");
-        let tools_at = html.find("Tools Called").expect("tools group");
-        assert!(thinking_at < tools_at);
-        assert!(html.contains("plan the call"));
+        assert_eq!(html.matches("Work").count(), 1);
+        assert_eq!(html.matches(">Thinking</summary>").count(), 1);
+        let thought_at = html.find("plan the call").expect("thought");
+        let call_at = html.find("Function call: read_file").expect("call");
+        assert!(thought_at < call_at);
         assert_eq!(html.matches("plan the call").count(), 1);
-        assert!(html.contains("Function call: read_file"));
+    }
+
+    #[test]
+    fn transcript_interleaves_thought_tool_thought_tool() {
+        let contents = vec![
+            Content {
+                role: Role::Model,
+                parts: vec![
+                    Part {
+                        thought: true,
+                        text: Some("first plan".into()),
+                        ..Default::default()
+                    },
+                    Part {
+                        function_call: Some(FunctionCall {
+                            name: "read_file".into(),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                ],
+            },
+            Content {
+                role: Role::User,
+                parts: vec![Part {
+                    function_response: Some(FunctionResponse {
+                        name: "read_file".into(),
+                        response: Some(serde_json::json!({ "ok": true })),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+            },
+            Content {
+                role: Role::Model,
+                parts: vec![
+                    Part {
+                        thought: true,
+                        text: Some("second plan".into()),
+                        ..Default::default()
+                    },
+                    Part {
+                        function_call: Some(FunctionCall {
+                            name: "list_skills".into(),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                ],
+            },
+            Content {
+                role: Role::User,
+                parts: vec![Part {
+                    function_response: Some(FunctionResponse {
+                        name: "list_skills".into(),
+                        response: Some(serde_json::json!({ "ok": true })),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }],
+            },
+            Content::text(Role::Model, "done"),
+        ];
+        let html = transcript_html(&contents);
+        assert_eq!(html.matches("Work").count(), 1);
+        let first = html.find("first plan").expect("first thought");
+        let read = html.find("Function call: read_file").expect("read_file");
+        let second = html.find("second plan").expect("second thought");
+        let list = html.find("Function call: list_skills").expect("list_skills");
+        let done = html.find("done").expect("answer");
+        assert!(first < read);
+        assert!(read < second);
+        assert!(second < list);
+        assert!(list < done);
+        assert_eq!(html.matches(">Thinking</summary>").count(), 2);
+        assert!(!html.contains("Tools Called"));
     }
 
     #[test]
@@ -1254,7 +1382,7 @@ mod tests {
             }],
         }];
         let html = transcript_html(&contents);
-        assert!(html.contains("Tools Called"));
+        assert!(html.contains("Work"));
         assert!(html.contains("Function call: read_file"));
         assert!(html.contains("Arguments"));
         assert!(html.contains("/tmp/foo.txt"));
@@ -1300,8 +1428,9 @@ mod tests {
             },
         ];
         let html = transcript_html(&contents);
-        assert_eq!(html.matches("Tools Called").count(), 1);
+        assert_eq!(html.matches("Work").count(), 1);
         assert!(!html.contains("Tool Execution"));
+        assert!(!html.contains("Tools Called"));
         assert!(html.contains("Function call: list_skills"));
         assert!(html.contains("Function response: list_skills"));
         assert!(html.contains("done"));

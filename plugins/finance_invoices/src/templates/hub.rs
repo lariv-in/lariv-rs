@@ -153,6 +153,8 @@ pub struct InvoiceRow {
     pub addon_key: Option<crate::invoice_addon_key::InvoiceAddonKey>,
     pub number: String,
     pub datetime: String,
+    /// Posted instant, formatted. Empty on quotation and draft rows.
+    pub posted_at: String,
     pub delivery_date: String,
     pub detail_href: String,
     pub customer_name: String,
@@ -403,6 +405,7 @@ impl InvoiceHubPage {
         let quotations_hub = self.quotations_hub();
         let drafts_hub = self.drafts_hub();
         let cancelled_hub = self.cancelled_hub();
+        let show_posted_date = posted_hub || cancelled_hub;
         let show_customer = quotations_hub || drafts_hub || posted_hub;
         let show_select = self.show_select();
         let sel = Self::selection_root_js();
@@ -410,6 +413,7 @@ impl InvoiceHubPage {
         let id_sort = column_sort_url(&self.path_and_query, "ID", &self.sort);
         let number_sort = column_sort_url(&self.path_and_query, "Number", &self.sort);
         let date_sort = column_sort_url(&self.path_and_query, "Date", &self.sort);
+        let posted_date_sort = column_sort_url(&self.path_and_query, "PostedDate", &self.sort);
         let delivery_date_sort = column_sort_url(&self.path_and_query, "DeliveryDate", &self.sort);
         let customer_sort = column_sort_url(&self.path_and_query, "Customer", &self.sort);
         let open_balance_sort = column_sort_url(&self.path_and_query, "OpenBalance", &self.sort);
@@ -421,6 +425,7 @@ impl InvoiceHubPage {
         let id_label = format!("ID{}", sort_indicator(&self.sort, "ID"));
         let number_label = format!("Number{}", sort_indicator(&self.sort, "Number"));
         let date_label = format!("Date{}", sort_indicator(&self.sort, "Date"));
+        let posted_date_label = format!("Posted date{}", sort_indicator(&self.sort, "PostedDate"));
         let delivery_date_label = format!(
             "Delivery date{}",
             sort_indicator(&self.sort, "DeliveryDate")
@@ -507,6 +512,14 @@ impl InvoiceHubPage {
             sort_url: Some(&date_sort),
             push_url: self.push_history,
         });
+        if show_posted_date {
+            headers.push(TableColumnHeader {
+                key: "PostedDate",
+                label: &posted_date_label,
+                sort_url: Some(&posted_date_sort),
+                push_url: self.push_history,
+            });
+        }
         headers.push(TableColumnHeader {
             key: "DeliveryDate",
             label: &delivery_date_label,
@@ -592,6 +605,12 @@ impl InvoiceHubPage {
                     value: &inv.datetime,
                     classes: "",
                 }));
+                if show_posted_date {
+                    cells.push(field_text(FieldText {
+                        value: &inv.posted_at,
+                        classes: "",
+                    }));
+                }
                 cells.push(field_text(FieldText {
                     value: &inv.delivery_date,
                     classes: "",
@@ -846,6 +865,23 @@ mod tests {
             heading: String::new(),
             create_customer_id: None,
         }
+    }
+
+    #[test]
+    fn posted_and_cancelled_tables_show_posted_date() {
+        let posted = page(true, "").render_table().into_string();
+        assert!(posted.contains("Posted date"));
+        assert!(posted.contains("PostedDate"));
+
+        let mut cancelled = page(false, "");
+        cancelled.tab = "cancelled".into();
+        let cancelled = cancelled.render_table().into_string();
+        assert!(cancelled.contains("Posted date"));
+
+        let mut drafts = page(false, "");
+        drafts.tab = "drafts".into();
+        let drafts = drafts.render_table().into_string();
+        assert!(!drafts.contains("Posted date"));
     }
 
     #[test]

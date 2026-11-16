@@ -31,9 +31,9 @@ use crate::{
     ws::{
         UserMessage, assistant_bubble_html, compacted_oob, context_usage_oob, error_notice_oob,
         error_oob, final_assistant_oob, form_busy_oob, form_ready_oob, hitl_pending_inner_html,
-        hitl_resolved_oob, session_name_oob, thinking_open_oob, thinking_replace_oob,
-        tool_call_inner_html, tool_response_inner_html, transcript_replace_oob, user_ack_oob,
-        user_bubble_html, working_append_oob, working_close_oob, working_open_oob,
+        hitl_resolved_oob, session_name_oob, tool_call_inner_html, tool_response_inner_html,
+        transcript_replace_oob, user_ack_oob, user_bubble_html, work_append_oob, work_close_oob,
+        work_open_oob, work_thought_replace_oob, work_thought_segment_html,
     },
 };
 use lariv_core::http::Cap;
@@ -45,93 +45,86 @@ fn can_access_session(session: &session::Model, user_id: i64, role: &str) -> boo
     lariv_plugin_users::roles::Superuser::matches(role) || session.user_id == user_id
 }
 
-/// Live Thinking `<details>` for the socket that is forwarding this turn.
-struct ThinkingStream {
-    ids: Option<(String, String)>,
+/// Live Work `<details>` for the socket that is forwarding this turn.
+///
+/// Thoughts and tool activity share one dropdown. Thought tokens replace only the
+/// current thought segment so earlier tool rows stay in the body.
+struct WorkStream {
+    details_id: Option<String>,
+    body_id: Option<String>,
+    thought_segment_id: Option<String>,
+    thought_text: String,
     seq: u64,
-    text: String,
+    thought_seq: u64,
 }
 
-impl ThinkingStream {
+impl WorkStream {
     fn new() -> Self {
         Self {
-            ids: None,
+            details_id: None,
+            body_id: None,
+            thought_segment_id: None,
+            thought_text: String::new(),
             seq: 0,
-            text: String::new(),
+            thought_seq: 0,
         }
     }
-}
 
-/// Open, replace, or roll the live Thinking group for a cumulative thought string.
-///
-/// Returns HTML when the displayed thought changed. Answer-only partials return `None`.
-fn thinking_partial_oob(thinking: &mut ThinkingStream, content: &Content) -> Option<String> {
-    let thought = content_thought_text(content);
-    let trimmed = thought.trim();
-    if trimmed.is_empty() || trimmed == crate::content::ZWSP || thought == thinking.text {
-        return None;
-    }
-    let extending_body = thinking.ids.as_ref().and_then(|(_, body_id)| {
-        thought
-            .starts_with(thinking.text.as_str())
-            .then(|| body_id.clone())
-    });
-    if let Some(body_id) = extending_body {
-        thinking.text = thought;
-        return Some(thinking_replace_oob(&body_id, &thinking.text));
-    }
-    let mut html = String::new();
-    if let Some((details_id, _)) = thinking.ids.take() {
-        html.push_str(&working_close_oob(&details_id));
-    }
-    thinking.seq += 1;
-    let details_id = format!("llm_assistant_thinking_details_{}", thinking.seq);
-    let body_id = format!("llm_assistant_thinking_body_{}", thinking.seq);
-    html.push_str(&thinking_open_oob(&details_id, &body_id, &thought));
-    thinking.ids = Some((details_id, body_id));
-    thinking.text = thought;
-    Some(html)
-}
-
-/// Collapse every open Thinking / Tools Called group in one closer span.
-///
-/// `#llm_assistant_working_close` is a single element, so both ids travel together
-/// and the client splits `data-details-id` on whitespace.
-fn collapse_open_oob(
-    thinking: &mut ThinkingStream,
-    working_ids: &mut Option<(String, String)>,
-) -> String {
-    let mut ids = Vec::new();
-    if let Some((id, _)) = thinking.ids.take() {
-        ids.push(id);
-    }
-    if let Some((id, _)) = working_ids.take() {
-        ids.push(id);
-    }
-    if ids.is_empty() {
-        String::new()
-    } else {
-        working_close_oob(&ids.join(" "))
-    }
-}
-
-/// Open or append into the live Tools Called group for this turn.
-///
-/// `working_ids` holds `(details_id, body_id)` for the open group, if any.
-fn working_tool_oob(
-    working_ids: &mut Option<(String, String)>,
-    working_seq: &mut u64,
-    inner: &str,
-) -> String {
-    if let Some((_, body_id)) = working_ids.as_ref() {
-        working_append_oob(body_id, inner)
-    } else {
-        *working_seq += 1;
-        let details_id = format!("llm_assistant_working_details_{}", *working_seq);
-        let body_id = format!("llm_assistant_working_body_{}", *working_seq);
-        let html = working_open_oob(&details_id, &body_id, inner);
-        *working_ids = Some((details_id, body_id));
+    fn ensure_open(&mut self, inner: &str) -> String {
+        if let Some(body_id) = self.body_id.as_ref() {
+            return work_append_oob(body_id, inner);
+        }
+        self.seq += 1;
+        let details_id = format!("llm_assistant_work_details_{}", self.seq);
+        let body_id = format!("llm_assistant_work_body_{}", self.seq);
+        let html = work_open_oob(&details_id, &body_id, inner);
+        self.details_id = Some(details_id);
+        self.body_id = Some(body_id);
         html
+    }
+
+    /// Open, replace, or append a thought segment for a cumulative thought string.
+    ///
+    /// Returns HTML when the displayed thought changed. Answer-only partials return `None`.
+    fn thought_oob(&mut self, content: &Content) -> Option<String> {
+        let thought = content_thought_text(content);
+        let trimmed = thought.trim();
+        if trimmed.is_empty() || trimmed == crate::content::ZWSP || thought == self.thought_text {
+            return None;
+        }
+        let extending = self.thought_segment_id.as_ref().and_then(|segment_id| {
+            thought
+                .starts_with(self.thought_text.as_str())
+                .then(|| segment_id.clone())
+        });
+        if let Some(segment_id) = extending {
+            self.thought_text = thought;
+            return Some(work_thought_replace_oob(&segment_id, &self.thought_text));
+        }
+        self.thought_seq += 1;
+        let segment_id = format!("llm_assistant_work_thought_{}", self.thought_seq);
+        let segment = work_thought_segment_html(&segment_id, &thought);
+        let html = self.ensure_open(&segment);
+        self.thought_segment_id = Some(segment_id);
+        self.thought_text = thought;
+        Some(html)
+    }
+
+    /// Append tool / HITL HTML and end the current thought segment.
+    fn append_tool(&mut self, inner: &str) -> String {
+        self.thought_segment_id = None;
+        self.thought_text.clear();
+        self.ensure_open(inner)
+    }
+
+    fn collapse_oob(&mut self) -> String {
+        self.body_id = None;
+        self.thought_segment_id = None;
+        self.thought_text.clear();
+        match self.details_id.take() {
+            Some(id) => work_close_oob(&id),
+            None => String::new(),
+        }
     }
 }
 
@@ -328,21 +321,15 @@ async fn attach_session(
     let mut html = transcript_replace_oob(&transcript);
     let usage = resolve_context_usage(state, Some(&sess), &api).await;
     html.push_str(&context_usage_oob(usage));
-    let mut working_ids: Option<(String, String)> = None;
-    let mut working_seq: u64 = 0;
-    let mut thinking = ThinkingStream::new();
+    let mut work = WorkStream::new();
     if live {
         html.push_str(&form_busy_oob());
         if let Some(pending) = state.live_turns.pending_hitl(session_id) {
-            working_seq = 1;
-            let details_id = "llm_assistant_hitl_attach_details".to_string();
-            let body_id = "llm_assistant_hitl_attach_body".to_string();
-            html.push_str(&working_open_oob(
-                &details_id,
-                &body_id,
-                &hitl_pending_inner_html(&pending.id, &pending.name, &pending.args),
-            ));
-            working_ids = Some((details_id, body_id));
+            html.push_str(&work.append_tool(&hitl_pending_inner_html(
+                &pending.id,
+                &pending.name,
+                &pending.args,
+            )));
         }
     } else {
         html.push_str(&form_ready_oob());
@@ -359,9 +346,7 @@ async fn attach_session(
     match forward_events(
         socket,
         rx,
-        &mut working_ids,
-        &mut working_seq,
-        &mut thinking,
+        &mut work,
         ForwardCtx {
             session_id,
             user_id,
@@ -442,16 +427,12 @@ async fn process_message(
         .await
     });
 
-    let mut working_ids: Option<(String, String)> = None;
-    let mut working_seq: u64 = 0;
-    let mut thinking = ThinkingStream::new();
+    let mut work = WorkStream::new();
 
     let forward = forward_events(
         socket,
         rx,
-        &mut working_ids,
-        &mut working_seq,
-        &mut thinking,
+        &mut work,
         ForwardCtx {
             session_id,
             user_id,
@@ -496,9 +477,7 @@ async fn process_message(
 async fn forward_events(
     socket: &mut WebSocket,
     mut rx: broadcast::Receiver<StreamEvent>,
-    working_ids: &mut Option<(String, String)>,
-    working_seq: &mut u64,
-    thinking: &mut ThinkingStream,
+    work: &mut WorkStream,
     ctx: ForwardCtx<'_>,
 ) -> Result<(), String> {
     loop {
@@ -543,45 +522,32 @@ async fn forward_events(
                                 html
                             }
                             StreamEvent::Partial(content) => {
-                                match thinking_partial_oob(thinking, &content) {
+                                match work.thought_oob(&content) {
                                     Some(html) => html,
                                     None => continue,
                                 }
                             }
                             StreamEvent::ToolCall(content) => {
-                                let mut html = String::new();
-                                if let Some((details_id, _)) = thinking.ids.take() {
-                                    html.push_str(&working_close_oob(&details_id));
-                                }
-                                html.push_str(&working_tool_oob(
-                                    working_ids,
-                                    working_seq,
-                                    &tool_call_inner_html(&content),
-                                ));
-                                html
+                                work.append_tool(&tool_call_inner_html(&content))
                             }
-                            StreamEvent::Tool(content) => working_tool_oob(
-                                working_ids,
-                                working_seq,
-                                &tool_response_inner_html(&content),
-                            ),
-                            StreamEvent::HitlPending { id, name, args } => working_tool_oob(
-                                working_ids,
-                                working_seq,
-                                &hitl_pending_inner_html(&id, &name, &args),
-                            ),
+                            StreamEvent::Tool(content) => {
+                                work.append_tool(&tool_response_inner_html(&content))
+                            }
+                            StreamEvent::HitlPending { id, name, args } => {
+                                work.append_tool(&hitl_pending_inner_html(&id, &name, &args))
+                            }
                             StreamEvent::HitlResolved { id, name, approved } => {
                                 hitl_resolved_oob(&id, &name, approved)
                             },
                             StreamEvent::Final(content) => {
-                                let mut html = collapse_open_oob(thinking, working_ids);
+                                let mut html = work.collapse_oob();
                                 html.push_str(&final_assistant_oob(&assistant_bubble_html(&content)));
                                 html
                             }
                             StreamEvent::Compacted { summary } => compacted_oob(&summary),
                             StreamEvent::TurnReady => form_ready_oob(),
                             StreamEvent::Stopped => {
-                                let mut html = collapse_open_oob(thinking, working_ids);
+                                let mut html = work.collapse_oob();
                                 html.push_str(&form_ready_oob());
                                 html
                             }

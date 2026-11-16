@@ -181,7 +181,18 @@ fn posted_fields(tz: String) -> Vec<FilterField> {
         decimal_expr_field("open_balance", "Open balance", false, || {
             expr_open_balance("posted_invoices")
         }),
-        datetime_column("datetime", "Date", posted_invoice::Column::Datetime, tz),
+        datetime_column(
+            "datetime",
+            "Date",
+            posted_invoice::Column::Datetime,
+            tz.clone(),
+        ),
+        datetime_column(
+            "posted_at",
+            "Posted date",
+            posted_invoice::Column::PostedAt,
+            tz,
+        ),
         date_column(
             "delivery_date",
             "Delivery date",
@@ -226,7 +237,18 @@ fn cancelled_fields(tz: String) -> Vec<FilterField> {
     vec![
         id_field("cancelled_invoices"),
         text_column("number", "Number", cancelled_invoice::Column::Number),
-        datetime_column("datetime", "Date", cancelled_invoice::Column::Datetime, tz),
+        datetime_column(
+            "datetime",
+            "Date",
+            cancelled_invoice::Column::Datetime,
+            tz.clone(),
+        ),
+        datetime_column(
+            "posted_at",
+            "Posted date",
+            cancelled_invoice::Column::PostedAt,
+            tz,
+        ),
         date_column(
             "delivery_date",
             "Delivery date",
@@ -553,6 +575,34 @@ mod tests {
             rendered.contains("EXISTS") && rendered.contains("\"product_id\" = 12"),
             "{rendered}"
         );
+    }
+
+    #[test]
+    fn posted_and_cancelled_filters_include_posted_date() {
+        for kind in [HubFilterKind::Posted, HubFilterKind::Cancelled] {
+            let fields = hub_filter_fields(kind, "UTC");
+            assert!(
+                fields
+                    .iter()
+                    .any(|field| field.key() == "posted_at" && field.label() == "Posted date"),
+                "{kind:?}"
+            );
+            let clauses = parse_list_filters(
+                "filter.0.field=posted_at&filter.0.op=gt&filter.0.value=2026-04-01T00:00",
+            );
+            let applied = apply_filters(DatabaseBackend::Postgres, &fields, &clauses);
+            assert!(applied.errors.is_empty(), "{:?} {:?}", kind, applied.errors);
+            assert!(applied.post.is_empty());
+            let rendered = sql(applied.condition);
+            assert!(rendered.contains("posted_at"), "{kind:?} {rendered}");
+        }
+        for kind in [HubFilterKind::Quotation, HubFilterKind::Draft] {
+            let fields = hub_filter_fields(kind, "UTC");
+            assert!(
+                fields.iter().all(|field| field.key() != "posted_at"),
+                "{kind:?}"
+            );
+        }
     }
 
     #[test]

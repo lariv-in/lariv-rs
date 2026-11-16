@@ -109,7 +109,7 @@ pub fn final_assistant_oob(assistant_bubble: &str) -> String {
     )
 }
 
-/// Collapsed "Chat compacted" group (same details pattern as Tools Called).
+/// Collapsed "Chat compacted" group (same details pattern as Work).
 pub fn compaction_group_html(summary: &str) -> String {
     let body = render_markdown(summary);
     format!(
@@ -148,7 +148,7 @@ pub fn tool_call_inner_html(content: &Content) -> String {
     parts_visible_html(content, true)
 }
 
-/// Function-response parts without an outer wrapper (nested under Tools Called).
+/// Function-response parts without an outer wrapper (nested under Work).
 pub fn tool_response_inner_html(content: &Content) -> String {
     let mut inner = String::new();
     for p in &content.parts {
@@ -165,59 +165,120 @@ pub fn tool_response_inner_html(content: &Content) -> String {
     inner
 }
 
-/// Collapsed "Tools Called" group for persisted transcript tool sequences.
-pub fn working_group_html(inner: &str) -> String {
+/// Thought text, function calls, responses, and attachments in part order.
+///
+/// Used inside a Work dropdown so reasoning stays interleaved with tool activity.
+pub fn work_parts_inner_html(content: &Content) -> String {
+    let mut out = Vec::new();
+    let mut thought_buf = String::new();
+    let mut text_buf = String::new();
+
+    let flush_thought = |buf: &mut String, out: &mut Vec<String>| {
+        let trimmed = buf.trim();
+        if trimmed.is_empty() || trimmed == ZWSP {
+            buf.clear();
+            return;
+        }
+        out.push(thinking_nested_html(buf));
+        buf.clear();
+    };
+    let flush_text = |buf: &mut String, out: &mut Vec<String>| {
+        if buf.is_empty() {
+            return;
+        }
+        out.push(render_markdown(buf));
+        buf.clear();
+    };
+
+    for p in &content.parts {
+        if p.thought {
+            if let Some(t) = &p.text {
+                if !t.is_empty() {
+                    thought_buf.push_str(t);
+                }
+            }
+            continue;
+        }
+        if let Some(t) = &p.text {
+            if t != ZWSP && !t.is_empty() {
+                flush_thought(&mut thought_buf, &mut out);
+                text_buf.push_str(t);
+            }
+        }
+        let has_attachment = p.inline_data.is_some() || p.file_data.is_some();
+        let has_fc = p.function_call.is_some();
+        let has_fr = p.function_response.is_some();
+        if has_attachment || has_fc || has_fr {
+            flush_thought(&mut thought_buf, &mut out);
+            flush_text(&mut text_buf, &mut out);
+            if has_attachment {
+                out.push(attachment_label_html(p));
+            }
+            if let Some(fc) = &p.function_call {
+                out.push(function_call_html(fc));
+            }
+            if let Some(fr) = &p.function_response {
+                out.push(function_response_html(fr));
+            }
+        }
+    }
+    flush_thought(&mut thought_buf, &mut out);
+    flush_text(&mut text_buf, &mut out);
+    out.join("")
+}
+
+/// Collapsed "Work" group for persisted transcript thought / tool sequences.
+pub fn work_group_html(inner: &str) -> String {
     format!(
-        r#"<div class="w-full min-w-0 max-w-full flex flex-col"><details class="text-sm w-full min-w-0"><summary class="text-xs opacity-70 cursor-pointer">Tools Called</summary><div class="overflow-x-auto p-2 flex flex-col gap-1">{inner}</div></details></div>"#
+        r#"<div class="w-full min-w-0 max-w-full flex flex-col"><details class="text-sm w-full min-w-0"><summary class="text-xs opacity-70 cursor-pointer">Work</summary><div class="overflow-x-auto p-2 flex flex-col gap-1">{inner}</div></details></div>"#
     )
 }
 
-fn thinking_body_html(text: &str) -> String {
+/// Collapsed nested "Thinking" dropdown with markdown body (inside Work).
+fn thinking_nested_html(text: &str) -> String {
     format!(
-        r#"<div class="assistant-part assistant-part-thought text-sm whitespace-pre-wrap">{}</div>"#,
-        html_escape(text)
+        r#"<details class="text-sm w-full min-w-0"><summary class="text-xs opacity-70 cursor-pointer">Thinking</summary><div class="overflow-x-auto p-2 assistant-part assistant-part-thought text-sm opacity-70">{}</div></details>"#,
+        render_markdown(text)
     )
 }
 
-/// Collapsed "Thinking" group for a persisted model turn.
-pub fn thinking_group_html(text: &str) -> String {
+fn thinking_body_markdown(text: &str) -> String {
     format!(
-        r#"<div class="w-full min-w-0 max-w-full flex flex-col"><details class="text-sm w-full min-w-0"><summary class="text-xs opacity-70 cursor-pointer">Thinking</summary><div class="overflow-x-auto p-2 flex flex-col gap-1">{}</div></details></div>"#,
-        thinking_body_html(text)
+        r#"<div class="assistant-part assistant-part-thought text-sm opacity-70">{}</div>"#,
+        render_markdown(text)
     )
 }
 
-/// First thought tokens in a live turn: open Thinking and seed its body.
-pub fn thinking_open_oob(details_id: &str, body_id: &str, text: &str) -> String {
+/// Live Thought segment: nested Thinking details; body id is replaced as tokens stream.
+pub fn work_thought_segment_html(segment_id: &str, text: &str) -> String {
     format!(
-        r#"<div id="llm_assistant_transcript" hx-swap-oob="beforeend"><div class="w-full min-w-0 max-w-full flex flex-col"><details id="{}" class="text-sm w-full min-w-0" open><summary class="text-xs opacity-70 cursor-pointer">Thinking</summary><div id="{}" class="overflow-x-auto p-2 flex flex-col gap-1">{}</div></details></div></div>"#,
-        html_escape(details_id),
-        html_escape(body_id),
-        thinking_body_html(text)
+        r#"<details class="text-sm w-full min-w-0" open><summary class="text-xs opacity-70 cursor-pointer">Thinking</summary><div id="{}" class="overflow-x-auto p-2">{}</div></details>"#,
+        html_escape(segment_id),
+        thinking_body_markdown(text)
     )
 }
 
-/// Replace the live Thinking body with the accumulated thought text.
-pub fn thinking_replace_oob(body_id: &str, text: &str) -> String {
+/// First Work activity in a live turn: open Work and seed its body.
+pub fn work_open_oob(details_id: &str, body_id: &str, inner: &str) -> String {
     format!(
-        r#"<div id="{}" hx-swap-oob="innerHTML">{}</div>"#,
-        html_escape(body_id),
-        thinking_body_html(text)
-    )
-}
-
-/// First tool activity in a live turn: open Tools Called and seed its body.
-pub fn working_open_oob(details_id: &str, body_id: &str, inner: &str) -> String {
-    format!(
-        r#"<div id="llm_assistant_transcript" hx-swap-oob="beforeend"><div class="w-full min-w-0 max-w-full flex flex-col"><details id="{}" class="text-sm w-full min-w-0" open><summary class="text-xs opacity-70 cursor-pointer">Tools Called</summary><div id="{}" class="overflow-x-auto p-2 flex flex-col gap-1">{}</div></details></div></div>"#,
+        r#"<div id="llm_assistant_transcript" hx-swap-oob="beforeend"><div class="w-full min-w-0 max-w-full flex flex-col"><details id="{}" class="text-sm w-full min-w-0" open><summary class="text-xs opacity-70 cursor-pointer">Work</summary><div id="{}" class="overflow-x-auto p-2 flex flex-col gap-1">{}</div></details></div></div>"#,
         html_escape(details_id),
         html_escape(body_id),
         inner
     )
 }
 
-/// Append more tool call/response HTML into an existing live Tools Called body.
-pub fn working_append_oob(body_id: &str, inner: &str) -> String {
+/// Replace a live Thinking body with the accumulated thought markdown.
+pub fn work_thought_replace_oob(segment_id: &str, text: &str) -> String {
+    format!(
+        r#"<div id="{}" hx-swap-oob="innerHTML">{}</div>"#,
+        html_escape(segment_id),
+        thinking_body_markdown(text)
+    )
+}
+
+/// Append more thought / tool HTML into an existing live Work body.
+pub fn work_append_oob(body_id: &str, inner: &str) -> String {
     format!(
         r#"<div id="{}" hx-swap-oob="beforeend">{}</div>"#,
         html_escape(body_id),
@@ -225,7 +286,7 @@ pub fn working_append_oob(body_id: &str, inner: &str) -> String {
     )
 }
 
-/// HITL approval card inner HTML (nested under Tools Called).
+/// HITL approval card inner HTML (nested under Work).
 pub fn hitl_pending_inner_html(id: &str, name: &str, args: &serde_json::Value) -> String {
     let args_json = serde_json::to_string_pretty(args).unwrap_or_else(|_| args.to_string());
     let run_attrs = HtmlAttrs::new()
@@ -253,11 +314,11 @@ pub fn hitl_resolved_oob(id: &str, name: &str, approved: bool) -> String {
     markup
 }
 
-/// Collapse a live Tools Called group when the assistant text reply is sent.
+/// Collapse a live Work group when the assistant text reply is sent.
 ///
 /// Targets `#llm_assistant_working_close` (always present in the chat shell); the
 /// client removes `open` from the details id carried in `data-details-id`.
-pub fn working_close_oob(details_id: &str) -> String {
+pub fn work_close_oob(details_id: &str) -> String {
     format!(
         r#"<span id="llm_assistant_working_close" hx-swap-oob="true" hidden data-details-id="{}"></span>"#,
         html_escape(details_id)
@@ -456,57 +517,76 @@ mod tests {
     }
 
     #[test]
-    fn thinking_open_includes_details_id_and_open() {
-        let html = thinking_open_oob(
-            "llm_assistant_thinking_details_1",
-            "llm_assistant_thinking_body_1",
-            "reason <here>",
+    fn work_open_includes_details_id_and_open() {
+        let html = work_open_oob(
+            "llm_assistant_work_details_1",
+            "llm_assistant_work_body_1",
+            &work_thought_segment_html("llm_assistant_work_thought_1", "reason **bold**"),
         );
-        assert!(html.contains(r#"id="llm_assistant_thinking_details_1""#));
-        assert!(html.contains(r#"id="llm_assistant_thinking_body_1""#));
+        assert!(html.contains(r#"id="llm_assistant_work_details_1""#));
+        assert!(html.contains(r#"id="llm_assistant_work_body_1""#));
+        assert!(html.contains(r#"id="llm_assistant_work_thought_1""#));
         assert!(html.contains(" open>"));
+        assert!(html.contains("Work"));
         assert!(html.contains("Thinking"));
-        assert!(html.contains("whitespace-pre-wrap"));
-        assert!(html.contains("reason &lt;here&gt;"));
-        assert!(!html.contains("reason <here>"));
+        assert!(html.contains("<strong"));
+        assert!(html.contains("bold"));
+        assert!(!html.contains("**bold**"));
     }
 
     #[test]
-    fn thinking_replace_swaps_body_inner_html() {
-        let html = thinking_replace_oob("llm_assistant_thinking_body_1", "more thought");
-        assert!(html.contains(r#"id="llm_assistant_thinking_body_1""#));
+    fn work_thought_replace_swaps_body_inner_html() {
+        let html = work_thought_replace_oob("llm_assistant_work_thought_1", "more **thought**");
+        assert!(html.contains(r#"id="llm_assistant_work_thought_1""#));
         assert!(html.contains(r#"hx-swap-oob="innerHTML""#));
-        assert!(html.contains("more thought"));
+        assert!(html.contains("<strong"));
+        assert!(html.contains("thought"));
+        assert!(!html.contains("**thought**"));
         assert!(!html.contains("<details"));
     }
 
     #[test]
-    fn thinking_group_is_collapsed() {
-        let html = thinking_group_html("saved thought");
+    fn work_group_nests_collapsed_thinking() {
+        let html = work_group_html(&thinking_nested_html("saved **thought**"));
+        assert!(html.contains("Work"));
         assert!(html.contains("Thinking"));
-        assert!(html.contains("saved thought"));
-        assert!(html.contains("<details"));
+        assert!(html.contains("<strong"));
+        assert!(html.contains("thought"));
+        assert!(!html.contains("**thought**"));
         assert!(!html.contains(" open>"));
     }
 
     #[test]
-    fn working_open_includes_details_id_and_open() {
-        let html = working_open_oob(
-            "llm_assistant_working_details_1",
-            "llm_assistant_working_body_1",
-            "<p>x</p>",
-        );
-        assert!(html.contains(r#"id="llm_assistant_working_details_1""#));
-        assert!(html.contains(r#"id="llm_assistant_working_body_1""#));
-        assert!(html.contains(" open>"));
-        assert!(html.contains("Tools Called"));
+    fn work_parts_interleaves_thought_before_function_call() {
+        use crate::genai::{FunctionCall, Part};
+        let html = work_parts_inner_html(&Content {
+            role: Role::Model,
+            parts: vec![
+                Part {
+                    thought: true,
+                    text: Some("plan the call".into()),
+                    ..Default::default()
+                },
+                Part {
+                    function_call: Some(FunctionCall {
+                        name: "read_file".into(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ],
+        });
+        assert!(html.contains("Thinking"));
+        let thought_at = html.find("plan the call").expect("thought");
+        let call_at = html.find("Function call: read_file").expect("call");
+        assert!(thought_at < call_at);
     }
 
     #[test]
-    fn working_close_carries_details_id() {
-        let html = working_close_oob("llm_assistant_working_details_1");
+    fn work_close_carries_details_id() {
+        let html = work_close_oob("llm_assistant_work_details_1");
         assert!(html.contains(r#"id="llm_assistant_working_close""#));
-        assert!(html.contains(r#"data-details-id="llm_assistant_working_details_1""#));
+        assert!(html.contains(r#"data-details-id="llm_assistant_work_details_1""#));
         assert!(html.contains(r#"hx-swap-oob="true""#));
     }
 

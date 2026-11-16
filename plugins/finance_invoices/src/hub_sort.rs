@@ -13,6 +13,7 @@ pub enum HubSortKey {
     Id,
     Number,
     Date,
+    PostedDate,
     DeliveryDate,
     Customer,
     OpenBalance,
@@ -37,6 +38,8 @@ pub fn parse_hub_sort(sort: &str) -> Option<(HubSortKey, bool)> {
         HubSortKey::Number
     } else if key.eq_ignore_ascii_case("Date") {
         HubSortKey::Date
+    } else if key.eq_ignore_ascii_case("PostedDate") {
+        HubSortKey::PostedDate
     } else if key.eq_ignore_ascii_case("DeliveryDate") {
         HubSortKey::DeliveryDate
     } else if key.eq_ignore_ascii_case("Customer") {
