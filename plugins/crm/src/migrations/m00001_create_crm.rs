@@ -18,8 +18,9 @@ enum CrmLeads {
     Notes,
 }
 
-#[derive(DeriveIden)]
-enum CrmCompanies {
+#[derive(Iden)]
+enum Companies {
+    #[iden = "companies"]
     Table,
     Id,
     CreatedAt,
@@ -118,24 +119,24 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(CrmCompanies::Table)
+                    .table(Companies::Table)
                     .if_not_exists()
                     .col(
-                        ColumnDef::new(CrmCompanies::Id)
+                        ColumnDef::new(Companies::Id)
                             .big_integer()
                             .not_null()
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(CrmCompanies::CreatedAt).timestamp_with_time_zone())
-                    .col(ColumnDef::new(CrmCompanies::UpdatedAt).timestamp_with_time_zone())
-                    .col(ColumnDef::new(CrmCompanies::Name).text().not_null())
+                    .col(ColumnDef::new(Companies::CreatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(Companies::UpdatedAt).timestamp_with_time_zone())
+                    .col(ColumnDef::new(Companies::Name).text().not_null())
                     .col(ColumnDef::new(Alias::new("address_line_1")).text())
                     .col(ColumnDef::new(Alias::new("address_line_2")).text())
-                    .col(ColumnDef::new(CrmCompanies::City).text())
-                    .col(ColumnDef::new(CrmCompanies::Pincode).text())
-                    .col(ColumnDef::new(CrmCompanies::State).text())
-                    .col(ColumnDef::new(CrmCompanies::Website).text())
+                    .col(ColumnDef::new(Companies::City).text())
+                    .col(ColumnDef::new(Companies::Pincode).text())
+                    .col(ColumnDef::new(Companies::State).text())
+                    .col(ColumnDef::new(Companies::Website).text())
                     .to_owned(),
             )
             .await?;
@@ -174,7 +175,7 @@ impl MigrationTrait for Migration {
                         ForeignKey::create()
                             .name("fk_crm_contacts_company_id")
                             .from(CrmContacts::Table, CrmContacts::CompanyId)
-                            .to(CrmCompanies::Table, CrmCompanies::Id)
+                            .to(Companies::Table, Companies::Id)
                             .on_delete(ForeignKeyAction::Cascade)
                             .on_update(ForeignKeyAction::Cascade),
                     )
@@ -215,7 +216,7 @@ impl MigrationTrait for Migration {
                         ForeignKey::create()
                             .name("fk_crm_deals_company_id")
                             .from(CrmDeals::Table, CrmDeals::CompanyId)
-                            .to(CrmCompanies::Table, CrmCompanies::Id)
+                            .to(Companies::Table, Companies::Id)
                             .on_delete(ForeignKeyAction::Cascade)
                             .on_update(ForeignKeyAction::Cascade),
                     )
@@ -277,7 +278,7 @@ impl MigrationTrait for Migration {
                         ForeignKey::create()
                             .name("fk_crm_converted_leads_company_id")
                             .from(CrmConvertedLeads::Table, CrmConvertedLeads::CompanyId)
-                            .to(CrmCompanies::Table, CrmCompanies::Id)
+                            .to(Companies::Table, Companies::Id)
                             .on_delete(ForeignKeyAction::Restrict)
                             .on_update(ForeignKeyAction::Cascade),
                     )
@@ -398,7 +399,7 @@ impl MigrationTrait for Migration {
             .drop_table(Table::drop().table(CrmContacts::Table).to_owned())
             .await?;
         manager
-            .drop_table(Table::drop().table(CrmCompanies::Table).to_owned())
+            .drop_table(Table::drop().table(Companies::Table).to_owned())
             .await?;
         manager
             .drop_table(Table::drop().table(CrmLeads::Table).to_owned())

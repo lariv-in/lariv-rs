@@ -2,9 +2,8 @@
 
 use axum::extract::Query;
 use axum::response::{IntoResponse, Response};
-use lariv_plugin_contacts::entities::{
-    company::Entity as CompanyEntity, contact::Entity as ContactEntity,
-};
+use lariv_plugin_companies::entities::company::Entity as CompanyEntity;
+use lariv_plugin_contacts::entities::contact::Entity as ContactEntity;
 use lariv_plugin_users::middleware::RequireAuth;
 use sea_orm::EntityTrait;
 

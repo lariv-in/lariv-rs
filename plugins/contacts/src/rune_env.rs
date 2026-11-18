@@ -1,8 +1,8 @@
-//! Rune sandbox bindings for contact and company lookup and mutation.
+//! Rune sandbox bindings for contact lookup and mutation.
 
 use lariv_core::rune_env::{RuneEnvCapability, RuneEnvRegistrar};
 
-/// Registers contact and company helpers onto the assistant Rune environment.
+/// Registers contact helpers onto the assistant Rune environment.
 #[derive(Clone, Copy, Default)]
 pub struct Hook;
 
@@ -40,26 +40,6 @@ fn register(rune_env: &mut RuneEnvCapability) {
         "search_contacts",
         "search_contacts(#{ query?: string, limit?: int }) -> #{ results: [#{ id: int, company_id: int|null, name: string, email: string|null, phone: string|null, is_primary: bool }] }",
         |_ctx| NativeBinding::Function(Arc::new(search_contacts)),
-    );
-    rune_env.register_contextual(
-        "create_company",
-        "create_company(#{ name: string, address_line_1?: string, address_line_2?: string, city?: string, pincode?: string, state?: string, website?: string, gstin?: string, cin?: string, pan?: string, phone?: string, email?: string }) -> int  // new company id. name is required. state is a GST code such as \"27\" or a state name such as \"Maharashtra\"; blank clears it.",
-        |_ctx| NativeBinding::Function(Arc::new(create_company)),
-    );
-    rune_env.register_contextual(
-        "update_company",
-        "update_company(#{ id: int, name: string, address_line_1?: string, address_line_2?: string, city?: string, pincode?: string, state?: string, website?: string, gstin?: string, cin?: string, pan?: string, phone?: string, email?: string }) -> int  // updated company id (full replace). state is a GST code or state name; blank clears it.",
-        |_ctx| NativeBinding::Function(Arc::new(update_company)),
-    );
-    rune_env.register_contextual(
-        "get_company",
-        "get_company(#{ id: int }) -> #{ id: int, name: string, address_line_1: string|null, address_line_2: string|null, city: string|null, pincode: string|null, state: string|null, website: string|null, gstin: string|null, cin: string|null, pan: string|null, phone: string|null, email: string|null }",
-        |_ctx| NativeBinding::Function(Arc::new(get_company)),
-    );
-    rune_env.register_contextual(
-        "search_companies",
-        "search_companies(#{ query?: string, limit?: int }) -> #{ results: [#{ id: int, name: string, city: string|null, email: string|null, phone: string|null }] }",
-        |_ctx| NativeBinding::Function(Arc::new(search_companies)),
     );
 }
 
@@ -121,63 +101,6 @@ fn search_contacts(
 }
 
 #[cfg(feature = "cap-llm")]
-fn create_company(
-    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
-    args: &[rune::Value],
-) -> Result<rune::Value, String> {
-    let input = parse_company_args(args, "create_company", false)?;
-    let db = ctx.db.clone();
-    let id = lariv_core::rune_env::block_on_async(async move {
-        let saved = crate::logic::create_company(&db, input).await?;
-        Ok::<i64, String>(saved.id)
-    })?;
-    Ok(rune::Value::from(id))
-}
-
-#[cfg(feature = "cap-llm")]
-fn update_company(
-    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
-    args: &[rune::Value],
-) -> Result<rune::Value, String> {
-    let (id, input) = parse_company_update(args)?;
-    let db = ctx.db.clone();
-    let id = lariv_core::rune_env::block_on_async(async move {
-        let saved = crate::logic::update_company(&db, id, input).await?;
-        Ok::<i64, String>(saved.id)
-    })?;
-    Ok(rune::Value::from(id))
-}
-
-#[cfg(feature = "cap-llm")]
-fn get_company(
-    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
-    args: &[rune::Value],
-) -> Result<rune::Value, String> {
-    let id = parse_id(args, "get_company", "company")?;
-    let db = ctx.db.clone();
-    let row =
-        lariv_core::rune_env::block_on_async(
-            async move { crate::logic::get_company(&db, id).await },
-        )?;
-    lariv_core::rune_env::json_to_rune(company_json(&row))
-}
-
-#[cfg(feature = "cap-llm")]
-fn search_companies(
-    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
-    args: &[rune::Value],
-) -> Result<rune::Value, String> {
-    let (query, limit) = parse_search(args, "search_companies")?;
-    let db = ctx.db.clone();
-    let rows = lariv_core::rune_env::block_on_async(async move {
-        crate::logic::search_companies(&db, &query, limit).await
-    })?;
-    lariv_core::rune_env::json_to_rune(serde_json::json!({
-        "results": rows.iter().map(company_summary).collect::<Vec<_>>(),
-    }))
-}
-
-#[cfg(feature = "cap-llm")]
 fn contact_json(row: &crate::entities::contact::Model) -> serde_json::Value {
     serde_json::json!({
         "id": row.id,
@@ -186,36 +109,6 @@ fn contact_json(row: &crate::entities::contact::Model) -> serde_json::Value {
         "email": row.email,
         "phone": row.phone,
         "is_primary": row.is_primary,
-    })
-}
-
-#[cfg(feature = "cap-llm")]
-fn company_json(row: &crate::entities::company::Model) -> serde_json::Value {
-    serde_json::json!({
-        "id": row.id,
-        "name": row.name,
-        "address_line_1": row.address_line_1,
-        "address_line_2": row.address_line_2,
-        "city": row.city,
-        "pincode": row.pincode,
-        "state": row.state,
-        "website": row.website,
-        "gstin": row.gstin,
-        "cin": row.cin,
-        "pan": row.pan,
-        "phone": row.phone,
-        "email": row.email,
-    })
-}
-
-#[cfg(feature = "cap-llm")]
-fn company_summary(row: &crate::entities::company::Model) -> serde_json::Value {
-    serde_json::json!({
-        "id": row.id,
-        "name": row.name,
-        "city": row.city,
-        "email": row.email,
-        "phone": row.phone,
     })
 }
 
@@ -254,41 +147,6 @@ fn parse_contact_args_raw(args: &[rune::Value], name: &str) -> Result<ContactArg
 }
 
 #[cfg(feature = "cap-llm")]
-fn parse_company_update(args: &[rune::Value]) -> Result<(i64, crate::logic::CompanyWrite), String> {
-    let parsed: CompanyArgs = parse_json(args, "update_company")?;
-    let id = positive_id(parsed.id, "update_company", "company")?;
-    Ok((id, company_write(parsed)?))
-}
-
-#[cfg(feature = "cap-llm")]
-fn parse_company_args(
-    args: &[rune::Value],
-    name: &str,
-    _update: bool,
-) -> Result<crate::logic::CompanyWrite, String> {
-    let parsed: CompanyArgs = parse_json(args, name)?;
-    company_write(parsed)
-}
-
-#[cfg(feature = "cap-llm")]
-fn company_write(parsed: CompanyArgs) -> Result<crate::logic::CompanyWrite, String> {
-    Ok(crate::logic::CompanyWrite {
-        name: crate::logic::require_name(&parsed.name)?,
-        address_line_1: blank(parsed.address_line_1),
-        address_line_2: blank(parsed.address_line_2),
-        city: blank(parsed.city),
-        pincode: blank(parsed.pincode),
-        state: crate::gst_state::parse_state(parsed.state.as_deref().unwrap_or(""))?,
-        website: blank(parsed.website),
-        gstin: blank(parsed.gstin),
-        cin: blank(parsed.cin),
-        pan: blank(parsed.pan),
-        phone: blank(parsed.phone),
-        email: blank(parsed.email),
-    })
-}
-
-#[cfg(feature = "cap-llm")]
 #[derive(Debug, serde::Deserialize)]
 struct ContactArgs {
     #[serde(default)]
@@ -303,37 +161,6 @@ struct ContactArgs {
     phone: Option<String>,
     #[serde(default)]
     is_primary: bool,
-}
-
-#[cfg(feature = "cap-llm")]
-#[derive(Debug, serde::Deserialize)]
-struct CompanyArgs {
-    #[serde(default)]
-    id: i64,
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    address_line_1: Option<String>,
-    #[serde(default)]
-    address_line_2: Option<String>,
-    #[serde(default)]
-    city: Option<String>,
-    #[serde(default)]
-    pincode: Option<String>,
-    #[serde(default)]
-    state: Option<String>,
-    #[serde(default)]
-    website: Option<String>,
-    #[serde(default)]
-    gstin: Option<String>,
-    #[serde(default)]
-    cin: Option<String>,
-    #[serde(default)]
-    pan: Option<String>,
-    #[serde(default)]
-    phone: Option<String>,
-    #[serde(default)]
-    email: Option<String>,
 }
 
 #[cfg(feature = "cap-llm")]
@@ -429,17 +256,13 @@ mod tests {
     }
 
     #[test]
-    fn registers_contact_and_company_bindings() {
+    fn registers_contact_bindings() {
         let names = registered_env().all_names();
         for expected in [
             "create_contact",
             "update_contact",
             "get_contact",
             "search_contacts",
-            "create_company",
-            "update_company",
-            "get_company",
-            "search_companies",
         ] {
             assert!(
                 names.iter().any(|name| name == expected),

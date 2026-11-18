@@ -22,7 +22,7 @@ impl MigrationTrait for Migration {
                 exec_sql(
                     manager,
                     "ALTER TABLE crm_contacts ADD CONSTRAINT fk_crm_contacts_company_id \
-                     FOREIGN KEY (company_id) REFERENCES crm_companies(id) \
+                     FOREIGN KEY (company_id) REFERENCES companies(id) \
                      ON DELETE SET NULL ON UPDATE CASCADE",
                 )
                 .await
@@ -43,7 +43,7 @@ CREATE TABLE "crm_contacts__company" (
     "email" text,
     "phone" text,
     "is_primary" boolean NOT NULL DEFAULT FALSE,
-    FOREIGN KEY ("company_id") REFERENCES "crm_companies" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    FOREIGN KEY ("company_id") REFERENCES "companies" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 )"#,
                 )
                 .await?;
@@ -80,7 +80,7 @@ FROM crm_contacts"#,
                 exec_sql(
                     manager,
                     "UPDATE crm_contacts SET company_id = (
-                         SELECT id FROM crm_companies ORDER BY id LIMIT 1
+                         SELECT id FROM companies ORDER BY id LIMIT 1
                      ) WHERE company_id IS NULL",
                 )
                 .await?;
@@ -97,7 +97,7 @@ FROM crm_contacts"#,
                 exec_sql(
                     manager,
                     "ALTER TABLE crm_contacts ADD CONSTRAINT fk_crm_contacts_company_id \
-                     FOREIGN KEY (company_id) REFERENCES crm_companies(id) \
+                     FOREIGN KEY (company_id) REFERENCES companies(id) \
                      ON DELETE CASCADE ON UPDATE CASCADE",
                 )
                 .await

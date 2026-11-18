@@ -2,10 +2,8 @@
 
 use std::collections::HashMap;
 
-use lariv_plugin_contacts::entities::{
-    company::{self, Entity as CompanyEntity},
-    contact::{self, Entity as ContactEntity},
-};
+use lariv_plugin_companies::entities::company::{self, Entity as CompanyEntity};
+use lariv_plugin_contacts::entities::contact::{self, Entity as ContactEntity};
 use lariv_plugin_customer::entities::customer::{self, Entity as CustomerEntity};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
@@ -116,7 +114,7 @@ pub fn customer_name_sql(invoice_table: &str) -> String {
         "(SELECT CASE WHEN customers.is_individual THEN \
            (SELECT name FROM crm_contacts WHERE crm_contacts.id = customers.individual_id) \
            ELSE \
-           (SELECT name FROM crm_companies WHERE crm_companies.id = customers.company_id) \
+           (SELECT name FROM companies WHERE companies.id = customers.company_id) \
          END FROM customers WHERE customers.id = {invoice_table}.customer_id)"
     )
 }

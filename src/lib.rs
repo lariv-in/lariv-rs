@@ -26,8 +26,12 @@ pub use lariv_rs_macros::{define_plugin_routes, main};
 pub use paste;
 
 pub mod plugins {
+    #[cfg(feature = "plugin-bank-accounts")]
+    pub use lariv_plugin_bank_accounts as bank_accounts;
     #[cfg(feature = "plugin-blog")]
     pub use lariv_plugin_blog as blog;
+    #[cfg(feature = "plugin-companies")]
+    pub use lariv_plugin_companies as companies;
     #[cfg(feature = "plugin-contacts")]
     pub use lariv_plugin_contacts as contacts;
     #[cfg(feature = "plugin-crm")]

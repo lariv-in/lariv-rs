@@ -10,7 +10,8 @@ use chrono::Utc;
 use lariv_rs::app::App;
 use lariv_rs::db::DbTag;
 use lariv_rs::http::into_axum_router;
-use lariv_rs::plugins::contacts::entities::{company as company_entity, contact as contact_entity};
+use lariv_rs::plugins::companies::entities::company as company_entity;
+use lariv_rs::plugins::contacts::entities::contact as contact_entity;
 use lariv_rs::plugins::finance_invoices::entities::{
     DraftInvoiceEntity, DraftInvoiceLineEntity, DraftPaymentTermEntity, DraftPaymentTermLineEntity,
     draft_invoice_line, draft_payment_term_line,
@@ -22,9 +23,9 @@ use lariv_rs::plugins::finance_products::preferences::set_product_tax_ids;
 use lariv_rs::plugins::finance_taxes::entities::tax::{self, TaxKind};
 use lariv_rs::plugins::users::{self, UsersTag, auth, entities::user::Entity as UserEntity};
 use lariv_rs::plugins::{
-    contacts, crm, customer, dashboard, filesystem, finance_accounts, finance_creditnotes,
-    finance_customers, finance_indian, finance_invoices, finance_payments, finance_products,
-    finance_taxes, llm_assistant, otp, pwa,
+    companies, contacts, crm, customer, dashboard, filesystem, finance_accounts,
+    finance_creditnotes, finance_customers, finance_indian, finance_invoices, finance_payments,
+    finance_products, finance_taxes, llm_assistant, otp, pwa,
 };
 use rust_decimal::Decimal;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
@@ -63,6 +64,7 @@ async fn create_draft_invoice_via_http() {
     let app = llm_assistant::install(app);
     let app = finance_accounts::install(app);
     let app = finance_customers::install(app);
+    let app = companies::install(app);
     let app = contacts::install(app);
     let app = customer::install(app);
     let app = crm::install(app);
@@ -290,6 +292,7 @@ async fn create_draft_invoice_via_rune_env() {
     let app = llm_assistant::install(app);
     let app = finance_accounts::install(app);
     let app = finance_customers::install(app);
+    let app = companies::install(app);
     let app = contacts::install(app);
     let app = customer::install(app);
     let app = crm::install(app);
@@ -471,6 +474,7 @@ async fn post_invoice_uses_product_and_service_journal_templates() {
     let app = llm_assistant::install(app);
     let app = finance_accounts::install(app);
     let app = finance_customers::install(app);
+    let app = companies::install(app);
     let app = contacts::install(app);
     let app = customer::install(app);
     let app = crm::install(app);

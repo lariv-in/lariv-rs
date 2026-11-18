@@ -3,7 +3,7 @@
 //! `lariv-plugin-customer`; both creates use `CREATE IF NOT EXISTS`.
 //!
 //! When the customer plugin already created the table, this still attaches the
-//! company and contact foreign keys now that `crm_companies` and `crm_contacts`
+//! company and contact foreign keys now that `companies` and `crm_contacts`
 //! exist.
 
 use lariv_core::db::migration_sql::{self, exec_sql};
@@ -22,7 +22,7 @@ const UP: &[&str] = &[
         company_id bigint,
         individual_id bigint,
         CONSTRAINT fk_crm_customers_company_id
-            FOREIGN KEY (company_id) REFERENCES crm_companies(id)
+            FOREIGN KEY (company_id) REFERENCES companies(id)
             ON DELETE RESTRICT ON UPDATE CASCADE,
         CONSTRAINT fk_crm_customers_individual_id
             FOREIGN KEY (individual_id) REFERENCES crm_contacts(id)

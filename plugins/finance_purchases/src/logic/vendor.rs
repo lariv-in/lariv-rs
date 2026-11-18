@@ -6,9 +6,8 @@ use sea_orm::{
 };
 
 use crate::entities::vendor::{self, Entity as VendorEntity};
-use lariv_plugin_contacts::entities::{
-    company::Entity as CompanyEntity, contact::Entity as ContactEntity,
-};
+use lariv_plugin_companies::entities::company::Entity as CompanyEntity;
+use lariv_plugin_contacts::entities::contact::Entity as ContactEntity;
 
 /// `vendor_id` must already point at `purchase_vendors`.
 pub async fn require_existing<C: ConnectionTrait>(db: &C, vendor_id: i64) -> Result<i64, String> {
@@ -100,7 +99,7 @@ pub async fn search(
             "SELECT v.id, {NAME_EXPR} AS name \
              FROM purchase_vendors AS v \
              LEFT JOIN crm_contacts AS ct ON ct.id = v.individual_id \
-             LEFT JOIN crm_companies AS co ON co.id = v.company_id \
+             LEFT JOIN companies AS co ON co.id = v.company_id \
              WHERE ($1 = '' OR lower({NAME_EXPR}) LIKE $2) \
              ORDER BY 2, v.id \
              LIMIT $3 OFFSET $4"
@@ -127,7 +126,7 @@ async fn count_matching(db: &DatabaseConnection, needle: &str, like: &str) -> Re
                 "SELECT COUNT(*) AS total \
                  FROM purchase_vendors AS v \
                  LEFT JOIN crm_contacts AS ct ON ct.id = v.individual_id \
-                 LEFT JOIN crm_companies AS co ON co.id = v.company_id \
+                 LEFT JOIN companies AS co ON co.id = v.company_id \
                  WHERE ($1 = '' OR lower({NAME_EXPR}) LIKE $2)"
             ),
             [needle.to_string().into(), like.to_string().into()],

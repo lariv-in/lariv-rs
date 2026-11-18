@@ -15,6 +15,7 @@ cap-llm = ["lariv_core/cap-llm", "plugin-llm-assistant"]
 [dependencies]
 lariv_core = { package = "lariv-core", path = "../../lariv-core" }
 lariv-rs-macros = { workspace = true }
+lariv-plugin-companies = { path = "../companies" }
 lariv-plugin-contacts = { path = "../contacts" }
 lariv-plugin-users = { path = "../users" }
 lariv-plugin-llm-assistant = { path = "../llm_assistant", optional = true }

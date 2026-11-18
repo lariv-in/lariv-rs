@@ -1,7 +1,9 @@
 #![recursion_limit = "512"]
 
 use lariv_rs::app::App;
+use lariv_rs::plugins::bank_accounts;
 use lariv_rs::plugins::blog;
+use lariv_rs::plugins::companies;
 use lariv_rs::plugins::contacts;
 use lariv_rs::plugins::crm;
 use lariv_rs::plugins::customer;
@@ -37,6 +39,7 @@ async fn main() -> anyhow::Result<()> {
     let app = App::new_web_app();
     let app = users::install(app);
     let app = todo::install(app);
+    let app = bank_accounts::install(app);
     let app = otp::install(app);
     let app = blog::install(app);
     let app = filesystem::install(app);
@@ -45,6 +48,7 @@ async fn main() -> anyhow::Result<()> {
     let app = meets::install(app);
     let app = llm_assistant::install(app);
     let app = pwa::install(app);
+    let app = companies::install(app);
     let app = contacts::install(app);
     let app = customer::install(app);
     let app = crm::install(app);

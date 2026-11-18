@@ -18,6 +18,10 @@ pub struct InteractionResult {
     pub content: Content,
     pub usage: Option<UsageMetadata>,
     pub status: String,
+    /// Step types the stream received that are not thought, model output, or function call.
+    pub ignored_step_types: Vec<String>,
+    /// API `error` / `errors` payload, when the stream or resource carried one.
+    pub failure: Option<InteractionErrorBody>,
 }
 
 /// Request body for `POST /v1beta/interactions`.
@@ -90,12 +94,43 @@ pub struct Interaction {
     pub output_text: Option<String>,
     #[serde(default)]
     pub error: Option<InteractionErrorBody>,
+    /// Background and some terminal resources report failures here instead of `error`.
+    #[serde(default, deserialize_with = "empty_vec_if_null")]
+    pub errors: Vec<InteractionErrorBody>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct InteractionErrorBody {
     #[serde(default)]
     pub message: String,
+    #[serde(default, deserialize_with = "string_or_other")]
+    pub code: String,
+}
+
+fn empty_vec_if_null<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(Option::<Vec<T>>::deserialize(deserializer)?.unwrap_or_default())
+}
+
+fn string_or_other<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<Value>::deserialize(deserializer)?;
+    Ok(match value {
+        None | Some(Value::Null) => String::new(),
+        Some(Value::String(text)) => text,
+        Some(other) => other.to_string(),
+    })
+}
+
+impl InteractionErrorBody {
+    fn is_set(&self) -> bool {
+        !self.message.trim().is_empty() || !self.code.trim().is_empty()
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -168,6 +203,9 @@ pub struct InteractionSseEvent {
     pub step: Option<InteractionStep>,
     #[serde(default)]
     pub delta: Option<StepDelta>,
+    /// Top-level `error` event payload (`event_type: "error"`).
+    #[serde(default)]
+    pub error: Option<InteractionErrorBody>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -524,6 +562,12 @@ pub struct StreamAccumulator {
     open_args_buf: String,
     open_fc_name: String,
     open_fc_id: String,
+    /// Step types other than thought, model_output, and function_call.
+    ignored_step_types: Vec<String>,
+    /// `error` event or interaction `error` / `errors`, kept with the status.
+    failure: Option<InteractionErrorBody>,
+    /// Convenience text from a terminal interaction, used when no model steps arrived.
+    output_text: Option<String>,
 }
 
 impl StreamAccumulator {
@@ -531,12 +575,7 @@ impl StreamAccumulator {
         match event.event_type.as_str() {
             "interaction.created" => {
                 if let Some(ix) = &event.interaction {
-                    if !ix.id.is_empty() {
-                        self.interaction_id = Some(ix.id.clone());
-                    }
-                    if !ix.status.is_empty() {
-                        self.status = ix.status.clone();
-                    }
+                    self.observe_interaction(ix);
                 }
             }
             "interaction.status_update" => {
@@ -547,6 +586,24 @@ impl StreamAccumulator {
                     && self.interaction_id.is_none()
                 {
                     self.interaction_id = Some(id.clone());
+                }
+            }
+            "error" => {
+                if let Some(s) = &event.status
+                    && !s.is_empty()
+                {
+                    self.status = s.clone();
+                }
+                if let Some(id) = &event.interaction_id
+                    && self.interaction_id.is_none()
+                {
+                    self.interaction_id = Some(id.clone());
+                }
+                if let Some(ix) = &event.interaction {
+                    self.observe_interaction(ix);
+                }
+                if let Some(err) = event.error.as_ref().filter(|e| e.is_set()) {
+                    self.failure = Some(err.clone());
                 }
             }
             "step.start" => {
@@ -564,12 +621,7 @@ impl StreamAccumulator {
             }
             "interaction.completed" => {
                 if let Some(ix) = &event.interaction {
-                    if !ix.id.is_empty() {
-                        self.interaction_id = Some(ix.id.clone());
-                    }
-                    if !ix.status.is_empty() {
-                        self.status = ix.status.clone();
-                    }
+                    self.observe_interaction(ix);
                     if let Some(usage) = &ix.usage {
                         self.usage = Some(usage.to_usage_metadata());
                     }
@@ -633,9 +685,35 @@ impl StreamAccumulator {
                 self.open_index = Some(self.parts.len() - 1);
                 self.open_type = Some("function_call".into());
             }
-            _ => {
+            other => {
+                if !is_known_step(other)
+                    && !other.is_empty()
+                    && !self.ignored_step_types.iter().any(|t| t == other)
+                {
+                    self.ignored_step_types.push(other.to_string());
+                }
                 self.open_index = None;
                 self.open_type = None;
+            }
+        }
+    }
+
+    fn observe_interaction(&mut self, ix: &Interaction) {
+        if !ix.id.is_empty() {
+            self.interaction_id = Some(ix.id.clone());
+        }
+        if !ix.status.is_empty() {
+            self.status = ix.status.clone();
+        }
+        if let Some(err) = interaction_failure(ix) {
+            self.failure = Some(err);
+        }
+        if let Some(text) = ix.output_text.as_ref().filter(|t| !t.trim().is_empty()) {
+            self.output_text = Some(text.clone());
+        }
+        for step_type in unrecognized_step_types(&ix.steps) {
+            if !self.ignored_step_types.iter().any(|t| t == &step_type) {
+                self.ignored_step_types.push(step_type);
             }
         }
     }
@@ -738,16 +816,218 @@ impl StreamAccumulator {
     }
 
     pub fn into_result(self) -> InteractionResult {
+        let mut parts = self.parts;
+        if parts.is_empty()
+            && let Some(text) = self.output_text.filter(|t| !t.trim().is_empty())
+        {
+            parts = Content::text(Role::Model, text).parts;
+        }
         InteractionResult {
             id: self.interaction_id.unwrap_or_default(),
             content: Content {
                 role: Role::Model,
-                parts: self.parts,
+                parts,
             },
             usage: self.usage,
             status: self.status,
+            ignored_step_types: self.ignored_step_types,
+            failure: self.failure,
         }
     }
+}
+
+/// Step types this client turns into model [`Part`]s.
+fn is_model_step(step_type: &str) -> bool {
+    matches!(step_type, "thought" | "model_output" | "function_call")
+}
+
+/// Step types the parser understands. Anything else is reported when a turn is empty.
+fn is_known_step(step_type: &str) -> bool {
+    is_model_step(step_type) || matches!(step_type, "user_input" | "function_result")
+}
+
+/// Step types present on a non-streaming interaction that this client does not keep.
+pub(crate) fn unrecognized_step_types(steps: &[InteractionStep]) -> Vec<String> {
+    let mut ignored = Vec::new();
+    for step in steps {
+        if is_known_step(&step.step_type) || step.step_type.is_empty() {
+            continue;
+        }
+        if !ignored.iter().any(|t| t == &step.step_type) {
+            ignored.push(step.step_type.clone());
+        }
+    }
+    ignored
+}
+
+pub(crate) fn interaction_failure(ix: &Interaction) -> Option<InteractionErrorBody> {
+    ix.error
+        .clone()
+        .filter(InteractionErrorBody::is_set)
+        .or_else(|| ix.errors.iter().find(|err| err.is_set()).cloned())
+}
+
+/// Why a successful Interactions response produced no model parts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum EmptyTurnReason {
+    /// Safety / policy filter (`safety`, `jailbreak`, `prohibited_content`, `blocklist`).
+    Safety {
+        status: String,
+        code: String,
+        message: String,
+    },
+    /// Stream or resource ended before `completed` / `requires_action`.
+    Unfinished {
+        status: String,
+        step_types: Vec<String>,
+    },
+    /// Steps arrived, but none were thought, model output, or function call.
+    IgnoredSteps {
+        status: String,
+        step_types: Vec<String>,
+    },
+    /// No model steps and no more specific signal.
+    NoModelSteps { status: String },
+    /// Non-safety API error carried on the interaction or an `error` event.
+    Api { status: String, message: String },
+}
+
+impl EmptyTurnReason {
+    pub(crate) fn kind(&self) -> &'static str {
+        match self {
+            Self::Safety { .. } => "safety",
+            Self::Unfinished { .. } => "unfinished",
+            Self::IgnoredSteps { .. } => "unrecognized_steps",
+            Self::NoModelSteps { .. } => "empty",
+            Self::Api { .. } => "api",
+        }
+    }
+
+    pub(crate) fn status(&self) -> &str {
+        match self {
+            Self::Safety { status, .. }
+            | Self::Unfinished { status, .. }
+            | Self::IgnoredSteps { status, .. }
+            | Self::NoModelSteps { status }
+            | Self::Api { status, .. } => status_label(status),
+        }
+    }
+
+    pub(crate) fn message(&self) -> String {
+        match self {
+            Self::Safety {
+                status,
+                code,
+                message,
+            } => {
+                let status = status_label(status);
+                let detail = if message.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {message}")
+                };
+                if code.is_empty() {
+                    format!("model response blocked by safety filter (status {status}){detail}")
+                } else {
+                    format!(
+                        "model response blocked by safety filter (status {status}, code {code}){detail}"
+                    )
+                }
+            }
+            Self::Unfinished { status, step_types } => format!(
+                "model turn unfinished (status {}{})",
+                status_label(status),
+                step_suffix(step_types)
+            ),
+            Self::IgnoredSteps { status, step_types } => format!(
+                "model response contained only unrecognized steps (status {}): {}",
+                status_label(status),
+                step_types.join(", ")
+            ),
+            Self::NoModelSteps { status } => {
+                format!("empty model response (status {})", status_label(status))
+            }
+            Self::Api { message, .. } => message.clone(),
+        }
+    }
+}
+
+/// Classify an empty Interactions turn. Safety wins, then any other API error,
+/// then a non-terminal status, then step types this parser does not keep.
+pub(crate) fn classify_empty_turn(
+    status: &str,
+    ignored_step_types: &[String],
+    failure: Option<&InteractionErrorBody>,
+) -> EmptyTurnReason {
+    let status_owned = status.to_string();
+    if let Some(err) = failure.filter(|err| err.is_set()) {
+        if is_safety_block(err) {
+            return EmptyTurnReason::Safety {
+                status: status_owned,
+                code: err.code.trim().to_string(),
+                message: err.message.trim().to_string(),
+            };
+        }
+        return EmptyTurnReason::Api {
+            status: status_owned,
+            message: api_failure_message(status, err),
+        };
+    }
+    if !status_is_terminal_success(status) {
+        return EmptyTurnReason::Unfinished {
+            status: status_owned,
+            step_types: ignored_step_types.to_vec(),
+        };
+    }
+    if !ignored_step_types.is_empty() {
+        return EmptyTurnReason::IgnoredSteps {
+            status: status_owned,
+            step_types: ignored_step_types.to_vec(),
+        };
+    }
+    EmptyTurnReason::NoModelSteps {
+        status: status_owned,
+    }
+}
+
+fn status_is_terminal_success(status: &str) -> bool {
+    matches!(status, "completed" | "requires_action")
+}
+
+fn status_label(status: &str) -> &str {
+    if status.is_empty() { "unknown" } else { status }
+}
+
+fn step_suffix(step_types: &[String]) -> String {
+    if step_types.is_empty() {
+        String::new()
+    } else {
+        format!("; steps: {}", step_types.join(", "))
+    }
+}
+
+fn is_safety_block(err: &InteractionErrorBody) -> bool {
+    let code = err.code.trim().to_ascii_lowercase();
+    if matches!(
+        code.as_str(),
+        "safety" | "jailbreak" | "prohibited_content" | "blocklist"
+    ) {
+        return true;
+    }
+    let message = err.message.to_ascii_lowercase();
+    message.contains("safety") || message.starts_with("input blocked")
+}
+
+fn api_failure_message(status: &str, err: &InteractionErrorBody) -> String {
+    let code = err.code.trim();
+    let message = err.message.trim();
+    let detail = match (code.is_empty(), message.is_empty()) {
+        (false, false) => format!("{code}: {message}"),
+        (false, true) => code.to_string(),
+        (true, false) => message.to_string(),
+        (true, true) => "unknown error".to_string(),
+    };
+    format!("{detail} (interaction status {})", status_label(status))
 }
 
 /// JSON response_format object for structured output.
@@ -1021,9 +1301,7 @@ mod tests {
             event_type: "step.delta".into(),
             delta: Some(StepDelta {
                 delta_type: "arguments_delta".into(),
-                arguments: Some(Value::String(
-                    r#"{"location": "Boston, MA"}"#.into(),
-                )),
+                arguments: Some(Value::String(r#"{"location": "Boston, MA"}"#.into())),
                 ..Default::default()
             }),
             ..Default::default()
@@ -1059,11 +1337,112 @@ mod tests {
     }
 
     #[test]
+    fn empty_turn_distinguishes_safety_unfinished_and_ignored_steps() {
+        let safety = classify_empty_turn(
+            "failed",
+            &[],
+            Some(&InteractionErrorBody {
+                code: "safety".into(),
+                message: "Request blocked due to safety violations".into(),
+            }),
+        );
+        assert_eq!(safety.kind(), "safety");
+        assert_eq!(safety.status(), "failed");
+        let safety_msg = safety.message();
+        assert!(safety_msg.contains("safety filter"));
+        assert!(safety_msg.contains("status failed"));
+        assert!(safety_msg.contains("code safety"));
+        assert!(!safety_msg.contains("no candidates"));
+
+        let unfinished = classify_empty_turn("in_progress", &["google_search_call".into()], None);
+        assert_eq!(unfinished.kind(), "unfinished");
+        assert_eq!(
+            unfinished.message(),
+            "model turn unfinished (status in_progress; steps: google_search_call)"
+        );
+
+        let ignored = classify_empty_turn("completed", &["google_search_result".into()], None);
+        assert_eq!(ignored.kind(), "unrecognized_steps");
+        assert_eq!(
+            ignored.message(),
+            "model response contained only unrecognized steps (status completed): google_search_result"
+        );
+
+        let unknown = classify_empty_turn("", &[], None);
+        assert_eq!(unknown.kind(), "unfinished");
+        assert_eq!(unknown.message(), "model turn unfinished (status unknown)");
+
+        let empty = classify_empty_turn("completed", &[], None);
+        assert_eq!(empty.kind(), "empty");
+        assert_eq!(empty.message(), "empty model response (status completed)");
+
+        let quota = classify_empty_turn(
+            "failed",
+            &[],
+            Some(&InteractionErrorBody {
+                code: "resource_exhausted".into(),
+                message: "quota exceeded".into(),
+            }),
+        );
+        assert_eq!(quota.kind(), "api");
+        assert!(quota.message().contains("resource_exhausted"));
+        assert!(quota.message().contains("interaction status failed"));
+    }
+
+    #[test]
+    fn stream_accumulator_keeps_status_ignored_steps_and_safety_error() {
+        let mut ignored = StreamAccumulator::default();
+        ignored.on_event(&InteractionSseEvent {
+            event_type: "interaction.status_update".into(),
+            status: Some("in_progress".into()),
+            ..Default::default()
+        });
+        ignored.on_event(&InteractionSseEvent {
+            event_type: "step.start".into(),
+            step: Some(InteractionStep {
+                step_type: "google_search_call".into(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        ignored.on_event(&InteractionSseEvent {
+            event_type: "interaction.completed".into(),
+            interaction: Some(Interaction {
+                id: "int_search".into(),
+                status: "completed".into(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        let ignored_result = ignored.into_result();
+        assert!(ignored_result.content.parts.is_empty());
+        assert_eq!(ignored_result.status, "completed");
+        assert_eq!(
+            ignored_result.ignored_step_types,
+            vec!["google_search_call".to_string()]
+        );
+        assert!(ignored_result.failure.is_none());
+
+        let raw = r#"{"event_type":"error","status":"failed","error":{"code":"safety","message":"Request blocked due to safety violations"}}"#;
+        let event: InteractionSseEvent = serde_json::from_str(raw).expect("safety event");
+        let mut blocked = StreamAccumulator::default();
+        blocked.on_event(&event);
+        let blocked_result = blocked.into_result();
+        assert_eq!(blocked_result.status, "failed");
+        assert!(blocked_result.content.parts.is_empty());
+        let reason = classify_empty_turn(
+            &blocked_result.status,
+            &blocked_result.ignored_step_types,
+            blocked_result.failure.as_ref(),
+        );
+        assert_eq!(reason.kind(), "safety");
+        assert!(reason.message().contains("status failed"));
+    }
+
+    #[test]
     fn normalize_function_args_parses_json_string() {
         assert_eq!(
-            normalize_function_args(Some(Value::String(
-                r#"{"path":"/tmp"}"#.into()
-            ))),
+            normalize_function_args(Some(Value::String(r#"{"path":"/tmp"}"#.into()))),
             Some(json!({"path": "/tmp"}))
         );
         assert_eq!(normalize_function_args(Some(json!({}))), None);
@@ -1097,6 +1476,7 @@ impl Default for Interaction {
             usage: None,
             output_text: None,
             error: None,
+            errors: Vec::new(),
         }
     }
 }
@@ -1111,6 +1491,7 @@ impl Default for InteractionSseEvent {
             status: None,
             step: None,
             delta: None,
+            error: None,
         }
     }
 }

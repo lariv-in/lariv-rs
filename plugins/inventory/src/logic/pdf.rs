@@ -2,10 +2,8 @@
 
 use std::sync::Arc;
 
-use lariv_plugin_contacts::entities::{
-    company::{self, Entity as CompanyEntity},
-    contact::Entity as ContactEntity,
-};
+use lariv_plugin_companies::entities::company::{self, Entity as CompanyEntity};
+use lariv_plugin_contacts::entities::contact::Entity as ContactEntity;
 use lariv_plugin_customer::entities::customer::Entity as CustomerEntity;
 use lariv_plugin_filesystem::state::FilesystemState;
 use minijinja::{Environment, UndefinedBehavior};

@@ -36,6 +36,9 @@ pub struct Model {
     pub row_id: i64,
     pub log_kind: LogKind,
     pub user_id: Option<i64>,
+    /// When set, the change happened under this company session. Null means
+    /// unassigned (visible to superusers under optional-company RLS).
+    pub company_id: Option<i64>,
     #[sea_orm(column_type = "JsonBinary")]
     pub description: Json,
 }

@@ -6377,6 +6377,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "lariv-plugin-bank-accounts"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "chrono",
+ "csv",
+ "frunk",
+ "frunk_core",
+ "http 1.5.0",
+ "lariv-core",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "reqwest 0.13.5",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "lariv-plugin-blog"
 version = "0.1.0"
 dependencies = [
@@ -6397,6 +6422,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "lariv-plugin-companies"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "chrono",
+ "frunk",
+ "frunk_core",
+ "futures-util",
+ "http 1.5.0",
+ "lariv-core",
+ "lariv-plugin-llm-assistant",
+ "lariv-plugin-users",
+ "lariv-rs-macros",
+ "maud",
+ "rune",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "lariv-plugin-contacts"
 version = "0.1.0"
 dependencies = [
@@ -6407,6 +6457,7 @@ dependencies = [
  "frunk_core",
  "http 1.5.0",
  "lariv-core",
+ "lariv-plugin-companies",
  "lariv-plugin-llm-assistant",
  "lariv-plugin-users",
  "lariv-rs-macros",
@@ -6431,6 +6482,7 @@ dependencies = [
  "frunk_core",
  "http 1.5.0",
  "lariv-core",
+ "lariv-plugin-companies",
  "lariv-plugin-contacts",
  "lariv-plugin-customer",
  "lariv-plugin-llm-assistant",
@@ -6457,6 +6509,7 @@ dependencies = [
  "frunk",
  "frunk_core",
  "lariv-core",
+ "lariv-plugin-companies",
  "lariv-plugin-contacts",
  "lariv-plugin-llm-assistant",
  "lariv-plugin-users",
@@ -6661,10 +6714,9 @@ dependencies = [
  "frunk_core",
  "http 1.5.0",
  "lariv-core",
- "lariv-plugin-contacts",
+ "lariv-plugin-companies",
  "lariv-plugin-finance-invoices",
  "lariv-plugin-finance-taxes",
- "lariv-plugin-import-export",
  "lariv-plugin-users",
  "lariv-rs-macros",
  "maud",
@@ -6706,6 +6758,7 @@ dependencies = [
  "http 1.5.0",
  "lariv-core",
  "lariv-formula",
+ "lariv-plugin-companies",
  "lariv-plugin-contacts",
  "lariv-plugin-crm",
  "lariv-plugin-customer",
@@ -6831,6 +6884,7 @@ dependencies = [
  "http 1.5.0",
  "lariv-core",
  "lariv-formula",
+ "lariv-plugin-companies",
  "lariv-plugin-contacts",
  "lariv-plugin-filesystem",
  "lariv-plugin-finance-accounts",
@@ -7113,6 +7167,7 @@ dependencies = [
  "http 1.5.0",
  "lariv-core",
  "lariv-formula",
+ "lariv-plugin-companies",
  "lariv-plugin-contacts",
  "lariv-plugin-crm",
  "lariv-plugin-customer",
@@ -7523,7 +7578,9 @@ dependencies = [
  "der 0.7.10",
  "lariv-core",
  "lariv-formula",
+ "lariv-plugin-bank-accounts",
  "lariv-plugin-blog",
+ "lariv-plugin-companies",
  "lariv-plugin-contacts",
  "lariv-plugin-crm",
  "lariv-plugin-customer",

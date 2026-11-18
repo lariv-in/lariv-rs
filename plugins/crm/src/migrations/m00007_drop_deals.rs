@@ -35,7 +35,7 @@ CREATE TABLE "crm_converted_leads__nodeal" (
     "company_id" integer NOT NULL,
     "contact_id" integer NOT NULL,
     FOREIGN KEY ("lead_id") REFERENCES "crm_leads" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
-    FOREIGN KEY ("company_id") REFERENCES "crm_companies" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    FOREIGN KEY ("company_id") REFERENCES "companies" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     FOREIGN KEY ("contact_id") REFERENCES "crm_contacts" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 )"#,
         )

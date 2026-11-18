@@ -43,7 +43,7 @@ enum InventoryStockMovementLines {
 
 #[derive(Iden)]
 enum CrmCompanies {
-    #[iden = "crm_companies"]
+    #[iden = "companies"]
     Table,
     Id,
 }

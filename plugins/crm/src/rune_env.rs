@@ -413,7 +413,8 @@ async fn search_lead_rows<C: sea_orm::ConnectionTrait>(
     limit: u64,
     status: Option<&str>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    use lariv_plugin_contacts::entities::{company, contact};
+    use lariv_plugin_companies::entities::company;
+    use lariv_plugin_contacts::entities::contact;
     use lariv_plugin_customer::entities::customer;
     use sea_orm::sea_query::{Condition, Expr, ExprTrait, Func, Query};
     use sea_orm::{

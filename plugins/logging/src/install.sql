@@ -9,6 +9,7 @@ SET search_path = public
 AS $fn$
 DECLARE
     uid bigint;
+    cid bigint;
     rid bigint;
     kind text;
     detail jsonb;
@@ -30,6 +31,13 @@ BEGIN
             uid := NULL;
     END;
 
+    BEGIN
+        cid := NULLIF(current_setting('app.company_id', true), '')::bigint;
+    EXCEPTION
+        WHEN OTHERS THEN
+            cid := NULL;
+    END;
+
     pk_name := TG_ARGV[0];
     IF TG_OP = 'INSERT' THEN
         kind := 'Create';
@@ -49,8 +57,8 @@ BEGIN
         detail := old_j;
     END IF;
 
-    INSERT INTO logs (created_at, table_name, row_id, log_kind, user_id, description)
-    VALUES (now(), TG_TABLE_NAME, rid, kind, uid, detail);
+    INSERT INTO logs (created_at, table_name, row_id, log_kind, user_id, company_id, description)
+    VALUES (now(), TG_TABLE_NAME, rid, kind, uid, cid, detail);
 
     IF TG_OP = 'DELETE' THEN
         RETURN OLD;

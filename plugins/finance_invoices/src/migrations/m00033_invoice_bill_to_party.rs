@@ -21,9 +21,9 @@ const UP: &[&str] = &[
     "ALTER TABLE cancelled_invoices ADD COLUMN IF NOT EXISTS bill_to_individual boolean",
     "ALTER TABLE cancelled_invoices ADD COLUMN IF NOT EXISTS customer_individual bigint",
     "ALTER TABLE cancelled_invoices ADD COLUMN IF NOT EXISTS customer_company bigint",
-    "ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS legacy_customer_id bigint",
+    "ALTER TABLE companies ADD COLUMN IF NOT EXISTS legacy_customer_id bigint",
     "ALTER TABLE crm_contacts ADD COLUMN IF NOT EXISTS legacy_customer_id bigint",
-    "INSERT INTO crm_companies (
+    "INSERT INTO companies (
         name, address_line_1, address_line_2, city, pincode, state, website,
         gstin, cin, pan, phone, email, created_at, updated_at, legacy_customer_id
      )
@@ -33,7 +33,7 @@ const UP: &[&str] = &[
      FROM customers AS src
      WHERE src.customer_type <> 'individual'
        AND NOT EXISTS (
-            SELECT 1 FROM crm_companies AS existing
+            SELECT 1 FROM companies AS existing
             WHERE existing.legacy_customer_id = src.id
        )",
     "INSERT INTO crm_contacts (
@@ -50,7 +50,7 @@ const UP: &[&str] = &[
      SET bill_to_individual = FALSE,
          customer_company = c.id,
          customer_individual = NULL
-     FROM crm_companies AS c
+     FROM companies AS c
      WHERE c.legacy_customer_id = d.customer_id",
     "UPDATE draft_invoices AS d
      SET bill_to_individual = TRUE,
@@ -62,7 +62,7 @@ const UP: &[&str] = &[
      SET bill_to_individual = FALSE,
          customer_company = c.id,
          customer_individual = NULL
-     FROM crm_companies AS c
+     FROM companies AS c
      WHERE c.legacy_customer_id = d.customer_id",
     "UPDATE posted_invoices AS d
      SET bill_to_individual = TRUE,
@@ -74,7 +74,7 @@ const UP: &[&str] = &[
      SET bill_to_individual = FALSE,
          customer_company = c.id,
          customer_individual = NULL
-     FROM crm_companies AS c
+     FROM companies AS c
      WHERE c.legacy_customer_id = d.customer_id",
     "UPDATE cancelled_invoices AS d
      SET bill_to_individual = TRUE,
@@ -106,7 +106,7 @@ const UP: &[&str] = &[
         ON DELETE RESTRICT ON UPDATE CASCADE",
     "ALTER TABLE draft_invoices DROP CONSTRAINT IF EXISTS fk_draft_invoices_customer_company",
     "ALTER TABLE draft_invoices ADD CONSTRAINT fk_draft_invoices_customer_company
-        FOREIGN KEY (customer_company) REFERENCES crm_companies(id)
+        FOREIGN KEY (customer_company) REFERENCES companies(id)
         ON DELETE RESTRICT ON UPDATE CASCADE",
     "ALTER TABLE draft_invoices DROP CONSTRAINT IF EXISTS ck_draft_invoices_bill_to",
     "ALTER TABLE draft_invoices ADD CONSTRAINT ck_draft_invoices_bill_to CHECK (
@@ -119,7 +119,7 @@ const UP: &[&str] = &[
         ON DELETE RESTRICT ON UPDATE CASCADE",
     "ALTER TABLE posted_invoices DROP CONSTRAINT IF EXISTS fk_posted_invoices_customer_company",
     "ALTER TABLE posted_invoices ADD CONSTRAINT fk_posted_invoices_customer_company
-        FOREIGN KEY (customer_company) REFERENCES crm_companies(id)
+        FOREIGN KEY (customer_company) REFERENCES companies(id)
         ON DELETE RESTRICT ON UPDATE CASCADE",
     "ALTER TABLE posted_invoices DROP CONSTRAINT IF EXISTS ck_posted_invoices_bill_to",
     "ALTER TABLE posted_invoices ADD CONSTRAINT ck_posted_invoices_bill_to CHECK (
@@ -132,7 +132,7 @@ const UP: &[&str] = &[
         ON DELETE RESTRICT ON UPDATE CASCADE",
     "ALTER TABLE cancelled_invoices DROP CONSTRAINT IF EXISTS fk_cancelled_invoices_customer_company",
     "ALTER TABLE cancelled_invoices ADD CONSTRAINT fk_cancelled_invoices_customer_company
-        FOREIGN KEY (customer_company) REFERENCES crm_companies(id)
+        FOREIGN KEY (customer_company) REFERENCES companies(id)
         ON DELETE RESTRICT ON UPDATE CASCADE",
     "ALTER TABLE cancelled_invoices DROP CONSTRAINT IF EXISTS ck_cancelled_invoices_bill_to",
     "ALTER TABLE cancelled_invoices ADD CONSTRAINT ck_cancelled_invoices_bill_to CHECK (
@@ -146,7 +146,7 @@ const UP: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_cancelled_invoices_customer_individual ON cancelled_invoices (customer_individual)",
     "CREATE INDEX IF NOT EXISTS idx_cancelled_invoices_customer_company ON cancelled_invoices (customer_company)",
     "DROP TABLE IF EXISTS customers CASCADE",
-    "ALTER TABLE crm_companies DROP COLUMN IF EXISTS legacy_customer_id",
+    "ALTER TABLE companies DROP COLUMN IF EXISTS legacy_customer_id",
     "ALTER TABLE crm_contacts DROP COLUMN IF EXISTS legacy_customer_id",
 ];
 

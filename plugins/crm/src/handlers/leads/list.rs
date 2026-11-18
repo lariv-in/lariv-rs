@@ -13,8 +13,8 @@ use lariv_core::list_filters::{
 };
 use lariv_core::template::RenderAppPane;
 use lariv_core::web::{Htmx, QueryPage, QueryPageSize, html_built_page_with_slots};
+use lariv_plugin_companies::routes::CompanyFkSelectRouteTag;
 use lariv_plugin_contacts::entities::contact;
-use lariv_plugin_contacts::routes::CompanyFkSelectRouteTag;
 use lariv_plugin_customer::entities::customer;
 use lariv_plugin_users::middleware::RequireAuth;
 
@@ -111,7 +111,7 @@ where
                     ))
                     .add(text_match_condition(
                         backend,
-                        &[lariv_plugin_contacts::entities::company::Column::Name],
+                        &[lariv_plugin_companies::entities::company::Column::Name],
                         needle,
                     )))
             },

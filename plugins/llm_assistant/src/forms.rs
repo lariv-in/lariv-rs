@@ -36,10 +36,10 @@ pub struct PreferencesForm {
     #[form(label = "Max output tokens", widget = Number, required)]
     pub max_output_tokens: i64,
 
-    #[form(label = "Google CSE API key", widget = Text)]
+    #[form(label = "Google CSE API key", widget = Text, when = "show_cse_keys")]
     pub cse_api_key: String,
 
-    #[form(label = "Google CSE CX", widget = Text)]
+    #[form(label = "Google CSE CX", widget = Text, when = "show_cse_keys")]
     pub cse_cx: String,
 
     #[form(widget = Section, label = "Email Settings")]

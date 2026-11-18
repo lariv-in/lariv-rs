@@ -12,9 +12,8 @@ use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_with_slots, path_and_query,
     respond_create_modal_done_fk,
 };
-use lariv_plugin_contacts::entities::{
-    company::Entity as CompanyEntity, contact::Entity as ContactEntity,
-};
+use lariv_plugin_companies::entities::company::Entity as CompanyEntity;
+use lariv_plugin_contacts::entities::contact::Entity as ContactEntity;
 use lariv_plugin_users::middleware::RequireAuth;
 use sea_orm::EntityTrait;
 

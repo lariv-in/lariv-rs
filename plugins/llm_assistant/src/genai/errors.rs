@@ -17,9 +17,13 @@ pub enum GenaiError {
     /// Success HTTP status but JSON `error` field in the response envelope.
     #[error("Gemini API returned error: {message}")]
     ApiMessage { message: String },
-    /// Response parsed but contained no candidate content.
-    #[error("empty model response (no candidates)")]
-    EmptyResponse,
+    /// Interactions returned HTTP success but no thought, model output, or function call.
+    ///
+    /// The message names the interaction status and, when known, whether this was a
+    /// safety block, an unfinished turn, or only step types this client does not keep.
+    /// The Interactions stream has no `candidates` field.
+    #[error("{0}")]
+    EmptyResponse(String),
     /// Response body was not valid JSON for the expected schema.
     #[error("failed to parse response JSON: {0}")]
     Json(String),

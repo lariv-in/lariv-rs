@@ -332,8 +332,8 @@ pub async fn run_stream_turn(
     let decls = tools.declarations();
     let max_rounds = ASSISTANT_TOOL_ROUNDS.max(1);
     let prefs = super::preferences::load_preferences(&state.db).await?;
-    let cse_api_key = prefs.cse_api_key;
-    let cse_cx = prefs.cse_cx;
+    let cse_api_key = super::preferences::resolved_cse_api_key(&state.db).await?;
+    let cse_cx = super::preferences::resolved_cse_cx(&state.db).await?;
     let max_output_tokens =
         super::preferences::max_output_tokens_or_default(prefs.max_output_tokens);
 
@@ -1075,7 +1075,12 @@ fn content_has_visible_answer(content: &Content) -> bool {
 fn push_work_thoughts(out: &mut String, content: &Content) {
     use crate::ws::html::{work_group_html, work_parts_inner_html};
 
-    let thought_parts: Vec<_> = content.parts.iter().filter(|p| p.thought).cloned().collect();
+    let thought_parts: Vec<_> = content
+        .parts
+        .iter()
+        .filter(|p| p.thought)
+        .cloned()
+        .collect();
     if thought_parts.is_empty() {
         return;
     }
@@ -1358,7 +1363,9 @@ mod tests {
         let first = html.find("first plan").expect("first thought");
         let read = html.find("Function call: read_file").expect("read_file");
         let second = html.find("second plan").expect("second thought");
-        let list = html.find("Function call: list_skills").expect("list_skills");
+        let list = html
+            .find("Function call: list_skills")
+            .expect("list_skills");
         let done = html.find("done").expect("answer");
         assert!(first < read);
         assert!(read < second);

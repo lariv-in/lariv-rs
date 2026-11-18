@@ -1,6 +1,7 @@
 use maud::{Markup, html};
 
-use lariv_plugin_contacts::routes::{CompanyDetailRouteTag, ContactDetailRouteTag};
+use lariv_plugin_companies::routes::CompanyDetailRouteTag;
+use lariv_plugin_contacts::routes::ContactDetailRouteTag;
 use lariv_plugin_finance_accounts::accounting_detail_menu::{
     DetailMenuNavItem, detail_sidebar_menu,
 };

@@ -10,14 +10,9 @@ use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm, fk_value};
 use lariv_core::template::RenderTemplate;
 use lariv_core::web::modal_edit_post_url;
 
-use crate::forms::{CompanyForm, CompanyFormField, ContactForm, ContactFormField};
-use crate::keys::{
-    COMPANY_DELETE_MODAL, COMPANY_EDIT_MODAL, CONTACT_DELETE_MODAL, CONTACT_EDIT_MODAL,
-};
-use crate::routes::{
-    CompanyDeleteGetRouteTag, CompanyDeletePostRouteTag, CompanyEditPostRouteTag,
-    ContactDeleteGetRouteTag, ContactDeletePostRouteTag, ContactEditPostRouteTag,
-};
+use crate::forms::{ContactForm, ContactFormField};
+use crate::keys::{CONTACT_DELETE_MODAL, CONTACT_EDIT_MODAL};
+use crate::routes::{ContactDeleteGetRouteTag, ContactDeletePostRouteTag, ContactEditPostRouteTag};
 
 #[derive(Generic)]
 pub struct ContactEditModalPage {
@@ -77,75 +72,6 @@ impl RenderTemplate for ContactEditModalPage {
 }
 
 #[derive(Generic)]
-pub struct CompanyEditModalPage {
-    pub id: i64,
-    pub form_name: String,
-    pub name: String,
-    pub address_line_1: String,
-    pub address_line_2: String,
-    pub city: String,
-    pub pincode: String,
-    pub state: String,
-    pub website: String,
-    pub gstin: String,
-    pub cin: String,
-    pub pan: String,
-    pub phone: String,
-    pub email: String,
-    pub error: String,
-}
-
-impl RenderTemplate for CompanyEditModalPage {
-    fn render(&self, _chrome: &ShellChrome) -> Markup {
-        let delete_url = CompanyDeleteGetRouteTag::new(self.id).url();
-        modal_keyed(
-            COMPANY_EDIT_MODAL,
-            &self.form_name,
-            html! {
-                h3 class="font-bold text-lg mb-4" { "Edit company" }
-                (form(&CsrfToken::current(), FormOpts {
-                    attrs: form_hx_post_url(COMPANY_EDIT_MODAL, &modal_edit_post_url(
-                        CompanyEditPostRouteTag::new(self.id),
-                        &self.form_name,
-                    )),
-                    form_error: Some(self.error.as_str()).filter(|e| !e.is_empty()),
-                    inputs: CompanyForm::render_inputs(
-                        &FormCtx::form::<CompanyForm>(CsrfToken::current())
-                            .value(CompanyFormField::Name, &self.name)
-                            .value(CompanyFormField::AddressLine1, &self.address_line_1)
-                            .value(CompanyFormField::AddressLine2, &self.address_line_2)
-                            .value(CompanyFormField::City, &self.city)
-                            .value(CompanyFormField::Pincode, &self.pincode)
-                            .value(CompanyFormField::State, &self.state)
-                            .choices(CompanyFormField::State, CompanyForm::state_choices())
-                            .value(CompanyFormField::Website, &self.website)
-                            .value(CompanyFormField::Gstin, &self.gstin)
-                            .value(CompanyFormField::Cin, &self.cin)
-                            .value(CompanyFormField::Pan, &self.pan)
-                            .value(CompanyFormField::Phone, &self.phone)
-                            .value(CompanyFormField::Email, &self.email),
-                    ),
-                    actions: html! {
-                        (button_submit(ButtonSubmit { label: "Save", ..Default::default() }))
-                        (button_modal_form(ButtonModalForm {
-                            label: "Delete",
-                            icon_name: Some("trash"),
-                            name: "p_contacts.CompanyDeleteForm",
-                            href: &delete_url,
-                            form_post_url: &delete_url,
-                            modal_uid: COMPANY_DELETE_MODAL.id(),
-                            classes: "btn-error",
-                            ..Default::default()
-                        }))
-                    },
-                    ..Default::default()
-                }))
-            },
-        )
-    }
-}
-
-#[derive(Generic)]
 pub struct ConfirmDeletePage {
     pub modal_uid: String,
     pub message: String,
@@ -166,11 +92,7 @@ impl RenderTemplate for ConfirmDeletePage {
         } else {
             self.modal_uid.as_str()
         };
-        let post_url = if self.modal_uid == COMPANY_DELETE_MODAL.id() {
-            CompanyDeletePostRouteTag::new(self.id).url()
-        } else {
-            ContactDeletePostRouteTag::new(self.id).url()
-        };
+        let post_url = ContactDeletePostRouteTag::new(self.id).url();
         modal(lariv_core::components::Modal {
             uid,
             children: delete_confirmation(DeleteConfirmation {

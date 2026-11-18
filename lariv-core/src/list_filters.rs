@@ -10,7 +10,7 @@ use sea_orm::DatabaseBackend;
 use sea_orm::sea_query::{Condition, Expr, ExprTrait, IntoColumnRef, SimpleExpr, Value};
 
 use crate::datetime::{DatetimeLocalInput, parse_date, parse_time};
-use crate::db::trigram::{text_match_condition, text_match_expr};
+use crate::db::trigram::{ci_contains, text_match_condition, text_match_expr};
 use crate::duration::parse_duration;
 
 /// How a clause combines with the previous clause.
@@ -401,6 +401,27 @@ where
                 return Ok(Condition::all());
             }
             Ok(text_match_condition(backend, &[col], needle))
+        }),
+    }
+}
+
+/// Case-insensitive substring match (`LIKE`), without trigram similarity.
+pub fn like_column<C>(key: &'static str, label: &'static str, col: C) -> FilterField
+where
+    C: Copy + IntoColumnRef + Send + Sync + 'static,
+{
+    FilterField {
+        key,
+        label,
+        widget: FilterWidget::Text,
+        choices: Vec::new(),
+        post_filter: false,
+        apply: Box::new(move |clause, _| {
+            let needle = clause.value().trim();
+            if needle.is_empty() {
+                return Ok(Condition::all());
+            }
+            Ok(one(ci_contains(col, needle)))
         }),
     }
 }
@@ -847,6 +868,16 @@ mod tests {
         let rendered = sql(applied.condition);
         assert!(!rendered.contains("nope"), "{rendered}");
         assert!(!rendered.contains("missing"), "{rendered}");
+    }
+
+    #[test]
+    fn like_column_is_substring_without_trigram() {
+        let fields = [like_column("ifsc", "IFSC", NameCol)];
+        let clauses = vec![clause(0, JoinOp::And, "ifsc", CmpOp::Eq, "HDFC0")];
+        let rendered = sql(apply_filters(DatabaseBackend::Postgres, &fields, &clauses).condition);
+        assert!(rendered.contains("LIKE"), "{rendered}");
+        assert!(rendered.contains("hdfc0"), "{rendered}");
+        assert!(!rendered.contains("word_similarity"), "{rendered}");
     }
 
     #[test]

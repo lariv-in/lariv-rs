@@ -22,7 +22,7 @@ enum CrmContacts {
 }
 
 #[derive(DeriveIden)]
-enum CrmCompanies {
+enum Companies {
     Table,
     Id,
 }
@@ -58,7 +58,7 @@ impl MigrationTrait for Migration {
                         ForeignKey::create()
                             .name("fk_crm_contacts_company_id")
                             .from(CrmContacts::Table, CrmContacts::CompanyId)
-                            .to(CrmCompanies::Table, CrmCompanies::Id)
+                            .to(Companies::Table, Companies::Id)
                             .on_delete(ForeignKeyAction::SetNull)
                             .on_update(ForeignKeyAction::Cascade),
                     )

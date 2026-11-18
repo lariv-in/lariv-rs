@@ -7,9 +7,11 @@ pub struct Migration;
 const UP_POSTGRES: &[&str] = &[
     "ALTER TABLE crm_converted_leads DROP CONSTRAINT IF EXISTS fk_crm_converted_leads_customer_id",
     "ALTER TABLE crm_converted_leads DROP COLUMN IF EXISTS customer_id",
-    "ALTER TABLE crm_companies DROP CONSTRAINT IF EXISTS fk_crm_companies_customer_id",
+    "ALTER TABLE companies DROP CONSTRAINT IF EXISTS fk_crm_companies_customer_id",
+    "ALTER TABLE companies DROP CONSTRAINT IF EXISTS fk_companies_customer_id",
     "DROP INDEX IF EXISTS uix_crm_companies_customer_id",
-    "ALTER TABLE crm_companies DROP COLUMN IF EXISTS customer_id",
+    "DROP INDEX IF EXISTS uix_companies_customer_id",
+    "ALTER TABLE companies DROP COLUMN IF EXISTS customer_id",
 ];
 
 #[async_trait::async_trait]
@@ -28,6 +30,7 @@ impl MigrationTrait for Migration {
                     "DROP INDEX IF EXISTS uix_crm_companies_customer_id",
                 )
                 .await?;
+                exec_sql(manager, "DROP INDEX IF EXISTS uix_companies_customer_id").await?;
                 exec_sql(
                     manager,
                     "ALTER TABLE crm_converted_leads DROP COLUMN IF EXISTS customer_id",
@@ -35,7 +38,7 @@ impl MigrationTrait for Migration {
                 .await?;
                 exec_sql(
                     manager,
-                    "ALTER TABLE crm_companies DROP COLUMN IF EXISTS customer_id",
+                    "ALTER TABLE companies DROP COLUMN IF EXISTS customer_id",
                 )
                 .await
             }

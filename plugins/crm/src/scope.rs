@@ -6,11 +6,10 @@ use sea_orm::{
     sea_query::{Expr, ExprTrait, Order, Query as SeaQuery, SelectStatement},
 };
 
-use lariv_plugin_contacts::entities::{
-    company::{self, Entity as CompanyEntity},
-    contact::{self, Entity as ContactEntity},
-};
-use lariv_plugin_contacts::routes::{CompanyDetailRouteTag, ContactDetailRouteTag};
+use lariv_plugin_companies::entities::company::{self, Entity as CompanyEntity};
+use lariv_plugin_companies::routes::CompanyDetailRouteTag;
+use lariv_plugin_contacts::entities::contact::{self, Entity as ContactEntity};
+use lariv_plugin_contacts::routes::ContactDetailRouteTag;
 use lariv_plugin_customer::entities::customer::{self, Entity as CustomerEntity};
 
 use super::entities::{
@@ -309,7 +308,7 @@ pub fn apply_failed_lead_sort(
     }
 }
 
-pub use lariv_plugin_contacts::scope::company_display_label;
+pub use lariv_plugin_companies::scope::company_display_label;
 
 /// Resolved customer party for lead list and detail views.
 #[derive(Clone, Debug, Default)]

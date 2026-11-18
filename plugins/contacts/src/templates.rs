@@ -1,4 +1,4 @@
-//! Maud page templates for contact and company CRUD views.
+//! Maud page templates for contact CRUD views.
 
 use maud::Markup;
 
@@ -15,12 +15,10 @@ pub mod detail;
 pub mod edit;
 pub mod list;
 
-pub use create::{COMPANY_CREATE, CONTACT_CREATE, CompanyCreateModalPage, ContactCreateModalPage};
-pub use detail::{CompanyDetailPage, ContactDetailPage};
-pub use edit::{CompanyEditModalPage, ConfirmDeletePage, ContactEditModalPage};
-pub use list::{
-    CompanyListPage, CompanyRow, CompanySelectPage, ContactListPage, ContactRow, ContactSelectPage,
-};
+pub use create::{CONTACT_CREATE, ContactCreateModalPage};
+pub use detail::ContactDetailPage;
+pub use edit::{ConfirmDeletePage, ContactEditModalPage};
+pub use list::{ContactListPage, ContactRow, ContactSelectPage};
 
 define_register_items! {
     plugin: ContactsTag;
@@ -36,11 +34,6 @@ define_register_items! {
         ContactEditModalIdx: ContactEditModalPageTag => ContactEditModalPage,
         ContactCreateModalIdx: ContactCreateModalPageTag => ContactCreateModalPage,
         ContactSelectIdx: ContactSelectPageTag => ContactSelectPage,
-        CompanyListIdx: CompanyListPageTag => CompanyListPage,
-        CompanyDetailIdx: CompanyDetailPageTag => CompanyDetailPage,
-        CompanyEditModalIdx: CompanyEditModalPageTag => CompanyEditModalPage,
-        CompanyCreateModalIdx: CompanyCreateModalPageTag => CompanyCreateModalPage,
-        CompanySelectIdx: CompanySelectPageTag => CompanySelectPage,
         ConfirmDeleteIdx: ContactConfirmDeletePageTag => ConfirmDeletePage,
     ]
 }

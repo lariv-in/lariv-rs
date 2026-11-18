@@ -1,4 +1,4 @@
-//! GST place-of-supply codes stored on `crm_companies.state`.
+//! GST place-of-supply codes stored on `companies.state`.
 
 /// `(code, "code — NAME")` for the company state select.
 pub const GST_STATE_CHOICES: &[(&str, &str)] = &[

@@ -17,27 +17,27 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema = 'public'
-      AND table_name = 'crm_companies'
+      AND table_name = 'companies'
       AND column_name = 'address_line1'
   ) THEN
-    UPDATE crm_companies
+    UPDATE companies
     SET address_line_1 = address_line1
     WHERE address_line_1 IS NULL
       AND address_line1 IS NOT NULL;
-    ALTER TABLE crm_companies DROP COLUMN address_line1;
+    ALTER TABLE companies DROP COLUMN address_line1;
   END IF;
 
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema = 'public'
-      AND table_name = 'crm_companies'
+      AND table_name = 'companies'
       AND column_name = 'address_line2'
   ) THEN
-    UPDATE crm_companies
+    UPDATE companies
     SET address_line_2 = address_line2
     WHERE address_line_2 IS NULL
       AND address_line2 IS NOT NULL;
-    ALTER TABLE crm_companies DROP COLUMN address_line2;
+    ALTER TABLE companies DROP COLUMN address_line2;
   END IF;
 END $$;
 "#;
@@ -60,13 +60,13 @@ impl MigrationTrait for Migration {
                     exec_sql(
                         manager,
                         &format!(
-                            "UPDATE crm_companies SET {current} = {legacy} WHERE {current} IS NULL AND {legacy} IS NOT NULL"
+                            "UPDATE companies SET {current} = {legacy} WHERE {current} IS NULL AND {legacy} IS NOT NULL"
                         ),
                     )
                     .await?;
                     exec_sql(
                         manager,
-                        &format!("ALTER TABLE crm_companies DROP COLUMN {legacy}"),
+                        &format!("ALTER TABLE companies DROP COLUMN {legacy}"),
                     )
                     .await?;
                 }
@@ -86,7 +86,7 @@ async fn column_exists(manager: &SchemaManager<'_>, column: &str) -> Result<bool
         .get_connection()
         .query_one_raw(Statement::from_string(
             manager.get_database_backend(),
-            format!("SELECT 1 FROM pragma_table_info('crm_companies') WHERE name = '{column}'"),
+            format!("SELECT 1 FROM pragma_table_info('companies') WHERE name = '{column}'"),
         ))
         .await?;
     Ok(row.is_some())

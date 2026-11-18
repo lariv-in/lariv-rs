@@ -7,11 +7,10 @@ use sea_orm::{
     sea_query::{Expr, ExprTrait, Func, Order, extension::postgres::PgExpr},
 };
 
-use lariv_plugin_contacts::entities::{
-    company::{self, Entity as CompanyEntity},
-    contact::{self, Entity as ContactEntity},
-};
-use lariv_plugin_contacts::routes::{CompanyDetailRouteTag, ContactDetailRouteTag};
+use lariv_plugin_companies::entities::company::{self, Entity as CompanyEntity};
+use lariv_plugin_companies::routes::CompanyDetailRouteTag;
+use lariv_plugin_contacts::entities::contact::{self, Entity as ContactEntity};
+use lariv_plugin_contacts::routes::ContactDetailRouteTag;
 
 use crate::entities::customer::{self, Entity as CustomerEntity};
 

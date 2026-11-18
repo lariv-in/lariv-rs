@@ -55,6 +55,7 @@ sha1 = { version = "0.11" }
 sha2 = { version = "0.11" }
 rust_xlsxwriter = { version = "0.99" }
 calamine = { version = "0.36" }
+csv = "1.3"
 rust_decimal = { version = "1", features = ["serde-with-str", "maths"] }
 num2words = { version = "1" }
 hex = { version = "0.4" }
@@ -136,13 +137,14 @@ full = [
     "plugin-mdbook",
     "plugin-inventory",
     "plugin-todo",
+    "plugin-bank-accounts",
     "plugin-logging",
     "plugin-user-log",
     "plugin-customer",
     "plugin-finance-accounts",
     "plugin-finance-customers",
 ]
-cap-llm = ["lariv-core/cap-llm", "lariv-plugin-llm-assistant?/cap-llm", "lariv-plugin-documents?/cap-llm", "lariv-plugin-forms?/cap-llm", "lariv-plugin-finance-accounts?/cap-llm", "lariv-plugin-finance-taxes?/cap-llm", "lariv-plugin-finance-products?/cap-llm", "lariv-plugin-finance-invoices?/cap-llm", "lariv-plugin-finance-purchases?/cap-llm", "lariv-plugin-website?/cap-llm", "lariv-plugin-contacts?/cap-llm", "lariv-plugin-customer?/cap-llm", "lariv-plugin-crm?/cap-llm"]
+cap-llm = ["lariv-core/cap-llm", "lariv-plugin-llm-assistant?/cap-llm", "lariv-plugin-documents?/cap-llm", "lariv-plugin-forms?/cap-llm", "lariv-plugin-finance-accounts?/cap-llm", "lariv-plugin-finance-taxes?/cap-llm", "lariv-plugin-finance-products?/cap-llm", "lariv-plugin-finance-invoices?/cap-llm", "lariv-plugin-finance-purchases?/cap-llm", "lariv-plugin-website?/cap-llm", "lariv-plugin-companies?/cap-llm", "lariv-plugin-contacts?/cap-llm", "lariv-plugin-customer?/cap-llm", "lariv-plugin-crm?/cap-llm"]
 typst = ["lariv-core/typst"]
 plugin-users = ["lariv-core/plugin-users", "dep:lariv-plugin-users"]
 plugin-dashboard = ["plugin-users", "dep:lariv-plugin-dashboard"]
@@ -151,7 +153,7 @@ plugin-forms = ["plugin-users", "plugin-filesystem", "dep:lariv-plugin-forms"]
 plugin-filesystem = ["plugin-users", "typst", "dep:lariv-plugin-filesystem"]
 plugin-filesystem-sync-git = ["plugin-filesystem", "dep:lariv-plugin-filesystem-sync-git"]
 plugin-website = ["plugin-filesystem", "plugin-users", "dep:lariv-plugin-website"]
-plugin-llm-assistant = ["plugin-users", "plugin-filesystem", "cap-llm", "typst", "cap-llm", "dep:lariv-plugin-llm-assistant", "lariv-plugin-finance-accounts?/plugin-llm-assistant", "lariv-plugin-finance-invoices?/plugin-llm-assistant", "lariv-plugin-finance-purchases?/plugin-llm-assistant", "lariv-plugin-finance-products?/plugin-llm-assistant", "lariv-plugin-documents?/plugin-llm-assistant", "lariv-plugin-website?/plugin-llm-assistant", "lariv-plugin-contacts?/plugin-llm-assistant", "lariv-plugin-customer?/plugin-llm-assistant", "lariv-plugin-crm?/plugin-llm-assistant"]
+plugin-llm-assistant = ["plugin-users", "plugin-filesystem", "cap-llm", "typst", "cap-llm", "dep:lariv-plugin-llm-assistant", "lariv-plugin-finance-accounts?/plugin-llm-assistant", "lariv-plugin-finance-invoices?/plugin-llm-assistant", "lariv-plugin-finance-purchases?/plugin-llm-assistant", "lariv-plugin-finance-products?/plugin-llm-assistant", "lariv-plugin-documents?/plugin-llm-assistant", "lariv-plugin-website?/plugin-llm-assistant", "lariv-plugin-companies?/plugin-llm-assistant", "lariv-plugin-contacts?/plugin-llm-assistant", "lariv-plugin-customer?/plugin-llm-assistant", "lariv-plugin-crm?/plugin-llm-assistant"]
 plugin-llm-assistant-tester = ["plugin-users", "dep:lariv-plugin-llm-assistant-tester"]
 plugin-otp = ["plugin-users", "dep:lariv-plugin-otp"]
 plugin-pwa = ["dep:lariv-plugin-pwa"]
@@ -170,10 +172,12 @@ finance-common = ["dep:lariv-plugin-finance-common"]
 plugin-finance-accounts = ["plugin-users", "finance-common", "dep:lariv-plugin-finance-accounts"]
 plugin-finance-customers = ["plugin-finance-accounts", "plugin-customer", "dep:lariv-plugin-finance-customers"]
 plugin-customer = ["plugin-users", "plugin-contacts", "dep:lariv-plugin-customer"]
-plugin-contacts = ["plugin-users", "dep:lariv-plugin-contacts"]
+plugin-companies = ["plugin-users", "dep:lariv-plugin-companies"]
+plugin-contacts = ["plugin-users", "plugin-companies", "dep:lariv-plugin-contacts"]
 plugin-crm = ["plugin-contacts", "plugin-customer", "dep:lariv-plugin-crm"]
 plugin-tasks = ["plugin-users", "plugin-pwa", "dep:lariv-plugin-tasks"]
 plugin-todo = ["plugin-users", "dep:lariv-plugin-todo"]
+plugin-bank-accounts = ["plugin-users", "dep:lariv-plugin-bank-accounts"]
 plugin-logging = ["plugin-users", "dep:lariv-plugin-logging"]
 plugin-user-log = ["plugin-users", "plugin-logging", "dep:lariv-plugin-user-log"]
 plugin-documents = ["plugin-filesystem", "dep:lariv-plugin-documents"]
@@ -187,7 +191,7 @@ plugin-finance-invoices-log = ["plugin-finance-invoices", "plugin-logging", "dep
 plugin-finance-purchases = ["plugin-finance-accounts", "plugin-crm", "plugin-customer", "plugin-finance-products", "plugin-finance-taxes", "plugin-filesystem", "typst", "dep:lariv-plugin-finance-purchases"]
 plugin-finance-indian = ["plugin-finance-accounts", "dep:lariv-plugin-finance-indian"]
 plugin-finance = ["plugin-finance-invoices", "plugin-finance-purchases", "plugin-finance-indian"]
-plugin-finance-gst-export = ["plugin-finance", "plugin-import-export", "dep:lariv-plugin-finance-gst-export"]
+plugin-finance-gst-export = ["plugin-finance", "dep:lariv-plugin-finance-gst-export"]
 
 [[bin]]
 name = "lariv"
@@ -202,7 +206,9 @@ paste = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing-subscriber = { workspace = true }
+lariv-plugin-bank-accounts = { path = "plugins/bank_accounts", optional = true }
 lariv-plugin-blog = { path = "plugins/blog", optional = true }
+lariv-plugin-companies = { path = "plugins/companies", optional = true }
 lariv-plugin-contacts = { path = "plugins/contacts", optional = true }
 lariv-plugin-crm = { path = "plugins/crm", optional = true }
 lariv-plugin-customer = { path = "plugins/customer", optional = true }
@@ -311,6 +317,11 @@ required-features = ["plugin-tasks"]
 name = "todo_plugin_compile"
 path = "tests/todo_plugin_compile.rs"
 required-features = ["plugin-todo"]
+
+[[test]]
+name = "bank_accounts_plugin_compile"
+path = "tests/bank_accounts_plugin_compile.rs"
+required-features = ["plugin-bank-accounts"]
 
 [[test]]
 name = "logging_plugin_compile"

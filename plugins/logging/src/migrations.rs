@@ -9,6 +9,7 @@ use super::LoggingTag;
 mod m00001_create_logs;
 mod m00002_index_logs_user_id;
 mod m00003_logs_description_jsonb;
+mod m00004_logs_company_id;
 
 pub const INSTALL_SQL: &str = include_str!("install.sql");
 
@@ -22,6 +23,7 @@ impl MigratorTrait for Migrator {
             Box::new(m00001_create_logs::Migration),
             Box::new(m00002_index_logs_user_id::Migration),
             Box::new(m00003_logs_description_jsonb::Migration),
+            Box::new(m00004_logs_company_id::Migration),
         ]
     }
 }

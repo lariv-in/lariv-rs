@@ -2,6 +2,9 @@
 //!
 //! Holds Gemini API key / chat model, Google Custom Search (`cse_api_key`, `cse_cx`),
 //! and email (IMAP/SMTP) credentials.
+//!
+//! Deployments may register [`SharedLlmCredentials`] so Gemini and CSE keys live
+//! outside this table (for example a site-wide preferences app).
 
 use std::sync::{Arc, Mutex};
 
@@ -48,12 +51,39 @@ pub(crate) fn background_preferences() -> Option<Arc<dyn BackgroundPreferences>>
         .clone()
 }
 
+/// Site-wide Gemini and Google CSE credentials, when a deployment owns them.
+#[async_trait::async_trait]
+pub trait SharedLlmCredentials: Send + Sync {
+    async fn api_key(&self, db: &DatabaseConnection) -> Result<String, DbErr>;
+    async fn cse_api_key(&self, db: &DatabaseConnection) -> Result<String, DbErr>;
+    async fn cse_cx(&self, db: &DatabaseConnection) -> Result<String, DbErr>;
+}
+
+static SHARED: Mutex<Option<Arc<dyn SharedLlmCredentials>>> = Mutex::new(None);
+
+/// Install the shared Gemini / CSE credential source for this process.
+pub fn set_shared_llm_credentials(source: Arc<dyn SharedLlmCredentials>) {
+    *SHARED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(source);
+}
+
+pub fn shared_llm_credentials() -> Option<Arc<dyn SharedLlmCredentials>> {
+    SHARED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
+
+/// True when a deployment registered [`SharedLlmCredentials`].
+pub fn shared_llm_credentials_registered() -> bool {
+    shared_llm_credentials().is_some()
+}
+
 /// Load the visible preferences row, creating it if missing.
 ///
 /// A background task with no session user does not insert. That insert is rejected
 /// when row-level security is on, and it would create an unowned row.
-///
-/// The Gemini key on this row is the superuser's. Postgres copies it on write.
 pub async fn load_preferences(db: &DatabaseConnection) -> Result<LlmAssistantPreferences, DbErr> {
     if let Some(prefs) = PrefsEntity::find().limit(1).one(db).await? {
         return Ok(prefs);
@@ -149,10 +179,41 @@ pub async fn save_preferences(
     am.update(db).await
 }
 
-/// Gemini API key: preferences row first, then `GOOGLE_API_KEY` / `GEMINI_API_KEY`.
+/// Gemini API key: shared credentials, then preferences row, then env.
 pub async fn resolved_api_key(db: &DatabaseConnection) -> Result<String, DbErr> {
+    if let Some(shared) = shared_llm_credentials() {
+        let key = shared.api_key(db).await?;
+        let resolved = api_key_from_prefs_or_env(&key);
+        if !resolved.is_empty() {
+            return Ok(resolved);
+        }
+    }
     let prefs = load_preferences(db).await?;
     Ok(api_key_from_prefs_or_env(&prefs.api_key))
+}
+
+/// Google CSE API key: shared credentials, then preferences row.
+pub async fn resolved_cse_api_key(db: &DatabaseConnection) -> Result<String, DbErr> {
+    if let Some(shared) = shared_llm_credentials() {
+        let key = shared.cse_api_key(db).await?;
+        if !key.trim().is_empty() {
+            return Ok(key);
+        }
+    }
+    let prefs = load_preferences(db).await?;
+    Ok(prefs.cse_api_key)
+}
+
+/// Google CSE CX: shared credentials, then preferences row.
+pub async fn resolved_cse_cx(db: &DatabaseConnection) -> Result<String, DbErr> {
+    if let Some(shared) = shared_llm_credentials() {
+        let cx = shared.cse_cx(db).await?;
+        if !cx.trim().is_empty() {
+            return Ok(cx);
+        }
+    }
+    let prefs = load_preferences(db).await?;
+    Ok(prefs.cse_cx)
 }
 
 /// Chat model: preferences row if set, otherwise `fallback` (usually config `chatModel`).

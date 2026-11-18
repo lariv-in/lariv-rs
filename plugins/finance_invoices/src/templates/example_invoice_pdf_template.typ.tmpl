@@ -84,8 +84,8 @@
 {% for line in Lines %}
   (
     desc: [{{ line.Product.Name }}],
-    remarks: [{% if line.Remarks %}#text(size: 7.5pt, style: "italic", fill: luma(110))[{{ line.Remarks }}]{% endif %}{% for part in line.VariableLines %}{% if line.Remarks or not loop.first %} \
-{% endif %}#text(size: 7.5pt, fill: luma(90))[{{ part }}]{% endfor %}],
+    remarks: [{% if line.Remarks %}#text(size: 7.5pt, style: "italic")[{{ line.Remarks }}]{% endif %}{% for part in line.VariableLines %}{% if line.Remarks or not loop.first %} \
+{% endif %}#text(size: 7.5pt)[{{ part }}]{% endfor %}],
     hsn: "{{ line.Product.HSNCode }}",
     qty: {{ line.Quantity }},
     unit: "{{ line.QtyUnit | typstStr }}",

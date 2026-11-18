@@ -13,13 +13,13 @@ BEGIN
     WHERE table_schema = 'public' AND table_name = 'crm_accounts'
   ) AND NOT EXISTS (
     SELECT 1 FROM information_schema.tables
-    WHERE table_schema = 'public' AND table_name = 'crm_companies'
+    WHERE table_schema = 'public' AND table_name = 'companies'
   ) THEN
-    ALTER TABLE crm_accounts RENAME TO crm_companies;
+    ALTER TABLE crm_accounts RENAME TO companies;
     ALTER TABLE crm_contacts RENAME COLUMN account_id TO company_id;
     ALTER TABLE crm_deals RENAME COLUMN account_id TO company_id;
     ALTER TABLE crm_converted_leads RENAME COLUMN account_id TO company_id;
-    ALTER INDEX IF EXISTS uix_crm_accounts_customer_id RENAME TO uix_crm_companies_customer_id;
+    ALTER INDEX IF EXISTS uix_crm_accounts_customer_id RENAME TO uix_companies_customer_id;
     ALTER INDEX IF EXISTS idx_crm_contacts_account_id RENAME TO idx_crm_contacts_company_id;
     ALTER INDEX IF EXISTS idx_crm_deals_account_id RENAME TO idx_crm_deals_company_id;
   END IF;
@@ -31,18 +31,18 @@ DO $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.tables
-    WHERE table_schema = 'public' AND table_name = 'crm_companies'
+    WHERE table_schema = 'public' AND table_name = 'companies'
   ) AND NOT EXISTS (
     SELECT 1 FROM information_schema.tables
     WHERE table_schema = 'public' AND table_name = 'crm_accounts'
   ) THEN
-    ALTER INDEX IF EXISTS uix_crm_companies_customer_id RENAME TO uix_crm_accounts_customer_id;
+    ALTER INDEX IF EXISTS uix_companies_customer_id RENAME TO uix_crm_accounts_customer_id;
     ALTER INDEX IF EXISTS idx_crm_contacts_company_id RENAME TO idx_crm_contacts_account_id;
     ALTER INDEX IF EXISTS idx_crm_deals_company_id RENAME TO idx_crm_deals_account_id;
     ALTER TABLE crm_converted_leads RENAME COLUMN company_id TO account_id;
     ALTER TABLE crm_deals RENAME COLUMN company_id TO account_id;
     ALTER TABLE crm_contacts RENAME COLUMN company_id TO account_id;
-    ALTER TABLE crm_companies RENAME TO crm_accounts;
+    ALTER TABLE companies RENAME TO crm_accounts;
   END IF;
 END $$;
 "#;
@@ -65,12 +65,12 @@ impl MigrationTrait for Migration {
                     .get_connection()
                     .query_one_raw(Statement::from_string(
                         sea_orm::DatabaseBackend::Sqlite,
-                        "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'crm_companies'".to_string(),
+                        "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'companies'".to_string(),
                     ))
                     .await?
                     .is_some();
                 if has_accounts && !has_companies {
-                    exec_sql(manager, "ALTER TABLE crm_accounts RENAME TO crm_companies").await?;
+                    exec_sql(manager, "ALTER TABLE crm_accounts RENAME TO companies").await?;
                     exec_sql(
                         manager,
                         "ALTER TABLE crm_contacts RENAME COLUMN account_id TO company_id",
@@ -101,7 +101,7 @@ impl MigrationTrait for Migration {
                     .get_connection()
                     .query_one_raw(Statement::from_string(
                         sea_orm::DatabaseBackend::Sqlite,
-                        "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'crm_companies'".to_string(),
+                        "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'companies'".to_string(),
                     ))
                     .await?
                     .is_some();
@@ -129,7 +129,7 @@ impl MigrationTrait for Migration {
                         "ALTER TABLE crm_contacts RENAME COLUMN company_id TO account_id",
                     )
                     .await?;
-                    exec_sql(manager, "ALTER TABLE crm_companies RENAME TO crm_accounts").await?;
+                    exec_sql(manager, "ALTER TABLE companies RENAME TO crm_accounts").await?;
                 }
                 Ok(())
             }

@@ -14,7 +14,10 @@ use lariv_core::template::{
 };
 
 use crate::forms::{GstPreferencesForm, GstPreferencesFormField};
-use crate::routes::{GstPreferencesPostRouteTag, GstPreferencesRouteTag};
+use crate::routes::{
+    GstExcelRouteTag, GstExcelView, GstExportView, GstPreferencesPostRouteTag,
+    GstPreferencesRouteTag, GstWorkbookRouteTag,
+};
 
 lariv_core::define_register_items! {
     plugin: crate::FinanceGstExportTag;
@@ -26,6 +29,7 @@ lariv_core::define_register_items! {
     hook: Hook;
     items: [
         GstPreferencesIdx: GstPreferencesPageTag => GstPreferencesPage,
+        GstExcelIdx: GstExcelPageTag => GstExcelPage,
     ]
 }
 
@@ -83,24 +87,48 @@ impl GstPreferencesPage {
     }
 }
 
-fn menu() -> Markup {
-    let current = GstPreferencesRouteTag.url();
-    let links = [SidebarNavLink {
+fn role_allowed<Tag: 'static>() -> bool {
+    use lariv_plugin_users::role_authorization::{current_auth, principal_allowed, roles_for};
+    current_auth().is_some_and(|auth| principal_allowed(&auth, &roles_for::<Tag>()))
+}
+
+fn menu(current: &str) -> Markup {
+    let preferences = GstPreferencesRouteTag.url();
+    let excel = GstExcelRouteTag.url();
+    let preference_link = role_allowed::<GstExportView>().then_some(SidebarNavLink {
         key: "preferences",
         title: "Preferences",
-        url: &current,
+        url: &preferences,
         icon_name: Some("adjustments-horizontal"),
         match_prefixes: &[],
-    }];
+    });
+    let excel_link = role_allowed::<GstExcelView>().then_some(SidebarNavLink {
+        key: "excel",
+        title: "Excel",
+        url: &excel,
+        icon_name: Some("document-arrow-down"),
+        match_prefixes: &[],
+    });
+    let links: Vec<SidebarNavLink<'_>> = [preference_link, excel_link]
+        .into_iter()
+        .flatten()
+        .collect();
     sidebar_menu(SidebarMenu {
         title: "GST export",
-        children: sidebar_nav_items_pane(&links, &current),
+        children: sidebar_nav_items_pane(&links, current),
     })
 }
 
-fn crumbs() -> Markup {
+fn preferences_crumbs() -> Markup {
     breadcrumbs(&[Crumb {
-        label: "GST export",
+        label: "Preferences",
+        href: None,
+    }])
+}
+
+fn excel_crumbs() -> Markup {
+    breadcrumbs(&[Crumb {
+        label: "Excel",
         href: None,
     }])
 }
@@ -108,14 +136,14 @@ fn crumbs() -> Markup {
 impl RenderAppPane for GstPreferencesPage {
     fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
         layout_sidebar(LayoutSidebar {
-            sidebar: menu(),
-            breadcrumbs: crumbs(),
+            sidebar: menu(&GstPreferencesRouteTag.url()),
+            breadcrumbs: preferences_crumbs(),
             content: self.body(),
         })
     }
     fn render_main(&self) -> lariv_core::components::MainContentHtml {
         layout_main(LayoutMain {
-            breadcrumbs: crumbs(),
+            breadcrumbs: preferences_crumbs(),
             content: self.body(),
         })
     }
@@ -128,8 +156,58 @@ impl RenderTemplate for GstPreferencesPage {
             registry_head: chrome.head.clone(),
             topbar_items: chrome.topbar_items.clone(),
             right_sidebar: chrome.right_sidebar.clone(),
-            sidebar: menu(),
-            breadcrumbs: crumbs(),
+            sidebar: menu(&GstPreferencesRouteTag.url()),
+            breadcrumbs: preferences_crumbs(),
+            body: self.body(),
+            ..Default::default()
+        })
+    }
+}
+
+#[derive(Generic)]
+pub struct GstExcelPage;
+
+impl GstExcelPage {
+    fn body(&self) -> Markup {
+        html! {
+            div class="container max-w-4xl mx-auto" {
+                h1 class="text-2xl font-bold mb-2" { "GST Excel" }
+                p class="text-sm text-base-content/70 mb-4" {
+                    "Download posted invoices as an Excel workbook for GST filing."
+                }
+                a class="btn btn-outline" href=(GstWorkbookRouteTag.path()) hx-boost="false" {
+                    "Download GST Excel"
+                }
+            }
+        }
+    }
+}
+
+impl RenderAppPane for GstExcelPage {
+    fn render_pane(&self) -> lariv_core::components::AppLayoutHtml {
+        layout_sidebar(LayoutSidebar {
+            sidebar: menu(&GstExcelRouteTag.url()),
+            breadcrumbs: excel_crumbs(),
+            content: self.body(),
+        })
+    }
+    fn render_main(&self) -> lariv_core::components::MainContentHtml {
+        layout_main(LayoutMain {
+            breadcrumbs: excel_crumbs(),
+            content: self.body(),
+        })
+    }
+}
+
+impl RenderTemplate for GstExcelPage {
+    fn render(&self, chrome: &ShellChrome) -> Markup {
+        shell_scaffold(ShellScaffold {
+            title: "GST Excel — Lariv",
+            registry_head: chrome.head.clone(),
+            topbar_items: chrome.topbar_items.clone(),
+            right_sidebar: chrome.right_sidebar.clone(),
+            sidebar: menu(&GstExcelRouteTag.url()),
+            breadcrumbs: excel_crumbs(),
             body: self.body(),
             ..Default::default()
         })

@@ -53,7 +53,7 @@ const UP: &[&str] = &[
         delivery_date date,
         vendor_is_individual boolean NOT NULL,
         vendor_contact_id bigint REFERENCES crm_contacts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
-        vendor_company_id bigint REFERENCES crm_companies(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+        vendor_company_id bigint REFERENCES companies(id) ON UPDATE CASCADE ON DELETE RESTRICT,
         draft_payment_term_id bigint UNIQUE REFERENCES draft_purchase_payment_terms(id) ON DELETE SET NULL
     )",
     "CREATE TABLE IF NOT EXISTS draft_purchase_taxes (
@@ -97,7 +97,7 @@ const UP: &[&str] = &[
         delivery_date date,
         vendor_is_individual boolean NOT NULL,
         vendor_contact_id bigint REFERENCES crm_contacts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
-        vendor_company_id bigint REFERENCES crm_companies(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+        vendor_company_id bigint REFERENCES companies(id) ON UPDATE CASCADE ON DELETE RESTRICT,
         journal_entry_id bigint NOT NULL REFERENCES journal_entries(id) ON UPDATE CASCADE ON DELETE RESTRICT,
         posted_payment_term_id bigint UNIQUE REFERENCES posted_purchase_payment_terms(id) ON DELETE SET NULL
     )",
@@ -146,7 +146,7 @@ const UP: &[&str] = &[
         delivery_date date,
         vendor_is_individual boolean NOT NULL,
         vendor_contact_id bigint REFERENCES crm_contacts(id) ON UPDATE CASCADE ON DELETE RESTRICT,
-        vendor_company_id bigint REFERENCES crm_companies(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+        vendor_company_id bigint REFERENCES companies(id) ON UPDATE CASCADE ON DELETE RESTRICT,
         reversed_journal_entry_id bigint NOT NULL REFERENCES journal_entries(id) ON UPDATE CASCADE ON DELETE RESTRICT,
         reason text,
         posted_payment_term_id bigint UNIQUE REFERENCES posted_purchase_payment_terms(id) ON DELETE SET NULL

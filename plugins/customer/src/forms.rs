@@ -1,5 +1,6 @@
 use lariv_core::html_form::{html_form, widgets::Select};
-use lariv_plugin_contacts::routes::{CompanyFkSelectRouteTag, ContactFkSelectRouteTag};
+use lariv_plugin_companies::routes::CompanyFkSelectRouteTag;
+use lariv_plugin_contacts::routes::ContactFkSelectRouteTag;
 
 use crate::gst_state::GST_STATE_CHOICES;
 

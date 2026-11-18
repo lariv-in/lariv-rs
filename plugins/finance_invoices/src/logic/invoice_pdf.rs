@@ -6,10 +6,8 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Datelike, NaiveDate, TimeZone, Utc};
 use hex::ToHex;
-use lariv_plugin_contacts::entities::{
-    company::{self, Entity as CompanyEntity},
-    contact::{self, Entity as ContactEntity},
-};
+use lariv_plugin_companies::entities::company::{self, Entity as CompanyEntity};
+use lariv_plugin_contacts::entities::contact::{self, Entity as ContactEntity};
 
 use crate::logic::BillTo;
 use lariv_core::typst;

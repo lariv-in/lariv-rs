@@ -9,7 +9,7 @@ use lariv_core::components::{
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::template::{RenderAppPane, RenderTemplate};
 
-use lariv_plugin_contacts::routes::CompanyDetailRouteTag;
+use lariv_plugin_companies::routes::CompanyDetailRouteTag;
 
 use crate::crumbs::{
     converted_lead_crumbs, failed_lead_crumbs, lead_crumbs, lead_tag_crumbs, lead_update_crumbs,

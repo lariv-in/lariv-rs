@@ -1,7 +1,8 @@
 use frunk::Generic;
 use maud::{Markup, PreEscaped, html};
 
-use lariv_plugin_contacts::routes::{CompanyDetailRouteTag, ContactDetailRouteTag};
+use lariv_plugin_companies::routes::CompanyDetailRouteTag;
+use lariv_plugin_contacts::routes::ContactDetailRouteTag;
 use lariv_plugin_finance_accounts::routes::JournalEntryDetailRouteTag;
 
 use lariv_core::components::picker::RenderPickerSelect;

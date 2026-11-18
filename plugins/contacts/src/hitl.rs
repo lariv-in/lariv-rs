@@ -1,8 +1,8 @@
-//! HITL-gated Rune bindings for contact and company deletes.
+//! HITL-gated Rune bindings for contact deletes.
 
 use lariv_plugin_llm_assistant::hitl::{HitlCapability, HitlRegistrar};
 
-/// Registers HITL contact and company helpers onto the assistant HITL capability.
+/// Registers HITL contact helpers onto the assistant HITL capability.
 #[derive(Clone, Copy, Default)]
 pub struct Hook;
 
@@ -22,11 +22,6 @@ fn register(hitl: &mut HitlCapability) {
         "delete_contact(#{ id: int }) -> ()  // requires human approval",
         |_ctx| NativeBinding::Function(Arc::new(delete_contact)),
     );
-    hitl.register(
-        "delete_company",
-        "delete_company(#{ id: int }) -> ()  // requires human approval",
-        |_ctx| NativeBinding::Function(Arc::new(delete_company)),
-    );
 }
 
 fn delete_contact(
@@ -37,18 +32,6 @@ fn delete_contact(
     let db = ctx.db.clone();
     lariv_core::rune_env::block_on_async(
         async move { crate::logic::delete_contact(&db, id).await },
-    )?;
-    Ok(rune::Value::from(()))
-}
-
-fn delete_company(
-    ctx: &lariv_core::rune_env::RuneEnvCtx<'_>,
-    args: &[rune::Value],
-) -> Result<rune::Value, String> {
-    let id = parse_id(args, "delete_company", "company")?;
-    let db = ctx.db.clone();
-    lariv_core::rune_env::block_on_async(
-        async move { crate::logic::delete_company(&db, id).await },
     )?;
     Ok(rune::Value::from(()))
 }
@@ -97,15 +80,11 @@ mod tests {
     }
 
     #[test]
-    fn registers_delete_contact_and_company() {
+    fn registers_delete_contact() {
         let names = registered_hitl().all_names();
         assert!(
             names.iter().any(|name| name == "delete_contact"),
             "expected delete_contact in {names:?}"
-        );
-        assert!(
-            names.iter().any(|name| name == "delete_company"),
-            "expected delete_company in {names:?}"
         );
     }
 

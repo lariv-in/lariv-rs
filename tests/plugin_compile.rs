@@ -11,9 +11,9 @@ use std::path::PathBuf;
 
 use lariv_rs::app::App;
 use lariv_rs::plugins::{
-    blog, contacts, crm, customer, dashboard, filesystem, filesystem_sync_git, finance_accounts,
-    finance_customers, forms, import_export, inventory, llm_assistant, mdbook, meets, otp, pwa,
-    signup, users, website,
+    bank_accounts, blog, companies, contacts, crm, customer, dashboard, filesystem,
+    filesystem_sync_git, finance_accounts, finance_customers, forms, import_export, inventory,
+    llm_assistant, mdbook, meets, otp, pwa, signup, users, website,
 };
 
 const MINIMAL_DB_TOML: &str = r#"database_url = "sqlite::memory:""#;
@@ -155,6 +155,7 @@ async fn llm_assistant_plugin_mounts() {
 async fn customer_plugin_mounts() {
     let app = App::new_web_app();
     let app = users::install(app);
+    let app = companies::install(app);
     let app = contacts::install(app);
     let app = customer::install(app);
     let app = crm::install(app);
@@ -181,6 +182,7 @@ fn all_plugins_mounts() {
             rt.block_on(async {
                 let app = App::new_web_app();
                 let app = users::install(app);
+                let app = bank_accounts::install(app);
                 let app = otp::install(app);
                 let app = blog::install(app);
                 let app = filesystem::install(app);
@@ -192,6 +194,7 @@ fn all_plugins_mounts() {
                 let app = llm_assistant::install(app);
                 let app = import_export::install(app);
                 let app = pwa::install(app);
+                let app = companies::install(app);
                 let app = contacts::install(app);
                 let app = customer::install(app);
                 let app = crm::install(app);

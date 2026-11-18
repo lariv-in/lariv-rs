@@ -100,7 +100,7 @@ enum CrmContacts {
 
 #[derive(Iden, Clone, Copy)]
 enum CrmCompanies {
-    #[iden = "crm_companies"]
+    #[iden = "companies"]
     Table,
     Id,
 }

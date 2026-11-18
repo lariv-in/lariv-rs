@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS purchase_vendors (
     company_id bigint,
     individual_id bigint,
     CONSTRAINT fk_purchase_vendors_company_id
-        FOREIGN KEY (company_id) REFERENCES crm_companies(id)
+        FOREIGN KEY (company_id) REFERENCES companies(id)
         ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_purchase_vendors_individual_id
         FOREIGN KEY (individual_id) REFERENCES crm_contacts(id)

@@ -1,9 +1,8 @@
-//! Contacts plugin — people and companies.
+//! Contacts plugin — people.
 
 pub mod apps;
 pub mod entities;
 pub mod forms;
-pub mod gst_state;
 pub mod handlers;
 #[cfg(feature = "plugin-llm-assistant")]
 pub mod hitl;

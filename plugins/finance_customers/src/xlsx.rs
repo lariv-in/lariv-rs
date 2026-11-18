@@ -103,7 +103,7 @@ async fn load_customer_header<C: ConnectionTrait>(
                     co.cin AS cin, \
                     co.website AS website \
              FROM customers c \
-             LEFT JOIN crm_companies co ON co.id = c.company_id \
+             LEFT JOIN companies co ON co.id = c.company_id \
              LEFT JOIN crm_contacts ct ON ct.id = c.individual_id \
              WHERE c.id = $1",
             vec![customer_id.into()],

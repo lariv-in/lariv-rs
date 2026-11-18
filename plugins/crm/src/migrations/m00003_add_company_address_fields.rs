@@ -20,10 +20,10 @@ impl MigrationTrait for Migration {
         for column in COLUMNS {
             let sql = match manager.get_database_backend() {
                 DbBackend::Postgres => {
-                    format!("ALTER TABLE crm_companies ADD COLUMN IF NOT EXISTS {column} TEXT")
+                    format!("ALTER TABLE companies ADD COLUMN IF NOT EXISTS {column} TEXT")
                 }
                 _ if column_exists(manager, column).await? => continue,
-                _ => format!("ALTER TABLE crm_companies ADD COLUMN {column} TEXT"),
+                _ => format!("ALTER TABLE companies ADD COLUMN {column} TEXT"),
             };
             exec_sql(manager, &sql).await?;
         }
@@ -34,10 +34,10 @@ impl MigrationTrait for Migration {
         for column in COLUMNS {
             let sql = match manager.get_database_backend() {
                 DbBackend::Postgres => {
-                    format!("ALTER TABLE crm_companies DROP COLUMN IF EXISTS {column}")
+                    format!("ALTER TABLE companies DROP COLUMN IF EXISTS {column}")
                 }
                 _ if !column_exists(manager, column).await? => continue,
-                _ => format!("ALTER TABLE crm_companies DROP COLUMN {column}"),
+                _ => format!("ALTER TABLE companies DROP COLUMN {column}"),
             };
             exec_sql(manager, &sql).await?;
         }
@@ -50,7 +50,7 @@ async fn column_exists(manager: &SchemaManager<'_>, column: &str) -> Result<bool
         .get_connection()
         .query_one_raw(Statement::from_string(
             manager.get_database_backend(),
-            format!("SELECT 1 FROM pragma_table_info('crm_companies') WHERE name = '{column}'"),
+            format!("SELECT 1 FROM pragma_table_info('companies') WHERE name = '{column}'"),
         ))
         .await?;
     Ok(row.is_some())

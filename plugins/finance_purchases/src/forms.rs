@@ -4,7 +4,8 @@ use lariv_core::html_form::{
 };
 use maud::Markup;
 
-use lariv_plugin_contacts::routes::{CompanyFkSelectRouteTag, ContactFkSelectRouteTag};
+use lariv_plugin_companies::routes::CompanyFkSelectRouteTag;
+use lariv_plugin_contacts::routes::ContactFkSelectRouteTag;
 use lariv_plugin_filesystem::routes::VNodeFileSelectRouteTag;
 
 use crate::routes::VendorFkSelectRouteTag;

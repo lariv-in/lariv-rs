@@ -39,9 +39,10 @@ use chrono::{DateTime, Utc};
 
 use super::errors::GenaiError;
 use super::interactions::{
-    CreateInteractionRequest, Interaction, InteractionGenerationConfig, InteractionSseEvent,
-    InteractionTool, StreamAccumulator, contents_to_interaction_input, json_response_format,
-    steps_to_model_content, user_content_to_interaction_input,
+    CreateInteractionRequest, EmptyTurnReason, Interaction, InteractionErrorBody,
+    InteractionGenerationConfig, InteractionSseEvent, InteractionTool, StreamAccumulator,
+    classify_empty_turn, contents_to_interaction_input, interaction_failure, json_response_format,
+    steps_to_model_content, unrecognized_step_types, user_content_to_interaction_input,
 };
 use super::types::{Content, FunctionDeclaration, Role, UsageMetadata};
 use super::util::{coerce_json_text, content_answer_text, content_text};
@@ -557,7 +558,7 @@ impl GenaiClient {
             .await?;
         let text = content_text(&generated.content);
         if text.trim().is_empty() {
-            return Err(GenaiError::EmptyResponse);
+            return Err(GenaiError::EmptyResponse("empty model response".into()));
         }
         Ok(GenerateTextResult {
             text,
@@ -607,7 +608,7 @@ impl GenaiClient {
             .await?;
         let text = content_answer_text(&generated.content);
         if text.trim().is_empty() {
-            return Err(GenaiError::EmptyResponse);
+            return Err(GenaiError::EmptyResponse("empty model response".into()));
         }
         Ok(GenerateTextResult {
             text: coerce_json_text(&text).to_string(),
@@ -720,22 +721,27 @@ impl GenaiClient {
 
         let parsed: Interaction =
             serde_json::from_str(&text).map_err(|e| GenaiError::Json(e.to_string()))?;
-        if let Some(err) = parsed.error {
-            return Err(GenaiError::ApiMessage {
-                message: err.message,
-            });
-        }
+        let failure = interaction_failure(&parsed);
         let usage = parsed.usage.as_ref().map(|u| u.to_usage_metadata());
         let content = steps_to_model_content(&parsed.steps);
-        if content.parts.is_empty() {
-            if let Some(text) = parsed.output_text.filter(|t| !t.trim().is_empty()) {
+        if failure.is_some() || content.parts.is_empty() {
+            if failure.is_none()
+                && let Some(output) = parsed.output_text.as_ref().filter(|t| !t.trim().is_empty())
+            {
                 return Ok(GenerateContentResult {
-                    content: Content::text(Role::Model, text),
+                    content: Content::text(Role::Model, output.clone()),
                     usage,
                     interaction_id: (!parsed.id.is_empty()).then_some(parsed.id),
                 });
             }
-            return Err(GenaiError::EmptyResponse);
+            return Err(empty_interaction_error(
+                "create",
+                &parsed.status,
+                &unrecognized_step_types(&parsed.steps),
+                failure.as_ref(),
+                &text,
+                false,
+            ));
         }
         Ok(GenerateContentResult {
             content,
@@ -822,7 +828,7 @@ impl GenaiClient {
                 Err(e) => return Err(e),
             }
         }
-        Err(last_err.unwrap_or(GenaiError::EmptyResponse))
+        Err(last_err.unwrap_or_else(|| GenaiError::EmptyResponse("empty model response".into())))
     }
 
     /// Count tokens for `contents` plus the LLM Assistant system prompt.
@@ -967,10 +973,14 @@ impl GenaiClient {
 
         let mut acc = StreamAccumulator::default();
         let mut buffer = String::new();
+        let mut raw = String::new();
+        let mut raw_truncated = false;
         let mut stream = resp.bytes_stream();
         while let Some(item) = stream.next().await {
             let chunk = item.map_err(GenaiError::Http)?;
-            buffer.push_str(&String::from_utf8_lossy(&chunk));
+            let chunk = String::from_utf8_lossy(&chunk);
+            raw_truncated |= push_log_tail(&mut raw, &chunk);
+            buffer.push_str(&chunk);
             while let Some(idx) = buffer.find('\n') {
                 let line = buffer[..idx].trim_end_matches('\r').to_string();
                 buffer = buffer[idx + 1..].to_string();
@@ -979,15 +989,7 @@ impl GenaiClient {
                     if data.is_empty() || data == "[DONE]" {
                         continue;
                     }
-                    let parsed: InteractionSseEvent =
-                        serde_json::from_str(data).map_err(|e| GenaiError::Json(e.to_string()))?;
-                    if let Some(ix) = &parsed.interaction
-                        && let Some(err) = &ix.error
-                    {
-                        return Err(GenaiError::ApiMessage {
-                            message: err.message.clone(),
-                        });
-                    }
+                    let parsed = parse_sse_event(data)?;
                     acc.on_event(&parsed);
                     let content = acc.content();
                     if !content.parts.is_empty() {
@@ -1000,8 +1002,7 @@ impl GenaiClient {
         if let Some(data) = trailing.strip_prefix("data:") {
             let data = data.trim();
             if !data.is_empty() && data != "[DONE]" {
-                let parsed: InteractionSseEvent =
-                    serde_json::from_str(data).map_err(|e| GenaiError::Json(e.to_string()))?;
+                let parsed = parse_sse_event(data)?;
                 acc.on_event(&parsed);
                 let content = acc.content();
                 if !content.parts.is_empty() {
@@ -1011,8 +1012,15 @@ impl GenaiClient {
         }
 
         let result = acc.into_result();
-        if result.content.parts.is_empty() {
-            return Err(GenaiError::EmptyResponse);
+        if result.failure.is_some() || result.content.parts.is_empty() {
+            return Err(empty_interaction_error(
+                "stream",
+                &result.status,
+                &result.ignored_step_types,
+                result.failure.as_ref(),
+                &raw,
+                raw_truncated,
+            ));
         }
         Ok(GenerateContentResult {
             content: result.content,
@@ -1020,6 +1028,74 @@ impl GenaiClient {
             interaction_id: (!result.id.is_empty()).then_some(result.id),
         })
     }
+}
+
+fn parse_sse_event(data: &str) -> Result<InteractionSseEvent, GenaiError> {
+    serde_json::from_str(data).map_err(|e| {
+        tracing::warn!(
+            error = %e,
+            body = %tail_for_log(data),
+            "genai: failed to parse interactions SSE event"
+        );
+        GenaiError::Json(e.to_string())
+    })
+}
+
+fn empty_interaction_error(
+    source: &'static str,
+    status: &str,
+    ignored_step_types: &[String],
+    failure: Option<&InteractionErrorBody>,
+    body: &str,
+    truncated: bool,
+) -> GenaiError {
+    let reason = classify_empty_turn(status, ignored_step_types, failure);
+    let logged_body = if truncated {
+        body.to_string()
+    } else {
+        tail_for_log(body)
+    };
+    tracing::warn!(
+        source,
+        kind = reason.kind(),
+        status = reason.status(),
+        truncated,
+        body = %logged_body,
+        "genai: interactions response had no model output"
+    );
+    match reason {
+        EmptyTurnReason::Api { message, .. } => GenaiError::ApiMessage { message },
+        other => GenaiError::EmptyResponse(other.message()),
+    }
+}
+
+const EMPTY_TURN_LOG_BYTES: usize = 8 * 1024;
+
+/// Keep the tail of `chunk` in `buf`, capped so a long stream does not retain every byte.
+fn push_log_tail(buf: &mut String, chunk: &str) -> bool {
+    buf.push_str(chunk);
+    if buf.len() <= EMPTY_TURN_LOG_BYTES {
+        return false;
+    }
+    let mut start = buf.len() - EMPTY_TURN_LOG_BYTES;
+    while !buf.is_char_boundary(start) {
+        start += 1;
+    }
+    let kept = buf.get(start..).unwrap_or("").to_string();
+    *buf = kept;
+    true
+}
+
+fn tail_for_log(body: &str) -> String {
+    if body.len() <= EMPTY_TURN_LOG_BYTES {
+        return body.to_string();
+    }
+    let mut start = body.len() - EMPTY_TURN_LOG_BYTES;
+    while !body.is_char_boundary(start) {
+        start += 1;
+    }
+    let tail = body.get(start..).unwrap_or("");
+    format!("…(truncated, {} bytes) {tail}", body.len())
 }
 
 #[derive(Debug, Deserialize)]

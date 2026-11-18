@@ -4,7 +4,8 @@ use lariv_core::html_form::{
 };
 use lariv_plugin_users::routes::UsersSelectRouteTag;
 
-use lariv_plugin_contacts::routes::{CompanyFkSelectRouteTag, ContactFkSelectRouteTag};
+use lariv_plugin_companies::routes::CompanyFkSelectRouteTag;
+use lariv_plugin_contacts::routes::ContactFkSelectRouteTag;
 
 use super::lead_source::LeadSource;
 use super::routes::{CustomerFkSelectRouteTag, LeadTagSelectRouteTag};

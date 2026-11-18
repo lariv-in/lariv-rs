@@ -22,11 +22,14 @@ use lariv_core::web::{
 };
 use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
+use lariv_plugin_companies::{
+    entities::company::{self, Entity as CompanyEntity},
+    routes::CompanyFkSelectRouteTag,
+    scope::{company_display_label, find_company_scoped},
+};
+
 use crate::{
-    entities::{
-        company::{self, Entity as CompanyEntity},
-        contact::{self, Entity as ContactEntity},
-    },
+    entities::contact::{self, Entity as ContactEntity},
     forms::ContactForm,
     handlers::ModalNameQuery,
     keys::{
@@ -34,8 +37,8 @@ use crate::{
         CONTACT_SELECT_TABLE, CONTACT_TABLE,
     },
     logic::{self, ContactWrite},
-    routes::{CompanyFkSelectRouteTag, ContactDefaultRouteTag, ContactDetailRouteTag},
-    scope::{apply_contact_sort, company_display_label, find_company_scoped, find_contact_scoped},
+    routes::{ContactDefaultRouteTag, ContactDetailRouteTag},
+    scope::{apply_contact_sort, find_contact_scoped},
     state::ContactsState,
     templates::{
         ConfirmDeletePage, ContactCreateModalPage, ContactDetailPage, ContactEditModalPage,

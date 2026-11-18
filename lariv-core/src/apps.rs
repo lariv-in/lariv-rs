@@ -74,16 +74,28 @@ pub trait AppsRegistrar: Sized {
     fn register_apps(self, apps: AppsCapability) -> AppsCapability;
 }
 
+/// Launch URL for one role on an existing tile. Other roles keep [`AppTile::href`].
+#[derive(Clone, Debug)]
+struct RoleLaunch {
+    key: String,
+    role: String,
+    href: String,
+}
+
 /// Builder-phase apps capability.
 #[derive(Clone, Debug, Default)]
 pub struct AppsCapability {
     apps: Vec<AppTile>,
+    role_hrefs: Vec<RoleLaunch>,
 }
 
 impl AppsCapability {
     /// Empty catalog (starting point for [`AppsRegistrar`] hooks).
     pub fn new() -> Self {
-        Self { apps: Vec::new() }
+        Self {
+            apps: Vec::new(),
+            role_hrefs: Vec::new(),
+        }
     }
 
     /// Register a tile (idempotent on `key`: replaces an existing entry).
@@ -92,6 +104,28 @@ impl AppsCapability {
             *existing = tile;
         } else {
             self.apps.push(tile);
+        }
+        self
+    }
+
+    /// Open `key` at `href` for `role`. Superuser and every other role keep the tile href.
+    pub fn set_role_href(
+        mut self,
+        key: impl Into<String>,
+        role: impl Into<String>,
+        href: impl Into<String>,
+    ) -> Self {
+        let key = key.into();
+        let role = role.into();
+        let href = href.into();
+        if let Some(existing) = self
+            .role_hrefs
+            .iter_mut()
+            .find(|entry| entry.key == key && entry.role == role)
+        {
+            existing.href = href;
+        } else {
+            self.role_hrefs.push(RoleLaunch { key, role, href });
         }
         self
     }
@@ -117,6 +151,16 @@ impl AppsCapability {
                 a.roles.iter().any(|r| r == role)
             })
             .cloned()
+            .map(|mut tile| {
+                if let Some(href) = self
+                    .role_hrefs
+                    .iter()
+                    .find(|entry| entry.key == tile.key && entry.role == role)
+                {
+                    tile.href = href.href.clone();
+                }
+                tile
+            })
             .collect();
         apps.sort_by(|a, b| a.verbose_name.cmp(&b.verbose_name));
         apps
@@ -241,5 +285,35 @@ mod tests {
         assert!(visible.is_empty(), "{visible:?}");
         let visible = apps.visible_apps(crate::role_registry::SUPERUSER_ROLE_NAME);
         assert!(visible.iter().any(|t| t.key == "p_users"));
+    }
+
+    #[test]
+    fn role_href_overrides_only_that_role() {
+        let apps = AppsCapability::new()
+            .register(AppTile {
+                key: "p_import_export".into(),
+                verbose_name: "Import / Export".into(),
+                href: "/dashboard/import".into(),
+                icon: "arrows-right-left".into(),
+                plugin_type: PluginType::App,
+                roles: vec!["accountant".into()],
+            })
+            .set_role_href(
+                "p_import_export",
+                "accountant",
+                "/dashboard/finance-gst-export/excel",
+            );
+        let accountant = apps.visible_apps("accountant");
+        let tile = accountant
+            .iter()
+            .find(|tile| tile.key == "p_import_export")
+            .expect("accountant tile");
+        assert_eq!(tile.href, "/dashboard/finance-gst-export/excel");
+        let superuser = apps.visible_apps(crate::role_registry::SUPERUSER_ROLE_NAME);
+        let tile = superuser
+            .iter()
+            .find(|tile| tile.key == "p_import_export")
+            .expect("superuser tile");
+        assert_eq!(tile.href, "/dashboard/import");
     }
 }

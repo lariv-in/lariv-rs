@@ -2,7 +2,6 @@
 
 pub mod apps;
 pub mod details;
-pub mod export_action;
 pub mod forms;
 pub mod handlers;
 pub mod invoice_addon;
@@ -33,7 +32,6 @@ lariv_core::define_passthrough_cap!(GstExportStateCap, FinanceGstExportTag, GstE
 lariv_core::define_plugin_install! {
     plugin: FinanceGstExportTag;
     steps: [
-        cap_hook(lariv_plugin_import_export::export_actions::ExportPageActionsTag, lariv_plugin_import_export::export_actions::ExportPageActionsCap, export_action::Hook),
         apps(apps::Hook),
         migrations(migrations::Hook),
         templates(templates::Hook),

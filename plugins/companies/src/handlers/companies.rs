@@ -17,12 +17,14 @@ use lariv_core::web::{
     Htmx, QueryPage, QueryPageSize, html_built_page_or_app_layout, html_built_page_with_slots,
     path_and_query, respond_create_modal_done_fk, respond_edit_modal_done,
 };
+use lariv_plugin_users::auth;
 use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
 
 use crate::{
     entities::company::{self, Entity as CompanyEntity},
-    forms::CompanyForm,
+    forms::{CompanyForm, CompanyMemberForm},
     handlers::ModalNameQuery,
+    hooks,
     keys::{
         COMPANY_CREATE_MODAL, COMPANY_DELETE_MODAL, COMPANY_EDIT_MODAL, COMPANY_SELECT_MODAL,
         COMPANY_SELECT_TABLE, COMPANY_TABLE,
@@ -30,10 +32,10 @@ use crate::{
     logic::{self, CompanyWrite},
     routes::{CompanyDefaultRouteTag, CompanyDetailRouteTag},
     scope::{apply_company_sort, find_company_scoped},
-    state::ContactsState,
+    state::CompaniesState,
     templates::{
         CompanyCreateModalPage, CompanyDetailPage, CompanyEditModalPage, CompanyListPage,
-        CompanyRow, CompanySelectPage, ConfirmDeletePage,
+        CompanyMemberRow, CompanyRow, CompanySelectPage, ConfirmDeletePage,
     },
 };
 
@@ -70,7 +72,7 @@ async fn query_companies(
     page_size: u32,
     condition: Condition,
 ) -> (Vec<company::Model>, u32, u64) {
-    let mut query = scope_allowed::<super::super::routes::ContactsView, _>(CompanyEntity::find());
+    let mut query = scope_allowed::<super::super::routes::CompaniesView, _>(CompanyEntity::find());
     query = query.filter(condition);
     query = apply_company_sort(query, q.sort.as_deref());
     let page = q.page.get();
@@ -104,7 +106,7 @@ async fn load_company_rows(
 }
 
 pub async fn list(
-    Cap(state): Cap<ContactsState>,
+    Cap(state): Cap<CompaniesState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -139,7 +141,7 @@ pub async fn list(
 }
 
 pub async fn detail(
-    Cap(state): Cap<ContactsState>,
+    Cap(state): Cap<CompaniesState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -147,6 +149,29 @@ pub async fn detail(
 ) -> Response {
     let Some(company) = find_company_scoped(&state.db, id).await else {
         return Redirect::to(&companies_list_url()).into_response();
+    };
+    let is_owner = logic::user_owns_company(&state.db, id, ctx.user.id)
+        .await
+        .unwrap_or(false);
+    let members = match logic::list_memberships_for_company(&state.db, id).await {
+        Ok(rows) => {
+            let mut out = Vec::new();
+            for row in rows {
+                let label = if row.user_id == ctx.user.id {
+                    format!("{} (you)", ctx.user.name)
+                } else {
+                    format!("User #{}", row.user_id)
+                };
+                out.push(CompanyMemberRow {
+                    membership_id: row.id,
+                    label,
+                    owned_by: row.owned_by,
+                    is_self: row.user_id == ctx.user.id,
+                });
+            }
+            out
+        }
+        Err(_) => Vec::new(),
     };
     let page = CompanyDetailPage {
         id: company.id,
@@ -162,6 +187,10 @@ pub async fn detail(
         pan: company.pan.unwrap_or_default(),
         phone: company.phone.unwrap_or_default(),
         email: company.email.unwrap_or_default(),
+        is_owner,
+        members,
+        member_error: String::new(),
+        member_email: String::new(),
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
@@ -210,7 +239,7 @@ pub async fn create_get(
 }
 
 pub async fn create_post(
-    Cap(state): Cap<ContactsState>,
+    Cap(state): Cap<CompaniesState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -218,19 +247,30 @@ pub async fn create_post(
     HtmlFormBody(form): HtmlFormBody<CompanyForm>,
 ) -> Response {
     let outcome = match company_write(&form) {
-        Ok(company) => logic::create_company(&state.db, company).await,
+        Ok(company) => logic::create_company(&state.db, company, ctx.user.id).await,
         Err(error) => Err(error),
     };
     match outcome {
-        Ok(saved) => respond_create_modal_done_fk(
-            &htmx,
-            COMPANY_CREATE_MODAL,
-            &q.refresh_table(),
-            &CompanyDetailRouteTag::new(saved.id).url(),
-            saved.id,
-            &saved.name,
-            &q.target_input(),
-        ),
+        Ok(saved) => {
+            if let Err(err) =
+                logic::set_active_company(&state.db, ctx.user.id, Some(saved.id)).await
+            {
+                tracing::error!(error = %err, company_id = saved.id, "set active company");
+            }
+            if let Err(err) = hooks::run_after_create(state.db.clone(), saved.id, ctx.user.id).await
+            {
+                tracing::error!(error = %err, company_id = saved.id, "after create company hook");
+            }
+            respond_create_modal_done_fk(
+                &htmx,
+                COMPANY_CREATE_MODAL,
+                &q.refresh_table(),
+                &CompanyDetailRouteTag::new(saved.id).url(),
+                saved.id,
+                &saved.name,
+                &q.target_input(),
+            )
+        }
         Err(e) => {
             let page = CompanyCreateModalPage {
                 form_name: q.form_name(),
@@ -256,7 +296,7 @@ pub async fn create_post(
 }
 
 pub async fn edit_get(
-    Cap(state): Cap<ContactsState>,
+    Cap(state): Cap<CompaniesState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Path(id): Path<i64>,
@@ -265,6 +305,12 @@ pub async fn edit_get(
     let Some(company) = find_company_scoped(&state.db, id).await else {
         return Redirect::to(&companies_list_url()).into_response();
     };
+    if !logic::user_owns_company(&state.db, id, ctx.user.id)
+        .await
+        .unwrap_or(false)
+    {
+        return Redirect::to(&CompanyDetailRouteTag::new(id).url()).into_response();
+    }
     let page = CompanyEditModalPage {
         id: company.id,
         form_name: q.form_name(),
@@ -286,7 +332,7 @@ pub async fn edit_get(
 }
 
 pub async fn edit_post(
-    Cap(state): Cap<ContactsState>,
+    Cap(state): Cap<CompaniesState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
@@ -296,6 +342,12 @@ pub async fn edit_post(
 ) -> Response {
     if find_company_scoped(&state.db, id).await.is_none() {
         return Redirect::to(&companies_list_url()).into_response();
+    }
+    if !logic::user_owns_company(&state.db, id, ctx.user.id)
+        .await
+        .unwrap_or(false)
+    {
+        return Redirect::to(&CompanyDetailRouteTag::new(id).url()).into_response();
     }
     let outcome = match company_write(&form) {
         Ok(company) => logic::update_company(&state.db, id, company).await,
@@ -331,39 +383,52 @@ pub async fn edit_post(
 }
 
 pub async fn delete_get(
+    Cap(state): Cap<CompaniesState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     Query(q): Query<ModalNameQuery>,
     Path(id): Path<i64>,
-) -> maud::Markup {
+) -> Response {
+    if !logic::user_owns_company(&state.db, id, ctx.user.id)
+        .await
+        .unwrap_or(false)
+    {
+        return Redirect::to(&CompanyDetailRouteTag::new(id).url()).into_response();
+    }
     let page = ConfirmDeletePage {
         modal_uid: COMPANY_DELETE_MODAL.id().to_string(),
         message: "Are you sure you want to delete this company?".into(),
         form_name: q
             .name
             .clone()
-            .unwrap_or_else(|| "p_contacts.CompanyDeleteForm".into()),
+            .unwrap_or_else(|| "p_companies.CompanyDeleteForm".into()),
         id,
         error: String::new(),
     };
-    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
+    html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
 }
 
 pub async fn delete_post(
-    Cap(state): Cap<ContactsState>,
+    Cap(state): Cap<CompaniesState>,
     Cap(chrome): Cap<SharedChromeFolder>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     Path(id): Path<i64>,
 ) -> Response {
-    match CompanyEntity::delete_by_id(id).exec(&state.db).await {
-        Ok(_) => htmx.redirect(&companies_list_url()),
+    if !logic::user_owns_company(&state.db, id, ctx.user.id)
+        .await
+        .unwrap_or(false)
+    {
+        return Redirect::to(&CompanyDetailRouteTag::new(id).url()).into_response();
+    }
+    match logic::delete_company(&state.db, id).await {
+        Ok(()) => htmx.redirect(&companies_list_url()),
         Err(e) => {
             tracing::error!(error = %e, id, "failed to delete company");
             let page = ConfirmDeletePage {
                 modal_uid: COMPANY_DELETE_MODAL.id().to_string(),
                 message: "Are you sure you want to delete this company?".into(),
-                form_name: "p_contacts.CompanyDeleteForm".into(),
+                form_name: "p_companies.CompanyDeleteForm".into(),
                 id,
                 error: e.to_string(),
             };
@@ -373,7 +438,7 @@ pub async fn delete_post(
 }
 
 pub async fn select(
-    Cap(state): Cap<ContactsState>,
+    Cap(state): Cap<CompaniesState>,
     RequireAuth(ctx): RequireAuth,
     htmx: Htmx,
     uri: Uri,
@@ -401,4 +466,101 @@ pub async fn select(
         page_size: q.filter.page_size.get(),
     };
     respond_picker_select(&htmx, COMPANY_SELECT_TABLE, COMPANY_SELECT_MODAL, &page)
+}
+
+pub async fn member_add_post(
+    Cap(state): Cap<CompaniesState>,
+    Cap(chrome): Cap<SharedChromeFolder>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path(id): Path<i64>,
+    HtmlFormBody(form): HtmlFormBody<CompanyMemberForm>,
+) -> Response {
+    let Some(company) = find_company_scoped(&state.db, id).await else {
+        return Redirect::to(&companies_list_url()).into_response();
+    };
+    let is_owner = logic::user_owns_company(&state.db, id, ctx.user.id)
+        .await
+        .unwrap_or(false);
+    if !is_owner {
+        return Redirect::to(&CompanyDetailRouteTag::new(id).url()).into_response();
+    }
+    let email = form.email.trim();
+    let outcome = async {
+        let user = auth::find_by_email(&state.db, email)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("no user with email {email}"))?;
+        if logic::membership_for_user(&state.db, id, user.id)
+            .await?
+            .is_some()
+        {
+            return Err("that user is already a member".to_string());
+        }
+        logic::add_membership(&state.db, id, user.id, false).await?;
+        Ok::<(), String>(())
+    }
+    .await;
+    match outcome {
+        Ok(()) => htmx.redirect(&CompanyDetailRouteTag::new(id).url()),
+        Err(error) => {
+            let members = logic::list_memberships_for_company(&state.db, id)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|row| CompanyMemberRow {
+                    membership_id: row.id,
+                    label: if row.user_id == ctx.user.id {
+                        format!("{} (you)", ctx.user.name)
+                    } else {
+                        format!("User #{}", row.user_id)
+                    },
+                    owned_by: row.owned_by,
+                    is_self: row.user_id == ctx.user.id,
+                })
+                .collect();
+            let page = CompanyDetailPage {
+                id: company.id,
+                name: company.name,
+                address_line_1: company.address_line_1.unwrap_or_default(),
+                address_line_2: company.address_line_2.unwrap_or_default(),
+                city: company.city.unwrap_or_default(),
+                pincode: company.pincode.unwrap_or_default(),
+                state: crate::gst_state::dropdown_value(&company.state.unwrap_or_default()),
+                website: company.website.unwrap_or_default(),
+                gstin: company.gstin.unwrap_or_default(),
+                cin: company.cin.unwrap_or_default(),
+                pan: company.pan.unwrap_or_default(),
+                phone: company.phone.unwrap_or_default(),
+                email: company.email.unwrap_or_default(),
+                is_owner,
+                members,
+                member_error: error,
+                member_email: form.email,
+            };
+            html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx))
+                .into_response()
+        }
+    }
+}
+
+pub async fn member_remove_post(
+    Cap(state): Cap<CompaniesState>,
+    RequireAuth(ctx): RequireAuth,
+    htmx: Htmx,
+    Path((id, membership_id)): Path<(i64, i64)>,
+) -> Response {
+    if !logic::user_owns_company(&state.db, id, ctx.user.id)
+        .await
+        .unwrap_or(false)
+    {
+        return Redirect::to(&CompanyDetailRouteTag::new(id).url()).into_response();
+    }
+    match logic::remove_membership(&state.db, membership_id).await {
+        Ok(()) => htmx.redirect(&CompanyDetailRouteTag::new(id).url()),
+        Err(e) => {
+            tracing::error!(error = %e, membership_id, "failed to remove membership");
+            htmx.redirect(&CompanyDetailRouteTag::new(id).url())
+        }
+    }
 }

@@ -2,10 +2,8 @@
 
 use std::collections::HashMap;
 
-use lariv_plugin_contacts::entities::{
-    company::{self, Entity as CompanyEntity},
-    contact::{self, Entity as ContactEntity},
-};
+use lariv_plugin_companies::entities::company::{self, Entity as CompanyEntity};
+use lariv_plugin_contacts::entities::contact::{self, Entity as ContactEntity};
 use sea_orm::{ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
 use crate::entities::vendor::{self, Entity as VendorEntity};
@@ -52,7 +50,7 @@ pub fn vendor_name_sql(purchase_table: &str) -> String {
         "(SELECT CASE WHEN purchase_vendors.is_individual THEN \
            (SELECT name FROM crm_contacts WHERE crm_contacts.id = purchase_vendors.individual_id) \
          ELSE \
-           (SELECT name FROM crm_companies WHERE crm_companies.id = purchase_vendors.company_id) \
+           (SELECT name FROM companies WHERE companies.id = purchase_vendors.company_id) \
          END FROM purchase_vendors WHERE purchase_vendors.id = {purchase_table}.vendor_id)"
     )
 }

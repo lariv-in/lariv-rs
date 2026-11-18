@@ -9,7 +9,7 @@ pub const FK_CRM_CUSTOMERS_COMPANY: ForeignKey = fk_restrict(
     "fk_crm_customers_company_id",
     "crm_customers",
     "company_id",
-    "crm_companies",
+    "companies",
 );
 pub const FK_CRM_CUSTOMERS_INDIVIDUAL: ForeignKey = fk_restrict(
     "fk_crm_customers_individual_id",
@@ -21,7 +21,7 @@ pub const FK_CUSTOMERS_COMPANY: ForeignKey = fk_restrict(
     "fk_customers_company_id",
     "customers",
     "company_id",
-    "crm_companies",
+    "companies",
 );
 pub const FK_CUSTOMERS_INDIVIDUAL: ForeignKey = fk_restrict(
     "fk_customers_individual_id",

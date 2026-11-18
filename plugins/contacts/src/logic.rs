@@ -1,4 +1,4 @@
-//! Shared contact and company writes used by HTTP handlers and assistant tools.
+//! Shared contact writes used by HTTP handlers and assistant tools.
 
 use sea_orm::sea_query::{Condition, Expr, ExprTrait, Func};
 use sea_orm::{
@@ -6,10 +6,9 @@ use sea_orm::{
     QuerySelect,
 };
 
-use crate::entities::{
-    company::{self, Entity as CompanyEntity},
-    contact::{self, Entity as ContactEntity},
-};
+use lariv_plugin_companies::entities::company::Entity as CompanyEntity;
+
+use crate::entities::contact::{self, Entity as ContactEntity};
 
 pub struct ContactWrite {
     pub company_id: Option<i64>,
@@ -17,21 +16,6 @@ pub struct ContactWrite {
     pub email: Option<String>,
     pub phone: Option<String>,
     pub is_primary: bool,
-}
-
-pub struct CompanyWrite {
-    pub name: String,
-    pub address_line_1: Option<String>,
-    pub address_line_2: Option<String>,
-    pub city: Option<String>,
-    pub pincode: Option<String>,
-    pub state: Option<String>,
-    pub website: Option<String>,
-    pub gstin: Option<String>,
-    pub cin: Option<String>,
-    pub pan: Option<String>,
-    pub phone: Option<String>,
-    pub email: Option<String>,
 }
 
 pub fn require_name(name: &str) -> Result<String, String> {
@@ -155,119 +139,6 @@ pub async fn search_contacts<C: ConnectionTrait>(
     }
     select
         .order_by_desc(contact::Column::Id)
-        .limit(limit)
-        .all(db)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-pub async fn create_company<C: ConnectionTrait>(
-    db: &C,
-    input: CompanyWrite,
-) -> Result<company::Model, String> {
-    let name = require_name(&input.name)?;
-    let now = chrono::Utc::now();
-    company::ActiveModel {
-        id: Default::default(),
-        created_at: Set(Some(now)),
-        updated_at: Set(Some(now)),
-        name: Set(name),
-        address_line_1: Set(input.address_line_1),
-        address_line_2: Set(input.address_line_2),
-        city: Set(input.city),
-        pincode: Set(input.pincode),
-        state: Set(input.state),
-        website: Set(input.website),
-        gstin: Set(input.gstin),
-        cin: Set(input.cin),
-        pan: Set(input.pan),
-        phone: Set(input.phone),
-        email: Set(input.email),
-    }
-    .insert(db)
-    .await
-    .map_err(|e| e.to_string())
-}
-
-pub async fn update_company<C: ConnectionTrait>(
-    db: &C,
-    company_id: i64,
-    input: CompanyWrite,
-) -> Result<company::Model, String> {
-    let name = require_name(&input.name)?;
-    let existing = CompanyEntity::find_by_id(company_id)
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("company {company_id} not found"))?;
-    let now = chrono::Utc::now();
-    let mut am: company::ActiveModel = existing.into();
-    am.updated_at = Set(Some(now));
-    am.name = Set(name);
-    am.address_line_1 = Set(input.address_line_1);
-    am.address_line_2 = Set(input.address_line_2);
-    am.city = Set(input.city);
-    am.pincode = Set(input.pincode);
-    am.state = Set(input.state);
-    am.website = Set(input.website);
-    am.gstin = Set(input.gstin);
-    am.cin = Set(input.cin);
-    am.pan = Set(input.pan);
-    am.phone = Set(input.phone);
-    am.email = Set(input.email);
-    am.update(db).await.map_err(|e| e.to_string())
-}
-
-pub async fn delete_company<C: ConnectionTrait>(db: &C, company_id: i64) -> Result<(), String> {
-    if company_id <= 0 {
-        return Err("delete_company requires a positive company id".to_string());
-    }
-    let found = CompanyEntity::find_by_id(company_id)
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    if found.is_none() {
-        return Err(format!("company {company_id} not found"));
-    }
-    CompanyEntity::delete_by_id(company_id)
-        .exec(db)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-pub async fn get_company<C: ConnectionTrait>(
-    db: &C,
-    company_id: i64,
-) -> Result<company::Model, String> {
-    if company_id <= 0 {
-        return Err("get_company requires a positive company id".to_string());
-    }
-    CompanyEntity::find_by_id(company_id)
-        .one(db)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("company {company_id} not found"))
-}
-
-pub async fn search_companies<C: ConnectionTrait>(
-    db: &C,
-    query: &str,
-    limit: u64,
-) -> Result<Vec<company::Model>, String> {
-    let mut select = CompanyEntity::find();
-    let needle = query.trim();
-    if !needle.is_empty() {
-        let like = like_pattern(needle);
-        select = select.filter(
-            Condition::any()
-                .add(Func::lower(Expr::col(company::Column::Name)).like(like.clone()))
-                .add(Func::lower(Expr::col(company::Column::Email)).like(like.clone()))
-                .add(Func::lower(Expr::col(company::Column::City)).like(like)),
-        );
-    }
-    select
-        .order_by_desc(company::Column::Id)
         .limit(limit)
         .all(db)
         .await
