@@ -28,7 +28,7 @@ pub fn register_nav_origin(arrived: ArrivedFn, with_origin: HrefFn, app_href: Hr
     let _ = APP_HREF.set(app_href);
 }
 
-/// `true` when this request should show a Dashboard origin crumb.
+/// `true` when this request arrived from the apps dashboard.
 ///
 /// `false` outside a request.
 pub fn from_dashboard() -> bool {

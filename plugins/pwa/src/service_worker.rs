@@ -250,6 +250,9 @@ mod tests {
             .expect("default module");
         assert!(source.contains(PwaOfflineRouteTag::PATH));
         assert!(source.contains("lariv-pwa-v1"));
+        assert!(source.contains("larivPwaCacheName"));
+        assert!(source.contains("larivOfflineUrl"));
+        assert!(source.contains("self.registration.scope"));
         assert_eq!(
             registry.entry_script(),
             format!("import \"{}\";\n", PwaDefaultServiceWorkerRouteTag::PATH)

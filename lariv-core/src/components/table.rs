@@ -1243,7 +1243,7 @@ fn data_table_list_built(
     })
 }
 
-const TABLE_BUTTON_FILTER_DEFAULT_CONTENT: &str = "card w-[36rem] max-w-[90vw] my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-2 bg-base-100";
+const TABLE_BUTTON_FILTER_DEFAULT_CONTENT: &str = "card w-[36rem] max-w-[90vw] my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-50 bg-base-100 fixed right-4";
 
 /// Narrow panel kept for the column picker, which does not need filter-row width.
 const TABLE_BUTTON_COLUMNS_CONTENT: &str = "card w-64 my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-2 bg-base-100";

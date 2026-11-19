@@ -242,7 +242,8 @@ fn account_label(acct: &account::Model) -> String {
     }
 }
 
-/// Save or clear the product's template lines. An empty journal and no lines clears them.
+/// Save the product's journal template. Journal and at least one line are required
+/// so invoices can post without a later "no journal entry template" failure.
 pub async fn save_product_template(
     db: &DatabaseConnection,
     product_id: i64,
@@ -252,11 +253,8 @@ pub async fn save_product_template(
 ) -> Result<(), String> {
     let journal_id = journal_raw.trim().parse::<i64>().unwrap_or(0);
     let lines = parse_template_lines(lines_json)?;
-    if journal_id <= 0 && lines.is_empty() {
-        return delete_product_template(db, product_id).await;
-    }
     if journal_id <= 0 {
-        return Err("journal is required when the template has lines".into());
+        return Err("journal is required for the product journal entry template".into());
     }
     if lines.is_empty() {
         return Err("at least one journal template line is required".into());

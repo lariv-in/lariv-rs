@@ -92,7 +92,7 @@ pub fn draft_invoice_label(id: i64, number: &str) -> String {
 }
 
 pub fn invoice_section_crumbs(label: &str, detail_url: &str, action: Option<&str>) -> Markup {
-    let list_url = InvoiceDefaultRouteTag.url();
+    let list_url = crate::scope::hub_tab_url("drafts");
     match action {
         None => breadcrumbs(&[
             Crumb {

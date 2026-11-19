@@ -20,6 +20,7 @@ use lariv_core::web::{
     respond_create_modal_done_fk, respond_edit_modal_done,
 };
 use lariv_plugin_users::middleware::RequireAuth;
+use lariv_plugin_users::state::AuthContext;
 
 use crate::{
     entities::currency::{self, Entity as CurrencyEntity},
@@ -213,14 +214,21 @@ pub async fn create_post(
     Query(q): Query<ModalNameQuery>,
     HtmlFormBody(form): HtmlFormBody<CurrencyForm>,
 ) -> Response {
+    let parsed = parse_currency_fields(&form);
+    let (code, minor_unit) = match parsed {
+        Ok(fields) => fields,
+        Err(error) => {
+            return currency_create_error(&chrome, &ctx, &q, form, error).into_response();
+        }
+    };
     let now = Utc::now();
     let model = currency::ActiveModel {
         created_at: Set(Some(now)),
         updated_at: Set(Some(now)),
-        code: Set(parse_i32(&form.code).unwrap_or(0)),
+        code: Set(code),
         name: Set(form.name.clone()),
         symbol: Set(form.symbol.clone()),
-        minor_unit: Set(parse_i32(&form.minor_unit).unwrap_or(0)),
+        minor_unit: Set(minor_unit),
         ..Default::default()
     };
     match model.insert(&state.db).await {
@@ -233,18 +241,8 @@ pub async fn create_post(
             &saved.name,
             &q.target_input(),
         ),
-        Err(e) => {
-            let page = CurrencyCreateModalPage {
-                form_name: q.form_name(),
-                refresh_table: q.refresh_table(),
-                code: form.code,
-                name: form.name,
-                symbol: form.symbol,
-                minor_unit: form.minor_unit,
-                error: e.to_string(),
-            };
-            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
-        }
+        Err(e) => currency_create_error(&chrome, &ctx, &q, form, currency_db_error(&e))
+            .into_response(),
     }
 }
 
@@ -274,14 +272,21 @@ pub async fn edit_post(
     let Some(existing) = find_currency_scoped(&state.db, id).await else {
         return Redirect::to(&CurrencyListRouteTag.url()).into_response();
     };
+    let parsed = parse_currency_fields(&form);
+    let (code, minor_unit) = match parsed {
+        Ok(fields) => fields,
+        Err(error) => {
+            return currency_edit_error(&chrome, &ctx, id, &q, form, error).into_response();
+        }
+    };
     let now = Utc::now();
     let model = currency::ActiveModel {
         id: Set(existing.id),
         updated_at: Set(Some(now)),
-        code: Set(parse_i32(&form.code).unwrap_or(existing.code)),
+        code: Set(code),
         name: Set(form.name.clone()),
         symbol: Set(form.symbol.clone()),
-        minor_unit: Set(parse_i32(&form.minor_unit).unwrap_or(existing.minor_unit)),
+        minor_unit: Set(minor_unit),
         ..Default::default()
     };
     match model.update(&state.db).await {
@@ -291,18 +296,67 @@ pub async fn edit_post(
             &CurrencyDetailRouteTag::new(id).url(),
         ),
         Err(e) => {
-            let page = CurrencyEditModalPage {
-                id,
-                form_name: q.form_name(),
-                code: form.code,
-                name: form.name,
-                symbol: form.symbol,
-                minor_unit: form.minor_unit,
-                error: e.to_string(),
-            };
-            html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+            currency_edit_error(&chrome, &ctx, id, &q, form, currency_db_error(&e)).into_response()
         }
     }
+}
+
+fn parse_currency_fields(form: &CurrencyForm) -> Result<(i32, i32), String> {
+    let code = parse_i32(&form.code).filter(|code| *code > 0).ok_or_else(|| {
+        "ISO 4217 numeric code must be a positive integer (for example 356 for INR)".to_owned()
+    })?;
+    let minor_unit = parse_i32(&form.minor_unit)
+        .filter(|unit| (0..=18).contains(unit))
+        .ok_or_else(|| "Minor unit must be an integer between 0 and 18".to_owned())?;
+    Ok((code, minor_unit))
+}
+
+fn currency_db_error(err: &sea_orm::DbErr) -> String {
+    let text = err.to_string();
+    if text.contains("duplicate") || text.contains("23505") || text.contains("unique") {
+        "A currency with this code already exists".to_owned()
+    } else {
+        text
+    }
+}
+
+fn currency_create_error(
+    chrome: &SharedChromeFolder,
+    ctx: &AuthContext,
+    q: &ModalNameQuery,
+    form: CurrencyForm,
+    error: String,
+) -> maud::Markup {
+    let page = CurrencyCreateModalPage {
+        form_name: q.form_name(),
+        refresh_table: q.refresh_table(),
+        code: form.code,
+        name: form.name,
+        symbol: form.symbol,
+        minor_unit: form.minor_unit,
+        error,
+    };
+    html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx))
+}
+
+fn currency_edit_error(
+    chrome: &SharedChromeFolder,
+    ctx: &AuthContext,
+    id: i64,
+    q: &ModalNameQuery,
+    form: CurrencyForm,
+    error: String,
+) -> maud::Markup {
+    let page = CurrencyEditModalPage {
+        id,
+        form_name: q.form_name(),
+        code: form.code,
+        name: form.name,
+        symbol: form.symbol,
+        minor_unit: form.minor_unit,
+        error,
+    };
+    html_built_page_with_slots(&page, chrome, &SlotCtx::from_auth(ctx))
 }
 
 pub async fn delete_get(

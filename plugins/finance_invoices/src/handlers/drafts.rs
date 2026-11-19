@@ -466,11 +466,16 @@ pub async fn create_post(
                     return html_built_page_with_slots(&page, &chrome, &SlotCtx::from_auth(&ctx))
                         .into_response();
                 }
+                let refresh = if q.refresh_table().is_empty() {
+                    INVOICE_HUB_TABLE.id().to_string()
+                } else {
+                    q.refresh_table()
+                };
                 respond_create_modal_done(
                     &htmx,
                     DRAFT_INVOICE_CREATE_MODAL,
-                    &q.refresh_table(),
-                    &DraftInvoiceDetailRouteTag::new(d.id).url(),
+                    &refresh,
+                    &hub_tab_url("drafts"),
                 )
             }
             Err(e) => {

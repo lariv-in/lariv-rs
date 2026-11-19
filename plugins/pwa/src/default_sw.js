@@ -1,6 +1,28 @@
 /* lariv p_pwa default service worker */
-const CACHE_NAME = "lariv-pwa-v1";
-const OFFLINE_URL = "/offline";
+function larivPwaCacheName(scopeUrl) {
+  try {
+    const path = new URL(scopeUrl, self.location.origin).pathname || "/";
+    if (path === "/") return "lariv-pwa-v1";
+    const key = path.replace(/^\/+|\/+$/g, "").replace(/\//g, "-") || "scoped";
+    return "lariv-pwa-v1-" + key;
+  } catch (_) {
+    return "lariv-pwa-v1";
+  }
+}
+
+function larivOfflineUrl(scopeUrl) {
+  try {
+    const path = new URL(scopeUrl, self.location.origin).pathname || "/";
+    if (path === "/") return "/offline";
+    const scope = path.endsWith("/") ? path.slice(0, -1) : path;
+    return "/offline?scope=" + encodeURIComponent(scope || "/");
+  } catch (_) {
+    return "/offline";
+  }
+}
+
+const CACHE_NAME = larivPwaCacheName(self.registration.scope);
+const OFFLINE_URL = larivOfflineUrl(self.registration.scope);
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

@@ -1,14 +1,22 @@
 //! Root HTML document with cached vendor bundles (HTMX 4, Alpine, DaisyUI, Tailwind).
 
-use std::sync::RwLock;
+use std::sync::{OnceLock, RwLock};
 
 use maud::{DOCTYPE, Markup, PreEscaped, html};
+
+use crate::components::request_path::request_path;
 
 use super::vendor::vendor_head;
 
 static APP_MANIFEST_PATH: RwLock<String> = RwLock::new(String::new());
 static FAVICON_PATH: RwLock<String> = RwLock::new(String::new());
 static APPLE_PWA_HEAD: RwLock<String> = RwLock::new(String::new());
+
+type PathResolver = fn(&str) -> Option<String>;
+
+static APP_MANIFEST_PATH_RESOLVER: OnceLock<PathResolver> = OnceLock::new();
+static FAVICON_PATH_RESOLVER: OnceLock<PathResolver> = OnceLock::new();
+static APPLE_PWA_HEAD_RESOLVER: OnceLock<PathResolver> = OnceLock::new();
 
 fn read_nonempty(lock: &RwLock<String>) -> Option<String> {
     lock.read()
@@ -23,11 +31,20 @@ fn write_lock(lock: &RwLock<String>, value: impl Into<String>) {
     }
 }
 
+fn resolve_or_static(resolver: &OnceLock<PathResolver>, lock: &RwLock<String>) -> Option<String> {
+    if let (Some(resolve), Some(path)) = (resolver.get(), request_path()) {
+        return resolve(&path).filter(|s| !s.is_empty());
+    }
+    read_nonempty(lock)
+}
+
 /// Current `<link rel="manifest">` href patched in by the PWA plugin.
 ///
 /// Empty when no plugin has called [`set_app_manifest_path`].
+/// When a path resolver is registered and a request path is in scope, the
+/// resolver wins over the static value.
 pub fn app_manifest_path() -> Option<String> {
-    read_nonempty(&APP_MANIFEST_PATH)
+    resolve_or_static(&APP_MANIFEST_PATH_RESOLVER, &APP_MANIFEST_PATH)
 }
 
 /// Patch the app manifest path into [`shell_base`] (empty string removes the link).
@@ -35,11 +52,18 @@ pub fn set_app_manifest_path(path: impl Into<String>) {
     write_lock(&APP_MANIFEST_PATH, path);
 }
 
+/// Register a request-path → manifest href resolver (first registration wins).
+pub fn register_app_manifest_path_resolver(resolve: PathResolver) {
+    if APP_MANIFEST_PATH_RESOLVER.set(resolve).is_err() {
+        tracing::warn!("app_manifest_path resolver already registered");
+    }
+}
+
 /// Current `<link rel="icon">` href patched in by the PWA plugin.
 ///
 /// Empty when no plugin has called [`set_favicon_path`].
 pub fn favicon_path() -> Option<String> {
-    read_nonempty(&FAVICON_PATH)
+    resolve_or_static(&FAVICON_PATH_RESOLVER, &FAVICON_PATH)
 }
 
 /// Patch the favicon path into [`shell_base`] (empty string removes the link).
@@ -47,14 +71,28 @@ pub fn set_favicon_path(path: impl Into<String>) {
     write_lock(&FAVICON_PATH, path);
 }
 
+/// Register a request-path → favicon href resolver (first registration wins).
+pub fn register_favicon_path_resolver(resolve: PathResolver) {
+    if FAVICON_PATH_RESOLVER.set(resolve).is_err() {
+        tracing::warn!("favicon_path resolver already registered");
+    }
+}
+
 /// Apple iOS PWA `<head>` snippet patched in by the PWA plugin.
 pub fn apple_pwa_head() -> Option<String> {
-    read_nonempty(&APPLE_PWA_HEAD)
+    resolve_or_static(&APPLE_PWA_HEAD_RESOLVER, &APPLE_PWA_HEAD)
 }
 
 /// Patch Apple iOS PWA meta/link tags into [`shell_base`] (empty string removes them).
 pub fn set_apple_pwa_head(html: impl Into<String>) {
     write_lock(&APPLE_PWA_HEAD, html);
+}
+
+/// Register a request-path → Apple head HTML resolver (first registration wins).
+pub fn register_apple_pwa_head_resolver(resolve: PathResolver) {
+    if APPLE_PWA_HEAD_RESOLVER.set(resolve).is_err() {
+        tracing::warn!("apple_pwa_head resolver already registered");
+    }
 }
 
 fn attr_escape(s: &str) -> String {

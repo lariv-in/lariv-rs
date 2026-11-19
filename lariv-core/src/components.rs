@@ -104,6 +104,7 @@ pub mod menu;
 pub mod modal;
 pub mod nav_origin;
 pub mod picker;
+pub mod request_path;
 pub mod shell;
 pub mod slots;
 pub mod static_cache;
@@ -183,9 +184,11 @@ pub use nav_origin::{dashboard_app_href, with_nav_origin};
 pub use picker::{
     ModalHtml, RenderPickerSelect, TableFragmentHtml, picker_create_button, respond_picker_select,
 };
+pub use request_path::{request_path, scope_request_path};
 pub use shell::{
     ShellAuth, ShellBase, ShellScaffold, ShellSimple, ShellTopbar, apexcharts_script,
-    app_manifest_path, apple_pwa_head, favicon_path, pwa_head_html, set_app_manifest_path,
+    app_manifest_path, apple_pwa_head, favicon_path, pwa_head_html, register_apple_pwa_head_resolver,
+    register_app_manifest_path_resolver, register_favicon_path_resolver, set_app_manifest_path,
     set_apple_pwa_head, set_favicon_path, shell_auth, shell_base, shell_scaffold, shell_simple,
     shell_topbar, vendor_head,
 };
@@ -193,7 +196,7 @@ pub use slots::{
     AuthPrincipal, CoreTitle, CoreTitleTag, FoldChrome, FoldSlots, HeadSlotTag, RenderSlot,
     RightSidebarSlotTag, SharedChromeFolder, ShellChrome, SlotBucket, SlotCap, SlotCapability,
     SlotCtx, SlotOf, SlotRegistrar, SlotTag, TopbarItemsSlotTag, document_title,
-    set_document_title, with_slots,
+    register_document_title_resolver, set_document_title, with_slots,
 };
 pub use static_cache::{
     IMMUTABLE_CACHE_CONTROL, MUST_REVALIDATE_CACHE_CONTROL, static_asset_cache_middleware,

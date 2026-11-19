@@ -65,28 +65,40 @@ pub struct LayoutTopbar {
 }
 
 /// Alpine state for the collapsible left sidebar drawer.
+///
+/// `isMobile` follows the same `max-width: 767px` query as the `max-md:` drawer
+/// classes. `window.innerWidth` can disagree with that query after an HTMX
+/// swap (draft invoice → posted invoice keeps this component), which left the
+/// fixed drawer on screen while `x-show="isMobile && showLeft"` hid the backdrop.
 pub const LEFT_SIDEBAR_X_DATA: &str = r#"{
-    showLeft: window.innerWidth >= 768,
-    isMobile: window.innerWidth < 768,
+    showLeft: window.matchMedia('(min-width: 768px)').matches,
+    isMobile: window.matchMedia('(max-width: 767px)').matches,
     messages: [],
+    syncViewport() {
+        this.isMobile = window.matchMedia('(max-width: 767px)').matches;
+    },
     init() {
         const mq = window.matchMedia('(max-width: 767px)');
         const onChange = () => {
-            this.isMobile = mq.matches;
+            this.syncViewport();
             this.showLeft = !this.isMobile;
         };
+        this.syncViewport();
         mq.addEventListener('change', onChange);
         this.$el.addEventListener('htmx:after-swap', (event) => {
-            const target = event.detail?.target;
-            if (this.isMobile && target && target.id === 'main-content') {
+            this.syncViewport();
+            const id = event.detail?.target?.id;
+            if (this.isMobile && (id === 'main-content' || id === 'app-layout')) {
                 this.showLeft = false;
             }
         });
     },
     toggleLeft() {
+        this.syncViewport();
         this.showLeft = !this.showLeft;
     },
     closeLeft() {
+        this.syncViewport();
         if (this.isMobile) this.showLeft = false;
     }
 }"#;
@@ -247,8 +259,8 @@ pub fn layout_sidebar(opts: LayoutSidebar) -> AppLayoutHtml {
             x_data,
         )))
         (PreEscaped(r##"<div class="relative grid h-full transition-[grid-template-columns] duration-[400ms] ease-in" :class="isMobile ? 'grid-cols-1' : (showLeft ? 'grid-cols-[250px_1fr]' : 'grid-cols-[0px_1fr]')">"##))
-        (PreEscaped(r##"<div x-show="isMobile && showLeft" x-transition.opacity="" @click="closeLeft()" class="fixed inset-x-0 bottom-0 top-16 bg-black/50 z-40"></div>"##))
-        (PreEscaped(r##"<aside class="bg-base-100 border-r border-base-300 overflow-hidden max-md:fixed max-md:left-0 max-md:top-16 max-md:bottom-0 max-md:z-50 max-md:w-[250px] max-md:shadow-xl max-md:transition-transform max-md:duration-300" :class="isMobile && !showLeft ? 'max-md:-translate-x-full' : ''">"##))
+        (PreEscaped(r##"<div id="left-sidebar-backdrop" class="fixed inset-x-0 bottom-0 top-16 z-40 bg-black/50 md:hidden" :class="showLeft ? '' : 'hidden'" @click="closeLeft()"></div>"##))
+        (PreEscaped(r##"<aside class="bg-base-100 border-r border-base-300 overflow-hidden max-md:fixed max-md:left-0 max-md:top-16 max-md:bottom-0 max-md:z-50 max-md:w-[250px] max-md:shadow-xl max-md:transition-transform max-md:duration-300" :class="showLeft ? '' : 'max-md:-translate-x-full'">"##))
         div class="h-full overflow-y-auto w-[250px] bg-base-100 p-2" {
             (opts.sidebar)
         }
@@ -380,9 +392,16 @@ mod tests {
         assert!(s.contains("closeLeft"));
         assert!(s.contains("toggleLeft"));
         assert!(s.contains("main-content"));
+        assert!(s.contains("app-layout"));
         assert!(s.contains("htmx:after-swap"));
+        assert!(s.contains("syncViewport"));
+        assert!(s.contains(r#"id="left-sidebar-backdrop""#));
+        assert!(s.contains("md:hidden"));
+        assert!(s.contains(":class=\"showLeft ? '' : 'hidden'\""));
+        assert!(!s.contains("x-show"));
         assert!(s.contains("max-md:fixed"));
         assert!(s.contains("max-md:-translate-x-full"));
+        assert!(s.contains(":class=\"showLeft ? '' : 'max-md:-translate-x-full'\""));
         assert!(!s.contains("translate: none"));
     }
 
@@ -399,15 +418,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn layout_main_empty_crumbs_show_dashboard_when_origin_set() {
+    async fn layout_main_empty_crumbs_omit_dashboard_when_origin_set() {
         crate::components::nav_origin::scope_from_dashboard(true, async {
             let out = layout_main(LayoutMain {
                 breadcrumbs: Markup::default(),
                 content: html! { p { "body" } },
             });
             let s = out.into_markup().into_string();
-            assert!(s.contains(">Dashboard</a>"));
-            assert!(s.contains("hx-get=\"/dashboard/\""));
+            assert!(!s.contains(">Dashboard</a>"));
+            assert!(!s.contains("hx-get=\"/dashboard/\""));
         })
         .await;
     }

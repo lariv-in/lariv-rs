@@ -40,6 +40,7 @@ use axum::{
 use crate::components::nav_origin::{
     arrived_from_dashboard, scope_from_dashboard, with_nav_origin,
 };
+use crate::components::request_path::scope_request_path;
 use crate::components::swap::{APP_LAYOUT, MAIN_CONTENT, SwapKey, oob_delete};
 
 /// HTMX request classification from the `HX-Request-Type` header.
@@ -429,14 +430,18 @@ pub async fn htmx_middleware(mut req: Request<Body>, next: Next) -> Response {
     let htmx = Htmx::from_headers(req.headers());
     let is_htmx = htmx.request;
     let from_dashboard = arrived_from_dashboard(req.uri(), req.headers());
+    let request_path = req.uri().path().to_owned();
     req.extensions_mut().insert(htmx);
 
-    let mut response = scope_from_dashboard(from_dashboard, async move {
-        let mut response = next.run(req).await;
-        if from_dashboard {
-            rewrite_redirect_origin(response.headers_mut());
-        }
-        response
+    let mut response = scope_request_path(request_path, async move {
+        scope_from_dashboard(from_dashboard, async move {
+            let mut response = next.run(req).await;
+            if from_dashboard {
+                rewrite_redirect_origin(response.headers_mut());
+            }
+            response
+        })
+        .await
     })
     .await;
 

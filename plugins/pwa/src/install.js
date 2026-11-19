@@ -64,7 +64,14 @@
   document.addEventListener("DOMContentLoaded", maybeShow);
 
   if (navigator.serviceWorker) {
-    navigator.serviceWorker.register("/serviceworker.js", { type: "module" }).catch(() => {});
+    const opts = { type: "module" };
+    if (
+      typeof globalThis.__LARIV_PWA_SW_SCOPE__ === "string" &&
+      globalThis.__LARIV_PWA_SW_SCOPE__
+    ) {
+      opts.scope = globalThis.__LARIV_PWA_SW_SCOPE__;
+    }
+    navigator.serviceWorker.register("/serviceworker.js", opts).catch(() => {});
   }
 
   maybeShow();

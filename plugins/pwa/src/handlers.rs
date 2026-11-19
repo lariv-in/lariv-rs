@@ -3,10 +3,11 @@
 use std::path::{Path, PathBuf};
 
 use axum::{
-    extract::{Path as AxumPath, Request},
+    extract::{Path as AxumPath, Query, Request},
     http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
+use serde::Deserialize;
 use serde_json::json;
 use tower::ServiceExt;
 use tower_http::services::ServeDir;
@@ -14,8 +15,8 @@ use tower_http::services::ServeDir;
 use lariv_core::http::Cap;
 use lariv_core::views::ViewRegistry;
 
-use super::config::PwaConfig;
-use super::routes::PwaManifestRouteTag;
+use super::config::{PwaConfig, PwaConfigSet};
+use super::urls::{manifest_href, rewrite_static_src};
 use super::service_worker::ServiceWorkerRegistry;
 
 fn javascript(body: impl IntoResponse) -> Response {
@@ -42,6 +43,12 @@ const DEFAULT_OFFLINE_HTML: &str = r#"<!doctype html>
   </body>
 </html>"#;
 
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ScopeQuery {
+    #[serde(default)]
+    pub scope: Option<String>,
+}
+
 fn manifest_id(cfg: &PwaConfig) -> &str {
     if cfg.app_start_url.is_empty() {
         "/"
@@ -54,7 +61,7 @@ fn related_applications(cfg: &PwaConfig) -> Vec<serde_json::Value> {
     let id = manifest_id(cfg);
     let mut apps = vec![json!({
         "platform": "webapp",
-        "url": PwaManifestRouteTag::PATH,
+        "url": manifest_href(cfg),
         "id": id,
     })];
     if !cfg.app_package_name.is_empty() {
@@ -64,6 +71,36 @@ fn related_applications(cfg: &PwaConfig) -> Vec<serde_json::Value> {
         }));
     }
     apps
+}
+
+fn rewrite_icons(cfg: &PwaConfig) -> Vec<serde_json::Value> {
+    cfg.app_icons
+        .iter()
+        .map(|icon| {
+            let mut value = serde_json::to_value(icon).unwrap_or_else(|_| json!({}));
+            if let Some(obj) = value.as_object_mut()
+                && let Some(src) = obj.get("src").and_then(|v| v.as_str())
+            {
+                obj.insert("src".into(), json!(rewrite_static_src(src, cfg)));
+            }
+            value
+        })
+        .collect()
+}
+
+fn rewrite_screenshots(cfg: &PwaConfig) -> Vec<serde_json::Value> {
+    cfg.app_screenshots
+        .iter()
+        .map(|shot| {
+            let mut value = serde_json::to_value(shot).unwrap_or_else(|_| json!({}));
+            if let Some(obj) = value.as_object_mut()
+                && let Some(src) = obj.get("src").and_then(|v| v.as_str())
+            {
+                obj.insert("src".into(), json!(rewrite_static_src(src, cfg)));
+            }
+            value
+        })
+        .collect()
 }
 
 /// JSON body for `/app.webmanifest`.
@@ -83,9 +120,9 @@ fn web_manifest(cfg: &PwaConfig) -> serde_json::Value {
         "start_url": cfg.app_start_url,
         "dir": cfg.app_dir,
         "lang": cfg.app_lang,
-        "icons": cfg.app_icons,
+        "icons": rewrite_icons(cfg),
         "shortcuts": cfg.app_shortcuts,
-        "screenshots": cfg.app_screenshots,
+        "screenshots": rewrite_screenshots(cfg),
         "status_bar_color": cfg.app_status_bar_color,
         "icons_apple": cfg.app_icons_apple,
         "splash_screen": cfg.app_splash_screen,
@@ -94,13 +131,17 @@ fn web_manifest(cfg: &PwaConfig) -> serde_json::Value {
 }
 
 /// HTTP handler: `manifest`.
-pub async fn manifest(Cap(cfg): Cap<PwaConfig>) -> Response {
+pub async fn manifest(
+    Cap(set): Cap<PwaConfigSet>,
+    Query(query): Query<ScopeQuery>,
+) -> Response {
+    let cfg = set.resolve_scope_query(query.scope.as_deref());
     (
         [(
             header::CONTENT_TYPE,
             "application/manifest+json; charset=utf-8",
         )],
-        web_manifest(&cfg).to_string(),
+        web_manifest(cfg).to_string(),
     )
         .into_response()
 }
@@ -122,8 +163,11 @@ fn favicon_content_type(path: &Path) -> &'static str {
 }
 
 /// HTTP handler: `favicon`.
-pub async fn favicon(Cap(cfg): Cap<PwaConfig>) -> Response {
-    serve_favicon(&cfg).await
+pub async fn favicon(
+    Cap(set): Cap<PwaConfigSet>,
+    Query(query): Query<ScopeQuery>,
+) -> Response {
+    serve_favicon(set.resolve_scope_query(query.scope.as_deref())).await
 }
 
 async fn serve_favicon(cfg: &PwaConfig) -> Response {
@@ -179,10 +223,12 @@ pub async fn service_worker_module(
 
 /// HTTP handler: `offline`.
 pub async fn offline(
-    Cap(cfg): Cap<PwaConfig>,
+    Cap(set): Cap<PwaConfigSet>,
     Cap(views): Cap<ViewRegistry>,
+    Query(query): Query<ScopeQuery>,
     req: Request,
 ) -> Response {
+    let cfg = set.resolve_scope_query(query.scope.as_deref());
     if !cfg.offline_view_name.is_empty() {
         if views.contains(&cfg.offline_view_name) {
             return views.dispatch(&cfg.offline_view_name, req).await;
@@ -202,37 +248,50 @@ pub async fn offline(
 }
 
 /// HTTP handler: `asset_links`.
-pub async fn asset_links(Cap(cfg): Cap<PwaConfig>) -> Response {
-    let body = json!([{
-        "relation": [
-            "delegate_permission/common.handle_all_urls",
-            "delegate_permission/common.get_login_creds",
-        ],
-        "target": {
-            "namespace": "android_app",
-            "package_name": cfg.app_package_name,
-            "sha256_cert_fingerprints": [cfg.app_sha256_cert_fingerprints],
-        },
-    }]);
+pub async fn asset_links(Cap(set): Cap<PwaConfigSet>) -> Response {
+    let body: Vec<serde_json::Value> = set
+        .all_apps()
+        .filter(|cfg| {
+            !cfg.app_package_name.is_empty() && !cfg.app_sha256_cert_fingerprints.is_empty()
+        })
+        .map(|cfg| {
+            json!({
+                "relation": [
+                    "delegate_permission/common.handle_all_urls",
+                    "delegate_permission/common.get_login_creds",
+                ],
+                "target": {
+                    "namespace": "android_app",
+                    "package_name": cfg.app_package_name,
+                    "sha256_cert_fingerprints": [cfg.app_sha256_cert_fingerprints],
+                },
+            })
+        })
+        .collect();
     (
         [(header::CONTENT_TYPE, "application/json")],
-        body.to_string(),
+        serde_json::Value::Array(body).to_string(),
     )
         .into_response()
 }
 
 /// HTTP handler: `static_pwa_root`.
-pub async fn static_pwa_root(Cap(cfg): Cap<PwaConfig>, req: Request) -> Response {
-    serve_static(&cfg, req, "").await
+pub async fn static_pwa_root(
+    Cap(set): Cap<PwaConfigSet>,
+    Query(query): Query<ScopeQuery>,
+    req: Request,
+) -> Response {
+    serve_static(set.resolve_scope_query(query.scope.as_deref()), req, "").await
 }
 
 /// HTTP handler: `static_pwa_file`.
 pub async fn static_pwa_file(
-    Cap(cfg): Cap<PwaConfig>,
+    Cap(set): Cap<PwaConfigSet>,
+    Query(query): Query<ScopeQuery>,
     AxumPath(path): AxumPath<String>,
     req: Request,
 ) -> Response {
-    serve_static(&cfg, req, &path).await
+    serve_static(set.resolve_scope_query(query.scope.as_deref()), req, &path).await
 }
 
 async fn serve_static(cfg: &PwaConfig, req: Request, relative: &str) -> Response {
@@ -331,6 +390,22 @@ mod tests {
     }
 
     #[test]
+    fn web_manifest_related_url_is_scoped_for_nested_app() {
+        let cfg = PwaConfig {
+            app_name: "Kiosk".into(),
+            app_scope: "/kiosk/".into(),
+            app_start_url: "/kiosk/".into(),
+            ..Default::default()
+        };
+        let body = web_manifest(&cfg);
+        assert_eq!(body["id"], "/kiosk/");
+        assert_eq!(
+            body["related_applications"][0]["url"],
+            "/app.webmanifest?scope=/kiosk"
+        );
+    }
+
+    #[test]
     fn web_manifest_falls_back_to_root_id_and_appends_play_entry() {
         let cfg = PwaConfig {
             app_package_name: "com.example.lariv".into(),
@@ -394,6 +469,66 @@ mod tests {
         assert_eq!(body["icons"][0]["purpose"], "any");
         assert_eq!(body["screenshots"][0]["purpose"], "maskable");
         assert_eq!(body["screenshots"][0]["form_factor"], "wide");
+    }
+
+    #[test]
+    fn web_manifest_rewrites_static_icons_when_scoped_static_dir() {
+        let cfg = PwaConfig {
+            app_scope: "/kiosk/".into(),
+            static_dir: "kiosk-pwa".into(),
+            app_icons: vec![PwaIconConfig {
+                src: "/static/pwa/icon-192.png".into(),
+                sizes: "192x192".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let body = web_manifest(&cfg);
+        assert_eq!(
+            body["icons"][0]["src"],
+            "/static/pwa/icon-192.png?scope=/kiosk"
+        );
+    }
+
+    #[test]
+    fn asset_links_merges_all_apps_with_package_and_fingerprint() {
+        let set = PwaConfigSet {
+            root: PwaConfig {
+                app_package_name: "com.example.root".into(),
+                app_sha256_cert_fingerprints: "AA:BB".into(),
+                ..Default::default()
+            },
+            apps: vec![
+                PwaConfig {
+                    app_scope: "/kiosk/".into(),
+                    app_package_name: "com.example.kiosk".into(),
+                    app_sha256_cert_fingerprints: "CC:DD".into(),
+                    ..Default::default()
+                },
+                PwaConfig {
+                    app_scope: "/portal/".into(),
+                    app_package_name: "com.example.portal".into(),
+                    ..Default::default()
+                },
+            ],
+        };
+        let body: Vec<serde_json::Value> = set
+            .all_apps()
+            .filter(|cfg| {
+                !cfg.app_package_name.is_empty() && !cfg.app_sha256_cert_fingerprints.is_empty()
+            })
+            .map(|cfg| {
+                json!({
+                    "target": {
+                        "package_name": cfg.app_package_name,
+                        "sha256_cert_fingerprints": [cfg.app_sha256_cert_fingerprints],
+                    },
+                })
+            })
+            .collect();
+        assert_eq!(body.len(), 2);
+        assert_eq!(body[0]["target"]["package_name"], "com.example.root");
+        assert_eq!(body[1]["target"]["package_name"], "com.example.kiosk");
     }
 
     #[test]

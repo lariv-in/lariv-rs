@@ -6,7 +6,7 @@
 //! into [`crate::template::RenderTemplate::render`].
 
 use std::marker::PhantomData;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use frunk::{HCons, HNil, hlist::HList};
 use maud::{Markup, html};
@@ -307,9 +307,20 @@ where
 // --- core.Title -------------------------------------------------
 
 static DOCUMENT_TITLE: RwLock<String> = RwLock::new(String::new());
+static DOCUMENT_TITLE_RESOLVER: OnceLock<fn(&str) -> Option<String>> = OnceLock::new();
 
 /// Current document title (`PWA_APP_NAME` when set, otherwise `"Lariv"`).
+///
+/// When a path resolver is registered and a request path is in scope, the
+/// resolver wins over the static value.
 pub fn document_title() -> String {
+    if let (Some(resolve), Some(path)) = (
+        DOCUMENT_TITLE_RESOLVER.get(),
+        crate::components::request_path::request_path(),
+    ) && let Some(title) = resolve(&path).filter(|s| !s.is_empty())
+    {
+        return title;
+    }
     DOCUMENT_TITLE
         .read()
         .ok()
@@ -322,6 +333,13 @@ pub fn document_title() -> String {
 pub fn set_document_title(title: impl Into<String>) {
     if let Ok(mut guard) = DOCUMENT_TITLE.write() {
         *guard = title.into();
+    }
+}
+
+/// Register a request-path → document title resolver (first registration wins).
+pub fn register_document_title_resolver(resolve: fn(&str) -> Option<String>) {
+    if DOCUMENT_TITLE_RESOLVER.set(resolve).is_err() {
+        tracing::warn!("document_title resolver already registered");
     }
 }
 

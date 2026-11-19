@@ -18,18 +18,38 @@ use maud::{Markup, PreEscaped, html};
 use lariv_core::capability::define_register_items;
 use lariv_core::components::{
     HeadSlotTag, RenderSlot, SlotCapability, SlotCtx, SlotOf, SlotRegistrar, TopbarItemsSlotTag,
-    icon,
+    icon, request_path,
 };
 use lariv_core::http::ProvideRequestCaps;
 use lariv_core::template::{TemplateCapability, TemplateRegistrar};
 
+use super::urls::sw_scope_for_path;
+
 #[derive(Default)]
 pub struct PwaInstallScript;
+
+fn sw_scope_boot_script() -> String {
+    let Some(path) = request_path() else {
+        return String::new();
+    };
+    let Some(scope) = sw_scope_for_path(&path) else {
+        return String::new();
+    };
+    if scope == "/" {
+        return String::new();
+    }
+    let Ok(encoded) = serde_json::to_string(&scope) else {
+        return String::new();
+    };
+    format!("<script>globalThis.__LARIV_PWA_SW_SCOPE__={encoded};</script>")
+}
 
 impl RenderSlot for PwaInstallScript {
     fn render_slot(&self, _ctx: &SlotCtx) -> Markup {
         // Closed <script> so the rest of the document is not treated as JS.
+        let boot = sw_scope_boot_script();
         html! {
+            (PreEscaped(boot))
             (PreEscaped(concat!(
                 "<script>",
                 include_str!("install.js"),
@@ -99,9 +119,11 @@ mod tests {
             !head.contains(r#"rel="manifest""#),
             "manifest link is patched into shell_base, not head slots: {head}"
         );
-        assert!(head.contains(
-            "navigator.serviceWorker.register(\"/serviceworker.js\", { type: \"module\" })"
-        ));
+        assert!(
+            head.contains("navigator.serviceWorker.register(\"/serviceworker.js\""),
+            "install script must register the service worker: {head}"
+        );
+        assert!(head.contains("__LARIV_PWA_SW_SCOPE__") || head.contains("type: \"module\""));
         assert!(head.contains("beforeinstallprompt"));
         assert!(head.contains("getInstalledRelatedApps"));
         assert!(

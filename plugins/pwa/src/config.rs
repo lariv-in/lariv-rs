@@ -9,11 +9,37 @@ fn default_image_purpose() -> String {
     "any".into()
 }
 
-/// Config HList tag for [`PwaConfig`].
+/// Config HList tag for [`PwaConfigSet`].
 pub struct PwaConfigTag;
 
 impl ConfigSection for PwaConfigTag {
     const KEY: Option<&'static str> = Some("pwa");
+}
+
+/// Normalize a scope to a leading-slash path prefix (no trailing slash except `/`).
+pub fn normalize_scope(scope: &str) -> String {
+    let trimmed = scope.trim();
+    if trimmed.is_empty() || trimmed == "/" {
+        return "/".into();
+    }
+    let with_slash = if trimmed.starts_with('/') {
+        trimmed.to_owned()
+    } else {
+        format!("/{trimmed}")
+    };
+    with_slash
+        .trim_end_matches('/')
+        .to_owned()
+}
+
+/// True when `path` is inside `scope` (normalized). `/` matches every path.
+pub fn scope_matches(path: &str, scope: &str) -> bool {
+    let scope = normalize_scope(scope);
+    if scope == "/" {
+        return true;
+    }
+    let path = if path.is_empty() { "/" } else { path };
+    path == scope || path.starts_with(&format!("{scope}/"))
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -168,11 +194,215 @@ impl PwaConfig {
             self.app_short_name.as_str()
         }
     }
+
+    /// Normalized [`Self::app_scope`] (`/` when empty).
+    pub fn scope(&self) -> String {
+        normalize_scope(&self.app_scope)
+    }
+}
+
+/// `[pwa]` section: root app fields plus optional `[[pwa.apps]]` extras.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct PwaConfigSet {
+    #[serde(flatten)]
+    pub root: PwaConfig,
+    #[serde(default)]
+    pub apps: Vec<PwaConfig>,
+}
+
+impl PwaConfigSet {
+    /// Deduplicate extra-app scopes (first wins) and warn on collisions.
+    pub fn sanitize(mut self) -> Self {
+        let mut seen = std::collections::HashSet::new();
+        let mut unique = Vec::with_capacity(self.apps.len());
+        for app in self.apps.drain(..) {
+            let scope = app.scope();
+            if !seen.insert(scope.clone()) {
+                tracing::warn!(
+                    scope = %scope,
+                    "p_pwa: duplicate PWA_APP_SCOPE in [[pwa.apps]]; keeping the first"
+                );
+                continue;
+            }
+            unique.push(app);
+        }
+        self.apps = unique;
+        self
+    }
+
+    /// Longest matching scope for `request_path`, or the root app when nothing matches.
+    pub fn resolve(&self, request_path: &str) -> &PwaConfig {
+        let mut best: Option<&PwaConfig> = None;
+        let mut best_len = 0usize;
+
+        let candidates = std::iter::once(&self.root).chain(self.apps.iter());
+        for app in candidates {
+            let scope = app.scope();
+            if !scope_matches(request_path, &scope) {
+                continue;
+            }
+            let len = if scope == "/" { 0 } else { scope.len() };
+            if best.is_none() || len > best_len {
+                best = Some(app);
+                best_len = len;
+            }
+        }
+
+        best.unwrap_or(&self.root)
+    }
+
+    /// Resolve by an explicit `scope` query (manifest/favicon/offline/static).
+    ///
+    /// Unknown or empty scope falls back to the root app.
+    pub fn resolve_scope_query(&self, scope: Option<&str>) -> &PwaConfig {
+        let Some(raw) = scope.filter(|s| !s.is_empty()) else {
+            return &self.root;
+        };
+        let want = normalize_scope(raw);
+        if self.root.scope() == want {
+            return &self.root;
+        }
+        self.apps
+            .iter()
+            .find(|app| app.scope() == want)
+            .unwrap_or(&self.root)
+    }
+
+    /// True when extra path-scoped apps are configured.
+    pub fn has_extra_apps(&self) -> bool {
+        !self.apps.is_empty()
+    }
+
+    /// Root plus every extra app (registration / asset-links order).
+    pub fn all_apps(&self) -> impl Iterator<Item = &PwaConfig> {
+        std::iter::once(&self.root).chain(self.apps.iter())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_scope_trims_and_prefixes() {
+        assert_eq!(normalize_scope(""), "/");
+        assert_eq!(normalize_scope("/"), "/");
+        assert_eq!(normalize_scope("kiosk"), "/kiosk");
+        assert_eq!(normalize_scope("/kiosk/"), "/kiosk");
+        assert_eq!(normalize_scope("/kiosk/orders/"), "/kiosk/orders");
+    }
+
+    #[test]
+    fn scope_matches_prefix_boundaries() {
+        assert!(scope_matches("/anything", "/"));
+        assert!(scope_matches("/kiosk", "/kiosk"));
+        assert!(scope_matches("/kiosk/", "/kiosk"));
+        assert!(scope_matches("/kiosk/orders", "/kiosk"));
+        assert!(!scope_matches("/kioskette", "/kiosk"));
+        assert!(!scope_matches("/other", "/kiosk"));
+    }
+
+    #[test]
+    fn resolve_picks_longest_matching_scope() {
+        let set = PwaConfigSet {
+            root: PwaConfig {
+                app_name: "Root".into(),
+                app_scope: "/".into(),
+                ..Default::default()
+            },
+            apps: vec![
+                PwaConfig {
+                    app_name: "Kiosk".into(),
+                    app_scope: "/kiosk/".into(),
+                    ..Default::default()
+                },
+                PwaConfig {
+                    app_name: "Orders".into(),
+                    app_scope: "/kiosk/orders/".into(),
+                    ..Default::default()
+                },
+            ],
+        };
+        assert_eq!(set.resolve("/dashboard").app_name, "Root");
+        assert_eq!(set.resolve("/kiosk").app_name, "Kiosk");
+        assert_eq!(set.resolve("/kiosk/orders/1").app_name, "Orders");
+        assert_eq!(set.resolve("/kioskette").app_name, "Root");
+    }
+
+    #[test]
+    fn resolve_without_extra_apps_always_uses_root() {
+        let set = PwaConfigSet {
+            root: PwaConfig {
+                app_name: "Only".into(),
+                app_scope: "/portal/".into(),
+                ..Default::default()
+            },
+            apps: vec![],
+        };
+        assert_eq!(set.resolve("/").app_name, "Only");
+        assert_eq!(set.resolve("/portal/home").app_name, "Only");
+        assert_eq!(set.resolve("/other").app_name, "Only");
+    }
+
+    #[test]
+    fn resolve_scope_query_falls_back_to_root() {
+        let set = PwaConfigSet {
+            root: PwaConfig {
+                app_name: "Root".into(),
+                app_scope: "/".into(),
+                ..Default::default()
+            },
+            apps: vec![PwaConfig {
+                app_name: "Kiosk".into(),
+                app_scope: "/kiosk/".into(),
+                ..Default::default()
+            }],
+        };
+        assert_eq!(set.resolve_scope_query(None).app_name, "Root");
+        assert_eq!(set.resolve_scope_query(Some("")).app_name, "Root");
+        assert_eq!(set.resolve_scope_query(Some("/kiosk/")).app_name, "Kiosk");
+        assert_eq!(set.resolve_scope_query(Some("/missing")).app_name, "Root");
+    }
+
+    #[test]
+    fn sanitize_drops_duplicate_scopes() {
+        let set = PwaConfigSet {
+            root: PwaConfig::default(),
+            apps: vec![
+                PwaConfig {
+                    app_name: "First".into(),
+                    app_scope: "/kiosk/".into(),
+                    ..Default::default()
+                },
+                PwaConfig {
+                    app_name: "Second".into(),
+                    app_scope: "/kiosk".into(),
+                    ..Default::default()
+                },
+            ],
+        }
+        .sanitize();
+        assert_eq!(set.apps.len(), 1);
+        assert_eq!(set.apps[0].app_name, "First");
+    }
+
+    #[test]
+    fn flattened_section_deserializes_root_and_apps() {
+        let set: PwaConfigSet = serde_json::from_str(
+            r#"{
+                "PWA_APP_NAME": "Lariv",
+                "PWA_APP_SCOPE": "/",
+                "apps": [
+                    {"PWA_APP_NAME": "Kiosk", "PWA_APP_SCOPE": "/kiosk/"}
+                ]
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(set.root.app_name, "Lariv");
+        assert_eq!(set.apps.len(), 1);
+        assert_eq!(set.apps[0].app_name, "Kiosk");
+        assert_eq!(set.apps[0].scope(), "/kiosk");
+    }
 
     #[test]
     fn image_resource_purpose_defaults_to_any() {

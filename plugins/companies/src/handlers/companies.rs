@@ -18,7 +18,9 @@ use lariv_core::web::{
     path_and_query, respond_create_modal_done_fk, respond_edit_modal_done,
 };
 use lariv_plugin_users::auth;
+use lariv_plugin_users::lookup::user_display_label;
 use lariv_plugin_users::{middleware::RequireAuth, state::AuthContext};
+use sea_orm::DatabaseConnection;
 
 use crate::{
     entities::company::{self, Entity as CompanyEntity},
@@ -157,11 +159,8 @@ pub async fn detail(
         Ok(rows) => {
             let mut out = Vec::new();
             for row in rows {
-                let label = if row.user_id == ctx.user.id {
-                    format!("{} (you)", ctx.user.name)
-                } else {
-                    format!("User #{}", row.user_id)
-                };
+                let label =
+                    member_label(&state.db, row.user_id, ctx.user.id, &ctx.user.name).await;
                 out.push(CompanyMemberRow {
                     membership_id: row.id,
                     label,
@@ -193,6 +192,23 @@ pub async fn detail(
         member_email: String::new(),
     };
     html_built_page_or_app_layout(&page, &htmx, &chrome, &SlotCtx::from_auth(&ctx)).into_response()
+}
+
+async fn member_label(
+    db: &DatabaseConnection,
+    user_id: i64,
+    viewer_id: i64,
+    viewer_name: &str,
+) -> String {
+    if user_id == viewer_id {
+        return format!("{viewer_name} (you)");
+    }
+    let name = user_display_label(db, user_id).await;
+    if name.is_empty() {
+        format!("User #{user_id}")
+    } else {
+        name
+    }
 }
 
 fn company_write(form: &CompanyForm) -> Result<CompanyWrite, String> {
@@ -504,21 +520,20 @@ pub async fn member_add_post(
     match outcome {
         Ok(()) => htmx.redirect(&CompanyDetailRouteTag::new(id).url()),
         Err(error) => {
-            let members = logic::list_memberships_for_company(&state.db, id)
+            let mut members = Vec::new();
+            for row in logic::list_memberships_for_company(&state.db, id)
                 .await
                 .unwrap_or_default()
-                .into_iter()
-                .map(|row| CompanyMemberRow {
+            {
+                let label =
+                    member_label(&state.db, row.user_id, ctx.user.id, &ctx.user.name).await;
+                members.push(CompanyMemberRow {
                     membership_id: row.id,
-                    label: if row.user_id == ctx.user.id {
-                        format!("{} (you)", ctx.user.name)
-                    } else {
-                        format!("User #{}", row.user_id)
-                    },
+                    label,
                     owned_by: row.owned_by,
                     is_self: row.user_id == ctx.user.id,
-                })
-                .collect();
+                });
+            }
             let page = CompanyDetailPage {
                 id: company.id,
                 name: company.name,

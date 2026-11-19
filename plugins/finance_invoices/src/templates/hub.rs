@@ -321,7 +321,7 @@ impl InvoiceHubPage {
                 const ids = this.selectedIds();
                 if (ids.length < 1) return '#';
                 const params = new URLSearchParams(window.location.search);
-                const tab = params.get('tab') || 'quotations';
+                const tab = params.get('tab') || 'drafts';
                 return '{bulk_pdfs}?tab=' + encodeURIComponent(tab) + '&ids=' + ids.join(',');
             }},
             requestBulkDelete(el) {{

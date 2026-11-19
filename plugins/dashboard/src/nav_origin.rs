@@ -1,6 +1,6 @@
 //! Dashboard origin query (`from=dashboard`) and launchpad path checks.
 //!
-//! Registered onto [`lariv_core::components::nav_origin`] so core navigation, breadcrumbs,
+//! Registered onto [`lariv_core::components::nav_origin`] so core navigation
 //! and HTMX middleware pick up the behavior when this plugin is installed.
 
 use axum::http::{HeaderMap, Uri};

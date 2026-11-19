@@ -1163,7 +1163,7 @@ pub async fn hub(
     uri: Uri,
     Query(q): Query<HubQuery>,
 ) -> maud::Markup {
-    let tab = match q.tab.as_deref().unwrap_or("quotations") {
+    let tab = match q.tab.as_deref().unwrap_or("drafts") {
         "paid" | "partial" => "posted",
         other => other,
     };

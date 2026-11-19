@@ -60,7 +60,7 @@ impl RenderSlot for UsersUserDropdown {
                     span class="text-xl" { (avatar) }
                 }
             }
-            div class="card w-80 my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-50 bg-base-100 p-4" {
+            div class="card w-80 my-1.5 card-body shadow dropdown-content border border-base-300 rounded-box z-50 bg-base-100 p-4 fixed right-4" {
                 div class="flex flex-col gap-1" {
                     div class="font-bold text-lg" { (name) }
                     (EffectiveUserSelector.render_slot(ctx))

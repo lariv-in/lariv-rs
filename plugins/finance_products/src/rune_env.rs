@@ -348,20 +348,19 @@ mod args {
         let sales_price_formula =
             parse_formula(&schema, &parsed.sales_price_formula, "sales price formula")?;
         let journal_lines = journal_lines_json(parsed.journal_lines);
-        if parsed.journal_id > 0 {
-            let lines = crate::journal_template::parse_template_lines(&journal_lines)?;
-            crate::journal_template::validate_parsed_lines(&schema, &lines)?;
+        if parsed.journal_id <= 0 {
+            return Err(format!(
+                "{op} requires journal_id and journal_lines for the product journal entry template"
+            ));
         }
+        let lines = crate::journal_template::parse_template_lines(&journal_lines)?;
+        crate::journal_template::validate_parsed_lines(&schema, &lines)?;
         Ok(ProductInput {
             name,
             product_kind,
             remarks: opt_string(parsed.remarks),
             sales_price_formula,
-            journal_id: if parsed.journal_id > 0 {
-                parsed.journal_id.to_string()
-            } else {
-                String::new()
-            },
+            journal_id: parsed.journal_id.to_string(),
             journal_lines,
             hsn_code,
             tax_ids: parsed.tax_ids,
