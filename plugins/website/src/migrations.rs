@@ -6,6 +6,7 @@ mod m20260731_000001_create_db_routes;
 mod m20260808_000001_website_drop_deleted_at;
 mod m20260829_000001_create_website_preferences;
 mod m20260829_000002_website_preferences_js;
+mod m20261119_000001_path_to_ltree_search_path;
 
 #[derive(Clone, Copy, Default)]
 pub struct Migrator;
@@ -18,6 +19,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260808_000001_website_drop_deleted_at::Migration),
             Box::new(m20260829_000001_create_website_preferences::Migration),
             Box::new(m20260829_000002_website_preferences_js::Migration),
+            Box::new(m20261119_000001_path_to_ltree_search_path::Migration),
         ]
     }
 }

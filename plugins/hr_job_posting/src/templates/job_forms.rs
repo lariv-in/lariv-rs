@@ -564,9 +564,9 @@ impl JobApplicationPage {
                             span class="label-text" { "Remarks" }
                             textarea class="textarea textarea-bordered" name="Remarks" rows="4" { (self.values.remarks) }
                         }
-                        label class="form-control w-full" {
-                            span class="label-text" { "Resume" }
-                            input class="file-input file-input-bordered" type="file" name="Resume" accept=".pdf,.doc,.docx,.odt,.rtf,.txt";
+                        div class="form-control w-full" {
+                            label class="label-text" for="job-application-resume" { "Resume" }
+                            input id="job-application-resume" class="file-input file-input-bordered" type="file" name="Resume" accept=".pdf,.doc,.docx,.odt,.rtf,.txt";
                         }
                     }
                     fieldset class="fieldset bg-base-200 border-base-300 rounded-box border p-4" {

@@ -73,26 +73,26 @@ impl MigrationTrait for Migration {
             exec_sql(
                 manager,
                 r#"
-CREATE OR REPLACE FUNCTION path_to_ltree(p text) RETURNS ltree AS $$
+CREATE OR REPLACE FUNCTION path_to_ltree(p text) RETURNS public.ltree AS $$
 DECLARE
     cleaned text;
 BEGIN
     cleaned := trim(both '/' from p);
     IF cleaned = '' THEN
-        RETURN 'root'::ltree;
+        RETURN 'root'::public.ltree;
     END IF;
     cleaned := replace(replace(cleaned, '/', '.'), '-', '_');
     cleaned := regexp_replace(cleaned, '[^a-zA-Z0-9_\.]', '', 'g');
     cleaned := regexp_replace(cleaned, '\.\.', '.', 'g');
     cleaned := trim(both '.' from cleaned);
     IF cleaned = '' THEN
-        RETURN 'root'::ltree;
+        RETURN 'root'::public.ltree;
     END IF;
-    RETURN cleaned::ltree;
+    RETURN cleaned::public.ltree;
 EXCEPTION WHEN OTHERS THEN
-    RETURN 'root'::ltree;
+    RETURN 'root'::public.ltree;
 END;
-$$ LANGUAGE plpgsql IMMUTABLE;
+$$ LANGUAGE plpgsql IMMUTABLE SET search_path = public;
 "#,
             )
             .await?;

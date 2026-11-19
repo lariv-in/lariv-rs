@@ -834,6 +834,9 @@ impl Default for InputFile<'_> {
 }
 
 /// Render a file input.
+///
+/// The control is not nested in its caption. A `<label>` wrapping `<input type="file">`
+/// delivers the click twice, and the file dialog never opens.
 pub fn input_file(opts: InputFile<'_>) -> Markup {
     let required_attr = if opts.required { " required" } else { "" };
     let multiple_attr = if opts.multiple { " multiple" } else { "" };
@@ -842,20 +845,34 @@ pub fn input_file(opts: InputFile<'_>) -> Markup {
     } else {
         format!(r#" accept="{}""#, escape_attr(opts.accept))
     };
+    let input_id = format!(
+        "lariv-file-{}",
+        opts.name
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            })
+            .collect::<String>()
+    );
     html! {
-        div class=(format!("my-1 {}", opts.classes)) {
-            label class="label text-sm font-bold flex flex-col items-start gap-1" {
-                (opts.label)
-                (PreEscaped(format!(
-                    r#"<input type="file" name="{}" class="{}"{}{}{}{}>"#,
-                    escape_attr(opts.name),
-                    escape_attr(&format!("file-input file-input-bordered w-full {}", opts.classes)),
-                    required_attr,
-                    multiple_attr,
-                    accept_attr,
-                    opts.attrs.as_string()
-                )))
+        div class=(format!("my-1 flex flex-col items-start gap-1 {}", opts.classes)) {
+            @if !opts.label.is_empty() {
+                label class="label text-sm font-bold justify-start px-0" for=(input_id) {
+                    (opts.label)
+                }
             }
+            (PreEscaped(format!(
+                r#"<input id="{}" type="file" name="{}" class="{}"{}{}{}{}>"#,
+                escape_attr(&input_id),
+                escape_attr(opts.name),
+                escape_attr(&format!("file-input file-input-bordered w-full {}", opts.classes)),
+                required_attr,
+                multiple_attr,
+                accept_attr,
+                opts.attrs.as_string()
+            )))
         }
     }
 }

@@ -104,20 +104,35 @@ pub const LEFT_SIDEBAR_X_DATA: &str = r#"{
 }"#;
 
 /// Alpine state for the collapsible right drawer.
+///
+/// Below the `xl` breakpoint the drawer is an overlay. `showRight` stays the
+/// persisted desktop preference; `overlayOpen` is session-only so a narrow
+/// window does not load with the scrim covering the page (and its file inputs).
 pub const RIGHT_SIDEBAR_X_DATA: &str = r#"{
     showRight: $persist(true).as('right-sidebar-show'),
+    overlayOpen: false,
+    isOverlay: window.matchMedia('(max-width: 1279px)').matches,
     rightSidebarWidth: $persist(320).as('right-sidebar-width'),
     isResizing: false,
+    drawerOpen() {
+        return this.isOverlay ? this.overlayOpen : this.showRight;
+    },
     init() {
+        const mq = window.matchMedia('(max-width: 1279px)');
+        const sync = () => { this.isOverlay = mq.matches; };
+        sync();
+        mq.addEventListener('change', sync);
         window.addEventListener('llm-assistant-open-sidebar', () => {
-            this.showRight = true;
+            this.openRight();
         });
     },
     toggleRight() {
-        this.showRight = !this.showRight;
+        if (this.isOverlay) this.overlayOpen = !this.overlayOpen;
+        else this.showRight = !this.showRight;
     },
     openRight() {
-        this.showRight = true;
+        if (this.isOverlay) this.overlayOpen = true;
+        else this.showRight = true;
     },
     startResize(e) {
         e.preventDefault();
@@ -183,10 +198,10 @@ fn right_sidebar_toggle_buttons() -> Markup {
         (PreEscaped(
             r##"<button type="button" class="btn btn-sm btn-square btn-ghost" @click="toggleRight()">"##,
         ))
-        (PreEscaped(r##"<span x-show="!showRight">"##))
+        (PreEscaped(r##"<span x-show="!drawerOpen()">"##))
         (icon("bars-3-bottom-right", ""))
         (PreEscaped("</span>"))
-        (PreEscaped(r##"<span x-show="showRight">"##))
+        (PreEscaped(r##"<span x-show="drawerOpen()">"##))
         (icon("x-mark", ""))
         (PreEscaped("</span></button>"))
     }
@@ -195,16 +210,16 @@ fn right_sidebar_toggle_buttons() -> Markup {
 fn right_sidebar_aside(panel: Markup) -> Markup {
     html! {
         (PreEscaped(
-            r##"<div class="xl:hidden absolute inset-0 bg-neutral-900/40 z-30 transition-opacity" x-show="showRight" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" @click="toggleRight()"></div>"##,
+            r##"<div class="xl:hidden absolute inset-0 bg-neutral-900/40 z-30 transition-opacity" x-show="isOverlay && overlayOpen" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" @click="toggleRight()"></div>"##,
         ))
         (PreEscaped(
-            r##"<div class="hidden xl:flex w-2 -mx-1 cursor-col-resize flex-none h-full relative z-50 items-center justify-center hover:bg-primary/20 active:bg-primary/30 transition-all duration-150 group" x-show="showRight" @mousedown="startResize($event)" :class="isResizing ? 'bg-primary/20' : ''">"##,
+            r##"<div class="hidden xl:flex w-2 -mx-1 cursor-col-resize flex-none h-full relative z-50 items-center justify-center hover:bg-primary/20 active:bg-primary/30 transition-all duration-150 group" x-show="!isOverlay && showRight" @mousedown="startResize($event)" :class="isResizing ? 'bg-primary/20' : ''">"##,
         ))
         (PreEscaped(
             r##"<div class="w-[1px] h-full bg-base-300 group-hover:bg-primary group-active:bg-primary transition-colors duration-150" :class="isResizing ? 'bg-primary' : ''"></div></div>"##,
         ))
         (PreEscaped(
-            r##"<aside class="flex-none bg-base-100 flex flex-col h-full overflow-hidden absolute right-0 top-0 z-40 border-l border-base-300 shadow-2xl max-w-[85vw] sm:max-w-[400px] xl:static xl:border-l-0 xl:shadow-none xl:max-w-none" x-show="showRight" x-transition:enter="transition ease-out duration-200 transform" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0" x-transition:leave="transition ease-in duration-150 transform" x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full" :style="'width: ' + rightSidebarWidth + 'px'" style="width: 320px;">"##,
+            r##"<aside class="flex-none bg-base-100 flex flex-col h-full overflow-hidden absolute right-0 top-0 z-40 border-l border-base-300 shadow-2xl max-w-[85vw] sm:max-w-[400px] xl:static xl:border-l-0 xl:shadow-none xl:max-w-none" x-show="drawerOpen()" x-transition:enter="transition ease-out duration-200 transform" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0" x-transition:leave="transition ease-in duration-150 transform" x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full" :style="'width: ' + rightSidebarWidth + 'px'" style="width: 320px;">"##,
         ))
         div class="flex-1 overflow-hidden relative" {
             div class="h-full overflow-y-auto p-2" {
@@ -366,6 +381,9 @@ mod tests {
             layout_topbar_with_right_sidebar(Markup::default(), html! { p { "main" } }, panel);
         let s = out.into_string();
         assert!(s.contains("showRight"));
+        assert!(s.contains("overlayOpen"));
+        assert!(s.contains("drawerOpen()"));
+        assert!(s.contains("max-width: 1279px"));
         assert!(s.contains("rightSidebarWidth"));
         assert!(s.contains("history panel"));
     }
