@@ -10,10 +10,10 @@ use lariv_core::template::RenderTemplate;
 use lariv_core::web::{CreateModal, modal_create_post_query, modal_create_post_url};
 
 use crate::forms::{LeadForm, LeadFormField, LeadTagForm, LeadTagFormField};
-use crate::keys::{CUSTOMER_CREATE_MODAL, LEAD_CREATE_MODAL, LEAD_TAG_CREATE_MODAL};
+use crate::keys::{LEAD_CREATE_MODAL, LEAD_TAG_CREATE_MODAL};
 use crate::routes::{
-    CustomerCreateGetRouteTag, CustomerCreatePostRouteTag, LeadCreateGetRouteTag,
-    LeadCreatePostRouteTag, LeadTagCreateGetRouteTag, LeadTagCreatePostRouteTag,
+    LeadCreateGetRouteTag, LeadCreatePostRouteTag, LeadTagCreateGetRouteTag,
+    LeadTagCreatePostRouteTag,
 };
 
 pub const LEAD_CREATE: CreateModal<LeadCreateGetRouteTag, LeadCreatePostRouteTag> = CreateModal {
@@ -29,14 +29,6 @@ pub const LEAD_TAG_CREATE: CreateModal<LeadTagCreateGetRouteTag, LeadTagCreatePo
         form_name: "p_crm.LeadTagCreateForm",
         get: LeadTagCreateGetRouteTag,
         post: LeadTagCreatePostRouteTag,
-    };
-
-pub const CUSTOMER_CREATE: CreateModal<CustomerCreateGetRouteTag, CustomerCreatePostRouteTag> =
-    CreateModal {
-        key: CUSTOMER_CREATE_MODAL,
-        form_name: "p_crm.CustomerCreateForm",
-        get: CustomerCreateGetRouteTag,
-        post: CustomerCreatePostRouteTag,
     };
 
 pub(crate) fn lead_form_inputs(

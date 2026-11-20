@@ -16,9 +16,6 @@ pub const LEAD_TAG_SELECT_MODAL: SwapKey = SwapKey("crm-lead-tag-select-modal");
 pub const LEAD_TAG_CREATE_MODAL: SwapKey = SwapKey("crm-lead-tag-create-modal");
 pub const LEAD_TAG_EDIT_MODAL: SwapKey = SwapKey("crm-lead-tag-edit-modal");
 pub const LEAD_TAG_DELETE_MODAL: SwapKey = SwapKey("crm-lead-tag-delete-modal");
-pub const CUSTOMER_SELECT_TABLE: SwapKey = SwapKey("crm-customer-select-table");
-pub const CUSTOMER_SELECT_MODAL: SwapKey = SwapKey("crm-customer-select-modal");
-pub const CUSTOMER_CREATE_MODAL: SwapKey = SwapKey("crm-customer-create-modal");
 
 /// HTMX `HX-Trigger` / Alpine event after a lead update is saved from the detail form.
 pub const LEAD_UPDATE_SAVED_EVENT: &str = "crm-lead-update-saved";

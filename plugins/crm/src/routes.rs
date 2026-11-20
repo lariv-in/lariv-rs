@@ -1,11 +1,13 @@
 use super::{
     handlers,
     keys::{
-        CUSTOMER_SELECT_MODAL, CUSTOMER_SELECT_TABLE, LEAD_DELETE_MODAL, LEAD_HUB_TABLE,
-        LEAD_TAG_DELETE_MODAL, LEAD_TAG_LEADS_TABLE, LEAD_TAG_SELECT_MODAL, LEAD_TAG_SELECT_TABLE,
-        LEAD_TAG_TABLE, LEAD_UPDATE_DELETE_MODAL, LEAD_UPDATES,
+        LEAD_DELETE_MODAL, LEAD_HUB_TABLE, LEAD_TAG_DELETE_MODAL, LEAD_TAG_LEADS_TABLE,
+        LEAD_TAG_SELECT_MODAL, LEAD_TAG_SELECT_TABLE, LEAD_TAG_TABLE, LEAD_UPDATE_DELETE_MODAL,
+        LEAD_UPDATES,
     },
 };
+
+pub use lariv_plugin_customer::routes::{CustomerFkSelectRouteTag, CustomerSelect};
 
 pub struct CrmView;
 
@@ -31,10 +33,6 @@ lariv_core::define_plugin_routes! {
         post ConvertedLeadReactivatePostRouteTag, "/crm/leads/converted/{id}/reactivate", bare handlers::leads::converted_reactivate_post, redirect, authorize(CrmMutate, []);
         get FailedLeadDetailRouteTag, "/crm/leads/failed/{id}", handlers::leads::failed_detail, fragment(LEAD_UPDATES), authorize(CrmMutate, []);
         post FailedLeadReactivatePostRouteTag, "/crm/leads/failed/{id}/reactivate", bare handlers::leads::reactivate_post, redirect, authorize(CrmMutate, []);
-
-        get CustomerFkSelectRouteTag, "/crm/customers/pick", handlers::customers::select, fk_select(CUSTOMER_SELECT_TABLE, CUSTOMER_SELECT_MODAL), authorize(CrmView, []);
-        get CustomerCreateGetRouteTag, "/crm/customers/create", handlers::customers::create_get, modal, authorize(CrmMutate, []);
-        post CustomerCreatePostRouteTag, "/crm/customers/create", handlers::customers::create_post, authorize(CrmMutate, []);
 
         get LeadTagDefaultRouteTag, "/crm/lead-tags", handlers::lead_tags::list, fragment(LEAD_TAG_TABLE), authorize(CrmView, []);
         get LeadTagSelectRouteTag, "/crm/lead-tags/pick", handlers::lead_tags::select, multi_select(LEAD_TAG_SELECT_TABLE, LEAD_TAG_SELECT_MODAL), authorize(CrmView, []);

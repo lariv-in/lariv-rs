@@ -3,4 +3,6 @@
 use lariv_core::components::SwapKey;
 
 pub const CUSTOMER_TABLE: SwapKey = SwapKey("customer-table");
+pub const CUSTOMER_SELECT_TABLE: SwapKey = SwapKey("customer-select-table");
+pub const CUSTOMER_SELECT_MODAL: SwapKey = SwapKey("customer-select-modal");
 pub const CUSTOMER_CREATE_MODAL: SwapKey = SwapKey("customer-create-modal");

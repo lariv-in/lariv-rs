@@ -33,7 +33,7 @@ use crate::{
     },
     logic::{self, CompanyWrite},
     routes::{CompanyDefaultRouteTag, CompanyDetailRouteTag},
-    scope::{apply_company_sort, find_company_scoped},
+    scope::{apply_company_sort, find_company_scoped, visible_companies},
     state::CompaniesState,
     templates::{
         CompanyCreateModalPage, CompanyDetailPage, CompanyEditModalPage, CompanyListPage,
@@ -74,7 +74,9 @@ async fn query_companies(
     page_size: u32,
     condition: Condition,
 ) -> (Vec<company::Model>, u32, u64) {
-    let mut query = scope_allowed::<super::super::routes::CompaniesView, _>(CompanyEntity::find());
+    let mut query = visible_companies(scope_allowed::<super::super::routes::CompaniesView, _>(
+        CompanyEntity::find(),
+    ));
     query = query.filter(condition);
     query = apply_company_sort(query, q.sort.as_deref());
     let page = q.page.get();
@@ -159,8 +161,7 @@ pub async fn detail(
         Ok(rows) => {
             let mut out = Vec::new();
             for row in rows {
-                let label =
-                    member_label(&state.db, row.user_id, ctx.user.id, &ctx.user.name).await;
+                let label = member_label(&state.db, row.user_id, ctx.user.id, &ctx.user.name).await;
                 out.push(CompanyMemberRow {
                     membership_id: row.id,
                     label,
@@ -525,8 +526,7 @@ pub async fn member_add_post(
                 .await
                 .unwrap_or_default()
             {
-                let label =
-                    member_label(&state.db, row.user_id, ctx.user.id, &ctx.user.name).await;
+                let label = member_label(&state.db, row.user_id, ctx.user.id, &ctx.user.name).await;
                 members.push(CompanyMemberRow {
                     membership_id: row.id,
                     label,

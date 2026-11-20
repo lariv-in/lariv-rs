@@ -10,7 +10,6 @@ pub mod create_modals;
 pub mod entities;
 pub mod foreign_keys;
 pub mod forms;
-pub mod gst_state;
 pub mod handlers;
 #[cfg(feature = "plugin-llm-assistant")]
 pub mod hitl;

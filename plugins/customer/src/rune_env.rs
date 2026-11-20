@@ -23,17 +23,17 @@ fn register(rune_env: &mut RuneEnvCapability) {
 
     rune_env.register_contextual(
         "create_customer",
-        "create_customer(#{ company_id?: int, individual_id?: int, state?: string }) -> int  // new or existing customer id. Exactly one of company_id or individual_id is set. state is an optional GST state code such as \"27\"; blank clears it, and omitting it leaves an existing customer's state unchanged.",
+        "create_customer(#{ company_id?: int, individual_id?: int }) -> int  // new or existing customer id. Exactly one of company_id or individual_id is set. GST state lives on the company or the contact.",
         |_ctx| NativeBinding::Function(Arc::new(create_customer)),
     );
     rune_env.register_contextual(
         "update_customer",
-        "update_customer(#{ id: int, company_id?: int, individual_id?: int, state?: string }) -> int  // updated customer id. Exactly one of company_id or individual_id is set. state is an optional GST state code; blank clears it, and omitting it keeps the stored state.",
+        "update_customer(#{ id: int, company_id?: int, individual_id?: int }) -> int  // updated customer id. Exactly one of company_id or individual_id is set. GST state lives on the company or the contact.",
         |_ctx| NativeBinding::Function(Arc::new(update_customer)),
     );
     rune_env.register_contextual(
         "get_customer",
-        "get_customer(#{ id: int }) -> #{ id: int, name: string, is_individual: bool, company_id: int|null, individual_id: int|null, state: string|null }",
+        "get_customer(#{ id: int }) -> #{ id: int, name: string, is_individual: bool, company_id: int|null, individual_id: int|null }",
         |_ctx| NativeBinding::Function(Arc::new(get_customer)),
     );
     rune_env.register_contextual(
@@ -51,8 +51,7 @@ fn create_customer(
     let party = parse_party(args, "create_customer")?;
     let db = ctx.db.clone();
     let id = lariv_core::rune_env::block_on_async(async move {
-        crate::logic::create_for_party(&db, party.company_id, party.individual_id, party.state)
-            .await
+        crate::logic::create_for_party(&db, party.company_id, party.individual_id).await
     })?;
     Ok(rune::Value::from(id))
 }
@@ -65,8 +64,7 @@ fn update_customer(
     let (id, party) = parse_party_update(args)?;
     let db = ctx.db.clone();
     let id = lariv_core::rune_env::block_on_async(async move {
-        crate::logic::update_for_party(&db, id, party.company_id, party.individual_id, party.state)
-            .await
+        crate::logic::update_for_party(&db, id, party.company_id, party.individual_id).await
     })?;
     Ok(rune::Value::from(id))
 }
@@ -88,7 +86,6 @@ fn get_customer(
         "is_individual": row.is_individual,
         "company_id": row.company_id,
         "individual_id": row.individual_id,
-        "state": row.state,
     }))
 }
 
@@ -115,7 +112,6 @@ fn search_customers(
 struct PartyWrite {
     company_id: i64,
     individual_id: i64,
-    state: crate::logic::CustomerStateUpdate,
 }
 
 #[cfg(feature = "cap-llm")]
@@ -131,7 +127,6 @@ fn parse_party(args: &[rune::Value], name: &str) -> Result<PartyWrite, String> {
     Ok(PartyWrite {
         company_id,
         individual_id,
-        state: state_update(&parsed)?,
     })
 }
 
@@ -144,17 +139,6 @@ fn parse_party_update(args: &[rune::Value]) -> Result<(i64, PartyWrite), String>
     }
     let party = parse_party(args, "update_customer")?;
     Ok((id, party))
-}
-
-#[cfg(feature = "cap-llm")]
-fn state_update(value: &serde_json::Value) -> Result<crate::logic::CustomerStateUpdate, String> {
-    match value.get("state") {
-        None | Some(serde_json::Value::Null) => Ok(crate::logic::CustomerStateUpdate::Keep),
-        Some(serde_json::Value::String(raw)) => Ok(crate::logic::CustomerStateUpdate::Set(
-            crate::gst_state::parse_state(raw)?,
-        )),
-        Some(_) => Err("state must be a string".to_string()),
-    }
 }
 
 #[cfg(feature = "cap-llm")]

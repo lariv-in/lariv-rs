@@ -15,8 +15,6 @@ pub mod scope;
 pub mod state;
 pub mod templates;
 
-mod customer_ui;
-
 pub mod apps;
 pub mod crumbs;
 pub mod detail_menu;

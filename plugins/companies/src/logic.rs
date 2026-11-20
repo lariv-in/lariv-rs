@@ -122,7 +122,7 @@ pub async fn get_company<C: ConnectionTrait>(
     if company_id <= 0 {
         return Err("get_company requires a positive company id".to_string());
     }
-    CompanyEntity::find_by_id(company_id)
+    crate::scope::visible_companies(CompanyEntity::find_by_id(company_id))
         .one(db)
         .await
         .map_err(|e| e.to_string())?
@@ -134,7 +134,7 @@ pub async fn search_companies<C: ConnectionTrait>(
     query: &str,
     limit: u64,
 ) -> Result<Vec<company::Model>, String> {
-    let mut select = CompanyEntity::find();
+    let mut select = crate::scope::visible_companies(CompanyEntity::find());
     let needle = query.trim();
     if !needle.is_empty() {
         let like = like_pattern(needle);

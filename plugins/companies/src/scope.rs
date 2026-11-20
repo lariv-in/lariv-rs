@@ -1,17 +1,46 @@
 use lariv_core::components::{sort_desc, sort_key};
-use lariv_plugin_users::role_authorization::scope_allowed;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, Select};
+use lariv_plugin_users::role_authorization::{current_auth, scope_allowed};
+use lariv_plugin_users::roles::Superuser;
+use sea_orm::sea_query::{Query, SelectStatement};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Select};
 
 use super::entities::company::{self, Entity as CompanyEntity};
+use super::entities::company_membership;
 use super::routes::CompaniesView;
 
 pub async fn find_company_scoped(db: &DatabaseConnection, id: i64) -> Option<company::Model> {
     lariv_core::web::opt_or_log(
-        scope_allowed::<CompaniesView, _>(CompanyEntity::find_by_id(id))
-            .one(db)
-            .await,
+        visible_companies(scope_allowed::<CompaniesView, _>(
+            CompanyEntity::find_by_id(id),
+        ))
+        .one(db)
+        .await,
         "find company scoped",
     )
+}
+
+/// Hide companies the signed-in user does not belong to.
+///
+/// The companies RLS policy already says this. A Postgres superuser login skips
+/// that policy, so the list, picker, and detail queries repeat it here.
+/// Application superusers still see every company. No signed-in user means the
+/// query is unchanged.
+pub fn visible_companies(query: Select<CompanyEntity>) -> Select<CompanyEntity> {
+    let Some(auth) = current_auth() else {
+        return query;
+    };
+    if Superuser::matches(&auth.role) {
+        return query;
+    }
+    query.filter(company::Column::Id.in_subquery(member_company_ids(auth.user.id)))
+}
+
+fn member_company_ids(user_id: i64) -> SelectStatement {
+    Query::select()
+        .column(company_membership::Column::CompanyId)
+        .from(company_membership::Entity)
+        .and_where(company_membership::Column::UserId.eq(user_id))
+        .to_owned()
 }
 
 pub fn apply_company_sort(

@@ -134,7 +134,7 @@ async fn load<C: ConnectionTrait>(db: &C) -> Result<Loaded, String> {
 fn invoice_sql() -> &'static str {
     "SELECT i.id, i.number, i.datetime, i.posted_payment_term_id, \
             c.is_individual, \
-            COALESCE(NULLIF(TRIM(c.state), ''), NULLIF(TRIM(co.state), ''), ''), \
+            COALESCE(NULLIF(TRIM(co.state), ''), ''), \
             co.name, co.gstin, ct.name \
      FROM posted_invoices i \
      LEFT JOIN customers c ON c.id = i.customer_id \
@@ -814,8 +814,7 @@ mod tests {
             id INTEGER PRIMARY KEY,
             is_individual INTEGER,
             company_id INTEGER,
-            individual_id INTEGER,
-            state TEXT
+            individual_id INTEGER
         )",
         "CREATE TABLE companies (id INTEGER PRIMARY KEY, name TEXT, gstin TEXT, state TEXT)",
         "CREATE TABLE crm_contacts (id INTEGER PRIMARY KEY, name TEXT)",
@@ -848,7 +847,7 @@ mod tests {
     const FIXTURE: &[&str] = &[
         "INSERT INTO companies (id, name, gstin, state) VALUES (4, 'Acme', '27AAAAA0000A1Z5', 'Maharashtra')",
         "INSERT INTO crm_contacts (id, name) VALUES (9, 'Ada')",
-        "INSERT INTO customers (id, is_individual, company_id, state) VALUES (1, 0, 4, '')",
+        "INSERT INTO customers (id, is_individual, company_id) VALUES (1, 0, 4)",
         "INSERT INTO customers (id, is_individual, individual_id) VALUES (2, 1, 9)",
         "INSERT INTO posted_invoices (id, number, datetime, customer_id, posted_payment_term_id)
          VALUES (1, 'INV/26-27/2', '2026-10-07T18:30:00+00:00', 1, 7)",

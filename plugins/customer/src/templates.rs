@@ -5,24 +5,27 @@ use crate::create_modals::CUSTOMER_CREATE;
 use maud::{Markup, html};
 
 use lariv_core::capability::define_register_items;
+use lariv_core::components::picker::{RenderPickerSelect, picker_create_button};
 use lariv_core::components::{
     ButtonSubmit, DataTable, DataTableDisplay, FieldText, FilterClauseView, FormOpts,
     ListFilterBuilder, ObjectList, ShellChrome, SwapKey, TableButtonFilter, TableColumnHeader,
     TableListContent, TableRow, button_submit, column_sort_url, data_table, field_text,
-    filter_error_banner, form, form_hx_get_route, form_hx_post_url, list_filter_builder,
-    modal_keyed, render_pagination, row_attr_navigate, sort_indicator, table_button_filter,
-    table_create_button, table_list_content,
+    filter_error_banner, form, form_hx_get_picker_route, form_hx_get_route, form_hx_post_url,
+    list_filter_builder, modal_keyed, render_pagination, render_picker_pagination,
+    row_attr_navigate, row_attr_select, sort_indicator, table_button_filter, table_create_button,
+    table_list_content,
 };
 use lariv_core::html_form::{CsrfToken, FormCtx, HtmlForm};
 use lariv_core::http::{FragmentGet, ProvideRequestCaps, RouteUrl};
 use lariv_core::list_filters::{FilterField, FilterRowError};
 use lariv_core::template::{RenderTemplate, TemplateCapability, TemplateOf, TemplateRegistrar};
-use lariv_core::web::modal_create_post_url;
+use lariv_core::web::modal_create_post_query;
 
 use super::forms::{CustomerForm, CustomerFormField};
-use super::gst_state::GST_STATE_CHOICES;
-use super::keys::{CUSTOMER_CREATE_MODAL, CUSTOMER_TABLE};
-use super::routes::CustomerCreatePostRouteTag;
+use super::keys::{
+    CUSTOMER_CREATE_MODAL, CUSTOMER_SELECT_MODAL, CUSTOMER_SELECT_TABLE, CUSTOMER_TABLE,
+};
+use super::routes::{CustomerCreatePostRouteTag, CustomerFkSelectRouteTag};
 
 define_register_items! {
     plugin: CustomerTag;
@@ -34,6 +37,7 @@ define_register_items! {
     hook: Hook;
     items: [
         CustomerCreateModalIdx: CustomerCreateModalPageTag => CustomerCreateModalPage,
+        CustomerSelectIdx: CustomerSelectPageTag => CustomerSelectPage,
     ]
 }
 
@@ -113,6 +117,18 @@ impl CustomerListPage {
     where
         R: RouteUrl + FragmentGet + Default,
     {
+        self.render_customers(CustomerTableMode::List {
+            filter_attrs: form_hx_get_route(R::default()),
+        })
+    }
+
+    /// Same columns as [`Self::render_table`], with rows that fill a foreign-key input.
+    pub fn render_picker_table(&self, target_input: &str) -> Markup {
+        self.render_customers(CustomerTableMode::Picker { target_input })
+    }
+
+    fn render_customers(&self, mode: CustomerTableMode<'_>) -> Markup {
+        let picker = matches!(mode, CustomerTableMode::Picker { .. });
         let name_sort = column_sort_url(&self.path_and_query, "Name", &self.sort);
         let name_label = format!("Name{}", sort_indicator(&self.sort, "Name"));
         let headers = [
@@ -120,13 +136,13 @@ impl CustomerListPage {
                 key: "Name",
                 label: &name_label,
                 sort_url: Some(&name_sort),
-                push_url: true,
+                push_url: !picker,
             },
             TableColumnHeader {
                 key: "Kind",
                 label: "Kind",
                 sort_url: None,
-                push_url: true,
+                push_url: !picker,
             },
         ];
         let rows: Vec<TableRow> = self
@@ -134,10 +150,14 @@ impl CustomerListPage {
             .items
             .iter()
             .map(|row| TableRow {
-                attrs: if row.href.is_empty() {
-                    lariv_core::components::HtmlAttrs::new()
-                } else {
-                    row_attr_navigate(&row.href)
+                attrs: match mode {
+                    CustomerTableMode::Picker { target_input } => {
+                        row_attr_select(target_input, &row.id.to_string(), &row.name)
+                    }
+                    CustomerTableMode::List { .. } if row.href.is_empty() => {
+                        lariv_core::components::HtmlAttrs::new()
+                    }
+                    CustomerTableMode::List { .. } => row_attr_navigate(&row.href),
                 },
                 cells: vec![
                     field_text(FieldText {
@@ -153,57 +173,130 @@ impl CustomerListPage {
                 children: Vec::new(),
             })
             .collect();
-        let mut actions = html! {
+        let (key, title, filter_attrs, filter_extra, pagination, create) = match mode {
+            CustomerTableMode::List { filter_attrs } => {
+                let create = if lariv_core::components::role_permitted(
+                    &lariv_plugin_users::role_authorization::roles_for::<
+                        super::routes::CustomerMutate,
+                    >(),
+                ) {
+                    table_create_button(
+                        CUSTOMER_TABLE,
+                        CUSTOMER_CREATE,
+                        Some("plus"),
+                        "btn-square btn-outline btn-sm",
+                    )
+                } else {
+                    html! {}
+                };
+                (
+                    CUSTOMER_TABLE,
+                    "Customers",
+                    filter_attrs,
+                    html! {},
+                    render_pagination(
+                        CUSTOMER_TABLE,
+                        &self.path_and_query,
+                        self.customers.number,
+                        self.customers.num_pages,
+                    ),
+                    create,
+                )
+            }
+            CustomerTableMode::Picker { target_input } => {
+                let create = if lariv_core::components::role_permitted(
+                    &lariv_plugin_users::role_authorization::roles_for::<
+                        super::routes::CustomerMutate,
+                    >(),
+                ) {
+                    picker_create_button(
+                        CUSTOMER_CREATE,
+                        target_input,
+                        Some("plus"),
+                        "btn-square btn-outline btn-sm",
+                    )
+                } else {
+                    html! {}
+                };
+                (
+                    CUSTOMER_SELECT_TABLE,
+                    "Select customer",
+                    form_hx_get_picker_route(CustomerFkSelectRouteTag).set("hx-push-url", "false"),
+                    html! {
+                        input type="hidden" name="target_input" value=(target_input) {}
+                    },
+                    render_picker_pagination(
+                        CUSTOMER_SELECT_MODAL,
+                        &self.path_and_query,
+                        self.customers.number,
+                        self.customers.num_pages,
+                    ),
+                    create,
+                )
+            }
+        };
+        let actions = html! {
             (table_button_filter(TableButtonFilter {
                 panel: list_filter_builder(ListFilterBuilder {
                     fields: &self.fields,
                     rows: &self.filters,
                     page_size: self.page_size,
                     sort: &self.sort,
-                    attrs: form_hx_get_route(R::default()),
+                    attrs: filter_attrs,
                     apply_label: "Apply",
-                    extra: html! {},
+                    extra: filter_extra,
                 }),
                 ..Default::default()
             }))
+            (create)
         };
-        if lariv_core::components::role_permitted(
-            &lariv_plugin_users::role_authorization::roles_for::<super::routes::CustomerMutate>(),
-        ) {
-            actions = html! {
-                (actions)
-                (table_create_button(CUSTOMER_TABLE, CUSTOMER_CREATE,
-                    Some("plus"),
-                    "btn-square btn-outline btn-sm",
-                ))
-            };
-        }
         filtered_data_table(
-            CUSTOMER_TABLE,
-            "Customers",
+            key,
+            title,
             actions,
             &headers,
             &rows,
-            render_pagination(
-                CUSTOMER_TABLE,
-                &self.path_and_query,
-                self.customers.number,
-                self.customers.num_pages,
-            ),
+            pagination,
             &self.path_and_query,
             &self.filter_errors,
         )
     }
 }
 
+enum CustomerTableMode<'a> {
+    List {
+        filter_attrs: lariv_core::components::HtmlAttrs,
+    },
+    Picker {
+        target_input: &'a str,
+    },
+}
+
+pub struct CustomerSelectPage {
+    pub list: CustomerListPage,
+    pub target_input: String,
+}
+
+impl RenderPickerSelect for CustomerSelectPage {
+    fn render_table(&self) -> Markup {
+        self.list.render_picker_table(&self.target_input)
+    }
+}
+
+impl RenderTemplate for CustomerSelectPage {
+    fn render(&self, _chrome: &ShellChrome) -> Markup {
+        self.render_modal(CUSTOMER_SELECT_MODAL).into_inner()
+    }
+}
+
 pub struct CustomerCreateModalPage {
     pub form_name: String,
     pub refresh_table: String,
+    pub target_input: String,
     pub company_id: i64,
     pub company_display: String,
     pub individual_id: i64,
     pub individual_display: String,
-    pub state: String,
     pub error: String,
 }
 
@@ -224,10 +317,11 @@ impl RenderTemplate for CustomerCreateModalPage {
                     subtitle: "A customer is one company or one contact.",
                     attrs: form_hx_post_url(
                         CUSTOMER_CREATE_MODAL,
-                        &modal_create_post_url(
+                        &modal_create_post_query(
                             CustomerCreatePostRouteTag,
                             form_name,
                             &self.refresh_table,
+                            &self.target_input,
                         ),
                     ),
                     form_error: Some(self.error.as_str()).filter(|err| !err.is_empty()),
@@ -239,9 +333,7 @@ impl RenderTemplate for CustomerCreateModalPage {
                                 CustomerFormField::IndividualId,
                                 self.individual_id.to_string(),
                             )
-                            .display(CustomerFormField::IndividualId, &self.individual_display)
-                            .value(CustomerFormField::State, self.state.as_str())
-                            .choices(CustomerFormField::State, GST_STATE_CHOICES),
+                            .display(CustomerFormField::IndividualId, &self.individual_display),
                     ),
                     actions: html! {
                         (button_submit(ButtonSubmit { label: "Create customer", ..Default::default() }))

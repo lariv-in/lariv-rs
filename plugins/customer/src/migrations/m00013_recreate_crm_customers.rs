@@ -4,7 +4,7 @@
 //! table is still present. CRM's `m00022_create_customers` used to recreate it.
 //! A deployment that installs customer without CRM still needs the party table
 //! before invoices point `customer_id` at it. When `customers` is already that
-//! party table, this only makes sure `state` exists.
+//! party table, this leaves it in place. `m00014` drops `state`.
 
 use crate::foreign_keys::{FK_CRM_CUSTOMERS_COMPANY, FK_CRM_CUSTOMERS_INDIVIDUAL};
 use lariv_core::db::migration_sql::{self, exec_sql};

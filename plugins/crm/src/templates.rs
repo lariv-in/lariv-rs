@@ -18,9 +18,7 @@ pub mod detail;
 pub mod edit;
 pub mod list;
 
-pub use create::{
-    CUSTOMER_CREATE, LEAD_CREATE, LEAD_TAG_CREATE, LeadCreateModalPage, LeadTagCreateModalPage,
-};
+pub use create::{LEAD_CREATE, LEAD_TAG_CREATE, LeadCreateModalPage, LeadTagCreateModalPage};
 pub use detail::{
     LeadConvertDetailPage, LeadDetailPage, LeadFailDetailPage, LeadTagDetailPage,
     LeadUpdateDetailPage, LeadUpdateItem, LeadUpdatesPanel,

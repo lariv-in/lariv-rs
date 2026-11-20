@@ -93,21 +93,11 @@ pub async fn require_existing<C: ConnectionTrait>(db: &C, customer_id: i64) -> R
     }
 }
 
-/// How a write treats `customers.state`.
-#[derive(Debug, Clone)]
-pub enum CustomerStateUpdate {
-    /// Leave a stored state as it is. A new row stays blank.
-    Keep,
-    /// Store this code, or clear it when `None`.
-    Set(Option<String>),
-}
-
 /// Exactly one of `company_id` and `individual_id` is positive.
 pub async fn create_for_party<C: ConnectionTrait>(
     db: &C,
     company_id: i64,
     individual_id: i64,
-    state: CustomerStateUpdate,
 ) -> Result<i64, String> {
     let company = company_id > 0;
     let individual = individual_id > 0;
@@ -115,9 +105,9 @@ pub async fn create_for_party<C: ConnectionTrait>(
         return Err("select a company or a contact".to_string());
     }
     if individual {
-        find_or_insert(db, true, None, Some(individual_id), state).await
+        find_or_insert(db, true, None, Some(individual_id)).await
     } else {
-        find_or_insert(db, false, Some(company_id), None, state).await
+        find_or_insert(db, false, Some(company_id), None).await
     }
 }
 
@@ -257,22 +247,15 @@ async fn find_or_insert<C: ConnectionTrait>(
     is_individual: bool,
     company_id: Option<i64>,
     individual_id: Option<i64>,
-    state: CustomerStateUpdate,
 ) -> Result<i64, String> {
     if let Some(existing) = find_customer(db, is_individual, company_id, individual_id).await? {
-        apply_state(db, existing, state).await?;
         return Ok(existing);
     }
     let now = chrono::Utc::now();
-    let state_value = match &state {
-        CustomerStateUpdate::Set(value) => value.clone(),
-        CustomerStateUpdate::Keep => None,
-    };
     let inserted = customer::ActiveModel {
         is_individual: sea_orm::ActiveValue::Set(is_individual),
         company_id: sea_orm::ActiveValue::Set(company_id),
         individual_id: sea_orm::ActiveValue::Set(individual_id),
-        state: sea_orm::ActiveValue::Set(state_value),
         created_at: sea_orm::ActiveValue::Set(Some(now)),
         updated_at: sea_orm::ActiveValue::Set(Some(now)),
         ..Default::default()
@@ -282,34 +265,10 @@ async fn find_or_insert<C: ConnectionTrait>(
     match inserted {
         Ok(row) => Ok(row.id),
         Err(err) => match find_customer(db, is_individual, company_id, individual_id).await? {
-            Some(id) => {
-                apply_state(db, id, state).await?;
-                Ok(id)
-            }
+            Some(id) => Ok(id),
             None => Err(err.to_string()),
         },
     }
-}
-
-async fn apply_state<C: ConnectionTrait>(
-    db: &C,
-    customer_id: i64,
-    state: CustomerStateUpdate,
-) -> Result<(), String> {
-    let CustomerStateUpdate::Set(value) = state else {
-        return Ok(());
-    };
-    let existing = CustomerEntity::find_by_id(customer_id)
-        .one(db)
-        .await
-        .map_err(|err| err.to_string())?
-        .ok_or_else(|| "customer not found".to_string())?;
-    let now = chrono::Utc::now();
-    let mut am: customer::ActiveModel = existing.into();
-    am.state = sea_orm::ActiveValue::Set(value);
-    am.updated_at = sea_orm::ActiveValue::Set(Some(now));
-    am.update(db).await.map_err(|err| err.to_string())?;
-    Ok(())
 }
 
 /// Point an existing customer at exactly one company or contact.
@@ -318,7 +277,6 @@ pub async fn update_for_party<C: ConnectionTrait>(
     customer_id: i64,
     company_id: i64,
     individual_id: i64,
-    state: CustomerStateUpdate,
 ) -> Result<i64, String> {
     if customer_id <= 0 {
         return Err("customer not found".to_string());
@@ -365,9 +323,6 @@ pub async fn update_for_party<C: ConnectionTrait>(
     am.is_individual = sea_orm::ActiveValue::Set(is_individual);
     am.company_id = sea_orm::ActiveValue::Set(company_set);
     am.individual_id = sea_orm::ActiveValue::Set(individual_set);
-    if let CustomerStateUpdate::Set(value) = state {
-        am.state = sea_orm::ActiveValue::Set(value);
-    }
     am.updated_at = sea_orm::ActiveValue::Set(Some(now));
     am.update(db).await.map_err(|err| err.to_string())?;
     Ok(customer_id)
@@ -398,7 +353,6 @@ pub struct CustomerRecord {
     pub is_individual: bool,
     pub company_id: Option<i64>,
     pub individual_id: Option<i64>,
-    pub state: Option<String>,
 }
 
 pub async fn load_customer(
@@ -420,7 +374,6 @@ pub async fn load_customer(
         is_individual: row.is_individual,
         company_id: row.company_id,
         individual_id: row.individual_id,
-        state: row.state,
     })
 }
 
